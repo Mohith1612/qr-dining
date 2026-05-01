@@ -1,0 +1,31 @@
+# Binary output
+bin/
+*.exe
+*.out
+
+# Environment files — never commit secrets
+.env
+.env.local
+.env.production
+
+# Go tooling
+vendor/
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Coverage and test output
+cover.out
+cover.html
+*.test
+
+# Docker
+docker-compose.override.yml
