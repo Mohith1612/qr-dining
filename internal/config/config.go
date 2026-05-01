@@ -26,6 +26,7 @@ type ServerConfig struct {
 	ShutdownTimeout time.Duration
 	GinMode         string
 	TrustedProxies  []string
+	RateLimitRPM    int
 }
 
 type DBConfig struct {
@@ -71,6 +72,12 @@ func Load() (*Config, error) {
 	cfg.Server.ShutdownTimeout = parseDuration("SHUTDOWN_TIMEOUT", 15*time.Second)
 	cfg.Server.GinMode = getenv("GIN_MODE", "release")
 	cfg.Server.TrustedProxies = splitComma("TRUSTED_PROXIES", "172.16.0.0/12")
+
+	rateLimitRPM, err := parseInt("RATE_LIMIT_RPM", 60)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Server.RateLimitRPM = rateLimitRPM
 
 	// Database
 	dbURL := getenv("DATABASE_URL", "")
