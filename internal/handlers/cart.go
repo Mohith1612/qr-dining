@@ -1,0 +1,115 @@
+package handlers
+
+import (
+	"errors"
+	"net/http"
+	"strconv"
+
+	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/services"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+type CartHandler struct {
+	svc *services.CartService
+}
+
+func NewCartHandler(svc *services.CartService) *CartHandler {
+	return &CartHandler{svc: svc}
+}
+
+func (h *CartHandler) GetCart(c *gin.Context) {
+	sessionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		return
+	}
+	participantID, err := participantIDFromHeader(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Participant-ID header required"})
+		return
+	}
+
+	result, err := h.svc.GetCart(c.Request.Context(), sessionID, participantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+type addCartItemRequest struct {
+	MenuItemID  int64   `json:"menu_item_id" binding:"required"`
+	Quantity    int16   `json:"quantity" binding:"required,min=1,max=99"`
+	ModifierIDs []int64 `json:"modifier_ids"`
+	Note        string  `json:"note"`
+}
+
+func (h *CartHandler) AddItem(c *gin.Context) {
+	sessionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		return
+	}
+	participantID, err := participantIDFromHeader(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Participant-ID header required"})
+		return
+	}
+
+	var req addCartItemRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	item, err := h.svc.AddItem(c.Request.Context(), services.AddItemRequest{
+		SessionID:     sessionID,
+		ParticipantID: participantID,
+		MenuItemID:    req.MenuItemID,
+		Quantity:      req.Quantity,
+		ModifierIDs:   req.ModifierIDs,
+		Note:          req.Note,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrMenuItemNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case errors.Is(err, domain.ErrMenuItemUnavailable):
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		}
+		return
+	}
+	c.JSON(http.StatusCreated, item)
+}
+
+func (h *CartHandler) RemoveItem(c *gin.Context) {
+	sessionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		return
+	}
+	itemID, err := strconv.ParseInt(c.Param("item_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid item_id"})
+		return
+	}
+	participantID, err := participantIDFromHeader(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Participant-ID header required"})
+		return
+	}
+
+	if err := h.svc.RemoveItem(c.Request.Context(), sessionID, participantID, itemID); err != nil {
+		if errors.Is(err, domain.ErrCartItemNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}

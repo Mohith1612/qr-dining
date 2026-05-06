@@ -1,0 +1,151 @@
+package services
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
+	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/events"
+	"github.com/Mohith1612/qr-dining/internal/repository"
+	"github.com/google/uuid"
+)
+
+type CartService struct {
+	repos     *repository.Repos
+	publisher *events.Publisher
+}
+
+func NewCartService(repos *repository.Repos, publisher *events.Publisher) *CartService {
+	return &CartService{repos: repos, publisher: publisher}
+}
+
+type ModifierSnapshot struct {
+	ID         int64   `json:"id"`
+	Name       string  `json:"name"`
+	PriceDelta float64 `json:"price_delta"`
+}
+
+type AddItemRequest struct {
+	SessionID     uuid.UUID
+	ParticipantID int64
+	MenuItemID    int64
+	Quantity      int16
+	ModifierIDs   []int64
+	Note          string
+}
+
+type CartResponse struct {
+	Cart  sqlc.Cart
+	Items []sqlc.ListCartItemsRow
+}
+
+func (s *CartService) GetCart(ctx context.Context, sessionID uuid.UUID, participantID int64) (CartResponse, error) {
+	cart, err := s.repos.GetOrCreateCart(ctx, sessionID, participantID)
+	if err != nil {
+		return CartResponse{}, err
+	}
+	items, err := s.repos.ListCartItems(ctx, cart.ID)
+	if err != nil {
+		return CartResponse{}, err
+	}
+	return CartResponse{Cart: cart, Items: items}, nil
+}
+
+func (s *CartService) AddItem(ctx context.Context, req AddItemRequest) (sqlc.CartItem, error) {
+	// Validate menu item availability.
+	menuItem, err := s.repos.GetMenuItemByID(ctx, req.MenuItemID)
+	if err != nil {
+		return sqlc.CartItem{}, err
+	}
+	if !menuItem.IsAvailable {
+		return sqlc.CartItem{}, domain.ErrMenuItemUnavailable
+	}
+
+	// Snapshot modifier details at add-to-cart time.
+	modifiers, err := s.snapshotModifiers(ctx, req.MenuItemID, req.ModifierIDs)
+	if err != nil {
+		return sqlc.CartItem{}, fmt.Errorf("snapshot modifiers: %w", err)
+	}
+
+	modJSON, err := json.Marshal(modifiers)
+	if err != nil {
+		return sqlc.CartItem{}, fmt.Errorf("marshal modifiers: %w", err)
+	}
+
+	cart, err := s.repos.GetOrCreateCart(ctx, req.SessionID, req.ParticipantID)
+	if err != nil {
+		return sqlc.CartItem{}, err
+	}
+
+	item, err := s.repos.AddCartItem(ctx, cart.ID, req.MenuItemID, req.Quantity, modJSON, req.Note)
+	if err != nil {
+		return sqlc.CartItem{}, err
+	}
+
+	s.publisher.CartUpdated(ctx, req.SessionID, map[string]any{
+		"action":     "add",
+		"cart_item":  item,
+		"session_id": req.SessionID,
+	})
+	return item, nil
+}
+
+func (s *CartService) RemoveItem(ctx context.Context, sessionID uuid.UUID, participantID, itemID int64) error {
+	cart, err := s.repos.GetOrCreateCart(ctx, sessionID, participantID)
+	if err != nil {
+		return err
+	}
+
+	// Verify the item belongs to this cart.
+	cartItem, err := s.repos.GetCartItem(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	if cartItem.CartID != cart.ID {
+		return domain.ErrCartItemNotFound
+	}
+
+	if err := s.repos.RemoveCartItem(ctx, cart.ID, itemID); err != nil {
+		return err
+	}
+
+	s.publisher.CartUpdated(ctx, sessionID, map[string]any{
+		"action":     "remove",
+		"item_id":    itemID,
+		"session_id": sessionID,
+	})
+	return nil
+}
+
+func (s *CartService) snapshotModifiers(ctx context.Context, itemID int64, modifierIDs []int64) ([]ModifierSnapshot, error) {
+	if len(modifierIDs) == 0 {
+		return []ModifierSnapshot{}, nil
+	}
+
+	allModifiers, err := s.repos.ListModifiersForItem(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+
+	idSet := make(map[int64]sqlc.ItemModifier, len(allModifiers))
+	for _, m := range allModifiers {
+		idSet[m.ID] = m
+	}
+
+	snapshots := make([]ModifierSnapshot, 0, len(modifierIDs))
+	for _, id := range modifierIDs {
+		m, ok := idSet[id]
+		if !ok {
+			continue
+		}
+		delta, _ := m.PriceDelta.Float64Value()
+		snapshots = append(snapshots, ModifierSnapshot{
+			ID:         m.ID,
+			Name:       m.Name,
+			PriceDelta: delta.Float64,
+		})
+	}
+	return snapshots, nil
+}
