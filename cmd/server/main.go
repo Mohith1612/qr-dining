@@ -11,6 +11,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/events"
 	"github.com/Mohith1612/qr-dining/internal/observability"
 	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
+	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/server"
 	ws "github.com/Mohith1612/qr-dining/internal/websocket"
 	"github.com/Mohith1612/qr-dining/internal/worker"
@@ -67,21 +68,23 @@ func main() {
 	// 10. Initialize WebSocket Hub.
 	hub := ws.NewHub(pubsub, metrics, logger, cfg.CORS.AllowedOrigins)
 
-	// 11. Initialize HTTP server.
-	srv := server.New(cfg, db, redisClient, hub, metrics, logger)
+	// 11. Initialize repository layer.
+	repos := repository.New(db)
 
-	// 12. Start WebSocket Hub in background.
+	// 12. Initialize HTTP server with all dependencies.
+	srv := server.New(cfg, db, redisClient, hub, metrics, logger, repos, publisher)
+
+	// 13. Start WebSocket Hub in background.
 	go hub.Run(ctx)
 	logger.Info().Msg("websocket hub started")
 
-	// 13. Start background workers.
-	// sqlc queries will be wired here after code generation (Phase 19+).
-	// Workers are omitted from this initial bootstrap to keep the binary runnable.
-	_ = publisher
-	_ = presence
-	_ = worker.New // referenced to prevent import error until wiring is complete
+	// 14. Start background workers.
+	wq := &workerQuerier{repos: repos}
+	w := worker.New(db, wq, redisClient, publisher, presence, metrics, logger)
+	go w.RunStaleSessionCleaner(ctx, cfg.Worker.StaleSessionInterval)
+	go w.RunPresenceExpiry(ctx, cfg.Worker.StaleSessionInterval)
 
-	// 14. Start HTTP server — blocks until shutdown.
+	// 15. Start HTTP server — blocks until shutdown.
 	if err := srv.Start(ctx); err != nil {
 		logger.Error().Err(err).Msg("server error")
 	}

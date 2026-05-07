@@ -29,5 +29,5 @@ cover.html
 
 # Docker
 docker-compose.override.yml
-server
+/server
 handout.md
