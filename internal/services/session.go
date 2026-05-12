@@ -98,6 +98,10 @@ func (s *SessionService) GetSession(ctx context.Context, id uuid.UUID) (sqlc.Ses
 	return s.repos.GetSessionByID(ctx, id)
 }
 
+func (s *SessionService) ListActiveForBranch(ctx context.Context, branchID int64) ([]sqlc.Session, error) {
+	return s.repos.ListActiveSessionsForBranch(ctx, branchID)
+}
+
 // CloseSession closes an active session. Only the host participant may close it.
 func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, requesterID int64) error {
 	sess, err := s.repos.GetSessionByID(ctx, id)

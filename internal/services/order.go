@@ -182,6 +182,10 @@ func (s *OrderService) ListOrdersForSession(ctx context.Context, sessionID uuid.
 	return s.repos.ListOrdersForSession(ctx, sessionID)
 }
 
+func (s *OrderService) ListActiveForBranch(ctx context.Context, branchID int64) ([]sqlc.ListActiveOrdersForBranchRow, error) {
+	return s.repos.ListActiveOrdersForBranch(ctx, branchID)
+}
+
 func (s *OrderService) publishOrderStatusEvent(ctx context.Context, sessionID uuid.UUID, status domain.OrderStatus, order sqlc.Order) {
 	payload := map[string]any{"order": order}
 	switch status {

@@ -88,6 +88,27 @@ func (h *AssistanceHandler) Resolve(c *gin.Context) {
 	c.JSON(http.StatusOK, ar)
 }
 
+func (h *AssistanceHandler) ListActiveForBranch(c *gin.Context) {
+	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid branch id"})
+		return
+	}
+
+	staffSession, ok := middleware.GetStaffSession(c)
+	if ok && staffSession.BranchID != branchID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
+
+	requests, err := h.svc.ListActiveForBranch(c.Request.Context(), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+	c.JSON(http.StatusOK, requests)
+}
+
 func assistanceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrAssistanceNotFound):

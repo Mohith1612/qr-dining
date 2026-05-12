@@ -128,6 +128,11 @@ func New(
 	staffAPI.PATCH("/assist/:id/ack", assistanceH.Acknowledge)
 	staffAPI.PATCH("/assist/:id/resolve", assistanceH.Resolve)
 
+	// Staff dashboard — branch-scoped operational views.
+	staffAPI.GET("/branches/:id/orders/active", orderH.ListActiveForBranch)
+	staffAPI.GET("/branches/:id/sessions/active", sessionH.ListActiveForBranch)
+	staffAPI.GET("/branches/:id/assist/active", assistanceH.ListActiveForBranch)
+
 	// WebSocket
 	r.GET("/ws", wsH.Upgrade)
 

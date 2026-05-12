@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -110,6 +111,27 @@ func (h *SessionHandler) Join(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, participant)
+}
+
+func (h *SessionHandler) ListActiveForBranch(c *gin.Context) {
+	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid branch id"})
+		return
+	}
+
+	staffSession, ok := middleware.GetStaffSession(c)
+	if ok && staffSession.BranchID != branchID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
+
+	sessions, err := h.svc.ListActiveForBranch(c.Request.Context(), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+	c.JSON(http.StatusOK, sessions)
 }
 
 func sessionError(c *gin.Context, err error) {

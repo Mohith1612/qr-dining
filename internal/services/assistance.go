@@ -74,3 +74,7 @@ func (s *AssistanceService) Resolve(ctx context.Context, id, staffID int64) (sql
 func (s *AssistanceService) ListForSession(ctx context.Context, sessionID uuid.UUID) ([]sqlc.AssistanceRequest, error) {
 	return s.repos.ListAssistanceForSession(ctx, sessionID)
 }
+
+func (s *AssistanceService) ListActiveForBranch(ctx context.Context, branchID int64) ([]sqlc.AssistanceRequest, error) {
+	return s.repos.ListActiveAssistanceForBranch(ctx, branchID)
+}
