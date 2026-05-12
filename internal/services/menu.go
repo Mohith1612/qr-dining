@@ -65,6 +65,12 @@ func (s *MenuService) GetTableByQRToken(ctx context.Context, token string) (sqlc
 	return s.repos.GetTableByQRToken(ctx, token)
 }
 
+// InvalidateMenuCache evicts the cached menu for a branch so the next request rebuilds from DB.
+// Call this whenever menu items, categories, or modifiers change.
+func (s *MenuService) InvalidateMenuCache(ctx context.Context, branchID int64) {
+	_ = s.cache.Invalidate(ctx, fmt.Sprintf("menu:%d", branchID))
+}
+
 func (s *MenuService) buildMenu(ctx context.Context, branchID int64) (FullMenu, error) {
 	categories, err := s.repos.ListMenuCategoriesForBranch(ctx, branchID)
 	if err != nil {
