@@ -20,14 +20,23 @@ func NewPublisher(pubsub *redis.PubSub, logger zerolog.Logger) *Publisher {
 	return &Publisher{pubsub: pubsub, logger: logger}
 }
 
+// NewNoopPublisher returns a Publisher that discards all events. For tests only.
+func NewNoopPublisher() *Publisher {
+	return &Publisher{pubsub: nil, logger: zerolog.Nop()}
+}
+
 // publish is the internal helper — builds an Envelope and publishes to Redis.
 // Errors are logged but not returned; event publish failures must not abort business operations.
 func (p *Publisher) publish(ctx context.Context, event ws.EventType, sessionID uuid.UUID, payload any) {
+	if p.pubsub == nil {
+		return
+	}
 	env, err := ws.NewEnvelope(event, sessionID, payload)
 	if err != nil {
 		p.logger.Error().Err(err).Str("event", string(event)).Msg("failed to build event envelope")
 		return
 	}
+	p.logger.Debug().Str("event", string(event)).Str("session_id", sessionID.String()).Msg("publish event")
 	if err := p.pubsub.Publish(ctx, sessionID, env); err != nil {
 		p.logger.Error().Err(err).Str("event", string(event)).Msg("failed to publish event")
 	}
