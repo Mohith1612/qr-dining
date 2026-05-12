@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -93,7 +94,8 @@ func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 	}
 
 	newStatus := domain.OrderStatus(req.Status)
-	order, err := h.svc.UpdateOrderStatus(c.Request.Context(), orderID, newStatus)
+	staffSession, _ := middleware.GetStaffSession(c)
+	order, err := h.svc.UpdateOrderStatus(c.Request.Context(), orderID, newStatus, staffSession.StaffID)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrOrderNotFound):

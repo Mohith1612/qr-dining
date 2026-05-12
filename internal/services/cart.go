@@ -89,6 +89,7 @@ func (s *CartService) AddItem(ctx context.Context, req AddItemRequest) (sqlc.Car
 		"cart_item":  item,
 		"session_id": req.SessionID,
 	})
+	s.repos.LogEvent(ctx, req.SessionID, 0, "CART_UPDATED", "participant", req.ParticipantID, map[string]any{"action": "add", "item_id": item.ID})
 	return item, nil
 }
 
@@ -116,6 +117,7 @@ func (s *CartService) RemoveItem(ctx context.Context, sessionID uuid.UUID, parti
 		"item_id":    itemID,
 		"session_id": sessionID,
 	})
+	s.repos.LogEvent(ctx, sessionID, 0, "CART_UPDATED", "participant", participantID, map[string]any{"action": "remove", "item_id": itemID})
 	return nil
 }
 

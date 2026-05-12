@@ -147,11 +147,12 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	}
 
 	s.publisher.OrderPlaced(ctx, req.SessionID, result.Order)
+	s.repos.LogEvent(ctx, req.SessionID, req.BranchID, "ORDER_PLACED", "participant", req.PlacedByParticipantID, result.Order)
 	return result, nil
 }
 
 // UpdateOrderStatus applies a state machine-validated status transition.
-func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, newStatus domain.OrderStatus) (sqlc.Order, error) {
+func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, newStatus domain.OrderStatus, staffID int64) (sqlc.Order, error) {
 	order, err := s.repos.GetOrderByID(ctx, orderID)
 	if err != nil {
 		return sqlc.Order{}, err
@@ -168,6 +169,8 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID,
 	}
 
 	s.publishOrderStatusEvent(ctx, order.SessionID, newStatus, updated)
+	s.repos.LogEvent(ctx, order.SessionID, order.BranchID, "ORDER_STATUS_CHANGED", "staff", staffID,
+		map[string]any{"order_id": orderID, "new_status": newStatus})
 	return updated, nil
 }
 

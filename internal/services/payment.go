@@ -100,6 +100,7 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, req ProcessWebhookR
 
 	if newStatus == sqlc.PaymentStatusCompleted {
 		s.publisher.PaymentCompleted(ctx, payment.SessionID, updated)
+		s.repos.LogEvent(ctx, payment.SessionID, 0, "PAYMENT_COMPLETED", "system", 0, updated)
 	}
 
 	return nil

@@ -25,10 +25,11 @@ func (s *AssistanceService) Request(ctx context.Context, sessionID uuid.UUID, ta
 		return sqlc.AssistanceRequest{}, err
 	}
 	s.publisher.AssistanceRequested(ctx, sessionID, ar)
+	s.repos.LogEvent(ctx, sessionID, 0, "ASSISTANCE_REQUESTED", "participant", participantID, ar)
 	return ar, nil
 }
 
-func (s *AssistanceService) Acknowledge(ctx context.Context, id int64) (sqlc.AssistanceRequest, error) {
+func (s *AssistanceService) Acknowledge(ctx context.Context, id, staffID int64) (sqlc.AssistanceRequest, error) {
 	ar, err := s.repos.GetAssistanceRequestByID(ctx, id)
 	if err != nil {
 		return sqlc.AssistanceRequest{}, err
@@ -45,10 +46,11 @@ func (s *AssistanceService) Acknowledge(ctx context.Context, id int64) (sqlc.Ass
 		return sqlc.AssistanceRequest{}, err
 	}
 	s.publisher.AssistanceAcknowledged(ctx, ar.SessionID, updated)
+	s.repos.LogEvent(ctx, ar.SessionID, 0, "ASSISTANCE_ACKNOWLEDGED", "staff", staffID, updated)
 	return updated, nil
 }
 
-func (s *AssistanceService) Resolve(ctx context.Context, id int64) (sqlc.AssistanceRequest, error) {
+func (s *AssistanceService) Resolve(ctx context.Context, id, staffID int64) (sqlc.AssistanceRequest, error) {
 	ar, err := s.repos.GetAssistanceRequestByID(ctx, id)
 	if err != nil {
 		return sqlc.AssistanceRequest{}, err
@@ -65,6 +67,7 @@ func (s *AssistanceService) Resolve(ctx context.Context, id int64) (sqlc.Assista
 		return sqlc.AssistanceRequest{}, err
 	}
 	s.publisher.AssistanceResolved(ctx, ar.SessionID, updated)
+	s.repos.LogEvent(ctx, ar.SessionID, 0, "ASSISTANCE_RESOLVED", "staff", staffID, updated)
 	return updated, nil
 }
 

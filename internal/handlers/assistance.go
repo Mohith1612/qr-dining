@@ -7,6 +7,7 @@ import (
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -62,7 +63,8 @@ func (h *AssistanceHandler) Acknowledge(c *gin.Context) {
 		return
 	}
 
-	ar, err := h.svc.Acknowledge(c.Request.Context(), id)
+	staffSession, _ := middleware.GetStaffSession(c)
+	ar, err := h.svc.Acknowledge(c.Request.Context(), id, staffSession.StaffID)
 	if err != nil {
 		assistanceError(c, err)
 		return
@@ -77,7 +79,8 @@ func (h *AssistanceHandler) Resolve(c *gin.Context) {
 		return
 	}
 
-	ar, err := h.svc.Resolve(c.Request.Context(), id)
+	staffSession, _ := middleware.GetStaffSession(c)
+	ar, err := h.svc.Resolve(c.Request.Context(), id, staffSession.StaffID)
 	if err != nil {
 		assistanceError(c, err)
 		return

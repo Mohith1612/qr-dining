@@ -89,6 +89,7 @@ func (s *SessionService) CreateSession(ctx context.Context, tableID int64, displ
 	}
 
 	s.publisher.SessionCreated(ctx, result.Session.ID, result)
+	s.repos.LogEvent(ctx, result.Session.ID, result.Session.BranchID, "SESSION_CREATED", "participant", result.Participant.ID, result)
 	return result, nil
 }
 
@@ -118,6 +119,7 @@ func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, request
 	}
 
 	s.publisher.SessionClosed(ctx, id, map[string]any{"session_id": id})
+	s.repos.LogEvent(ctx, id, sess.BranchID, "SESSION_CLOSED", "participant", requesterID, map[string]any{"session_id": id})
 	return nil
 }
 
@@ -137,6 +139,7 @@ func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, d
 	}
 
 	s.publisher.ParticipantJoined(ctx, sessionID, participant)
+	s.repos.LogEvent(ctx, sessionID, sess.BranchID, "PARTICIPANT_JOINED", "participant", participant.ID, participant)
 	return participant, nil
 }
 
