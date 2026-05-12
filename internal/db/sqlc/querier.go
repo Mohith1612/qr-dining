@@ -42,6 +42,7 @@ type Querier interface {
 	GetStaffByID(ctx context.Context, id int64) (Staff, error)
 	GetTableByID(ctx context.Context, id int64) (Table, error)
 	GetTableByQRToken(ctx context.Context, qrCodeToken string) (Table, error)
+	InsertEventLog(ctx context.Context, arg InsertEventLogParams) error
 	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) (PaymentWebhookEvent, error)
 	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]AssistanceRequest, error)
 	ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]ListActiveOrdersForBranchRow, error)
