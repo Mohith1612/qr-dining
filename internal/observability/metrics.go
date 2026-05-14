@@ -23,7 +23,9 @@ type Metrics struct {
 	DBErrorsTotal   *prometheus.CounterVec
 
 	// Redis
-	RedisOpsTotal *prometheus.CounterVec
+	RedisOpsTotal   *prometheus.CounterVec
+	CacheHitsTotal  prometheus.Counter
+	CacheMissesTotal prometheus.Counter
 
 	// Business
 	ActiveSessionsTotal prometheus.Gauge
@@ -81,6 +83,16 @@ func NewMetrics() *Metrics {
 			Help: "Total Redis operations by operation type and status.",
 		}, []string{"op", "status"}),
 
+		CacheHitsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "cache_hits_total",
+			Help: "Total Redis cache hits (key found).",
+		}),
+
+		CacheMissesTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "cache_misses_total",
+			Help: "Total Redis cache misses (key not found, DB fallback required).",
+		}),
+
 		ActiveSessionsTotal: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "active_sessions_total",
 			Help: "Current number of active dining sessions.",
@@ -108,6 +120,8 @@ func NewMetrics() *Metrics {
 		m.DBQueryDuration,
 		m.DBErrorsTotal,
 		m.RedisOpsTotal,
+		m.CacheHitsTotal,
+		m.CacheMissesTotal,
 		m.ActiveSessionsTotal,
 		m.OrdersTotal,
 		m.WorkerRunsTotal,

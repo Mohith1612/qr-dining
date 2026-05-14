@@ -53,7 +53,7 @@ func New(
 	r.Use(middleware.CORS(cfg.CORS.AllowedOrigins))
 
 	rateLimiter := redisPkg.NewRateLimiter(redis)
-	cache := redisPkg.NewCache(redis)
+	cache := redisPkg.NewCache(redis, metrics.CacheHitsTotal, metrics.CacheMissesTotal)
 	presence := redisPkg.NewPresence(redis)
 
 	// ── Services ─────────────────────────────────────────────────────────────

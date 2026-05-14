@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -27,7 +26,7 @@ func (h *HealthHandler) Health(c *gin.Context) {
 // Readiness checks downstream dependencies before accepting traffic.
 // Returns 503 if PostgreSQL or Redis is unreachable.
 func (h *HealthHandler) Readiness(c *gin.Context) {
-	ctx := context.Background()
+	ctx := c.Request.Context()
 
 	checks := gin.H{}
 	ready := true

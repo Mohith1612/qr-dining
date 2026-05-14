@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	goredis "github.com/redis/go-redis/v9"
 )
 
@@ -16,11 +17,13 @@ const defaultCacheTTL = 5 * time.Minute
 // Used to avoid repeated DB lookups for hot read paths (e.g., session validation on WS auth).
 // A cache miss always falls back to PostgreSQL — Redis is never the source of truth.
 type Cache struct {
-	client *goredis.Client
+	client   *goredis.Client
+	hits     prometheus.Counter // optional; nil if metrics not provided
+	misses   prometheus.Counter
 }
 
-func NewCache(client *goredis.Client) *Cache {
-	return &Cache{client: client}
+func NewCache(client *goredis.Client, hits, misses prometheus.Counter) *Cache {
+	return &Cache{client: client, hits: hits, misses: misses}
 }
 
 // Set serializes v as JSON and stores it under key with the given TTL.
@@ -36,6 +39,9 @@ func (c *Cache) Set(ctx context.Context, key string, v any, ttl time.Duration) e
 func (c *Cache) Get(ctx context.Context, key string, dst any) (bool, error) {
 	data, err := c.client.Get(ctx, key).Bytes()
 	if errors.Is(err, goredis.Nil) {
+		if c.misses != nil {
+			c.misses.Inc()
+		}
 		return false, nil
 	}
 	if err != nil {
@@ -43,6 +49,9 @@ func (c *Cache) Get(ctx context.Context, key string, dst any) (bool, error) {
 	}
 	if err := json.Unmarshal(data, dst); err != nil {
 		return false, fmt.Errorf("cache unmarshal: %w", err)
+	}
+	if c.hits != nil {
+		c.hits.Inc()
 	}
 	return true, nil
 }
