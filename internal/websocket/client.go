@@ -31,14 +31,15 @@ type Client struct {
 }
 
 func newClient(sessionID uuid.UUID, participantID int64, conn *websocket.Conn, hub *Hub, logger zerolog.Logger) *Client {
+	id := uuid.NewString()
 	return &Client{
-		id:            uuid.NewString(),
+		id:            id,
 		sessionID:     sessionID,
 		participantID: participantID,
 		conn:          conn,
 		send:          make(chan []byte, sendChanBuffer),
 		hub:           hub,
-		logger:        logger.With().Str("client_id", uuid.NewString()).Logger(),
+		logger:        logger.With().Str("client_id", id).Logger(),
 	}
 }
 

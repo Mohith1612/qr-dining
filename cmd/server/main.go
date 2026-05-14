@@ -82,7 +82,7 @@ func main() {
 	wq := &workerQuerier{repos: repos}
 	w := worker.New(db, wq, redisClient, publisher, presence, metrics, logger)
 	go w.RunStaleSessionCleaner(ctx, cfg.Worker.StaleSessionInterval)
-	go w.RunPresenceExpiry(ctx, cfg.Worker.StaleSessionInterval)
+	go w.RunPresenceExpiry(ctx, cfg.Worker.PresenceExpiryInterval)
 
 	// 15. Start HTTP server — blocks until shutdown.
 	if err := srv.Start(ctx); err != nil {
