@@ -80,6 +80,7 @@ func New(
 	paymentH := handlers.NewPaymentHandler(paymentSvc)
 	wsH := handlers.NewWSHandler(hub, repos)
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc)
+	menuAdminH := handlers.NewMenuAdminHandler(menuSvc)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -141,6 +142,12 @@ func New(
 	staffAPI.GET("/branches/:id/orders/active", orderH.ListActiveForBranch)
 	staffAPI.GET("/branches/:id/sessions/active", sessionH.ListActiveForBranch)
 	staffAPI.GET("/branches/:id/assist/active", assistanceH.ListActiveForBranch)
+
+	// Menu management — owner/manager only (role enforced in service layer).
+	staffAPI.POST("/branches/:id/menu/categories", menuAdminH.CreateCategory)
+	staffAPI.POST("/branches/:id/menu/items", menuAdminH.CreateItem)
+	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)
+	staffAPI.PATCH("/menu/items/:id/availability", menuAdminH.ToggleAvailability)
 
 	// WebSocket
 	r.GET("/ws", wsH.Upgrade)

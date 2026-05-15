@@ -7,6 +7,8 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getMenuItemByID = `-- name: GetMenuItemByID :one
@@ -63,6 +65,71 @@ func (q *Queries) GetTableByQRToken(ctx context.Context, qrCodeToken string) (Ta
 		&i.QrCodeToken,
 		&i.Status,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const insertMenuCategory = `-- name: InsertMenuCategory :one
+INSERT INTO menu_categories (branch_id, name, position)
+VALUES ($1, $2, $3)
+RETURNING id, branch_id, name, position, is_active
+`
+
+type InsertMenuCategoryParams struct {
+	BranchID int64  `json:"branch_id"`
+	Name     string `json:"name"`
+	Position int16  `json:"position"`
+}
+
+func (q *Queries) InsertMenuCategory(ctx context.Context, arg InsertMenuCategoryParams) (MenuCategory, error) {
+	row := q.db.QueryRow(ctx, insertMenuCategory, arg.BranchID, arg.Name, arg.Position)
+	var i MenuCategory
+	err := row.Scan(
+		&i.ID,
+		&i.BranchID,
+		&i.Name,
+		&i.Position,
+		&i.IsActive,
+	)
+	return i, err
+}
+
+const insertMenuItem = `-- name: InsertMenuItem :one
+INSERT INTO menu_items (category_id, branch_id, name, description, price, is_available, position)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, category_id, branch_id, name, description, price, is_available, position
+`
+
+type InsertMenuItemParams struct {
+	CategoryID  int64          `json:"category_id"`
+	BranchID    int64          `json:"branch_id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Price       pgtype.Numeric `json:"price"`
+	IsAvailable bool           `json:"is_available"`
+	Position    int16          `json:"position"`
+}
+
+func (q *Queries) InsertMenuItem(ctx context.Context, arg InsertMenuItemParams) (MenuItem, error) {
+	row := q.db.QueryRow(ctx, insertMenuItem,
+		arg.CategoryID,
+		arg.BranchID,
+		arg.Name,
+		arg.Description,
+		arg.Price,
+		arg.IsAvailable,
+		arg.Position,
+	)
+	var i MenuItem
+	err := row.Scan(
+		&i.ID,
+		&i.CategoryID,
+		&i.BranchID,
+		&i.Name,
+		&i.Description,
+		&i.Price,
+		&i.IsAvailable,
+		&i.Position,
 	)
 	return i, err
 }
@@ -194,6 +261,57 @@ func (q *Queries) ListTablesForBranch(ctx context.Context, branchID int64) ([]Ta
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateMenuItem = `-- name: UpdateMenuItem :one
+UPDATE menu_items
+SET name = $2, description = $3, price = $4, position = $5
+WHERE id = $1
+RETURNING id, category_id, branch_id, name, description, price, is_available, position
+`
+
+type UpdateMenuItemParams struct {
+	ID          int64          `json:"id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Price       pgtype.Numeric `json:"price"`
+	Position    int16          `json:"position"`
+}
+
+func (q *Queries) UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) (MenuItem, error) {
+	row := q.db.QueryRow(ctx, updateMenuItem,
+		arg.ID,
+		arg.Name,
+		arg.Description,
+		arg.Price,
+		arg.Position,
+	)
+	var i MenuItem
+	err := row.Scan(
+		&i.ID,
+		&i.CategoryID,
+		&i.BranchID,
+		&i.Name,
+		&i.Description,
+		&i.Price,
+		&i.IsAvailable,
+		&i.Position,
+	)
+	return i, err
+}
+
+const updateMenuItemAvailability = `-- name: UpdateMenuItemAvailability :exec
+UPDATE menu_items SET is_available = $2 WHERE id = $1
+`
+
+type UpdateMenuItemAvailabilityParams struct {
+	ID          int64 `json:"id"`
+	IsAvailable bool  `json:"is_available"`
+}
+
+func (q *Queries) UpdateMenuItemAvailability(ctx context.Context, arg UpdateMenuItemAvailabilityParams) error {
+	_, err := q.db.Exec(ctx, updateMenuItemAvailability, arg.ID, arg.IsAvailable)
+	return err
 }
 
 const updateTableStatus = `-- name: UpdateTableStatus :exec

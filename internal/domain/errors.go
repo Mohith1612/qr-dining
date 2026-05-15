@@ -57,6 +57,12 @@ var (
 	ErrTableOccupied = errors.New("table already has an active session")
 )
 
+// Auth
+var (
+	ErrUnauthorized = errors.New("unauthorized")
+	ErrForbidden    = errors.New("insufficient role for this operation")
+)
+
 // Generic
 var (
 	ErrInternalError = errors.New("internal server error")

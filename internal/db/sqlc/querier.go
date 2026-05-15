@@ -43,6 +43,8 @@ type Querier interface {
 	GetTableByID(ctx context.Context, id int64) (Table, error)
 	GetTableByQRToken(ctx context.Context, qrCodeToken string) (Table, error)
 	InsertEventLog(ctx context.Context, arg InsertEventLogParams) error
+	InsertMenuCategory(ctx context.Context, arg InsertMenuCategoryParams) (MenuCategory, error)
+	InsertMenuItem(ctx context.Context, arg InsertMenuItemParams) (MenuItem, error)
 	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) (PaymentWebhookEvent, error)
 	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]AssistanceRequest, error)
 	ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]ListActiveOrdersForBranchRow, error)
@@ -67,6 +69,8 @@ type Querier interface {
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
 	UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistanceStatusParams) (AssistanceRequest, error)
 	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) (CartItem, error)
+	UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) (MenuItem, error)
+	UpdateMenuItemAvailability(ctx context.Context, arg UpdateMenuItemAvailabilityParams) error
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
 	UpdateParticipantLastSeen(ctx context.Context, id int64) error
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
