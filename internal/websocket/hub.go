@@ -91,7 +91,11 @@ func (h *Hub) Run(ctx context.Context) {
 
 // Upgrade upgrades an HTTP request to a WebSocket connection and registers
 // the client with the hub. The caller provides session and participant IDs.
+// Sets X-Reconnect-Endpoint so clients know where to reconcile state on reconnect.
 func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request, sessionID uuid.UUID, participantID int64) error {
+	// Advertise the reconciliation endpoint before upgrading — clients use this on reconnect.
+	w.Header().Set("X-Reconnect-Endpoint", "/sessions/"+sessionID.String()+"/snapshot")
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return err

@@ -79,6 +79,7 @@ func New(
 	staffH := handlers.NewStaffHandler(staffSvc)
 	paymentH := handlers.NewPaymentHandler(paymentSvc)
 	wsH := handlers.NewWSHandler(hub, repos)
+	snapshotH := handlers.NewSnapshotHandler(sessionSvc)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -118,6 +119,9 @@ func New(
 	// Menu & tables — public
 	api.GET("/branches/:id/menu", menuH.GetMenu)
 	api.GET("/tables/by-qr/:token", menuH.GetTableByQR)
+
+	// Reconnect reconciliation — full session state snapshot for WebSocket clients.
+	api.GET("/sessions/:id/snapshot", snapshotH.GetSnapshot)
 
 	// Staff auth — strict 10 RPM limit to prevent PIN brute force.
 	authGroup := r.Group("/")

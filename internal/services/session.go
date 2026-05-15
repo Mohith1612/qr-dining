@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 type SessionService struct {
@@ -145,6 +147,61 @@ func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, d
 	s.publisher.ParticipantJoined(ctx, sessionID, participant)
 	s.repos.LogEvent(ctx, sessionID, sess.BranchID, "PARTICIPANT_JOINED", "participant", participant.ID, participant)
 	return participant, nil
+}
+
+// SessionSnapshot is the full authoritative state of a session at a point in time.
+// Clients call GET /sessions/:id/snapshot on WebSocket reconnect to reconcile local state.
+type SessionSnapshot struct {
+	Session      sqlc.Session             `json:"session"`
+	Participants []sqlc.SessionParticipant `json:"participants"`
+	Orders       []sqlc.Order             `json:"orders"`
+	Assistance   []sqlc.AssistanceRequest `json:"assistance"`
+	SnapshotAt   time.Time                `json:"snapshot_at"`
+}
+
+// GetSnapshot assembles the full current state of a session in parallel.
+// Used by clients to reconcile state after a WebSocket reconnect.
+func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID) (SessionSnapshot, error) {
+	sess, err := s.repos.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return SessionSnapshot{}, err
+	}
+
+	var (
+		participants []sqlc.SessionParticipant
+		orders       []sqlc.Order
+		assistance   []sqlc.AssistanceRequest
+	)
+
+	g, gctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		var err error
+		participants, err = s.repos.ListParticipantsBySession(gctx, sessionID)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		orders, err = s.repos.ListOrdersForSession(gctx, sessionID)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		assistance, err = s.repos.ListAssistanceForSession(gctx, sessionID)
+		return err
+	})
+
+	if err := g.Wait(); err != nil {
+		return SessionSnapshot{}, err
+	}
+
+	return SessionSnapshot{
+		Session:      sess,
+		Participants: participants,
+		Orders:       orders,
+		Assistance:   assistance,
+		SnapshotAt:   time.Now().UTC(),
+	}, nil
 }
 
 func generateToken() (string, error) {
