@@ -32,7 +32,8 @@ type Metrics struct {
 	OrdersTotal         *prometheus.CounterVec
 
 	// Background workers
-	WorkerRunsTotal *prometheus.CounterVec
+	WorkerRunsTotal   *prometheus.CounterVec
+	WorkerPanicsTotal *prometheus.CounterVec
 }
 
 func NewMetrics() *Metrics {
@@ -107,6 +108,11 @@ func NewMetrics() *Metrics {
 			Name: "background_worker_runs_total",
 			Help: "Total background worker executions by worker name and status.",
 		}, []string{"worker", "status"}),
+
+		WorkerPanicsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "background_worker_panics_total",
+			Help: "Total panics recovered in background workers by worker name.",
+		}, []string{"worker"}),
 	}
 
 	reg.MustRegister(
@@ -125,6 +131,7 @@ func NewMetrics() *Metrics {
 		m.ActiveSessionsTotal,
 		m.OrdersTotal,
 		m.WorkerRunsTotal,
+		m.WorkerPanicsTotal,
 	)
 
 	return m

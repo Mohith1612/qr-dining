@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/events"
@@ -31,13 +32,14 @@ type Querier interface {
 // NOT a distributed job queue — simple goroutines coordinated via Redis locks
 // to prevent duplicate runs when multiple instances are deployed.
 type Worker struct {
-	db        *pgxpool.Pool
-	queries   Querier
-	redis     *goredis.Client
-	publisher *events.Publisher
-	presence  *redisPkg.Presence
-	metrics   *observability.Metrics
-	logger    zerolog.Logger
+	db           *pgxpool.Pool
+	queries      Querier
+	redis        *goredis.Client
+	publisher    *events.Publisher
+	presence     *redisPkg.Presence
+	metrics      *observability.Metrics
+	logger       zerolog.Logger
+	staleAfter   time.Duration
 }
 
 func New(
@@ -50,18 +52,19 @@ func New(
 	logger zerolog.Logger,
 ) *Worker {
 	return &Worker{
-		db:        db,
-		queries:   queries,
-		redis:     redis,
-		publisher: publisher,
-		presence:  presence,
-		metrics:   metrics,
-		logger:    logger.With().Str("component", "worker").Logger(),
+		db:         db,
+		queries:    queries,
+		redis:      redis,
+		publisher:  publisher,
+		presence:   presence,
+		metrics:    metrics,
+		logger:     logger.With().Str("component", "worker").Logger(),
+		staleAfter: 2 * time.Hour,
 	}
 }
 
 // RunStaleSessionCleaner marks sessions abandoned after they've been active
-// without a placed order or presence heartbeat for longer than staleDuration.
+// without a placed order or presence heartbeat for longer than staleAfter.
 // Runs on the given interval and skips if another instance holds the Redis lock.
 func (w *Worker) RunStaleSessionCleaner(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
@@ -73,7 +76,11 @@ func (w *Worker) RunStaleSessionCleaner(ctx context.Context, interval time.Durat
 			return
 		case <-ticker.C:
 			w.runWithLock(ctx, "stale_session_cleaner", 270*time.Second, func() {
-				w.cleanStaleSessions(ctx)
+				w.safeRun("stale_session_cleaner", func() {
+					tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					defer cancel()
+					w.cleanStaleSessions(tickCtx)
+				})
 			})
 		}
 	}
@@ -92,17 +99,22 @@ func (w *Worker) RunPresenceExpiry(ctx context.Context, interval time.Duration) 
 			return
 		case <-ticker.C:
 			w.runWithLock(ctx, "presence_expiry", 50*time.Second, func() {
-				// Presence TTL is managed by Redis itself; this is a no-op notification hook
-				// for future implementation when participant-left events are needed on expiry.
-				w.logger.Debug().Msg("presence expiry worker tick")
+				w.safeRun("presence_expiry", func() {
+					// Presence TTL is managed by Redis itself; this is a no-op notification hook
+					// for future implementation when participant-left events are needed on expiry.
+					w.logger.Debug().Msg("presence expiry worker tick")
+				})
 			})
 		}
 	}
 }
 
 func (w *Worker) cleanStaleSessions(ctx context.Context) {
-	const staleAfter = "2 hours"
-	sessions, err := w.queries.ListStaleSessions(ctx, staleAfter)
+	// staleAfter is derived from Worker.staleAfter (default 2h, matches config STALE_SESSION_INTERVAL intent).
+	// Passed as a PostgreSQL interval string to the ListStaleSessions query.
+	staleInterval := fmt.Sprintf("%d seconds", int(w.staleAfter.Seconds()))
+
+	sessions, err := w.queries.ListStaleSessions(ctx, staleInterval)
 	if err != nil {
 		w.logger.Error().Err(err).Msg("list stale sessions")
 		w.metrics.WorkerRunsTotal.WithLabelValues("stale_session_cleaner", "error").Inc()
@@ -124,6 +136,22 @@ func (w *Worker) cleanStaleSessions(ctx context.Context) {
 		w.logger.Info().Int("abandoned", abandoned).Msg("stale session cleanup")
 	}
 	w.metrics.WorkerRunsTotal.WithLabelValues("stale_session_cleaner", "ok").Inc()
+}
+
+// safeRun wraps fn with panic recovery. Panics are logged with a stack trace
+// and counted in metrics — they never crash the server process.
+func (w *Worker) safeRun(workerName string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			w.logger.Error().
+				Str("worker", workerName).
+				Interface("panic", r).
+				Bytes("stack", debug.Stack()).
+				Msg("worker panic recovered")
+			w.metrics.WorkerPanicsTotal.WithLabelValues(workerName).Inc()
+		}
+	}()
+	fn()
 }
 
 // runWithLock acquires a Redis NX lock before executing fn.
