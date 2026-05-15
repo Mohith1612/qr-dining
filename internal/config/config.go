@@ -119,7 +119,39 @@ func Load() (*Config, error) {
 	cfg.Worker.StaleSessionInterval = parseDuration("STALE_SESSION_INTERVAL", 5*time.Minute)
 	cfg.Worker.PresenceExpiryInterval = parseDuration("PRESENCE_EXPIRY_INTERVAL", 60*time.Second)
 
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("config validation: %w", err)
+	}
+
+	// Warn (non-fatal) when CORS origins are unconfigured in production.
+	if len(cfg.CORS.AllowedOrigins) == 0 && cfg.Server.GinMode == "release" {
+		fmt.Fprintf(os.Stderr, "warn: CORS_ALLOWED_ORIGINS is empty in release mode — all WebSocket origins will be accepted\n")
+	}
+
 	return cfg, nil
+}
+
+func (c *Config) validate() error {
+	if c.Server.Port < 1 || c.Server.Port > 65535 {
+		return fmt.Errorf("PORT must be between 1 and 65535, got %d", c.Server.Port)
+	}
+	if c.Server.RateLimitRPM <= 0 {
+		return fmt.Errorf("RATE_LIMIT_RPM must be > 0, got %d", c.Server.RateLimitRPM)
+	}
+	validModes := map[string]bool{"debug": true, "test": true, "release": true}
+	if !validModes[c.Server.GinMode] {
+		return fmt.Errorf("GIN_MODE must be one of debug/test/release, got %q", c.Server.GinMode)
+	}
+	if c.DB.MaxConns < 1 || c.DB.MaxConns > 200 {
+		return fmt.Errorf("DB_MAX_CONNS must be between 1 and 200, got %d", c.DB.MaxConns)
+	}
+	if c.DB.MinConns < 0 || c.DB.MinConns > c.DB.MaxConns {
+		return fmt.Errorf("DB_MIN_CONNS must be >= 0 and <= DB_MAX_CONNS (%d), got %d", c.DB.MaxConns, c.DB.MinConns)
+	}
+	if c.Server.ReadTimeout >= c.Server.WriteTimeout {
+		return fmt.Errorf("READ_TIMEOUT (%s) must be less than WRITE_TIMEOUT (%s)", c.Server.ReadTimeout, c.Server.WriteTimeout)
+	}
+	return nil
 }
 
 func getenv(key, fallback string) string {
@@ -148,6 +180,7 @@ func parseDuration(key string, fallback time.Duration) time.Duration {
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "warn: invalid %s=%q: %v — using default %s\n", key, s, err, fallback)
 		return fallback
 	}
 	return d
