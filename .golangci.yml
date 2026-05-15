@@ -1,0 +1,32 @@
+run:
+  timeout: 3m
+  go: "1.24"
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - typecheck
+    - unused
+
+linters-settings:
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+
+issues:
+  exclude-rules:
+    # Test files may use _ for unused variables in table-driven tests.
+    - path: "_test.go"
+      linters:
+        - unused
+    # Generated sqlc files should not be linted.
+    - path: "internal/db/sqlc/"
+      linters:
+        - errcheck
+        - unused
+        - staticcheck
