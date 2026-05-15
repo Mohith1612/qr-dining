@@ -22,8 +22,19 @@ func NewRateLimiter(client *goredis.Client) *RateLimiter {
 // Allow checks whether the given IP is within its rate limit for the current minute window.
 // Returns (allowed, remaining, error).
 func (rl *RateLimiter) Allow(ctx context.Context, ip string, limitPerMinute int) (bool, int, error) {
+	return rl.AllowWithPrefix(ctx, "", ip, limitPerMinute)
+}
+
+// AllowWithPrefix is like Allow but scopes the key to a named endpoint prefix,
+// enabling tighter per-endpoint limits independent of the global limit.
+func (rl *RateLimiter) AllowWithPrefix(ctx context.Context, prefix, ip string, limitPerMinute int) (bool, int, error) {
 	window := time.Now().Unix() / 60
-	key := fmt.Sprintf("ratelimit:%s:%d", ip, window)
+	var key string
+	if prefix != "" {
+		key = fmt.Sprintf("ratelimit:%s:%s:%d", prefix, ip, window)
+	} else {
+		key = fmt.Sprintf("ratelimit:%s:%d", ip, window)
+	}
 
 	pipe := rl.client.Pipeline()
 	incrCmd := pipe.Incr(ctx, key)

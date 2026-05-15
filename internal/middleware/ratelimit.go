@@ -11,9 +11,19 @@ import (
 // RateLimit enforces a per-IP fixed-window rate limit using Redis.
 // On Redis failure, the middleware fails open to avoid blocking legitimate requests.
 func RateLimit(rl *redisPkg.RateLimiter, limitPerMinute int) gin.HandlerFunc {
+	return rateLimitHandler(rl, "", limitPerMinute)
+}
+
+// RateLimitStrict applies a tighter limit scoped to a named prefix (e.g. "auth").
+// Use for sensitive endpoints such as staff authentication to prevent brute force.
+func RateLimitStrict(rl *redisPkg.RateLimiter, prefix string, limitPerMinute int) gin.HandlerFunc {
+	return rateLimitHandler(rl, prefix, limitPerMinute)
+}
+
+func rateLimitHandler(rl *redisPkg.RateLimiter, prefix string, limitPerMinute int) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
-		allowed, remaining, err := rl.Allow(c.Request.Context(), ip, limitPerMinute)
+		allowed, remaining, err := rl.AllowWithPrefix(c.Request.Context(), prefix, ip, limitPerMinute)
 		if err != nil {
 			// Redis error: fail open.
 			c.Next()

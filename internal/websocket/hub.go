@@ -48,7 +48,7 @@ func NewHub(pubsub *redisPkg.PubSub, metrics *observability.Metrics, logger zero
 		return ok
 	}
 
-	return &Hub{
+	h := &Hub{
 		rooms:      make(map[string]map[string]*Client),
 		register:   make(chan *Client, 32),
 		unregister: make(chan *Client, 32),
@@ -57,6 +57,12 @@ func NewHub(pubsub *redisPkg.PubSub, metrics *observability.Metrics, logger zero
 		metrics:    metrics,
 		logger:     logger,
 	}
+
+	if len(allowedOrigins) == 0 {
+		logger.Warn().Msg("WebSocket origin validation disabled — set CORS_ALLOWED_ORIGINS in production")
+	}
+
+	return h
 }
 
 // Run processes all registry and broadcast events sequentially.

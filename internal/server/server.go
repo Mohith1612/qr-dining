@@ -43,7 +43,9 @@ func New(
 	gin.SetMode(cfg.Server.GinMode)
 
 	r := gin.New()
-	_ = r.SetTrustedProxies(cfg.Server.TrustedProxies)
+	if err := r.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
+		logger.Fatal().Err(err).Strs("trusted_proxies", cfg.Server.TrustedProxies).Msg("invalid TRUSTED_PROXIES configuration")
+	}
 
 	// ── Middleware stack ─────────────────────────────────────────────────────
 	r.Use(middleware.Recover(logger))
@@ -51,6 +53,7 @@ func New(
 	r.Use(middleware.Logger(logger))
 	r.Use(middleware.Metrics(metrics))
 	r.Use(middleware.CORS(cfg.CORS.AllowedOrigins))
+	r.Use(middleware.MaxBodySize(1 << 20)) // 1 MB request body limit
 
 	rateLimiter := redisPkg.NewRateLimiter(redis)
 	cache := redisPkg.NewCache(redis, metrics.CacheHitsTotal, metrics.CacheMissesTotal)
@@ -116,13 +119,15 @@ func New(
 	api.GET("/branches/:id/menu", menuH.GetMenu)
 	api.GET("/tables/by-qr/:token", menuH.GetTableByQR)
 
-	// Staff auth
-	api.POST("/staff/auth", staffH.Authenticate)
+	// Staff auth — strict 10 RPM limit to prevent PIN brute force.
+	authGroup := r.Group("/")
+	authGroup.Use(middleware.RateLimitStrict(rateLimiter, "auth", 10))
+	authGroup.POST("/staff/auth", staffH.Authenticate)
 
 	// Staff-protected routes (require valid staff token).
 	staffAPI := r.Group("/")
 	staffAPI.Use(middleware.RateLimit(rateLimiter, cfg.Server.RateLimitRPM))
-	staffAPI.Use(middleware.StaffAuth(staffSvc))
+	staffAPI.Use(middleware.StaffAuth(staffSvc, logger))
 
 	staffAPI.PATCH("/orders/:id/status", orderH.UpdateStatus)
 	staffAPI.PATCH("/assist/:id/ack", assistanceH.Acknowledge)
