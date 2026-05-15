@@ -1,4 +1,4 @@
-.PHONY: build run test migrate-up migrate-down sqlc-generate docker-up docker-down docker-logs seed lint
+.PHONY: build run test migrate-up migrate-down sqlc-generate docker-up docker-down docker-logs seed lint backup restore
 
 build:
 	go build -o server ./cmd/server
@@ -32,3 +32,9 @@ seed:
 
 lint:
 	go vet ./...
+
+backup:
+	@./scripts/backup.sh
+
+restore:
+	@./scripts/restore.sh $(file)
