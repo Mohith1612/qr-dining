@@ -81,6 +81,7 @@ func New(
 	wsH := handlers.NewWSHandler(hub, repos)
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc)
 	menuAdminH := handlers.NewMenuAdminHandler(menuSvc)
+	eventLogH := handlers.NewEventLogHandler(repos)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -153,6 +154,10 @@ func New(
 	staffAPI.POST("/branches/:id/staff", staffH.CreateStaff)
 	staffAPI.PATCH("/staff/:id/pin", staffH.RotatePIN)
 	staffAPI.PATCH("/staff/:id/deactivate", staffH.DeactivateStaff)
+
+	// event_log read APIs — operational debugging and audit.
+	staffAPI.GET("/sessions/:id/events", eventLogH.GetSessionEvents)
+	staffAPI.GET("/branches/:id/events/recent", eventLogH.GetBranchRecentEvents)
 
 	// WebSocket
 	r.GET("/ws", wsH.Upgrade)

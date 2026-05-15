@@ -10,6 +10,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// GetEventsBySession returns up to 200 events for a session in chronological order.
+func (r *Repos) GetEventsBySession(ctx context.Context, sessionID uuid.UUID) ([]sqlc.EventLog, error) {
+	return r.q.GetEventsBySession(ctx, pgtype.UUID{Bytes: sessionID, Valid: true})
+}
+
+// GetRecentEventsByBranch returns the 100 most recent events for a branch (newest first).
+func (r *Repos) GetRecentEventsByBranch(ctx context.Context, branchID int64) ([]sqlc.EventLog, error) {
+	return r.q.GetRecentEventsByBranch(ctx, pgtype.Int8{Int64: branchID, Valid: true})
+}
+
 // LogEvent persists an operational event to the audit log.
 // Errors are logged and swallowed — event logging must never block a service call.
 // Call this after the primary DB operation succeeds, never inside a WithTx callback.

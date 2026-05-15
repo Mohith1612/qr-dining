@@ -12,6 +12,78 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getEventsBySession = `-- name: GetEventsBySession :many
+SELECT id, session_id, branch_id, event_type, actor_type, actor_id, payload, created_at FROM event_log
+WHERE session_id = $1
+ORDER BY created_at ASC
+LIMIT 200
+`
+
+func (q *Queries) GetEventsBySession(ctx context.Context, sessionID pgtype.UUID) ([]EventLog, error) {
+	rows, err := q.db.Query(ctx, getEventsBySession, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EventLog{}
+	for rows.Next() {
+		var i EventLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.BranchID,
+			&i.EventType,
+			&i.ActorType,
+			&i.ActorID,
+			&i.Payload,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getRecentEventsByBranch = `-- name: GetRecentEventsByBranch :many
+SELECT id, session_id, branch_id, event_type, actor_type, actor_id, payload, created_at FROM event_log
+WHERE branch_id = $1
+ORDER BY created_at DESC
+LIMIT 100
+`
+
+func (q *Queries) GetRecentEventsByBranch(ctx context.Context, branchID pgtype.Int8) ([]EventLog, error) {
+	rows, err := q.db.Query(ctx, getRecentEventsByBranch, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EventLog{}
+	for rows.Next() {
+		var i EventLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.BranchID,
+			&i.EventType,
+			&i.ActorType,
+			&i.ActorID,
+			&i.Payload,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertEventLog = `-- name: InsertEventLog :exec
 INSERT INTO event_log (session_id, branch_id, event_type, actor_type, actor_id, payload)
 VALUES ($1, $2, $3, $4, $5, $6)
