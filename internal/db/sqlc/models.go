@@ -518,6 +518,7 @@ type Staff struct {
 	Role      StaffRole `json:"role"`
 	PinHash   string    `json:"pin_hash"`
 	CreatedAt time.Time `json:"created_at"`
+	IsActive  bool      `json:"is_active"`
 }
 
 type Table struct {

@@ -24,6 +24,7 @@ type Querier interface {
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff, error)
+	DeactivateStaff(ctx context.Context, id int64) error
 	GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error)
 	GetAssistanceRequestByID(ctx context.Context, id int64) (AssistanceRequest, error)
 	GetBranchByID(ctx context.Context, id int64) (Branch, error)
@@ -49,6 +50,7 @@ type Querier interface {
 	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]AssistanceRequest, error)
 	ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]ListActiveOrdersForBranchRow, error)
 	ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]Session, error)
+	ListActiveStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
 	ListAssistanceForSession(ctx context.Context, sessionID uuid.UUID) ([]AssistanceRequest, error)
 	ListCartItems(ctx context.Context, cartID int64) ([]ListCartItemsRow, error)
 	ListMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
@@ -74,6 +76,7 @@ type Querier interface {
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
 	UpdateParticipantLastSeen(ctx context.Context, id int64) error
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
+	UpdateStaffPIN(ctx context.Context, arg UpdateStaffPINParams) error
 	UpdateTableStatus(ctx context.Context, arg UpdateTableStatusParams) error
 }
 

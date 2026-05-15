@@ -60,3 +60,25 @@ func (c *Cache) Get(ctx context.Context, key string, dst any) (bool, error) {
 func (c *Cache) Invalidate(ctx context.Context, key string) error {
 	return c.client.Del(ctx, key).Err()
 }
+
+// SAdd adds a member to a Redis Set with an expiry. Used for token set tracking.
+func (c *Cache) SAdd(ctx context.Context, key, member string, ttl time.Duration) error {
+	pipe := c.client.Pipeline()
+	pipe.SAdd(ctx, key, member)
+	pipe.Expire(ctx, key, ttl)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+// SMembers returns all members of a Redis Set. Returns nil slice on missing key.
+func (c *Cache) SMembers(ctx context.Context, key string) ([]string, error) {
+	return c.client.SMembers(ctx, key).Result()
+}
+
+// DeleteMany deletes multiple keys in a single round-trip.
+func (c *Cache) DeleteMany(ctx context.Context, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	return c.client.Del(ctx, keys...).Err()
+}

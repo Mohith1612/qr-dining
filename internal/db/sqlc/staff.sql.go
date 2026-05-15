@@ -12,7 +12,7 @@ import (
 const createStaff = `-- name: CreateStaff :one
 INSERT INTO staff (branch_id, name, role, pin_hash)
 VALUES ($1, $2, $3, $4)
-RETURNING id, branch_id, name, role, pin_hash, created_at
+RETURNING id, branch_id, name, role, pin_hash, created_at, is_active
 `
 
 type CreateStaffParams struct {
@@ -37,8 +37,18 @@ func (q *Queries) CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff
 		&i.Role,
 		&i.PinHash,
 		&i.CreatedAt,
+		&i.IsActive,
 	)
 	return i, err
+}
+
+const deactivateStaff = `-- name: DeactivateStaff :exec
+UPDATE staff SET is_active = FALSE WHERE id = $1
+`
+
+func (q *Queries) DeactivateStaff(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deactivateStaff, id)
+	return err
 }
 
 const getBranchByID = `-- name: GetBranchByID :one
@@ -77,7 +87,7 @@ func (q *Queries) GetRestaurantByID(ctx context.Context, id int64) (Restaurant, 
 }
 
 const getStaffByID = `-- name: GetStaffByID :one
-SELECT id, branch_id, name, role, pin_hash, created_at FROM staff WHERE id = $1
+SELECT id, branch_id, name, role, pin_hash, created_at, is_active FROM staff WHERE id = $1
 `
 
 func (q *Queries) GetStaffByID(ctx context.Context, id int64) (Staff, error) {
@@ -90,12 +100,45 @@ func (q *Queries) GetStaffByID(ctx context.Context, id int64) (Staff, error) {
 		&i.Role,
 		&i.PinHash,
 		&i.CreatedAt,
+		&i.IsActive,
 	)
 	return i, err
 }
 
+const listActiveStaffForBranch = `-- name: ListActiveStaffForBranch :many
+SELECT id, branch_id, name, role, pin_hash, created_at, is_active FROM staff WHERE branch_id = $1 AND is_active = TRUE ORDER BY name ASC
+`
+
+func (q *Queries) ListActiveStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error) {
+	rows, err := q.db.Query(ctx, listActiveStaffForBranch, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Staff{}
+	for rows.Next() {
+		var i Staff
+		if err := rows.Scan(
+			&i.ID,
+			&i.BranchID,
+			&i.Name,
+			&i.Role,
+			&i.PinHash,
+			&i.CreatedAt,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStaffForBranch = `-- name: ListStaffForBranch :many
-SELECT id, branch_id, name, role, pin_hash, created_at FROM staff WHERE branch_id = $1 ORDER BY name ASC
+SELECT id, branch_id, name, role, pin_hash, created_at, is_active FROM staff WHERE branch_id = $1 ORDER BY name ASC
 `
 
 func (q *Queries) ListStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error) {
@@ -114,6 +157,7 @@ func (q *Queries) ListStaffForBranch(ctx context.Context, branchID int64) ([]Sta
 			&i.Role,
 			&i.PinHash,
 			&i.CreatedAt,
+			&i.IsActive,
 		); err != nil {
 			return nil, err
 		}
@@ -123,4 +167,18 @@ func (q *Queries) ListStaffForBranch(ctx context.Context, branchID int64) ([]Sta
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateStaffPIN = `-- name: UpdateStaffPIN :exec
+UPDATE staff SET pin_hash = $2 WHERE id = $1
+`
+
+type UpdateStaffPINParams struct {
+	ID      int64  `json:"id"`
+	PinHash string `json:"pin_hash"`
+}
+
+func (q *Queries) UpdateStaffPIN(ctx context.Context, arg UpdateStaffPINParams) error {
+	_, err := q.db.Exec(ctx, updateStaffPIN, arg.ID, arg.PinHash)
+	return err
 }

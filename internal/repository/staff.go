@@ -24,3 +24,11 @@ func (r *Repos) ListStaffForBranch(ctx context.Context, branchID int64) ([]sqlc.
 func (r *Repos) CreateStaff(ctx context.Context, p sqlc.CreateStaffParams) (sqlc.Staff, error) {
 	return r.q.CreateStaff(ctx, p)
 }
+
+func (r *Repos) UpdateStaffPIN(ctx context.Context, staffID int64, pinHash string) error {
+	return r.q.UpdateStaffPIN(ctx, sqlc.UpdateStaffPINParams{ID: staffID, PinHash: pinHash})
+}
+
+func (r *Repos) DeactivateStaff(ctx context.Context, staffID int64) error {
+	return r.q.DeactivateStaff(ctx, staffID)
+}

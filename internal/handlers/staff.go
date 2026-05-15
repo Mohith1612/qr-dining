@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
+	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
-	"errors"
 )
 
 type StaffHandler struct {
@@ -40,4 +43,112 @@ func (h *StaffHandler) Authenticate(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, session)
+}
+
+type createStaffRequest struct {
+	Name string `json:"name" binding:"required,min=1,max=100"`
+	Role string `json:"role" binding:"required"`
+	PIN  string `json:"pin" binding:"required,min=4,max=8"`
+}
+
+// CreateStaff creates a new staff member. Only owners may create staff.
+func (h *StaffHandler) CreateStaff(c *gin.Context) {
+	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid branch id"})
+		return
+	}
+
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok || sess.BranchID != branchID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
+	if sess.Role != sqlc.StaffRoleOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only owners can create staff"})
+		return
+	}
+
+	var req createStaffRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	role := sqlc.StaffRole(req.Role)
+	staff, err := h.svc.CreateStaff(c.Request.Context(), branchID, role, req.Name, req.PIN)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"id":        staff.ID,
+		"branch_id": staff.BranchID,
+		"name":      staff.Name,
+		"role":      staff.Role,
+	})
+}
+
+type rotatePINRequest struct {
+	CurrentPIN string `json:"current_pin" binding:"required,min=4,max=8"`
+	NewPIN     string `json:"new_pin" binding:"required,min=4,max=8"`
+}
+
+// RotatePIN verifies the current PIN and sets a new one.
+func (h *StaffHandler) RotatePIN(c *gin.Context) {
+	staffID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid staff id"})
+		return
+	}
+
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok || sess.StaffID != staffID {
+		// Staff may only rotate their own PIN; owners can rotate any.
+		if !ok || sess.Role != sqlc.StaffRoleOwner {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
+	}
+
+	var req rotatePINRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.svc.RotatePIN(c.Request.Context(), staffID, req.CurrentPIN, req.NewPIN); err != nil {
+		if errors.Is(err, domain.ErrUnauthorized) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "current PIN is incorrect"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// DeactivateStaff soft-deactivates a staff member and invalidates their tokens.
+// Only owners may deactivate staff.
+func (h *StaffHandler) DeactivateStaff(c *gin.Context) {
+	staffID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid staff id"})
+		return
+	}
+
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok || sess.Role != sqlc.StaffRoleOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only owners can deactivate staff"})
+		return
+	}
+
+	if err := h.svc.Deactivate(c.Request.Context(), staffID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }

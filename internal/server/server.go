@@ -149,6 +149,11 @@ func New(
 	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)
 	staffAPI.PATCH("/menu/items/:id/availability", menuAdminH.ToggleAvailability)
 
+	// Staff management — owner only (role enforced in handler).
+	staffAPI.POST("/branches/:id/staff", staffH.CreateStaff)
+	staffAPI.PATCH("/staff/:id/pin", staffH.RotatePIN)
+	staffAPI.PATCH("/staff/:id/deactivate", staffH.DeactivateStaff)
+
 	// WebSocket
 	r.GET("/ws", wsH.Upgrade)
 

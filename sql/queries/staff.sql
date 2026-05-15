@@ -14,3 +14,12 @@ SELECT * FROM branches WHERE id = $1;
 
 -- name: GetRestaurantByID :one
 SELECT * FROM restaurants WHERE id = $1;
+
+-- name: UpdateStaffPIN :exec
+UPDATE staff SET pin_hash = $2 WHERE id = $1;
+
+-- name: DeactivateStaff :exec
+UPDATE staff SET is_active = FALSE WHERE id = $1;
+
+-- name: ListActiveStaffForBranch :many
+SELECT * FROM staff WHERE branch_id = $1 AND is_active = TRUE ORDER BY name ASC;
