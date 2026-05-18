@@ -8,6 +8,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
+	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -16,10 +17,11 @@ import (
 type PaymentService struct {
 	repos     *repository.Repos
 	publisher *events.Publisher
+	metrics   *observability.Metrics
 }
 
-func NewPaymentService(repos *repository.Repos, publisher *events.Publisher) *PaymentService {
-	return &PaymentService{repos: repos, publisher: publisher}
+func NewPaymentService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics) *PaymentService {
+	return &PaymentService{repos: repos, publisher: publisher, metrics: metrics}
 }
 
 type InitiatePaymentRequest struct {
@@ -70,6 +72,7 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, req ProcessWebhookR
 	}
 	if !inserted {
 		// Already processed — idempotent replay, nothing to do.
+		s.metrics.IdempotencyReplaysTotal.WithLabelValues("webhook").Inc()
 		return nil
 	}
 

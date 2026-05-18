@@ -11,6 +11,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
+	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -19,10 +20,11 @@ import (
 type SessionService struct {
 	repos     *repository.Repos
 	publisher *events.Publisher
+	metrics   *observability.Metrics
 }
 
-func NewSessionService(repos *repository.Repos, publisher *events.Publisher) *SessionService {
-	return &SessionService{repos: repos, publisher: publisher}
+func NewSessionService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics) *SessionService {
+	return &SessionService{repos: repos, publisher: publisher, metrics: metrics}
 }
 
 type CreateSessionResult struct {
@@ -123,6 +125,8 @@ func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, request
 	if err := s.repos.UpdateTableStatus(ctx, sess.TableID, sqlc.TableStatusAvailable); err != nil {
 		return err
 	}
+
+	s.metrics.SessionDuration.Observe(time.Since(sess.CreatedAt).Seconds())
 
 	s.publisher.SessionClosed(ctx, id, map[string]any{"session_id": id})
 	s.repos.LogEvent(ctx, id, sess.BranchID, "SESSION_CLOSED", "participant", requesterID, map[string]any{"session_id": id})

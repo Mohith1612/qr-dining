@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
+	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -17,10 +19,11 @@ import (
 type OrderService struct {
 	repos     *repository.Repos
 	publisher *events.Publisher
+	metrics   *observability.Metrics
 }
 
-func NewOrderService(repos *repository.Repos, publisher *events.Publisher) *OrderService {
-	return &OrderService{repos: repos, publisher: publisher}
+func NewOrderService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics) *OrderService {
+	return &OrderService{repos: repos, publisher: publisher, metrics: metrics}
 }
 
 type OrderItem struct {
@@ -50,6 +53,7 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	// Idempotency check before starting the transaction.
 	existing, err := s.repos.GetOrderByIdempotencyKey(ctx, req.IdempotencyKey)
 	if err == nil {
+		s.metrics.IdempotencyReplaysTotal.WithLabelValues("order").Inc()
 		items, _ := s.repos.ListOrderItems(ctx, existing.ID)
 		return PlaceOrderResult{Order: existing, OrderItems: items}, nil
 	}
@@ -163,10 +167,12 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID,
 		return sqlc.Order{}, err
 	}
 
+	start := time.Now()
 	updated, err := s.repos.UpdateOrderStatus(ctx, orderID, sqlc.OrderStatus(newStatus))
 	if err != nil {
 		return sqlc.Order{}, err
 	}
+	s.metrics.OrderLifecycleDuration.WithLabelValues(string(current), string(newStatus)).Observe(time.Since(start).Seconds())
 
 	s.publishOrderStatusEvent(ctx, order.SessionID, newStatus, updated)
 	s.repos.LogEvent(ctx, order.SessionID, order.BranchID, "ORDER_STATUS_CHANGED", "staff", staffID,

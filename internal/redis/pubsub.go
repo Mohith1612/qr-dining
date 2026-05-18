@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/google/uuid"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
@@ -18,12 +19,13 @@ const sessionChannelSuffix = ":events"
 // A single PSubscribe("session:*:events") handles all sessions without
 // opening one subscription per active session.
 type PubSub struct {
-	client *goredis.Client
-	logger zerolog.Logger
+	client  *goredis.Client
+	logger  zerolog.Logger
+	metrics *observability.Metrics
 }
 
-func NewPubSub(client *goredis.Client, logger zerolog.Logger) *PubSub {
-	return &PubSub{client: client, logger: logger}
+func NewPubSub(client *goredis.Client, logger zerolog.Logger, metrics *observability.Metrics) *PubSub {
+	return &PubSub{client: client, logger: logger, metrics: metrics}
 }
 
 // Publish encodes the payload as JSON and publishes it to the session's channel.
@@ -35,6 +37,7 @@ func (ps *PubSub) Publish(ctx context.Context, sessionID uuid.UUID, payload any)
 
 	channel := sessionChannel(sessionID)
 	if err := ps.client.Publish(ctx, channel, data).Err(); err != nil {
+		ps.metrics.RedisPubSubErrors.WithLabelValues("publish").Inc()
 		return fmt.Errorf("publish to %s: %w", channel, err)
 	}
 	return nil
@@ -51,8 +54,12 @@ type Message struct {
 // Intended to run as a dedicated goroutine started by the WebSocket Hub.
 func (ps *PubSub) Subscribe(ctx context.Context, out chan<- Message) error {
 	sub := ps.client.PSubscribe(ctx, sessionChannelPrefix+"*"+sessionChannelSuffix)
-	defer sub.Close()
+	defer func() {
+		sub.Close()
+		ps.metrics.RedisPubSubConnected.Set(0)
+	}()
 
+	ps.metrics.RedisPubSubConnected.Set(1)
 	ch := sub.Channel()
 	for {
 		select {
@@ -60,6 +67,7 @@ func (ps *PubSub) Subscribe(ctx context.Context, out chan<- Message) error {
 			return nil
 		case msg, ok := <-ch:
 			if !ok {
+				ps.metrics.RedisPubSubErrors.WithLabelValues("receive").Inc()
 				return nil
 			}
 			sessionID, err := parseSessionIDFromChannel(msg.Channel)

@@ -112,6 +112,13 @@ func (h *Hub) addToRoom(c *Client) {
 	if _, ok := h.rooms[sid]; !ok {
 		h.rooms[sid] = make(map[string]*Client)
 	}
+	// Detect reconnect: participant already has an active client in this room.
+	for _, existing := range h.rooms[sid] {
+		if existing.participantID == c.participantID {
+			h.metrics.WSReconnectsTotal.Inc()
+			break
+		}
+	}
 	h.rooms[sid][c.id] = c
 	h.metrics.WSConnectionsActive.Inc()
 }

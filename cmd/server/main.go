@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/config"
 	dbPkg "github.com/Mohith1612/qr-dining/internal/db"
@@ -59,7 +60,7 @@ func main() {
 	metrics := observability.NewMetrics()
 
 	// 8. Initialize Redis helpers.
-	pubsub := redisPkg.NewPubSub(redisClient, logger)
+	pubsub := redisPkg.NewPubSub(redisClient, logger, metrics)
 	presence := redisPkg.NewPresence(redisClient)
 
 	// 9. Initialize event publisher.
@@ -83,6 +84,24 @@ func main() {
 	w := worker.New(db, wq, redisClient, publisher, presence, metrics, logger)
 	go w.RunStaleSessionCleaner(ctx, cfg.Worker.StaleSessionInterval)
 	go w.RunPresenceExpiry(ctx, cfg.Worker.PresenceExpiryInterval)
+
+	// 14b. Poll DB pool stats every 30s and export to Prometheus.
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				stat := db.Stat()
+				metrics.DBPoolTotalConns.Set(float64(stat.TotalConns()))
+				metrics.DBPoolIdleConns.Set(float64(stat.IdleConns()))
+				metrics.DBPoolAcquiredConns.Set(float64(stat.AcquiredConns()))
+				metrics.DBPoolAcquireCount.Add(float64(stat.AcquireCount()))
+			}
+		}
+	}()
 
 	// 15. Start HTTP server — blocks until shutdown.
 	if err := srv.Start(ctx); err != nil {

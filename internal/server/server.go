@@ -60,14 +60,14 @@ func New(
 	presence := redisPkg.NewPresence(redis)
 
 	// ── Services ─────────────────────────────────────────────────────────────
-	sessionSvc := services.NewSessionService(repos, publisher)
+	sessionSvc := services.NewSessionService(repos, publisher, metrics)
 	participantSvc := services.NewParticipantService(repos, publisher, presence)
 	cartSvc := services.NewCartService(repos, publisher)
-	orderSvc := services.NewOrderService(repos, publisher)
+	orderSvc := services.NewOrderService(repos, publisher, metrics)
 	assistanceSvc := services.NewAssistanceService(repos, publisher)
 	menuSvc := services.NewMenuService(repos, cache)
 	staffSvc := services.NewStaffService(repos, cache)
-	paymentSvc := services.NewPaymentService(repos, publisher)
+	paymentSvc := services.NewPaymentService(repos, publisher, metrics)
 
 	// ── Handlers ─────────────────────────────────────────────────────────────
 	health := handlers.NewHealthHandler(db, redis)
