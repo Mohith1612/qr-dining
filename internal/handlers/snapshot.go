@@ -22,7 +22,7 @@ func NewSnapshotHandler(svc *services.SessionService) *SnapshotHandler {
 func (h *SnapshotHandler) GetSnapshot(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondValidationError(c, "invalid session id")
 		return
 	}
 

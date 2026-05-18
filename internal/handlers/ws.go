@@ -25,31 +25,31 @@ func (h *WSHandler) Upgrade(c *gin.Context) {
 	sessionIDStr := c.Query("session_id")
 	sessionID, err := uuid.Parse(sessionIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session_id"})
+		respondValidationError(c, "invalid session_id")
 		return
 	}
 
 	participantIDStr := c.Query("participant_id")
 	participantID, err := strconv.ParseInt(participantIDStr, 10, 64)
 	if err != nil || participantID <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid participant_id"})
+		respondValidationError(c, "invalid participant_id")
 		return
 	}
 
 	// Validate session is active and participant belongs to it.
 	sess, err := h.repos.GetSessionByID(c.Request.Context(), sessionID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		respondError(c, http.StatusNotFound, CodeSessionNotFound, "session not found")
 		return
 	}
 	if sess.Status != "active" {
-		c.JSON(http.StatusConflict, gin.H{"error": "session is not active"})
+		respondError(c, http.StatusConflict, CodeSessionClosed, "session is not active")
 		return
 	}
 
 	participant, err := h.repos.GetParticipantByID(c.Request.Context(), participantID)
 	if err != nil || participant.SessionID != sessionID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "participant not in session"})
+		respondError(c, http.StatusForbidden, CodeParticipantNotFound, "participant not in session")
 		return
 	}
 

@@ -31,8 +31,9 @@ func rateLimitHandler(rl *redisPkg.RateLimiter, prefix string, limitPerMinute in
 		}
 		if !allowed {
 			c.Header("Retry-After", "60")
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"error": "rate limit exceeded",
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, map[string]string{
+				"code":    "RATE_LIMITED",
+				"message": "rate limit exceeded",
 			})
 			return
 		}

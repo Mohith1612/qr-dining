@@ -19,13 +19,13 @@ func NewMenuHandler(svc *services.MenuService) *MenuHandler {
 func (h *MenuHandler) GetMenu(c *gin.Context) {
 	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid branch id"})
+		respondValidationError(c, "invalid branch id")
 		return
 	}
 
 	menu, err := h.svc.GetFullMenu(c.Request.Context(), branchID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 	c.JSON(http.StatusOK, menu)
@@ -34,13 +34,13 @@ func (h *MenuHandler) GetMenu(c *gin.Context) {
 func (h *MenuHandler) GetTableByQR(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing token"})
+		respondValidationError(c, "missing token")
 		return
 	}
 
 	table, err := h.svc.GetTableByQRToken(c.Request.Context(), token)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "table not found"})
+		respondError(c, http.StatusNotFound, CodeSessionNotFound, "table not found")
 		return
 	}
 	c.JSON(http.StatusOK, table)

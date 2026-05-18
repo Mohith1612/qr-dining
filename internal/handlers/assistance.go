@@ -30,13 +30,13 @@ type requestAssistanceRequest struct {
 func (h *AssistanceHandler) Request(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondValidationError(c, "invalid session id")
 		return
 	}
 
 	var req requestAssistanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
@@ -50,7 +50,7 @@ func (h *AssistanceHandler) Request(c *gin.Context) {
 
 	ar, err := h.svc.Request(c.Request.Context(), sessionID, req.TableID, req.ParticipantID, reqType)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 	c.JSON(http.StatusCreated, ar)
@@ -59,7 +59,7 @@ func (h *AssistanceHandler) Request(c *gin.Context) {
 func (h *AssistanceHandler) Acknowledge(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		respondValidationError(c, "invalid id")
 		return
 	}
 
@@ -75,7 +75,7 @@ func (h *AssistanceHandler) Acknowledge(c *gin.Context) {
 func (h *AssistanceHandler) Resolve(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		respondValidationError(c, "invalid id")
 		return
 	}
 
@@ -91,19 +91,19 @@ func (h *AssistanceHandler) Resolve(c *gin.Context) {
 func (h *AssistanceHandler) ListActiveForBranch(c *gin.Context) {
 	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid branch id"})
+		respondValidationError(c, "invalid branch id")
 		return
 	}
 
 	staffSession, ok := middleware.GetStaffSession(c)
 	if ok && staffSession.BranchID != branchID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}
 
 	requests, err := h.svc.ListActiveForBranch(c.Request.Context(), branchID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 	c.JSON(http.StatusOK, requests)
@@ -112,10 +112,10 @@ func (h *AssistanceHandler) ListActiveForBranch(c *gin.Context) {
 func assistanceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrAssistanceNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		respondError(c, http.StatusNotFound, CodeAssistanceNotFound, err.Error())
 	case errors.Is(err, domain.ErrInvalidAssistanceTransition):
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		respondError(c, http.StatusUnprocessableEntity, CodeInvalidAssistTransition, err.Error())
 	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 	}
 }

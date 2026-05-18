@@ -22,18 +22,18 @@ func NewCartHandler(svc *services.CartService) *CartHandler {
 func (h *CartHandler) GetCart(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondValidationError(c, "invalid session id")
 		return
 	}
 	participantID, err := participantIDFromHeader(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Participant-ID header required"})
+		respondValidationError(c, "X-Participant-ID header required")
 		return
 	}
 
 	result, err := h.svc.GetCart(c.Request.Context(), sessionID, participantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -49,18 +49,18 @@ type addCartItemRequest struct {
 func (h *CartHandler) AddItem(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondValidationError(c, "invalid session id")
 		return
 	}
 	participantID, err := participantIDFromHeader(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Participant-ID header required"})
+		respondValidationError(c, "X-Participant-ID header required")
 		return
 	}
 
 	var req addCartItemRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
@@ -75,11 +75,11 @@ func (h *CartHandler) AddItem(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrMenuItemNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
 		case errors.Is(err, domain.ErrMenuItemUnavailable):
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			respondError(c, http.StatusUnprocessableEntity, CodeMenuItemUnavailable, err.Error())
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			respondInternalError(c)
 		}
 		return
 	}
@@ -89,26 +89,26 @@ func (h *CartHandler) AddItem(c *gin.Context) {
 func (h *CartHandler) RemoveItem(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondValidationError(c, "invalid session id")
 		return
 	}
 	itemID, err := strconv.ParseInt(c.Param("item_id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid item_id"})
+		respondValidationError(c, "invalid item_id")
 		return
 	}
 	participantID, err := participantIDFromHeader(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Participant-ID header required"})
+		respondValidationError(c, "X-Participant-ID header required")
 		return
 	}
 
 	if err := h.svc.RemoveItem(c.Request.Context(), sessionID, participantID, itemID); err != nil {
 		if errors.Is(err, domain.ErrCartItemNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 	c.Status(http.StatusNoContent)

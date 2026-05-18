@@ -28,17 +28,17 @@ type staffAuthRequest struct {
 func (h *StaffHandler) Authenticate(c *gin.Context) {
 	var req staffAuthRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
 	session, err := h.svc.Authenticate(c.Request.Context(), req.BranchID, req.PIN)
 	if err != nil {
 		if errors.Is(err, domain.ErrParticipantUnauthorized) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "invalid credentials")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 
@@ -55,30 +55,30 @@ type createStaffRequest struct {
 func (h *StaffHandler) CreateStaff(c *gin.Context) {
 	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid branch id"})
+		respondValidationError(c, "invalid branch id")
 		return
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
 	if !ok || sess.BranchID != branchID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}
 	if sess.Role != sqlc.StaffRoleOwner {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only owners can create staff"})
+		respondError(c, http.StatusForbidden, CodeForbidden, "only owners can create staff")
 		return
 	}
 
 	var req createStaffRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
 	role := sqlc.StaffRole(req.Role)
 	staff, err := h.svc.CreateStaff(c.Request.Context(), branchID, role, req.Name, req.PIN)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 
@@ -99,7 +99,7 @@ type rotatePINRequest struct {
 func (h *StaffHandler) RotatePIN(c *gin.Context) {
 	staffID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid staff id"})
+		respondValidationError(c, "invalid staff id")
 		return
 	}
 
@@ -107,23 +107,23 @@ func (h *StaffHandler) RotatePIN(c *gin.Context) {
 	if !ok || sess.StaffID != staffID {
 		// Staff may only rotate their own PIN; owners can rotate any.
 		if !ok || sess.Role != sqlc.StaffRoleOwner {
-			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 			return
 		}
 	}
 
 	var req rotatePINRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
 	if err := h.svc.RotatePIN(c.Request.Context(), staffID, req.CurrentPIN, req.NewPIN); err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "current PIN is incorrect"})
+			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "current PIN is incorrect")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 
@@ -135,18 +135,18 @@ func (h *StaffHandler) RotatePIN(c *gin.Context) {
 func (h *StaffHandler) DeactivateStaff(c *gin.Context) {
 	staffID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid staff id"})
+		respondValidationError(c, "invalid staff id")
 		return
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
 	if !ok || sess.Role != sqlc.StaffRoleOwner {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only owners can deactivate staff"})
+		respondError(c, http.StatusForbidden, CodeForbidden, "only owners can deactivate staff")
 		return
 	}
 
 	if err := h.svc.Deactivate(c.Request.Context(), staffID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 

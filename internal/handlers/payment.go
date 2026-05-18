@@ -26,13 +26,13 @@ type initiatePaymentRequest struct {
 func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondValidationError(c, "invalid session id")
 		return
 	}
 
 	var req initiatePaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
@@ -40,7 +40,7 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 	switch method {
 	case sqlc.PaymentMethodCash, sqlc.PaymentMethodCard, sqlc.PaymentMethodDigital:
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payment method"})
+		respondValidationError(c, "invalid payment method")
 		return
 	}
 
@@ -51,7 +51,7 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		Method:    method,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 	c.JSON(http.StatusCreated, payment)
@@ -62,13 +62,13 @@ func (h *PaymentHandler) Webhook(c *gin.Context) {
 
 	var payload map[string]any
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		respondValidationError(c, "invalid payload")
 		return
 	}
 
 	externalID, _ := payload["id"].(string)
 	if externalID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing event id in payload"})
+		respondValidationError(c, "missing event id in payload")
 		return
 	}
 
@@ -76,7 +76,7 @@ func (h *PaymentHandler) Webhook(c *gin.Context) {
 
 	rawPayload, err := marshalPayload(payload)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		respondValidationError(c, "invalid payload")
 		return
 	}
 
@@ -86,7 +86,7 @@ func (h *PaymentHandler) Webhook(c *gin.Context) {
 		EventType:       eventType,
 		Payload:         rawPayload,
 	}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 

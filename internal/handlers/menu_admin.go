@@ -27,19 +27,19 @@ type createCategoryRequest struct {
 func (h *MenuAdminHandler) CreateCategory(c *gin.Context) {
 	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid branch id"})
+		respondValidationError(c, "invalid branch id")
 		return
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
 	if !ok || sess.BranchID != branchID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}
 
 	var req createCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
@@ -64,19 +64,19 @@ type createMenuItemRequest struct {
 func (h *MenuAdminHandler) CreateItem(c *gin.Context) {
 	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid branch id"})
+		respondValidationError(c, "invalid branch id")
 		return
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
 	if !ok || sess.BranchID != branchID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}
 
 	var req createMenuItemRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
@@ -108,19 +108,19 @@ type updateMenuItemRequest struct {
 func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
 	itemID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid item id"})
+		respondValidationError(c, "invalid item id")
 		return
 	}
 
 	var req updateMenuItemRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
 	if !ok || sess.BranchID != req.BranchID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}
 
@@ -148,19 +148,19 @@ type toggleAvailabilityRequest struct {
 func (h *MenuAdminHandler) ToggleAvailability(c *gin.Context) {
 	itemID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid item id"})
+		respondValidationError(c, "invalid item id")
 		return
 	}
 
 	var req toggleAvailabilityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
 	if !ok || sess.BranchID != req.BranchID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}
 
@@ -175,10 +175,10 @@ func (h *MenuAdminHandler) ToggleAvailability(c *gin.Context) {
 func menuAdminError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrMenuItemNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
 	case errors.Is(err, domain.ErrUnauthorized), errors.Is(err, domain.ErrForbidden):
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		respondError(c, http.StatusForbidden, CodeForbidden, err.Error())
 	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 	}
 }

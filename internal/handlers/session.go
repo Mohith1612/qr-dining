@@ -29,7 +29,7 @@ type createSessionRequest struct {
 func (h *SessionHandler) Create(c *gin.Context) {
 	var req createSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
@@ -48,7 +48,7 @@ func (h *SessionHandler) Create(c *gin.Context) {
 func (h *SessionHandler) Get(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondValidationError(c, "invalid session id")
 		return
 	}
 
@@ -68,13 +68,13 @@ type closeSessionRequest struct {
 func (h *SessionHandler) Close(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondValidationError(c, "invalid session id")
 		return
 	}
 
 	participantID, err := participantIDFromHeader(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Participant-ID header required"})
+		respondValidationError(c, "X-Participant-ID header required")
 		return
 	}
 
@@ -94,13 +94,13 @@ type joinSessionRequest struct {
 func (h *SessionHandler) Join(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondValidationError(c, "invalid session id")
 		return
 	}
 
 	var req joinSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
@@ -116,19 +116,19 @@ func (h *SessionHandler) Join(c *gin.Context) {
 func (h *SessionHandler) ListActiveForBranch(c *gin.Context) {
 	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid branch id"})
+		respondValidationError(c, "invalid branch id")
 		return
 	}
 
 	staffSession, ok := middleware.GetStaffSession(c)
 	if ok && staffSession.BranchID != branchID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}
 
 	sessions, err := h.svc.ListActiveForBranch(c.Request.Context(), branchID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 	c.JSON(http.StatusOK, sessions)
@@ -137,17 +137,17 @@ func (h *SessionHandler) ListActiveForBranch(c *gin.Context) {
 func sessionError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrSessionNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		respondError(c, http.StatusNotFound, CodeSessionNotFound, err.Error())
 	case errors.Is(err, domain.ErrSessionClosed):
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		respondError(c, http.StatusConflict, CodeSessionClosed, err.Error())
 	case errors.Is(err, domain.ErrSessionAlreadyActive):
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		respondError(c, http.StatusConflict, CodeSessionAlreadyActive, err.Error())
 	case errors.Is(err, domain.ErrNotSessionHost):
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		respondError(c, http.StatusForbidden, CodeNotSessionHost, err.Error())
 	case errors.Is(err, domain.ErrTableNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		respondError(c, http.StatusNotFound, CodeSessionNotFound, err.Error())
 	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 	}
 }
 

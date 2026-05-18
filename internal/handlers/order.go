@@ -30,13 +30,13 @@ type placeOrderRequest struct {
 func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondValidationError(c, "invalid session id")
 		return
 	}
 
 	var req placeOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
@@ -49,12 +49,16 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 	})
 	if err != nil {
 		switch {
-		case errors.Is(err, domain.ErrSessionNotFound), errors.Is(err, domain.ErrMenuItemNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		case errors.Is(err, domain.ErrSessionClosed), errors.Is(err, domain.ErrMenuItemUnavailable):
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		case errors.Is(err, domain.ErrSessionNotFound):
+			respondError(c, http.StatusNotFound, CodeSessionNotFound, err.Error())
+		case errors.Is(err, domain.ErrMenuItemNotFound):
+			respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
+		case errors.Is(err, domain.ErrSessionClosed):
+			respondError(c, http.StatusConflict, CodeSessionClosed, err.Error())
+		case errors.Is(err, domain.ErrMenuItemUnavailable):
+			respondError(c, http.StatusUnprocessableEntity, CodeMenuItemUnavailable, err.Error())
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			respondInternalError(c)
 		}
 		return
 	}
@@ -65,13 +69,13 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 func (h *OrderHandler) ListOrders(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondValidationError(c, "invalid session id")
 		return
 	}
 
 	orders, err := h.svc.ListOrdersForSession(c.Request.Context(), sessionID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 	c.JSON(http.StatusOK, orders)
@@ -84,13 +88,13 @@ type updateOrderStatusRequest struct {
 func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 	orderID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order id"})
+		respondValidationError(c, "invalid order id")
 		return
 	}
 
 	var req updateOrderStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondValidationError(c, err.Error())
 		return
 	}
 
@@ -100,11 +104,11 @@ func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrOrderNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			respondError(c, http.StatusNotFound, CodeOrderNotFound, err.Error())
 		case errors.Is(err, domain.ErrInvalidOrderTransition):
-			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+			respondError(c, http.StatusUnprocessableEntity, CodeInvalidOrderTransition, err.Error())
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			respondInternalError(c)
 		}
 		return
 	}
@@ -114,19 +118,19 @@ func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 func (h *OrderHandler) ListActiveForBranch(c *gin.Context) {
 	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid branch id"})
+		respondValidationError(c, "invalid branch id")
 		return
 	}
 
 	staffSession, ok := middleware.GetStaffSession(c)
 	if ok && staffSession.BranchID != branchID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}
 
 	orders, err := h.svc.ListActiveForBranch(c.Request.Context(), branchID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		respondInternalError(c)
 		return
 	}
 	c.JSON(http.StatusOK, orders)

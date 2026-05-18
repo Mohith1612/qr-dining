@@ -18,7 +18,10 @@ func StaffAuth(staffSvc *services.StaffService, logger zerolog.Logger) gin.Handl
 		auth := c.GetHeader("Authorization")
 		token, ok := strings.CutPrefix(auth, "Bearer ")
 		if !ok || token == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing or invalid Authorization header"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, map[string]string{
+				"code":    "UNAUTHORIZED",
+				"message": "missing or invalid Authorization header",
+			})
 			return
 		}
 
@@ -32,7 +35,10 @@ func StaffAuth(staffSvc *services.StaffService, logger zerolog.Logger) gin.Handl
 				Str("token_prefix", prefix).
 				Str("ip", c.ClientIP()).
 				Msg("staff auth rejected: invalid or expired token")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, map[string]string{
+				"code":    "UNAUTHORIZED",
+				"message": "invalid or expired token",
+			})
 			return
 		}
 
