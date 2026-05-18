@@ -1,0 +1,1601 @@
+openapi: "3.1.0"
+info:
+  title: qr-dining API
+  version: "1.0.0"
+  description: |
+    Realtime dine-in OS — session lifecycle, cart, orders, payments, assistance requests,
+    staff management, menu management, and WebSocket reconnect reconciliation.
+
+    **Auth**
+    - Guest endpoints: no auth required
+    - Staff endpoints: `Authorization: Bearer <token>` obtained from `POST /staff/auth`
+    - Participant-scoped endpoints: `X-Participant-ID: <int64>` header
+
+    **Error Shape**
+    All non-2xx responses use the `APIError` schema: `{"code":"...", "message":"..."}`.
+    Frontend clients MUST key on `code`; `message` is human-readable and may change.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+components:
+  securitySchemes:
+    StaffBearer:
+      type: http
+      scheme: bearer
+      description: Staff token returned by POST /staff/auth
+    ParticipantID:
+      type: apiKey
+      in: header
+      name: X-Participant-ID
+      description: Participant ID returned when joining or creating a session
+
+  schemas:
+    APIError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable error code (never changes)
+          example: SESSION_NOT_FOUND
+        message:
+          type: string
+          description: Human-readable error detail (may change)
+          example: session not found
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        branch_id:
+          type: integer
+        table_id:
+          type: integer
+        host_participant_id:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [active, closed]
+        session_token:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Participant:
+      type: object
+      properties:
+        id:
+          type: integer
+        session_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        is_host:
+          type: boolean
+        joined_at:
+          type: string
+          format: date-time
+
+    CartItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        session_id:
+          type: string
+          format: uuid
+        participant_id:
+          type: integer
+        menu_item_id:
+          type: integer
+        quantity:
+          type: integer
+        modifier_ids:
+          type: array
+          items:
+            type: integer
+        note:
+          type: string
+        added_at:
+          type: string
+          format: date-time
+
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        category_id:
+          type: integer
+        branch_id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: string
+          description: Decimal string e.g. "12.50"
+        is_available:
+          type: boolean
+        display_order:
+          type: integer
+
+    MenuCategory:
+      type: object
+      properties:
+        id:
+          type: integer
+        branch_id:
+          type: integer
+        name:
+          type: string
+        display_order:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MenuItem"
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        branch_id:
+          type: integer
+        placed_by_participant_id:
+          type: integer
+        status:
+          type: string
+          enum: [pending, confirmed, preparing, ready, served, cancelled]
+        total_amount:
+          type: string
+          description: Decimal string
+        idempotency_key:
+          type: string
+        placed_at:
+          type: string
+          format: date-time
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        order_id:
+          type: string
+          format: uuid
+        menu_item_id:
+          type: integer
+        quantity:
+          type: integer
+        unit_price:
+          type: string
+        note:
+          type: string
+
+    AssistanceRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+        session_id:
+          type: string
+          format: uuid
+        table_id:
+          type: integer
+        participant_id:
+          type: integer
+        type:
+          type: string
+          enum: [waiter, bill, other]
+        status:
+          type: string
+          enum: [pending, acknowledged, resolved]
+        created_at:
+          type: string
+          format: date-time
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+        session_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+        amount:
+          type: string
+        method:
+          type: string
+          enum: [cash, card, digital]
+        status:
+          type: string
+          enum: [pending, completed, failed, refunded]
+        created_at:
+          type: string
+          format: date-time
+
+    Staff:
+      type: object
+      properties:
+        id:
+          type: integer
+        branch_id:
+          type: integer
+        name:
+          type: string
+        role:
+          type: string
+          enum: [owner, manager, kitchen, waiter]
+
+    StaffSession:
+      type: object
+      properties:
+        staff_id:
+          type: integer
+        branch_id:
+          type: integer
+        role:
+          type: string
+        token:
+          type: string
+
+    SessionSnapshot:
+      type: object
+      description: Full authoritative session state for WebSocket reconnect reconciliation
+      properties:
+        session:
+          $ref: "#/components/schemas/Session"
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/Participant"
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/Order"
+        assistance:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistanceRequest"
+        snapshot_at:
+          type: string
+          format: date-time
+
+    EventLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        session_id:
+          type: string
+          format: uuid
+        branch_id:
+          type: integer
+        event_type:
+          type: string
+        actor_type:
+          type: string
+        actor_id:
+          type: integer
+        payload:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: SESSION_NOT_FOUND
+            message: session not found
+    Unauthorized:
+      description: Missing or invalid auth token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: UNAUTHORIZED
+            message: invalid or expired token
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: FORBIDDEN
+            message: access denied
+    ValidationError:
+      description: Malformed request body or query param
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: VALIDATION_ERROR
+            message: "display_name: required"
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: INTERNAL_ERROR
+            message: internal server error
+    RateLimited:
+      description: Too many requests
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until the rate limit window resets
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: RATE_LIMITED
+            message: rate limit exceeded
+
+paths:
+  # ── Infrastructure ────────────────────────────────────────────────────────
+  /health:
+    get:
+      summary: Liveness probe
+      tags: [Infrastructure]
+      responses:
+        "200":
+          description: Server is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /readyz:
+    get:
+      summary: Readiness probe — checks PostgreSQL and Redis connectivity
+      tags: [Infrastructure]
+      responses:
+        "200":
+          description: All dependencies healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+        "503":
+          description: One or more dependencies unhealthy
+
+  /metrics:
+    get:
+      summary: Prometheus metrics endpoint
+      tags: [Infrastructure]
+      responses:
+        "200":
+          description: Prometheus text format metrics
+
+  # ── Sessions ──────────────────────────────────────────────────────────────
+  /sessions:
+    post:
+      summary: Create a new dining session
+      tags: [Sessions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [table_id, display_name]
+              properties:
+                table_id:
+                  type: integer
+                  example: 1
+                display_name:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                  example: Alice
+                device_fingerprint:
+                  type: string
+            example:
+              table_id: 1
+              display_name: Alice
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session:
+                    $ref: "#/components/schemas/Session"
+                  participant:
+                    $ref: "#/components/schemas/Participant"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Table already has an active session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: SESSION_ALREADY_ACTIVE
+                message: session already active for this table
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /sessions/{id}:
+    get:
+      summary: Get session by ID
+      tags: [Sessions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Session found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      summary: Close a session (host only)
+      tags: [Sessions]
+      security:
+        - ParticipantID: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Session closed
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          description: Requester is not the session host
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: NOT_SESSION_HOST
+                message: only the session host can close the session
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Session already closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: SESSION_CLOSED
+                message: session is already closed
+
+  /sessions/{id}/join:
+    post:
+      summary: Join an existing session as a new participant
+      tags: [Sessions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [display_name]
+              properties:
+                display_name:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                device_fingerprint:
+                  type: string
+            example:
+              display_name: Bob
+      responses:
+        "201":
+          description: Joined session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Participant"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Session is closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: SESSION_CLOSED
+                message: session is already closed
+
+  /sessions/{id}/snapshot:
+    get:
+      summary: Full session state snapshot for WebSocket reconnect reconciliation
+      description: |
+        Returns the full authoritative current state of the session.
+        Call this endpoint on WebSocket reconnect, diff local state against the snapshot,
+        then re-establish the WebSocket connection.
+      tags: [Sessions, WebSocket]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Full session snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionSnapshot"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  # ── Cart ──────────────────────────────────────────────────────────────────
+  /sessions/{id}/cart:
+    get:
+      summary: Get participant cart
+      tags: [Cart]
+      security:
+        - ParticipantID: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Cart contents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CartItem"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /sessions/{id}/cart/items:
+    post:
+      summary: Add item to cart
+      tags: [Cart]
+      security:
+        - ParticipantID: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [menu_item_id, quantity]
+              properties:
+                menu_item_id:
+                  type: integer
+                quantity:
+                  type: integer
+                  minimum: 1
+                  maximum: 99
+                modifier_ids:
+                  type: array
+                  items:
+                    type: integer
+                note:
+                  type: string
+      responses:
+        "201":
+          description: Item added to cart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CartItem"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          description: Menu item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: MENU_ITEM_NOT_FOUND
+                message: menu item not found
+        "422":
+          description: Menu item unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: MENU_ITEM_UNAVAILABLE
+                message: menu item is not available
+
+  /sessions/{id}/cart/items/{item_id}:
+    delete:
+      summary: Remove item from cart
+      tags: [Cart]
+      security:
+        - ParticipantID: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Item removed
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Orders ────────────────────────────────────────────────────────────────
+  /sessions/{id}/orders:
+    post:
+      summary: Place an order (idempotent)
+      description: |
+        Places a new order for the session. If `idempotency_key` was already used,
+        returns the existing order with HTTP 201 (no error) — idempotent replay.
+      tags: [Orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [branch_id, placed_by_participant_id, idempotency_key, items]
+              properties:
+                branch_id:
+                  type: integer
+                placed_by_participant_id:
+                  type: integer
+                idempotency_key:
+                  type: string
+                  description: Client-generated unique key; repeat submissions return the original order
+                items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [menu_item_id, quantity]
+                    properties:
+                      menu_item_id:
+                        type: integer
+                      quantity:
+                        type: integer
+                      modifier_ids:
+                        type: array
+                        items:
+                          type: integer
+                      note:
+                        type: string
+      responses:
+        "201":
+          description: Order placed (or idempotent replay)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  order:
+                    $ref: "#/components/schemas/Order"
+                  order_items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrderItem"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Session closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "422":
+          description: Menu item unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+    get:
+      summary: List all orders for a session
+      tags: [Orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Orders list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+
+  /orders/{id}/status:
+    patch:
+      summary: Update order status (staff only)
+      tags: [Orders]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [confirmed, preparing, ready, served, cancelled]
+      responses:
+        "200":
+          description: Order updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: INVALID_ORDER_TRANSITION
+                message: cannot transition from served to pending
+
+  # ── Assistance ────────────────────────────────────────────────────────────
+  /sessions/{id}/assist:
+    post:
+      summary: Request waiter assistance
+      tags: [Assistance]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [table_id]
+              properties:
+                table_id:
+                  type: integer
+                participant_id:
+                  type: integer
+                type:
+                  type: string
+                  enum: [waiter, bill, other]
+                  default: waiter
+      responses:
+        "201":
+          description: Assistance requested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistanceRequest"
+
+  /assist/{id}/ack:
+    patch:
+      summary: Acknowledge an assistance request (staff only)
+      tags: [Assistance]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Request acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistanceRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: INVALID_ASSISTANCE_TRANSITION
+                message: cannot acknowledge an already-resolved request
+
+  /assist/{id}/resolve:
+    patch:
+      summary: Resolve an assistance request (staff only)
+      tags: [Assistance]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Request resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistanceRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  # ── Payments ──────────────────────────────────────────────────────────────
+  /sessions/{id}/payments:
+    post:
+      summary: Initiate a payment
+      tags: [Payments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, method]
+              properties:
+                order_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Omit for session-level payments
+                amount:
+                  type: number
+                  minimum: 0.01
+                method:
+                  type: string
+                  enum: [cash, card, digital]
+      responses:
+        "201":
+          description: Payment initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /webhooks/payments/{provider}:
+    post:
+      summary: Receive payment provider webhook (idempotent)
+      tags: [Payments]
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            example: stripe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+                  description: Provider-side event ID (idempotency key)
+                event:
+                  type: string
+                  description: Event type e.g. payment.captured
+      responses:
+        "200":
+          description: Webhook received (including idempotent replay)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  # ── Menu ──────────────────────────────────────────────────────────────────
+  /branches/{id}/menu:
+    get:
+      summary: Get full menu for a branch
+      tags: [Menu]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Full menu with categories and items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuCategory"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /tables/by-qr/{token}:
+    get:
+      summary: Resolve a QR code token to table metadata
+      tags: [Menu]
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Table found
+        "404":
+          description: Token invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: SESSION_NOT_FOUND
+                message: table not found
+
+  # ── Menu Management (staff) ───────────────────────────────────────────────
+  /branches/{id}/menu/categories:
+    post:
+      summary: Create a menu category (owner/manager only)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                position:
+                  type: integer
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuCategory"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/menu/items:
+    post:
+      summary: Create a menu item (owner/manager only)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category_id, name, price]
+              properties:
+                category_id:
+                  type: integer
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                description:
+                  type: string
+                price:
+                  type: number
+                  minimum: 0
+                is_available:
+                  type: boolean
+                  default: true
+                position:
+                  type: integer
+      responses:
+        "201":
+          description: Item created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /menu/items/{id}:
+    patch:
+      summary: Update a menu item (owner/manager only)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, price, branch_id]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                price:
+                  type: number
+                position:
+                  type: integer
+                branch_id:
+                  type: integer
+      responses:
+        "200":
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /menu/items/{id}/availability:
+    patch:
+      summary: Toggle menu item availability (owner/manager only)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [available, branch_id]
+              properties:
+                available:
+                  type: boolean
+                branch_id:
+                  type: integer
+      responses:
+        "204":
+          description: Availability updated
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Staff Auth ────────────────────────────────────────────────────────────
+  /staff/auth:
+    post:
+      summary: Authenticate staff with branch ID and PIN (10 RPM limit)
+      tags: [Staff]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [branch_id, pin]
+              properties:
+                branch_id:
+                  type: integer
+                pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 6
+            example:
+              branch_id: 1
+              pin: "1234"
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffSession"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: UNAUTHORIZED
+                message: invalid credentials
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  # ── Staff Management ──────────────────────────────────────────────────────
+  /branches/{id}/staff:
+    post:
+      summary: Create a new staff member (owner only)
+      tags: [Staff]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, role, pin]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                role:
+                  type: string
+                  enum: [owner, manager, kitchen, waiter]
+                pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 8
+      responses:
+        "201":
+          description: Staff created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Staff"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /staff/{id}/pin:
+    patch:
+      summary: Rotate staff PIN (staff can rotate own; owner can rotate any)
+      tags: [Staff]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_pin, new_pin]
+              properties:
+                current_pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 8
+                new_pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 8
+      responses:
+        "204":
+          description: PIN rotated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: Current PIN incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: UNAUTHORIZED
+                message: current PIN is incorrect
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /staff/{id}/deactivate:
+    patch:
+      summary: Deactivate a staff member and invalidate all tokens (owner only)
+      tags: [Staff]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Staff deactivated
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ── Staff Dashboard ───────────────────────────────────────────────────────
+  /branches/{id}/orders/active:
+    get:
+      summary: List active orders for a branch (staff only)
+      tags: [Staff Dashboard]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Active orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/sessions/active:
+    get:
+      summary: List active sessions for a branch (staff only)
+      tags: [Staff Dashboard]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Active sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+
+  /branches/{id}/assist/active:
+    get:
+      summary: List active assistance requests for a branch (staff only)
+      tags: [Staff Dashboard]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Active assistance requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AssistanceRequest"
+
+  # ── Event Log ─────────────────────────────────────────────────────────────
+  /sessions/{id}/events:
+    get:
+      summary: Session event timeline (chronological, max 200)
+      tags: [Event Log]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Event timeline
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 200
+                items:
+                  $ref: "#/components/schemas/EventLogEntry"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /branches/{id}/events/recent:
+    get:
+      summary: 100 most recent branch events, newest first (staff only)
+      tags: [Event Log]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Recent events
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 100
+                items:
+                  $ref: "#/components/schemas/EventLogEntry"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ── WebSocket ─────────────────────────────────────────────────────────────
+  /ws:
+    get:
+      summary: Upgrade to WebSocket connection
+      description: |
+        Establishes a WebSocket connection for realtime session events.
+        The response includes an `X-Reconnect-Endpoint` header pointing to
+        the snapshot URL for use on reconnect.
+
+        **Query parameters** (required):
+        - `session_id` (UUID): The session to subscribe to
+        - `participant_id` (int64): The authenticated participant
+
+        **On reconnect:** call `GET /sessions/{id}/snapshot` to reconcile state,
+        then reconnect here to resume realtime updates.
+      tags: [WebSocket]
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: participant_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "101":
+          description: WebSocket upgrade successful
+          headers:
+            X-Reconnect-Endpoint:
+              schema:
+                type: string
+              description: URL of the snapshot endpoint for reconnect reconciliation
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+tags:
+  - name: Infrastructure
+    description: Health, readiness, and metrics
+  - name: Sessions
+    description: Session lifecycle — create, join, close
+  - name: Cart
+    description: Per-participant cart management
+  - name: Orders
+    description: Order placement and status management
+  - name: Assistance
+    description: Waiter assistance requests
+  - name: Payments
+    description: Payment initiation and webhook processing
+  - name: Menu
+    description: Menu read (public) and table QR resolution
+  - name: Menu Management
+    description: Menu write operations — owner/manager only
+  - name: Staff
+    description: Staff authentication and management
+  - name: Staff Dashboard
+    description: Branch-scoped operational views
+  - name: Event Log
+    description: Audit trail — session timeline and branch recent events
+  - name: WebSocket
+    description: Realtime event streaming
