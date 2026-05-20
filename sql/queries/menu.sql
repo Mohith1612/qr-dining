@@ -1,6 +1,12 @@
 -- name: GetMenuItemByID :one
 SELECT * FROM menu_items WHERE id = $1;
 
+-- name: GetMenuItemsByIDs :many
+SELECT * FROM menu_items WHERE id = ANY($1::bigint[]);
+
+-- name: ListModifiersForItems :many
+SELECT * FROM item_modifiers WHERE item_id = ANY($1::bigint[]) ORDER BY item_id, id ASC;
+
 -- name: ListMenuCategoriesForBranch :many
 SELECT * FROM menu_categories
 WHERE branch_id = $1 AND is_active = TRUE

@@ -29,6 +29,14 @@ func (r *Repos) ListModifiersForItem(ctx context.Context, itemID int64) ([]sqlc.
 	return r.q.ListModifiersForItem(ctx, itemID)
 }
 
+func (r *Repos) GetMenuItemsByIDs(ctx context.Context, ids []int64) ([]sqlc.MenuItem, error) {
+	return r.q.GetMenuItemsByIDs(ctx, ids)
+}
+
+func (r *Repos) ListModifiersForItems(ctx context.Context, itemIDs []int64) ([]sqlc.ItemModifier, error) {
+	return r.q.ListModifiersForItems(ctx, itemIDs)
+}
+
 func (r *Repos) InsertMenuCategory(ctx context.Context, branchID int64, name string, position int16) (sqlc.MenuCategory, error) {
 	return r.q.InsertMenuCategory(ctx, sqlc.InsertMenuCategoryParams{
 		BranchID: branchID,

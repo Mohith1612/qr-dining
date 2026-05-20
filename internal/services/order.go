@@ -70,6 +70,34 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 		return PlaceOrderResult{}, domain.ErrSessionClosed
 	}
 
+	// Batch-fetch all menu items and modifiers in two queries instead of 2N.
+	uniqueItemIDs := make([]int64, 0, len(req.Items))
+	seen := make(map[int64]struct{}, len(req.Items))
+	for _, item := range req.Items {
+		if _, ok := seen[item.MenuItemID]; !ok {
+			seen[item.MenuItemID] = struct{}{}
+			uniqueItemIDs = append(uniqueItemIDs, item.MenuItemID)
+		}
+	}
+
+	menuItems, err := s.repos.GetMenuItemsByIDs(ctx, uniqueItemIDs)
+	if err != nil {
+		return PlaceOrderResult{}, fmt.Errorf("fetch menu items: %w", err)
+	}
+	menuItemByID := make(map[int64]sqlc.MenuItem, len(menuItems))
+	for _, mi := range menuItems {
+		menuItemByID[mi.ID] = mi
+	}
+
+	allModifiers, err := s.repos.ListModifiersForItems(ctx, uniqueItemIDs)
+	if err != nil {
+		return PlaceOrderResult{}, fmt.Errorf("fetch modifiers: %w", err)
+	}
+	modifiersByItemID := make(map[int64][]sqlc.ItemModifier, len(uniqueItemIDs))
+	for _, m := range allModifiers {
+		modifiersByItemID[m.ItemID] = append(modifiersByItemID[m.ItemID], m)
+	}
+
 	// Resolve menu items and compute total.
 	type resolvedItem struct {
 		MenuItem  sqlc.MenuItem
@@ -83,9 +111,9 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	var totalFloat float64
 
 	for _, item := range req.Items {
-		mi, err := s.repos.GetMenuItemByID(ctx, item.MenuItemID)
-		if err != nil {
-			return PlaceOrderResult{}, err
+		mi, ok := menuItemByID[item.MenuItemID]
+		if !ok {
+			return PlaceOrderResult{}, domain.ErrMenuItemNotFound
 		}
 		if !mi.IsAvailable {
 			return PlaceOrderResult{}, domain.ErrMenuItemUnavailable
@@ -94,10 +122,7 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 		price, _ := mi.Price.Float64Value()
 		itemTotal := price.Float64 * float64(item.Quantity)
 
-		mods, err := snapshotModifiersForOrder(ctx, s.repos, item.MenuItemID, item.ModifierIDs)
-		if err != nil {
-			return PlaceOrderResult{}, err
-		}
+		mods := snapshotModifiersFromPreloaded(modifiersByItemID[item.MenuItemID], item.ModifierIDs)
 		for _, m := range mods {
 			itemTotal += m.PriceDelta * float64(item.Quantity)
 		}
@@ -208,13 +233,9 @@ func (s *OrderService) publishOrderStatusEvent(ctx context.Context, sessionID uu
 	}
 }
 
-func snapshotModifiersForOrder(ctx context.Context, repos *repository.Repos, itemID int64, modifierIDs []int64) ([]ModifierSnapshot, error) {
+func snapshotModifiersFromPreloaded(all []sqlc.ItemModifier, modifierIDs []int64) []ModifierSnapshot {
 	if len(modifierIDs) == 0 {
-		return []ModifierSnapshot{}, nil
-	}
-	all, err := repos.ListModifiersForItem(ctx, itemID)
-	if err != nil {
-		return nil, err
+		return []ModifierSnapshot{}
 	}
 	byID := make(map[int64]sqlc.ItemModifier, len(all))
 	for _, m := range all {
@@ -229,5 +250,5 @@ func snapshotModifiersForOrder(ctx context.Context, repos *repository.Repos, ite
 		delta, _ := m.PriceDelta.Float64Value()
 		snapshots = append(snapshots, ModifierSnapshot{ID: m.ID, Name: m.Name, PriceDelta: delta.Float64})
 	}
-	return snapshots, nil
+	return snapshots
 }

@@ -31,6 +31,39 @@ func (q *Queries) GetMenuItemByID(ctx context.Context, id int64) (MenuItem, erro
 	return i, err
 }
 
+const getMenuItemsByIDs = `-- name: GetMenuItemsByIDs :many
+SELECT id, category_id, branch_id, name, description, price, is_available, position FROM menu_items WHERE id = ANY($1::bigint[])
+`
+
+func (q *Queries) GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]MenuItem, error) {
+	rows, err := q.db.Query(ctx, getMenuItemsByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MenuItem{}
+	for rows.Next() {
+		var i MenuItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.CategoryID,
+			&i.BranchID,
+			&i.Name,
+			&i.Description,
+			&i.Price,
+			&i.IsAvailable,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTableByID = `-- name: GetTableByID :one
 SELECT id, branch_id, identifier, capacity, qr_code_token, status, created_at FROM tables WHERE id = $1
 `
@@ -207,6 +240,36 @@ SELECT id, item_id, name, price_delta, is_required FROM item_modifiers WHERE ite
 
 func (q *Queries) ListModifiersForItem(ctx context.Context, itemID int64) ([]ItemModifier, error) {
 	rows, err := q.db.Query(ctx, listModifiersForItem, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ItemModifier{}
+	for rows.Next() {
+		var i ItemModifier
+		if err := rows.Scan(
+			&i.ID,
+			&i.ItemID,
+			&i.Name,
+			&i.PriceDelta,
+			&i.IsRequired,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listModifiersForItems = `-- name: ListModifiersForItems :many
+SELECT id, item_id, name, price_delta, is_required FROM item_modifiers WHERE item_id = ANY($1::bigint[]) ORDER BY item_id, id ASC
+`
+
+func (q *Queries) ListModifiersForItems(ctx context.Context, dollar_1 []int64) ([]ItemModifier, error) {
+	rows, err := q.db.Query(ctx, listModifiersForItems, dollar_1)
 	if err != nil {
 		return nil, err
 	}
