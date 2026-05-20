@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"encoding/json"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +29,14 @@ type Client struct {
 	send          chan []byte
 	hub           *Hub
 	logger        zerolog.Logger
+	closeOnce     sync.Once
+}
+
+// closeSend closes the send channel exactly once. The hub may close it from
+// three separate code paths (removeFromRoom, broadcastToRoom eviction,
+// drainAll); sync.Once prevents the double-close panic.
+func (c *Client) closeSend() {
+	c.closeOnce.Do(func() { close(c.send) })
 }
 
 func newClient(sessionID uuid.UUID, participantID int64, conn *websocket.Conn, hub *Hub, logger zerolog.Logger) *Client {

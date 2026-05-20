@@ -131,7 +131,7 @@ func (h *Hub) removeFromRoom(c *Client) {
 			delete(h.rooms, sid)
 		}
 	}
-	close(c.send)
+	c.closeSend()
 	h.metrics.WSConnectionsActive.Dec()
 }
 
@@ -156,7 +156,7 @@ func (h *Hub) broadcastToRoom(msg redisPkg.Message) {
 		default:
 			// Slow consumer: evict immediately so one stalled client cannot block the room.
 			delete(room, client.id)
-			close(client.send)
+			client.closeSend()
 			h.metrics.WSConnectionsActive.Dec()
 			h.metrics.WSClientEvictions.Inc()
 			h.logger.Warn().Str("client_id", client.id).Str("session_id", sid).Msg("evicted slow WebSocket client")
@@ -167,7 +167,7 @@ func (h *Hub) broadcastToRoom(msg redisPkg.Message) {
 func (h *Hub) drainAll() {
 	for sid, room := range h.rooms {
 		for _, client := range room {
-			close(client.send)
+			client.closeSend()
 		}
 		delete(h.rooms, sid)
 	}
