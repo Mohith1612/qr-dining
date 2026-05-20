@@ -275,6 +275,141 @@ func main() {
 		}
 	}
 
+	// ── Active Sessions, Orders, Assistance ──────────────────────────────────
+	// Retrieve table IDs for tables 1 and 2 to open sessions on them.
+	var tableIDs [2]int64
+	for i := 0; i < 2; i++ {
+		err = pool.QueryRow(ctx,
+			`SELECT id FROM tables WHERE branch_id = $1 AND identifier = $2`,
+			branchID, fmt.Sprintf("T%d", i+1),
+		).Scan(&tableIDs[i])
+		if err != nil {
+			fatal(fmt.Sprintf("get table T%d", i+1), err)
+		}
+	}
+
+	// Retrieve the first two menu_item IDs to seed orders.
+	var seedItemIDs [2]int64
+	rows, err := pool.Query(ctx,
+		`SELECT id FROM menu_items WHERE branch_id = $1 ORDER BY id LIMIT 2`, branchID,
+	)
+	if err != nil {
+		fatal("list menu items for seed orders", err)
+	}
+	i := 0
+	for rows.Next() && i < 2 {
+		_ = rows.Scan(&seedItemIDs[i])
+		i++
+	}
+	rows.Close()
+
+	displayNames := []string{"Riya's Table", "Dev's Table"}
+
+	for idx := 0; idx < 2; idx++ {
+		tableID := tableIDs[idx]
+
+		// Skip if table already has an active session.
+		var existingSessionID string
+		checkErr := pool.QueryRow(ctx,
+			`SELECT id FROM sessions WHERE table_id = $1 AND status = 'active' LIMIT 1`, tableID,
+		).Scan(&existingSessionID)
+		if checkErr == nil {
+			fmt.Printf("table T%d already has active session %s — skipping\n", idx+1, existingSessionID)
+			continue
+		}
+
+		sess, err := q.CreateSession(ctx, sqlc.CreateSessionParams{
+			BranchID:     branchID,
+			TableID:      tableID,
+			SessionToken: mustToken(),
+		})
+		if err != nil {
+			fatal(fmt.Sprintf("create session %d", idx+1), err)
+		}
+
+		// Mark table occupied.
+		_, err = pool.Exec(ctx,
+			`UPDATE tables SET status = 'occupied' WHERE id = $1`, tableID,
+		)
+		if err != nil {
+			fatal("mark table occupied", err)
+		}
+
+		// Create host participant.
+		participant, err := q.CreateParticipant(ctx, sqlc.CreateParticipantParams{
+			SessionID:   sess.ID,
+			DisplayName: displayNames[idx],
+			IsHost:      true,
+		})
+		if err != nil {
+			fatal(fmt.Sprintf("create participant %d", idx+1), err)
+		}
+
+		// Set host_participant_id (DEFERRABLE FK).
+		_, err = pool.Exec(ctx,
+			`UPDATE sessions SET host_participant_id = $1 WHERE id = $2`,
+			participant.ID, sess.ID,
+		)
+		if err != nil {
+			fatal("set session host", err)
+		}
+
+		fmt.Printf("session id=%s table=T%d participant=%q\n", sess.ID, idx+1, displayNames[idx])
+
+		// Seed one confirmed order.
+		if seedItemIDs[0] != 0 {
+			var itemPrice pgtype.Numeric
+			_ = pool.QueryRow(ctx,
+				`SELECT price FROM menu_items WHERE id = $1`, seedItemIDs[0],
+			).Scan(&itemPrice)
+
+			var total pgtype.Numeric
+			_ = total.Scan("220.00") // fixed total for seed simplicity
+
+			ikey := fmt.Sprintf("seed-order-%s", sess.ID)
+			order, err := q.CreateOrder(ctx, sqlc.CreateOrderParams{
+				SessionID:             sess.ID,
+				BranchID:              branchID,
+				PlacedByParticipantID: pgtype.Int8{Int64: participant.ID, Valid: true},
+				IdempotencyKey:        ikey,
+				TotalAmount:           total,
+			})
+			if err != nil {
+				fmt.Printf("create order for session %s: %v\n", sess.ID, err)
+			} else {
+				// Update order to confirmed status.
+				_, err = pool.Exec(ctx,
+					`UPDATE orders SET status = 'confirmed' WHERE id = $1`, order.ID,
+				)
+				if err != nil {
+					fmt.Printf("confirm order %s: %v\n", order.ID, err)
+				}
+				// Create one order item.
+				_, _ = q.CreateOrderItem(ctx, sqlc.CreateOrderItemParams{
+					OrderID:               order.ID,
+					MenuItemID:            seedItemIDs[0],
+					Quantity:              2,
+					UnitPrice:             itemPrice,
+					SelectedModifiersJson: []byte("[]"),
+				})
+				fmt.Printf("  order id=%s status=confirmed\n", order.ID)
+			}
+		}
+
+		// Seed one pending assistance request.
+		ar, err := q.CreateAssistanceRequest(ctx, sqlc.CreateAssistanceRequestParams{
+			SessionID:     sess.ID,
+			TableID:       tableID,
+			ParticipantID: pgtype.Int8{Int64: participant.ID, Valid: true},
+			Type:          sqlc.AssistanceTypeWaiter,
+		})
+		if err != nil {
+			fmt.Printf("create assistance for session %s: %v\n", sess.ID, err)
+		} else {
+			fmt.Printf("  assistance id=%d type=waiter status=pending\n", ar.ID)
+		}
+	}
+
 	fmt.Println("\n── Seed complete ──")
 	fmt.Printf("Branch ID:    %d\n", branchID)
 	fmt.Println("Table QR tokens:")
