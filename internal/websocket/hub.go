@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/observability"
 	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
@@ -11,13 +12,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 )
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	// CheckOrigin is set by NewHub to validate against configured allowed origins.
-	CheckOrigin: func(r *http.Request) bool { return false },
-}
 
 // Hub is the central WebSocket connection registry.
 // A single goroutine (Run) owns all mutations to the rooms map — no mutex needed.
@@ -31,21 +25,13 @@ type Hub struct {
 	pubsub     *redisPkg.PubSub
 	metrics    *observability.Metrics
 	logger     zerolog.Logger
+	upgrader   websocket.Upgrader // per-Hub so CheckOrigin captures the origin set by value
 }
 
 func NewHub(pubsub *redisPkg.PubSub, metrics *observability.Metrics, logger zerolog.Logger, allowedOrigins []string) *Hub {
 	originSet := make(map[string]struct{}, len(allowedOrigins))
 	for _, o := range allowedOrigins {
 		originSet[o] = struct{}{}
-	}
-
-	upgrader.CheckOrigin = func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if len(allowedOrigins) == 0 {
-			return true // dev mode: allow all
-		}
-		_, ok := originSet[origin]
-		return ok
 	}
 
 	h := &Hub{
@@ -56,6 +42,18 @@ func NewHub(pubsub *redisPkg.PubSub, metrics *observability.Metrics, logger zero
 		pubsub:     pubsub,
 		metrics:    metrics,
 		logger:     logger,
+		upgrader: websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				origin := r.Header.Get("Origin")
+				if len(allowedOrigins) == 0 {
+					return true // dev mode: allow all
+				}
+				_, ok := originSet[origin]
+				return ok
+			},
+		},
 	}
 
 	if len(allowedOrigins) == 0 {
@@ -68,11 +66,7 @@ func NewHub(pubsub *redisPkg.PubSub, metrics *observability.Metrics, logger zero
 // Run processes all registry and broadcast events sequentially.
 // Must be started in a goroutine before the HTTP server accepts traffic.
 func (h *Hub) Run(ctx context.Context) {
-	go func() {
-		if err := h.pubsub.Subscribe(ctx, h.broadcast); err != nil {
-			h.logger.Error().Err(err).Msg("pubsub subscriber exited")
-		}
-	}()
+	go h.runSubscriber(ctx)
 
 	for {
 		select {
@@ -96,7 +90,7 @@ func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request, sessionID uuid.UUI
 	// Advertise the reconciliation endpoint before upgrading — clients use this on reconnect.
 	w.Header().Set("X-Reconnect-Endpoint", "/sessions/"+sessionID.String()+"/snapshot")
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return err
 	}
@@ -170,5 +164,31 @@ func (h *Hub) drainAll() {
 			client.closeSend()
 		}
 		delete(h.rooms, sid)
+	}
+}
+
+// runSubscriber keeps the Redis PubSub subscription alive with exponential backoff.
+// It restarts automatically when the channel closes unexpectedly (Redis restart, network blip).
+// Returns only when ctx is cancelled.
+func (h *Hub) runSubscriber(ctx context.Context) {
+	const maxBackoff = 30 * time.Second
+	backoff := time.Second
+	for {
+		if err := h.pubsub.Subscribe(ctx, h.broadcast); err != nil {
+			h.logger.Error().Err(err).Msg("pubsub subscriber exited with error")
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		h.metrics.RedisReconnectsTotal.Inc()
+		h.logger.Warn().Dur("backoff", backoff).Msg("pubsub subscriber exited unexpectedly; reconnecting")
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		if backoff < maxBackoff {
+			backoff *= 2
+		}
 	}
 }
