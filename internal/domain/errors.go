@@ -30,6 +30,7 @@ var (
 	ErrCartItemNotFound    = errors.New("cart item not found")
 	ErrMenuItemUnavailable = errors.New("menu item is not available")
 	ErrMenuItemNotFound    = errors.New("menu item not found")
+	ErrModifierNotFound    = errors.New("modifier not found for menu item")
 )
 
 // Assistance

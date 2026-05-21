@@ -53,6 +53,8 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 			respondError(c, http.StatusNotFound, CodeSessionNotFound, err.Error())
 		case errors.Is(err, domain.ErrMenuItemNotFound):
 			respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
+		case errors.Is(err, domain.ErrModifierNotFound):
+			respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
 		case errors.Is(err, domain.ErrSessionClosed):
 			respondError(c, http.StatusConflict, CodeSessionClosed, err.Error())
 		case errors.Is(err, domain.ErrMenuItemUnavailable):

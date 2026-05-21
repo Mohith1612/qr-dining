@@ -54,7 +54,10 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	existing, err := s.repos.GetOrderByIdempotencyKey(ctx, req.IdempotencyKey)
 	if err == nil {
 		s.metrics.IdempotencyReplaysTotal.WithLabelValues("order").Inc()
-		items, _ := s.repos.ListOrderItems(ctx, existing.ID)
+		items, err := s.repos.ListOrderItems(ctx, existing.ID)
+		if err != nil {
+			return PlaceOrderResult{}, fmt.Errorf("fetch order items on replay: %w", err)
+		}
 		return PlaceOrderResult{Order: existing, OrderItems: items}, nil
 	}
 	if !errors.Is(err, domain.ErrOrderNotFound) {
@@ -119,10 +122,16 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 			return PlaceOrderResult{}, domain.ErrMenuItemUnavailable
 		}
 
-		price, _ := mi.Price.Float64Value()
-		itemTotal := price.Float64 * float64(item.Quantity)
+		priceF, err := mi.Price.Float64Value()
+		if err != nil {
+			return PlaceOrderResult{}, fmt.Errorf("convert price for item %d: %w", mi.ID, err)
+		}
+		itemTotal := priceF.Float64 * float64(item.Quantity)
 
-		mods := snapshotModifiersFromPreloaded(modifiersByItemID[item.MenuItemID], item.ModifierIDs)
+		mods, err := snapshotModifiersFromPreloaded(modifiersByItemID[item.MenuItemID], item.ModifierIDs)
+		if err != nil {
+			return PlaceOrderResult{}, err
+		}
 		for _, m := range mods {
 			itemTotal += m.PriceDelta * float64(item.Quantity)
 		}
@@ -233,9 +242,9 @@ func (s *OrderService) publishOrderStatusEvent(ctx context.Context, sessionID uu
 	}
 }
 
-func snapshotModifiersFromPreloaded(all []sqlc.ItemModifier, modifierIDs []int64) []ModifierSnapshot {
+func snapshotModifiersFromPreloaded(all []sqlc.ItemModifier, modifierIDs []int64) ([]ModifierSnapshot, error) {
 	if len(modifierIDs) == 0 {
-		return []ModifierSnapshot{}
+		return []ModifierSnapshot{}, nil
 	}
 	byID := make(map[int64]sqlc.ItemModifier, len(all))
 	for _, m := range all {
@@ -245,10 +254,10 @@ func snapshotModifiersFromPreloaded(all []sqlc.ItemModifier, modifierIDs []int64
 	for _, id := range modifierIDs {
 		m, ok := byID[id]
 		if !ok {
-			continue
+			return nil, fmt.Errorf("%w: id %d", domain.ErrModifierNotFound, id)
 		}
 		delta, _ := m.PriceDelta.Float64Value()
 		snapshots = append(snapshots, ModifierSnapshot{ID: m.ID, Name: m.Name, PriceDelta: delta.Float64})
 	}
-	return snapshots
+	return snapshots, nil
 }
