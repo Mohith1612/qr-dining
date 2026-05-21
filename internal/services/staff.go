@@ -11,6 +11,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -27,12 +28,13 @@ const (
 )
 
 type StaffService struct {
-	repos *repository.Repos
-	cache *redisPkg.Cache
+	repos  *repository.Repos
+	cache  *redisPkg.Cache
+	logger zerolog.Logger
 }
 
-func NewStaffService(repos *repository.Repos, cache *redisPkg.Cache) *StaffService {
-	return &StaffService{repos: repos, cache: cache}
+func NewStaffService(repos *repository.Repos, cache *redisPkg.Cache, logger zerolog.Logger) *StaffService {
+	return &StaffService{repos: repos, cache: cache, logger: logger}
 }
 
 type StaffSession struct {
@@ -128,11 +130,16 @@ func (s *StaffService) Deactivate(ctx context.Context, staffID int64) error {
 		return err
 	}
 	// Invalidate all active tokens for this staff member.
+	// Redis is ephemeral so failures are non-fatal, but must be observable.
 	setKey := staffTokenSetKey(staffID)
 	tokenKeys, err := s.cache.SMembers(ctx, setKey)
-	if err == nil && len(tokenKeys) > 0 {
+	if err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to fetch token set for deactivated staff; tokens may persist until TTL")
+	} else if len(tokenKeys) > 0 {
 		keysToDelete := append(tokenKeys, setKey)
-		_ = s.cache.DeleteMany(ctx, keysToDelete...)
+		if err := s.cache.DeleteMany(ctx, keysToDelete...); err != nil {
+			s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to batch-delete tokens for deactivated staff; tokens may persist until TTL")
+		}
 	}
 	return nil
 }

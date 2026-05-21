@@ -66,7 +66,7 @@ func New(
 	orderSvc := services.NewOrderService(repos, publisher, metrics)
 	assistanceSvc := services.NewAssistanceService(repos, publisher)
 	menuSvc := services.NewMenuService(repos, cache)
-	staffSvc := services.NewStaffService(repos, cache)
+	staffSvc := services.NewStaffService(repos, cache, logger)
 	paymentSvc := services.NewPaymentService(repos, publisher, metrics)
 
 	// ── Handlers ─────────────────────────────────────────────────────────────
