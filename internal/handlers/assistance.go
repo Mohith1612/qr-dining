@@ -63,7 +63,11 @@ func (h *AssistanceHandler) Acknowledge(c *gin.Context) {
 		return
 	}
 
-	staffSession, _ := middleware.GetStaffSession(c)
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
 	ar, err := h.svc.Acknowledge(c.Request.Context(), id, staffSession.StaffID)
 	if err != nil {
 		assistanceError(c, err)
@@ -79,7 +83,11 @@ func (h *AssistanceHandler) Resolve(c *gin.Context) {
 		return
 	}
 
-	staffSession, _ := middleware.GetStaffSession(c)
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
 	ar, err := h.svc.Resolve(c.Request.Context(), id, staffSession.StaffID)
 	if err != nil {
 		assistanceError(c, err)
@@ -96,7 +104,11 @@ func (h *AssistanceHandler) ListActiveForBranch(c *gin.Context) {
 	}
 
 	staffSession, ok := middleware.GetStaffSession(c)
-	if ok && staffSession.BranchID != branchID {
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	if staffSession.BranchID != branchID {
 		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}

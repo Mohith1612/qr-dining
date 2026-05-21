@@ -101,7 +101,11 @@ func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 	}
 
 	newStatus := domain.OrderStatus(req.Status)
-	staffSession, _ := middleware.GetStaffSession(c)
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
 	order, err := h.svc.UpdateOrderStatus(c.Request.Context(), orderID, newStatus, staffSession.StaffID)
 	if err != nil {
 		switch {
@@ -125,7 +129,11 @@ func (h *OrderHandler) ListActiveForBranch(c *gin.Context) {
 	}
 
 	staffSession, ok := middleware.GetStaffSession(c)
-	if ok && staffSession.BranchID != branchID {
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	if staffSession.BranchID != branchID {
 		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}

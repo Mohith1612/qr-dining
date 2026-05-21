@@ -22,7 +22,7 @@ func NewStaffHandler(svc *services.StaffService) *StaffHandler {
 
 type staffAuthRequest struct {
 	BranchID int64  `json:"branch_id" binding:"required"`
-	PIN      string `json:"pin" binding:"required,min=4,max=6"`
+	PIN      string `json:"pin" binding:"required,min=4,max=8"`
 }
 
 func (h *StaffHandler) Authenticate(c *gin.Context) {

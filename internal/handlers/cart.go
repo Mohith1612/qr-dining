@@ -105,7 +105,7 @@ func (h *CartHandler) RemoveItem(c *gin.Context) {
 
 	if err := h.svc.RemoveItem(c.Request.Context(), sessionID, participantID, itemID); err != nil {
 		if errors.Is(err, domain.ErrCartItemNotFound) {
-			respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
+			respondError(c, http.StatusNotFound, CodeCartItemNotFound, err.Error())
 			return
 		}
 		respondInternalError(c)

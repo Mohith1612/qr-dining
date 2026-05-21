@@ -24,6 +24,7 @@ const (
 	CodeParticipantNotFound      = "PARTICIPANT_NOT_FOUND"
 	CodeMenuItemNotFound         = "MENU_ITEM_NOT_FOUND"
 	CodeMenuItemUnavailable      = "MENU_ITEM_UNAVAILABLE"
+	CodeCartItemNotFound         = "CART_ITEM_NOT_FOUND"
 	CodeOrderNotFound            = "ORDER_NOT_FOUND"
 	CodeInvalidOrderTransition   = "INVALID_ORDER_TRANSITION"
 	CodeAssistanceNotFound       = "ASSISTANCE_NOT_FOUND"
