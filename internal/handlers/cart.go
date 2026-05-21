@@ -76,6 +76,8 @@ func (h *CartHandler) AddItem(c *gin.Context) {
 		switch {
 		case errors.Is(err, domain.ErrMenuItemNotFound):
 			respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
+		case errors.Is(err, domain.ErrModifierNotFound):
+			respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
 		case errors.Is(err, domain.ErrMenuItemUnavailable):
 			respondError(c, http.StatusUnprocessableEntity, CodeMenuItemUnavailable, err.Error())
 		default:

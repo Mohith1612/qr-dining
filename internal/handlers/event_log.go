@@ -45,7 +45,11 @@ func (h *EventLogHandler) GetBranchRecentEvents(c *gin.Context) {
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
-	if ok && sess.BranchID != branchID {
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	if sess.BranchID != branchID {
 		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}

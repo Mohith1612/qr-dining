@@ -146,9 +146,12 @@ func (s *CartService) snapshotModifiers(ctx context.Context, itemID int64, modif
 	for _, id := range modifierIDs {
 		m, ok := idSet[id]
 		if !ok {
-			continue
+			return nil, fmt.Errorf("%w: id %d", domain.ErrModifierNotFound, id)
 		}
-		delta, _ := m.PriceDelta.Float64Value()
+		delta, err := m.PriceDelta.Float64Value()
+		if err != nil {
+			return nil, fmt.Errorf("convert modifier price for id %d: %w", id, err)
+		}
 		snapshots = append(snapshots, ModifierSnapshot{
 			ID:         m.ID,
 			Name:       m.Name,

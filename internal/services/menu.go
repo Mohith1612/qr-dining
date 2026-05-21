@@ -202,7 +202,10 @@ func (s *MenuService) buildMenu(ctx context.Context, branchID int64) (FullMenu, 
 
 			snapMods := make([]MenuModifier, 0, len(mods))
 			for _, m := range mods {
-				delta, _ := m.PriceDelta.Float64Value()
+				delta, err := m.PriceDelta.Float64Value()
+				if err != nil {
+					return FullMenu{}, fmt.Errorf("convert modifier price for id %d: %w", m.ID, err)
+				}
 				snapMods = append(snapMods, MenuModifier{
 					ID:         m.ID,
 					Name:       m.Name,

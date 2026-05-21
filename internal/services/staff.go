@@ -76,7 +76,9 @@ func (s *StaffService) Authenticate(ctx context.Context, branchID int64, pin str
 		return StaffSession{}, fmt.Errorf("store staff token: %w", err)
 	}
 	// Track this token key in a per-staff Set for O(1) batch invalidation on deactivation.
-	_ = s.cache.SAdd(ctx, staffTokenSetKey(matched.ID), tokenKey, staffTokenTTL+time.Minute)
+	if err := s.cache.SAdd(ctx, staffTokenSetKey(matched.ID), tokenKey, staffTokenTTL+time.Minute); err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", matched.ID).Msg("failed to track staff token in set; deactivation will not invalidate this token")
+	}
 	return session, nil
 }
 

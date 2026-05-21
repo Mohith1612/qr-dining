@@ -256,7 +256,10 @@ func snapshotModifiersFromPreloaded(all []sqlc.ItemModifier, modifierIDs []int64
 		if !ok {
 			return nil, fmt.Errorf("%w: id %d", domain.ErrModifierNotFound, id)
 		}
-		delta, _ := m.PriceDelta.Float64Value()
+		delta, err := m.PriceDelta.Float64Value()
+		if err != nil {
+			return nil, fmt.Errorf("convert modifier price for id %d: %w", id, err)
+		}
 		snapshots = append(snapshots, ModifierSnapshot{ID: m.ID, Name: m.Name, PriceDelta: delta.Float64})
 	}
 	return snapshots, nil
