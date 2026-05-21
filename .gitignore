@@ -6,7 +6,6 @@ bin/
 # Environment files — never commit secrets
 .env
 .env.local
-.env.production
 
 # Go tooling
 vendor/
@@ -29,5 +28,15 @@ cover.html
 
 # Docker
 docker-compose.override.yml
-/server
+
+# Backend binary
+backend/server
+
+# Frontend
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.env.local
+
+# Session handouts (internal use)
 handout.md
