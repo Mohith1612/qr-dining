@@ -1,0 +1,65 @@
+/* Four theme presets — applied via [data-theme] on <html> */
+
+[data-theme="warm-cafe"] {
+  --color-bg: oklch(0.98 0.004 75);
+  --color-surface: oklch(1 0 0);
+  --color-border: oklch(0.88 0.01 75);
+  --color-text: oklch(0.22 0.02 55);
+  --color-text-muted: oklch(0.52 0.015 55);
+  --color-accent: oklch(0.52 0.13 52);
+  --color-accent-fg: oklch(0.99 0 0);
+  --color-success: oklch(0.56 0.12 150);
+  --color-warning: oklch(0.72 0.15 75);
+  --color-error: oklch(0.55 0.22 27);
+  --radius-base: 0.625rem;
+  --radius-lg: 1rem;
+  --shadow-card: 0 1px 3px oklch(0 0 0 / 0.06), 0 1px 2px oklch(0 0 0 / 0.04);
+}
+
+[data-theme="modern-minimal"] {
+  --color-bg: oklch(1 0 0);
+  --color-surface: oklch(0.985 0 0);
+  --color-border: oklch(0.91 0 0);
+  --color-text: oklch(0.13 0 0);
+  --color-text-muted: oklch(0.48 0 0);
+  --color-accent: oklch(0.52 0.19 240);
+  --color-accent-fg: oklch(1 0 0);
+  --color-success: oklch(0.56 0.14 155);
+  --color-warning: oklch(0.72 0.16 75);
+  --color-error: oklch(0.55 0.22 27);
+  --radius-base: 0.5rem;
+  --radius-lg: 0.875rem;
+  --shadow-card: 0 1px 3px oklch(0 0 0 / 0.08), 0 1px 2px oklch(0 0 0 / 0.04);
+}
+
+[data-theme="dark-luxury"] {
+  --color-bg: oklch(0.14 0.005 250);
+  --color-surface: oklch(0.19 0.005 250);
+  --color-border: oklch(0.28 0.005 250);
+  --color-text: oklch(0.93 0.005 75);
+  --color-text-muted: oklch(0.62 0.01 75);
+  --color-accent: oklch(0.72 0.14 75);
+  --color-accent-fg: oklch(0.12 0 0);
+  --color-success: oklch(0.65 0.14 155);
+  --color-warning: oklch(0.78 0.16 75);
+  --color-error: oklch(0.65 0.22 27);
+  --radius-base: 0.5rem;
+  --radius-lg: 0.875rem;
+  --shadow-card: 0 2px 8px oklch(0 0 0 / 0.4);
+}
+
+[data-theme="vibrant"] {
+  --color-bg: oklch(1 0 0);
+  --color-surface: oklch(0.98 0.003 280);
+  --color-border: oklch(0.9 0.01 280);
+  --color-text: oklch(0.15 0.01 280);
+  --color-text-muted: oklch(0.48 0.01 280);
+  --color-accent: oklch(0.52 0.23 290);
+  --color-accent-fg: oklch(1 0 0);
+  --color-success: oklch(0.56 0.14 155);
+  --color-warning: oklch(0.68 0.18 75);
+  --color-error: oklch(0.55 0.22 27);
+  --radius-base: 0.75rem;
+  --radius-lg: 1.25rem;
+  --shadow-card: 0 1px 4px oklch(0 0 0 / 0.08), 0 1px 2px oklch(0 0 0 / 0.04);
+}
