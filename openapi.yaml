@@ -60,7 +60,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: [active, closed]
+          enum: [active, closed, abandoned]
         session_token:
           type: string
         created_at:
@@ -86,6 +86,24 @@ components:
         joined_at:
           type: string
           format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        device_fingerprint:
+          type: string
+          nullable: true
+
+    ModifierSnapshot:
+      type: object
+      description: Price-snapshotted modifier applied to a cart item or order item
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        price_delta:
+          type: number
+          description: Price adjustment (positive = surcharge, negative = discount)
 
     CartItem:
       type: object
@@ -101,10 +119,11 @@ components:
           type: integer
         quantity:
           type: integer
-        modifier_ids:
+        selected_modifiers:
           type: array
+          description: Modifier snapshots captured at add-to-cart time
           items:
-            type: integer
+            $ref: "#/components/schemas/ModifierSnapshot"
         note:
           type: string
         added_at:
@@ -129,8 +148,9 @@ components:
           description: Decimal string e.g. "12.50"
         is_available:
           type: boolean
-        display_order:
+        position:
           type: integer
+          description: Display order within the category
 
     MenuCategory:
       type: object
@@ -141,8 +161,9 @@ components:
           type: integer
         name:
           type: string
-        display_order:
+        position:
           type: integer
+          description: Display order of this category
         items:
           type: array
           items:
@@ -169,7 +190,10 @@ components:
           description: Decimal string
         idempotency_key:
           type: string
-        placed_at:
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
 
@@ -187,6 +211,11 @@ components:
           type: integer
         unit_price:
           type: string
+        selected_modifiers:
+          type: array
+          description: Modifier snapshots captured at order placement time
+          items:
+            $ref: "#/components/schemas/ModifierSnapshot"
         note:
           type: string
 
@@ -716,7 +745,14 @@ paths:
         "400":
           $ref: "#/components/responses/ValidationError"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Cart item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: CART_ITEM_NOT_FOUND
+                message: cart item not found
 
   # ── Orders ────────────────────────────────────────────────────────────────
   /sessions/{id}/orders:
@@ -895,6 +931,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AssistanceRequest"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: SESSION_NOT_FOUND
+                message: session not found
 
   /assist/{id}/ack:
     patch:
@@ -915,6 +962,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AssistanceRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -946,6 +995,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AssistanceRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -995,6 +1046,15 @@ paths:
                 $ref: "#/components/schemas/Payment"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: SESSION_NOT_FOUND
+                message: session not found
 
   /webhooks/payments/{provider}:
     post:
