@@ -89,11 +89,17 @@ func (s *CartService) AddItem(ctx context.Context, req AddItemRequest) (sqlc.Car
 		"cart_item":  item,
 		"session_id": req.SessionID,
 	})
-	s.repos.LogEvent(ctx, req.SessionID, 0, "CART_UPDATED", "participant", req.ParticipantID, map[string]any{"action": "add", "item_id": item.ID})
+	// menuItem.BranchID is already fetched above — no extra query needed.
+	s.repos.LogEvent(ctx, req.SessionID, menuItem.BranchID, "CART_UPDATED", "participant", req.ParticipantID, map[string]any{"action": "add", "item_id": item.ID})
 	return item, nil
 }
 
 func (s *CartService) RemoveItem(ctx context.Context, sessionID uuid.UUID, participantID, itemID int64) error {
+	sess, err := s.repos.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+
 	cart, err := s.repos.GetOrCreateCart(ctx, sessionID, participantID)
 	if err != nil {
 		return err
@@ -117,7 +123,7 @@ func (s *CartService) RemoveItem(ctx context.Context, sessionID uuid.UUID, parti
 		"item_id":    itemID,
 		"session_id": sessionID,
 	})
-	s.repos.LogEvent(ctx, sessionID, 0, "CART_UPDATED", "participant", participantID, map[string]any{"action": "remove", "item_id": itemID})
+	s.repos.LogEvent(ctx, sessionID, sess.BranchID, "CART_UPDATED", "participant", participantID, map[string]any{"action": "remove", "item_id": itemID})
 	return nil
 }
 
