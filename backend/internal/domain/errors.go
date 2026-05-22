@@ -64,6 +64,18 @@ var (
 	ErrForbidden    = errors.New("insufficient role for this operation")
 )
 
+// Tenant
+var (
+	ErrTenantNotFound = errors.New("tenant not found")
+	ErrTenantMismatch = errors.New("resource does not belong to the request tenant")
+)
+
+// Subscriptions / Plans
+var (
+	ErrPlanNotFound = errors.New("subscription plan not found")
+	ErrAnalyticsGated = errors.New("analytics not available on current plan")
+)
+
 // Generic
 var (
 	ErrInternalError = errors.New("internal server error")

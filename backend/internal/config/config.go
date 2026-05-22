@@ -27,6 +27,7 @@ type ServerConfig struct {
 	GinMode         string
 	TrustedProxies  []string
 	RateLimitRPM    int
+	BaseDomain      string // BASE_DOMAIN: e.g. "dining.example.com". When set, enables subdomain-based tenant extraction.
 }
 
 type DBConfig struct {
@@ -72,6 +73,7 @@ func Load() (*Config, error) {
 	cfg.Server.ShutdownTimeout = parseDuration("SHUTDOWN_TIMEOUT", 15*time.Second)
 	cfg.Server.GinMode = getenv("GIN_MODE", "release")
 	cfg.Server.TrustedProxies = splitComma("TRUSTED_PROXIES", "172.16.0.0/12")
+	cfg.Server.BaseDomain = getenv("BASE_DOMAIN", "")
 
 	rateLimitRPM, err := parseInt("RATE_LIMIT_RPM", 60)
 	if err != nil {

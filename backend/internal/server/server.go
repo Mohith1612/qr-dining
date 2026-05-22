@@ -54,6 +54,7 @@ func New(
 	r.Use(middleware.Metrics(metrics))
 	r.Use(middleware.CORS(cfg.CORS.AllowedOrigins))
 	r.Use(middleware.MaxBodySize(1 << 20)) // 1 MB request body limit
+	r.Use(middleware.TenantMiddleware(repos, cfg.Server.BaseDomain, logger))
 
 	rateLimiter := redisPkg.NewRateLimiter(redis)
 	cache := redisPkg.NewCache(redis, metrics.CacheHitsTotal, metrics.CacheMissesTotal)
@@ -82,6 +83,7 @@ func New(
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc)
 	menuAdminH := handlers.NewMenuAdminHandler(menuSvc)
 	eventLogH := handlers.NewEventLogHandler(repos)
+	tenantH := handlers.NewTenantHandler(repos)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -118,12 +120,17 @@ func New(
 	api.POST("/sessions/:id/payments", paymentH.InitiatePayment)
 	api.POST("/webhooks/payments/:provider", paymentH.Webhook)
 
-	// Menu & tables — public
-	api.GET("/branches/:id/menu", menuH.GetMenu)
+	// Menu & tables — public (branch tenant-guarded when BASE_DOMAIN is set)
+	branchPublicAPI := api.Group("/branches/:id")
+	branchPublicAPI.Use(middleware.BranchTenantGuard(repos))
+	branchPublicAPI.GET("/menu", menuH.GetMenu)
 	api.GET("/tables/by-qr/:token", menuH.GetTableByQR)
 
 	// Reconnect reconciliation — full session state snapshot for WebSocket clients.
 	api.GET("/sessions/:id/snapshot", snapshotH.GetSnapshot)
+
+	// Tenant resolution — public, used by frontend to initialize context.
+	api.GET("/tenants/by-slug/:slug", tenantH.GetBySlug)
 
 	// Staff auth — strict 10 RPM limit to prevent PIN brute force.
 	authGroup := r.Group("/")
@@ -139,25 +146,27 @@ func New(
 	staffAPI.PATCH("/assist/:id/ack", assistanceH.Acknowledge)
 	staffAPI.PATCH("/assist/:id/resolve", assistanceH.Resolve)
 
-	// Staff dashboard — branch-scoped operational views.
-	staffAPI.GET("/branches/:id/orders/active", orderH.ListActiveForBranch)
-	staffAPI.GET("/branches/:id/sessions/active", sessionH.ListActiveForBranch)
-	staffAPI.GET("/branches/:id/assist/active", assistanceH.ListActiveForBranch)
+	// Staff dashboard — branch-scoped operational views (tenant-guarded).
+	branchStaffAPI := staffAPI.Group("/branches/:id")
+	branchStaffAPI.Use(middleware.BranchTenantGuard(repos))
+	branchStaffAPI.GET("/orders/active", orderH.ListActiveForBranch)
+	branchStaffAPI.GET("/sessions/active", sessionH.ListActiveForBranch)
+	branchStaffAPI.GET("/assist/active", assistanceH.ListActiveForBranch)
+	branchStaffAPI.POST("/menu/categories", menuAdminH.CreateCategory)
+	branchStaffAPI.POST("/menu/items", menuAdminH.CreateItem)
+	branchStaffAPI.POST("/staff", staffH.CreateStaff)
+	branchStaffAPI.GET("/events/recent", eventLogH.GetBranchRecentEvents)
 
-	// Menu management — owner/manager only (role enforced in service layer).
-	staffAPI.POST("/branches/:id/menu/categories", menuAdminH.CreateCategory)
-	staffAPI.POST("/branches/:id/menu/items", menuAdminH.CreateItem)
+	// Menu item updates — item-scoped, no branch param on path.
 	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)
 	staffAPI.PATCH("/menu/items/:id/availability", menuAdminH.ToggleAvailability)
 
 	// Staff management — owner only (role enforced in handler).
-	staffAPI.POST("/branches/:id/staff", staffH.CreateStaff)
 	staffAPI.PATCH("/staff/:id/pin", staffH.RotatePIN)
 	staffAPI.PATCH("/staff/:id/deactivate", staffH.DeactivateStaff)
 
 	// event_log read APIs — operational debugging and audit.
 	staffAPI.GET("/sessions/:id/events", eventLogH.GetSessionEvents)
-	staffAPI.GET("/branches/:id/events/recent", eventLogH.GetBranchRecentEvents)
 
 	// WebSocket
 	r.GET("/ws", wsH.Upgrade)
