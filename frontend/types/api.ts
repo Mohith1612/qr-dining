@@ -41,6 +41,8 @@ export interface CartItem {
   selected_modifiers: ModifierSnapshot[]
   note: string
   added_at: string
+  item_name?: string
+  item_price?: number
 }
 
 export interface ItemModifier {

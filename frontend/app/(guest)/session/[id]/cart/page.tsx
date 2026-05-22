@@ -18,13 +18,13 @@ interface Props {
 
 function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: (id: number) => void }) {
   const modifierTotal = item.selected_modifiers?.reduce((sum, m) => sum + m.price_delta, 0) ?? 0
-  const unitPrice = parseFloat("0") + modifierTotal
+  const unitPrice = (item.item_price ?? 0) + modifierTotal
 
   return (
     <div className="flex gap-3 items-start py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
       <div className="flex-1 space-y-1">
         <p className="font-medium text-sm" style={{ color: "var(--color-text)" }}>
-          {item.quantity}× Item #{item.menu_item_id}
+          {item.quantity}× {item.item_name ?? `Item #${item.menu_item_id}`}
         </p>
         {item.selected_modifiers?.length > 0 && (
           <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
@@ -37,14 +37,21 @@ function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: (id: number
           </p>
         )}
       </div>
-      <button
-        onClick={() => onRemove(item.id)}
-        className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
-        style={{ color: "var(--color-text-muted)" }}
-        aria-label="Remove item"
-      >
-        <Trash2 className="size-4" aria-hidden />
-      </button>
+      <div className="flex flex-col items-end gap-1">
+        {unitPrice > 0 && (
+          <p className="text-sm font-medium" style={{ color: "var(--color-text)" }}>
+            {formatCurrency(unitPrice * item.quantity)}
+          </p>
+        )}
+        <button
+          onClick={() => onRemove(item.id)}
+          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
+          style={{ color: "var(--color-text-muted)" }}
+          aria-label="Remove item"
+        >
+          <Trash2 className="size-4" aria-hidden />
+        </button>
+      </div>
     </div>
   )
 }
