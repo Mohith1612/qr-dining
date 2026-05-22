@@ -186,6 +186,12 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 
 	s.publisher.OrderPlaced(ctx, req.SessionID, result.Order)
 	s.repos.LogEvent(ctx, req.SessionID, req.BranchID, "ORDER_PLACED", "participant", req.PlacedByParticipantID, result.Order)
+
+	// Clear the participant's cart after a successful order — best-effort, never blocks the response.
+	if cart, err := s.repos.GetOrCreateCart(ctx, req.SessionID, req.PlacedByParticipantID); err == nil {
+		_ = s.repos.ClearCart(ctx, cart.ID)
+	}
+
 	return result, nil
 }
 
