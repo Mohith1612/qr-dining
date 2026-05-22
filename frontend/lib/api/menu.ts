@@ -12,5 +12,6 @@ export const menuApi = {
     api.get<MenuCategory[]>(`/branches/${branchId}/menu`),
 
   resolveQrToken: (token: string) =>
-    api.get<TableByQrResponse>(`/tables/by-qr/${token}`),
+    api.get<{ id: number; branch_id: number; identifier: string }>(`/tables/by-qr/${token}`)
+      .then(r => ({ table_id: r.id, branch_id: r.branch_id, label: `Table ${r.identifier}` })),
 }
