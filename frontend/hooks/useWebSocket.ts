@@ -96,5 +96,7 @@ export function useWebSocket(sessionId: string, participantId: number) {
     }
   }, [sessionId, participantId])
 
-  return useWsStore((s) => ({ status: s.status, attempt: s.attempt }))
+  const status = useWsStore((s) => s.status)
+  const attempt = useWsStore((s) => s.attempt)
+  return { status, attempt }
 }
