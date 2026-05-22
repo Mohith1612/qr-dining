@@ -49,7 +49,7 @@ function OrderCard({
 }) {
   const next = NEXT_STATUS[order.status]
   const nextLabel = NEXT_LABEL[order.status]
-  const shortId = order.id.slice(-8)
+  const shortId = order.id.slice(0, 8)
 
   return (
     <div
