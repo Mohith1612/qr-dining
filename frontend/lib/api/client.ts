@@ -35,6 +35,12 @@ async function request<T>(
     headers["Authorization"] = `Bearer ${staffToken}`
   }
 
+  // In local dev, pass tenant slug via header so the backend can identify the tenant
+  // without a real subdomain. Backend reads this only when BASE_DOMAIN is unset.
+  if (env.tenantSlug) {
+    headers["X-Tenant-Slug"] = env.tenantSlug
+  }
+
   const res = await fetch(`${env.apiUrl}${path}`, {
     method,
     headers,
