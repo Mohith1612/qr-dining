@@ -18,6 +18,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "QR Dining",
   description: "Dine together, order together",
+  manifest: "/manifest.json",
 }
 
 export default function RootLayout({
