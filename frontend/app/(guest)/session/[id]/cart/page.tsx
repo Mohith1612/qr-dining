@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useCart } from "@/hooks/useCart"
 import { useOrders } from "@/hooks/useOrders"
@@ -52,9 +52,14 @@ function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: (id: number
 export default function CartPage({ params }: Props) {
   const { id: sessionId } = use(params)
   const router = useRouter()
-  const { items, loading, removeItem } = useCart()
+  const { items, loading, removeItem, refreshCart } = useCart()
   const { placeOrder } = useOrders()
   const [placing, setPlacing] = useState(false)
+
+  useEffect(() => {
+    refreshCart()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleRemove(itemId: number) {
     try {
