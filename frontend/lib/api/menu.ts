@@ -9,7 +9,8 @@ interface TableByQrResponse {
 
 export const menuApi = {
   getMenu: (branchId: number) =>
-    api.get<MenuCategory[]>(`/branches/${branchId}/menu`),
+    api.get<{ branch_id: number; categories: MenuCategory[] }>(`/branches/${branchId}/menu`)
+      .then(r => r.categories),
 
   resolveQrToken: (token: string) =>
     api.get<{ id: number; branch_id: number; identifier: string }>(`/tables/by-qr/${token}`)
