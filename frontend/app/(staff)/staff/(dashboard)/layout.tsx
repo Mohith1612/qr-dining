@@ -14,15 +14,15 @@ const ROLE_LABEL: Record<string, string> = {
 
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  const { token, role, branchId, clear } = useStaffStore()
+  const { token, role, branchId, clear, _hydrated } = useStaffStore()
 
   useEffect(() => {
-    if (!token) {
+    if (_hydrated && !token) {
       router.replace("/staff/login")
     }
-  }, [token, router])
+  }, [token, _hydrated, router])
 
-  if (!token) return null
+  if (!_hydrated || !token) return null
 
   function handleSignOut() {
     clear()

@@ -7,9 +7,11 @@ interface StaffState {
   staffId: number | null
   branchId: number | null
   role: StaffRole | null
+  _hydrated: boolean
 
   setAuth: (token: string, staffId: number, branchId: number, role: StaffRole) => void
   clear: () => void
+  _setHydrated: () => void
 }
 
 export const useStaffStore = create<StaffState>()(
@@ -19,6 +21,7 @@ export const useStaffStore = create<StaffState>()(
       staffId: null,
       branchId: null,
       role: null,
+      _hydrated: false,
 
       setAuth(token, staffId, branchId, role) {
         set({ token, staffId, branchId, role })
@@ -27,7 +30,16 @@ export const useStaffStore = create<StaffState>()(
       clear() {
         set({ token: null, staffId: null, branchId: null, role: null })
       },
+
+      _setHydrated() {
+        set({ _hydrated: true })
+      },
     }),
-    { name: "staff-auth" }
+    {
+      name: "staff-auth",
+      onRehydrateStorage: () => (state) => {
+        state?._setHydrated()
+      },
+    }
   )
 )
