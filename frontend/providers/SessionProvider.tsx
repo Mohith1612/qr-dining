@@ -26,6 +26,12 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
     sessionsApi.snapshot(sessionId).then((snap) => {
       if (cancelled) return
       reconcileSnapshot(snap)
+      // If participant wasn't set by setSession (e.g. after a hard navigation),
+      // find self in the snapshot using the participantId from sessionStorage.
+      if (!useSessionStore.getState().participant) {
+        const self = snap.participants.find((p) => p.id === participantId)
+        if (self) useSessionStore.getState().setSession(snap.session, self)
+      }
       if (snap.session.status !== "active") {
         setSessionClosed(true)
       }
@@ -34,7 +40,7 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
       if (!cancelled) setSnapshotLoaded(true)
     })
     return () => { cancelled = true }
-  }, [sessionId])
+  }, [sessionId, participantId])
 
   useEffect(() => {
     if (session?.status === "closed" || session?.status === "abandoned") {
