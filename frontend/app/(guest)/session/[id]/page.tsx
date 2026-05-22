@@ -66,7 +66,7 @@ export default function SessionLandingPage({ params }: Props) {
         </h1>
         {session && (
           <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            Table {session.table_id}
+            {session.table_identifier ?? `Table ${session.table_id}`}
           </p>
         )}
       </div>

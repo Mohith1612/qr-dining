@@ -102,8 +102,26 @@ func (s *SessionService) GetSession(ctx context.Context, id uuid.UUID) (sqlc.Ses
 	return s.repos.GetSessionByID(ctx, id)
 }
 
-func (s *SessionService) ListActiveForBranch(ctx context.Context, branchID int64) ([]sqlc.Session, error) {
-	return s.repos.ListActiveSessionsForBranch(ctx, branchID)
+// SessionWithTable is a session enriched with the human-readable table identifier.
+type SessionWithTable struct {
+	sqlc.Session
+	TableIdentifier string `json:"table_identifier"`
+}
+
+func (s *SessionService) ListActiveForBranch(ctx context.Context, branchID int64) ([]SessionWithTable, error) {
+	sessions, err := s.repos.ListActiveSessionsForBranch(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]SessionWithTable, len(sessions))
+	for i, sess := range sessions {
+		swt := SessionWithTable{Session: sess}
+		if t, err := s.repos.GetTableByID(ctx, sess.TableID); err == nil {
+			swt.TableIdentifier = t.Identifier
+		}
+		result[i] = swt
+	}
+	return result, nil
 }
 
 // CloseSession closes an active session. Only the host participant may close it.
@@ -156,11 +174,12 @@ func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, d
 // SessionSnapshot is the full authoritative state of a session at a point in time.
 // Clients call GET /sessions/:id/snapshot on WebSocket reconnect to reconcile local state.
 type SessionSnapshot struct {
-	Session      sqlc.Session             `json:"session"`
-	Participants []sqlc.SessionParticipant `json:"participants"`
-	Orders       []sqlc.Order             `json:"orders"`
-	Assistance   []sqlc.AssistanceRequest `json:"assistance"`
-	SnapshotAt   time.Time                `json:"snapshot_at"`
+	Session         sqlc.Session             `json:"session"`
+	TableIdentifier string                   `json:"table_identifier"`
+	Participants    []sqlc.SessionParticipant `json:"participants"`
+	Orders          []sqlc.Order             `json:"orders"`
+	Assistance      []sqlc.AssistanceRequest `json:"assistance"`
+	SnapshotAt      time.Time                `json:"snapshot_at"`
 }
 
 // GetSnapshot assembles the full current state of a session in parallel.
@@ -172,9 +191,10 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID) (
 	}
 
 	var (
-		participants []sqlc.SessionParticipant
-		orders       []sqlc.Order
-		assistance   []sqlc.AssistanceRequest
+		participants    []sqlc.SessionParticipant
+		orders          []sqlc.Order
+		assistance      []sqlc.AssistanceRequest
+		tableIdentifier string
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -194,17 +214,24 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID) (
 		assistance, err = s.repos.ListAssistanceForSession(gctx, sessionID)
 		return err
 	})
+	g.Go(func() error {
+		if t, err := s.repos.GetTableByID(gctx, sess.TableID); err == nil {
+			tableIdentifier = t.Identifier
+		}
+		return nil // non-fatal: fall back to numeric table_id on frontend
+	})
 
 	if err := g.Wait(); err != nil {
 		return SessionSnapshot{}, err
 	}
 
 	return SessionSnapshot{
-		Session:      sess,
-		Participants: participants,
-		Orders:       orders,
-		Assistance:   assistance,
-		SnapshotAt:   time.Now().UTC(),
+		Session:         sess,
+		TableIdentifier: tableIdentifier,
+		Participants:    participants,
+		Orders:          orders,
+		Assistance:      assistance,
+		SnapshotAt:      time.Now().UTC(),
 	}, nil
 }
 

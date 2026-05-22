@@ -97,7 +97,7 @@ function SessionsTab() {
                   #{s.id.slice(0, 8)}
                 </p>
                 <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  Table {s.table_id} · {relativeTime(s.created_at)}
+                  {s.table_identifier ?? `Table ${s.table_id}`} · {relativeTime(s.created_at)}
                 </p>
               </div>
               <span

@@ -30,7 +30,12 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
       // find self in the snapshot using the participantId from sessionStorage.
       if (!useSessionStore.getState().participant) {
         const self = snap.participants.find((p) => p.id === participantId)
-        if (self) useSessionStore.getState().setSession(snap.session, self)
+        if (self) {
+          const session = snap.table_identifier
+            ? { ...snap.session, table_identifier: snap.table_identifier }
+            : snap.session
+          useSessionStore.getState().setSession(session, self)
+        }
       }
       if (snap.session.status !== "active") {
         setSessionClosed(true)

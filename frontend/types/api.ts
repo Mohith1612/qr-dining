@@ -9,6 +9,7 @@ export interface Session {
   id: string
   branch_id: number
   table_id: number
+  table_identifier?: string
   host_participant_id: number | null
   status: "active" | "closed" | "abandoned"
   session_token: string
@@ -146,6 +147,7 @@ export interface StaffSession {
 
 export interface SessionSnapshot {
   session: Session
+  table_identifier?: string
   participants: Participant[]
   orders: Order[]
   assistance: AssistanceRequest[]

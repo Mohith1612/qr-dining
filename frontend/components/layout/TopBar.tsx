@@ -8,7 +8,9 @@ export function TopBar() {
   const session = useSessionStore((s) => s.session)
   const participants = useSessionStore((s) => s.participants)
 
-  const tableLabel = session ? `Table ${session.table_id}` : "Table"
+  const tableLabel = session
+    ? (session.table_identifier ?? `Table ${session.table_id}`)
+    : "Table"
 
   return (
     <header
