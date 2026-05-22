@@ -39,17 +39,78 @@ func main() {
 	q := sqlc.New(pool)
 
 	// ── Restaurant ────────────────────────────────────────────────────────────
-	restaurant, err := pool.QueryRow(ctx,
+	var restaurantID int64
+	err = pool.QueryRow(ctx,
 		`INSERT INTO restaurants (name, slug, settings_json) VALUES ($1, $2, $3)
 		 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
-		 RETURNING id, name, slug, settings_json, created_at`,
+		 RETURNING id`,
 		"Demo Restaurant", "demo-restaurant", []byte(`{}`),
-	).Values()
+	).Scan(&restaurantID)
 	if err != nil {
 		fatal("insert restaurant", err)
 	}
-	restaurantID := restaurant[0].(int64)
 	fmt.Printf("restaurant id=%d\n", restaurantID)
+
+	// ── Subscription Plans ────────────────────────────────────────────────────
+	plans := []struct {
+		name     string
+		tier     string
+		price    string
+		features string
+	}{
+		{
+			name:     "Free",
+			tier:     "free",
+			price:    "0.00",
+			features: `{"max_branches":1,"max_tables":10,"analytics":false,"multi_branch":false}`,
+		},
+		{
+			name:     "Standard",
+			tier:     "standard",
+			price:    "29.00",
+			features: `{"max_branches":3,"max_tables":-1,"analytics":true,"multi_branch":false}`,
+		},
+		{
+			name:     "Premium",
+			tier:     "premium",
+			price:    "79.00",
+			features: `{"max_branches":-1,"max_tables":-1,"analytics":true,"multi_branch":true}`,
+		},
+	}
+
+	var freePlanID int64
+	for _, p := range plans {
+		var planID int64
+		err = pool.QueryRow(ctx,
+			`INSERT INTO subscription_plans (name, tier, price_monthly, features_json)
+			 VALUES ($1, $2::plan_tier, $3::numeric, $4::jsonb)
+			 ON CONFLICT (tier) DO UPDATE SET name = EXCLUDED.name, features_json = EXCLUDED.features_json
+			 RETURNING id`,
+			p.name, p.tier, p.price, p.features,
+		).Scan(&planID)
+		if err != nil {
+			fatal("insert plan "+p.tier, err)
+		}
+		fmt.Printf("plan id=%d tier=%s price=%s\n", planID, p.tier, p.price)
+		if p.tier == "free" {
+			freePlanID = planID
+		}
+	}
+
+	// Link demo-restaurant to the free plan (trial).
+	if freePlanID > 0 {
+		_, err = pool.Exec(ctx,
+			`INSERT INTO restaurant_subscriptions (restaurant_id, plan_id, status, trial_ends_at)
+			 VALUES ($1, $2, 'trial', NOW() + INTERVAL '30 days')
+			 ON CONFLICT (restaurant_id) DO NOTHING`,
+			restaurantID, freePlanID,
+		)
+		if err != nil {
+			fmt.Printf("subscription link: %v\n", err)
+		} else {
+			fmt.Printf("subscription: restaurant %d on free plan (trial, 30 days)\n", restaurantID)
+		}
+	}
 
 	// ── Branch ────────────────────────────────────────────────────────────────
 	var branchID int64

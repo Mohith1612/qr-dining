@@ -233,6 +233,49 @@ func (ns NullPaymentStatus) Value() (driver.Value, error) {
 	return string(ns.PaymentStatus), nil
 }
 
+type PlanTier string
+
+const (
+	PlanTierFree     PlanTier = "free"
+	PlanTierStandard PlanTier = "standard"
+	PlanTierPremium  PlanTier = "premium"
+)
+
+func (e *PlanTier) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PlanTier(s)
+	case string:
+		*e = PlanTier(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PlanTier: %T", src)
+	}
+	return nil
+}
+
+type NullPlanTier struct {
+	PlanTier PlanTier `json:"plan_tier"`
+	Valid    bool     `json:"valid"` // Valid is true if PlanTier is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPlanTier) Scan(value interface{}) error {
+	if value == nil {
+		ns.PlanTier, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PlanTier.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPlanTier) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PlanTier), nil
+}
+
 type SessionStatus string
 
 const (
@@ -490,6 +533,18 @@ type Restaurant struct {
 	CreatedAt    time.Time       `json:"created_at"`
 }
 
+type RestaurantSubscription struct {
+	ID                 int64              `json:"id"`
+	RestaurantID       int64              `json:"restaurant_id"`
+	PlanID             int64              `json:"plan_id"`
+	Status             string             `json:"status"`
+	TrialEndsAt        pgtype.Timestamptz `json:"trial_ends_at"`
+	CurrentPeriodStart time.Time          `json:"current_period_start"`
+	CurrentPeriodEnd   pgtype.Timestamptz `json:"current_period_end"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+}
+
 type Session struct {
 	ID                uuid.UUID          `json:"id"`
 	BranchID          int64              `json:"branch_id"`
@@ -519,6 +574,15 @@ type Staff struct {
 	PinHash   string    `json:"pin_hash"`
 	CreatedAt time.Time `json:"created_at"`
 	IsActive  bool      `json:"is_active"`
+}
+
+type SubscriptionPlan struct {
+	ID           int64           `json:"id"`
+	Name         string          `json:"name"`
+	Tier         PlanTier        `json:"tier"`
+	PriceMonthly pgtype.Numeric  `json:"price_monthly"`
+	FeaturesJson json.RawMessage `json:"features_json"`
+	CreatedAt    time.Time       `json:"created_at"`
 }
 
 type Table struct {

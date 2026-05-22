@@ -69,6 +69,7 @@ func New(
 	menuSvc := services.NewMenuService(repos, cache)
 	staffSvc := services.NewStaffService(repos, cache, logger)
 	paymentSvc := services.NewPaymentService(repos, publisher, metrics)
+	subSvc := services.NewSubscriptionService(repos)
 
 	// ── Handlers ─────────────────────────────────────────────────────────────
 	health := handlers.NewHealthHandler(db, redis)
@@ -84,6 +85,7 @@ func New(
 	menuAdminH := handlers.NewMenuAdminHandler(menuSvc)
 	eventLogH := handlers.NewEventLogHandler(repos)
 	tenantH := handlers.NewTenantHandler(repos)
+	subH := handlers.NewSubscriptionHandler(repos, subSvc)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -132,6 +134,9 @@ func New(
 	// Tenant resolution — public, used by frontend to initialize context.
 	api.GET("/tenants/by-slug/:slug", tenantH.GetBySlug)
 
+	// Subscription plans — public.
+	api.GET("/plans", subH.ListPlans)
+
 	// Staff auth — strict 10 RPM limit to prevent PIN brute force.
 	authGroup := r.Group("/")
 	authGroup.Use(middleware.RateLimitStrict(rateLimiter, "auth", 10))
@@ -167,6 +172,9 @@ func New(
 
 	// event_log read APIs — operational debugging and audit.
 	staffAPI.GET("/sessions/:id/events", eventLogH.GetSessionEvents)
+
+	// Subscription status — staff-protected.
+	staffAPI.GET("/restaurants/:id/subscription", subH.GetSubscription)
 
 	// WebSocket
 	r.GET("/ws", wsH.Upgrade)

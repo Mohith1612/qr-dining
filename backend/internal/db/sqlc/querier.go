@@ -39,6 +39,7 @@ type Querier interface {
 	GetOrderByIdempotencyKey(ctx context.Context, idempotencyKey string) (Order, error)
 	GetParticipantByID(ctx context.Context, id int64) (SessionParticipant, error)
 	GetPaymentByID(ctx context.Context, id int64) (Payment, error)
+	GetPlanByTier(ctx context.Context, tier PlanTier) (SubscriptionPlan, error)
 	GetRecentEventsByBranch(ctx context.Context, branchID pgtype.Int8) ([]EventLog, error)
 	GetRestaurantByBranchID(ctx context.Context, id int64) (Restaurant, error)
 	GetRestaurantByID(ctx context.Context, id int64) (Restaurant, error)
@@ -46,6 +47,7 @@ type Querier interface {
 	GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionByToken(ctx context.Context, sessionToken string) (Session, error)
 	GetStaffByID(ctx context.Context, id int64) (Staff, error)
+	GetSubscriptionByRestaurant(ctx context.Context, restaurantID int64) (GetSubscriptionByRestaurantRow, error)
 	GetTableByID(ctx context.Context, id int64) (Table, error)
 	GetTableByQRToken(ctx context.Context, qrCodeToken string) (Table, error)
 	InsertEventLog(ctx context.Context, arg InsertEventLogParams) error
@@ -66,6 +68,7 @@ type Querier interface {
 	ListOrdersForSession(ctx context.Context, sessionID uuid.UUID) ([]Order, error)
 	ListParticipantsBySession(ctx context.Context, sessionID uuid.UUID) ([]SessionParticipant, error)
 	ListPaymentsForSession(ctx context.Context, sessionID uuid.UUID) ([]Payment, error)
+	ListPlans(ctx context.Context) ([]SubscriptionPlan, error)
 	ListStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
 	// Queries used by background worker routines.
 	// Finds sessions active for more than the given interval (passed as an interval string, e.g. '2 hours').
@@ -84,6 +87,7 @@ type Querier interface {
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
 	UpdateStaffPIN(ctx context.Context, arg UpdateStaffPINParams) error
 	UpdateTableStatus(ctx context.Context, arg UpdateTableStatusParams) error
+	UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) (RestaurantSubscription, error)
 }
 
 var _ Querier = (*Queries)(nil)

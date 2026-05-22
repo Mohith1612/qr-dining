@@ -36,6 +36,9 @@ const (
 	CodeRateLimited              = "RATE_LIMITED"
 	CodeValidationError          = "VALIDATION_ERROR"
 	CodeInternalError            = "INTERNAL_ERROR"
+	CodeTenantNotFound           = "TENANT_NOT_FOUND"
+	CodePlanNotFound             = "PLAN_NOT_FOUND"
+	CodeAnalyticsGated           = "ANALYTICS_GATED"
 )
 
 // respondError writes a structured API error response.
