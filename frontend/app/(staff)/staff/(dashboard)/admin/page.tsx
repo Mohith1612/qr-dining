@@ -4,12 +4,21 @@ import { useEffect, useState, useCallback } from "react"
 import { useStaffStore } from "@/store/staff"
 import { staffApi } from "@/lib/api/staff"
 import { menuApi } from "@/lib/api/menu"
+import { analyticsApi, type AnalyticsPeriod, type TopItem, type BusyHour, type OrderVolumeDay } from "@/lib/api/analytics"
+import { plansApi, type Subscription, type Plan } from "@/lib/api/plans"
+import { ApiError } from "@/lib/api/client"
+import { useTenant } from "@/providers/TenantProvider"
+import { PeriodSelector } from "@/components/shared/PeriodSelector"
+import { TopItemsList } from "@/components/analytics/TopItemsList"
+import { BusyHoursChart } from "@/components/analytics/BusyHoursChart"
+import { OrderVolumeChart } from "@/components/analytics/OrderVolumeChart"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatCurrency, relativeTime } from "@/lib/format"
 import { RefreshCw, Loader2, Users } from "lucide-react"
 import { toast } from "sonner"
+import Link from "next/link"
 import type { Session, MenuCategory, StaffRole } from "@/types/api"
 
 // ─── Sessions Tab ───────────────────────────────────────────────────────────
@@ -355,6 +364,351 @@ function StaffTab() {
   )
 }
 
+// ─── Stats Tab ───────────────────────────────────────────────────────────────
+
+function StatsTab() {
+  const { branchId, token } = useStaffStore()
+  const [period, setPeriod] = useState<AnalyticsPeriod>("weekly")
+  const [topItems, setTopItems] = useState<TopItem[]>([])
+  const [busyHours, setBusyHours] = useState<BusyHour[]>([])
+  const [orderVolume, setOrderVolume] = useState<OrderVolumeDay[]>([])
+  const [gated, setGated] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  const fetchAnalytics = useCallback(async () => {
+    if (!branchId || !token) return
+    setLoading(true)
+    setGated(false)
+    try {
+      const [topResult, busyResult, volumeResult] = await Promise.all([
+        analyticsApi.getTopItems(branchId, period, token),
+        analyticsApi.getBusyHours(branchId, period, token),
+        analyticsApi.getOrderVolume(branchId, period, token),
+      ])
+      setTopItems(topResult.items)
+      setBusyHours(busyResult.hours)
+      setOrderVolume(volumeResult.days)
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "ANALYTICS_GATED") {
+        setGated(true)
+      } else {
+        toast.error("Couldn't load analytics.")
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [branchId, token, period])
+
+  useEffect(() => {
+    fetchAnalytics()
+  }, [fetchAnalytics])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="size-6 animate-spin" style={{ color: "var(--color-text-muted)" }} />
+      </div>
+    )
+  }
+
+  if (gated) {
+    return (
+      <div
+        style={{
+          backgroundColor: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-lg)",
+          padding: "32px 24px",
+          textAlign: "center",
+        }}
+      >
+        <p className="text-sm" style={{ color: "var(--color-text)", marginBottom: "8px" }}>
+          Analytics is available on the Standard and Premium plans.
+        </p>
+        <Link
+          href="/pricing"
+          style={{
+            fontSize: "13px",
+            color: "var(--color-accent)",
+            textDecoration: "none",
+            fontWeight: 500,
+          }}
+        >
+          View pricing →
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <PeriodSelector value={period} onChange={setPeriod} />
+
+      <div
+        style={{
+          backgroundColor: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-lg)",
+          padding: "20px",
+        }}
+      >
+        <h3
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-text-muted)", marginBottom: "16px" }}
+        >
+          Top items
+        </h3>
+        <TopItemsList items={topItems} />
+      </div>
+
+      <div
+        style={{
+          backgroundColor: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-lg)",
+          padding: "20px",
+        }}
+      >
+        <h3
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-text-muted)", marginBottom: "16px" }}
+        >
+          Busy hours
+        </h3>
+        <BusyHoursChart hours={busyHours} />
+      </div>
+
+      <div
+        style={{
+          backgroundColor: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-lg)",
+          padding: "20px",
+        }}
+      >
+        <h3
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-text-muted)", marginBottom: "16px" }}
+        >
+          Order volume
+        </h3>
+        <OrderVolumeChart days={orderVolume} />
+      </div>
+    </div>
+  )
+}
+
+// ─── Plan Tab ────────────────────────────────────────────────────────────────
+
+function formatFeatureVal(key: keyof Plan["features_json"], val: number | boolean): string {
+  if (typeof val === "boolean") return val ? "✓" : "—"
+  return val === -1 ? "Unlimited" : String(val)
+}
+
+function formatDate(dateStr: string): string {
+  try {
+    return new Date(dateStr).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })
+  } catch {
+    return dateStr
+  }
+}
+
+const PLAN_FEATURES: { label: string; key: keyof Plan["features_json"] }[] = [
+  { label: "Branches", key: "max_branches" },
+  { label: "Tables", key: "max_tables" },
+  { label: "Analytics", key: "analytics" },
+  { label: "Multi-branch", key: "multi_branch" },
+]
+
+function PlanTab() {
+  const { token } = useStaffStore()
+  const { restaurantId, ready: tenantReady } = useTenant()
+  const [subscription, setSubscription] = useState<Subscription | null>(null)
+  const [features, setFeatures] = useState<Plan["features_json"] | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!tenantReady) return
+    if (!restaurantId || !token) {
+      setLoading(false)
+      return
+    }
+    plansApi
+      .getSubscription(restaurantId, token)
+      .then((data) => {
+        setSubscription(data.subscription)
+        setFeatures(data.features)
+      })
+      .catch(() => toast.error("Couldn't load subscription."))
+      .finally(() => setLoading(false))
+  }, [restaurantId, token, tenantReady])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="size-6 animate-spin" style={{ color: "var(--color-text-muted)" }} />
+      </div>
+    )
+  }
+
+  if (!restaurantId) {
+    return (
+      <div className="py-16 text-center">
+        <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+          No tenant context. Set{" "}
+          <code
+            style={{
+              fontSize: "11px",
+              padding: "1px 5px",
+              borderRadius: "4px",
+              backgroundColor: "var(--color-border)",
+            }}
+          >
+            NEXT_PUBLIC_TENANT_SLUG
+          </code>{" "}
+          in your local environment.
+        </p>
+      </div>
+    )
+  }
+
+  if (!subscription || !features) {
+    return (
+      <div className="py-16 text-center">
+        <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+          No subscription found.
+        </p>
+      </div>
+    )
+  }
+
+  const tierBadgeStyle =
+    subscription.plan_tier === "free"
+      ? { backgroundColor: "var(--color-border)", color: "var(--color-text-muted)" }
+      : { backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }
+
+  const statusStyle =
+    subscription.status === "active"
+      ? { backgroundColor: "var(--color-success)", color: "white" }
+      : subscription.status === "trial"
+      ? { backgroundColor: "var(--color-border)", color: "var(--color-text)" }
+      : { backgroundColor: "var(--color-border)", color: "var(--color-text-muted)" }
+
+  return (
+    <div className="space-y-4">
+      <div
+        style={{
+          backgroundColor: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-lg)",
+          padding: "20px",
+        }}
+      >
+        {/* Plan header */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
+          <span
+            style={{
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "var(--color-text)",
+            }}
+          >
+            {subscription.plan_name}
+          </span>
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 600,
+              padding: "2px 8px",
+              borderRadius: "100px",
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              ...tierBadgeStyle,
+            }}
+          >
+            {subscription.plan_tier}
+          </span>
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 500,
+              padding: "2px 8px",
+              borderRadius: "100px",
+              ...statusStyle,
+            }}
+          >
+            {subscription.status}
+          </span>
+        </div>
+
+        {subscription.status === "trial" && subscription.trial_ends_at && (
+          <p style={{ fontSize: "13px", color: "var(--color-text-muted)", marginBottom: "16px" }}>
+            Trial ends {formatDate(subscription.trial_ends_at)}
+          </p>
+        )}
+
+        {/* Divider */}
+        <div
+          style={{
+            height: "1px",
+            backgroundColor: "var(--color-border)",
+            margin: "16px 0",
+          }}
+        />
+
+        {/* Feature list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
+          {PLAN_FEATURES.map(({ label, key }) => {
+            const val = features[key]
+            return (
+              <div
+                key={key}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontSize: "14px",
+                }}
+              >
+                <span style={{ color: "var(--color-text-muted)" }}>{label}</span>
+                <span
+                  style={{
+                    fontWeight: 500,
+                    color:
+                      (typeof val === "boolean" && !val) || val === 0
+                        ? "var(--color-text-muted)"
+                        : "var(--color-text)",
+                  }}
+                >
+                  {formatFeatureVal(key, val)}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* CTA */}
+        <Link
+          href="/pricing"
+          style={{
+            display: "block",
+            textAlign: "center",
+            padding: "9px 0",
+            borderRadius: "var(--radius-base)",
+            border: "1px solid var(--color-border)",
+            fontSize: "13px",
+            fontWeight: 500,
+            color: "var(--color-text)",
+            textDecoration: "none",
+          }}
+        >
+          View pricing
+        </Link>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -366,20 +720,32 @@ export default function AdminPage() {
       <h1 className="text-lg font-semibold">Admin dashboard</h1>
 
       <Tabs defaultValue="sessions">
-        <TabsList
-          className="w-full rounded-xl h-10"
-          style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-        >
-          <TabsTrigger value="sessions" className="flex-1 text-xs rounded-lg">
-            Sessions
-          </TabsTrigger>
-          <TabsTrigger value="menu" className="flex-1 text-xs rounded-lg">
-            Menu
-          </TabsTrigger>
-          <TabsTrigger value="staff" className="flex-1 text-xs rounded-lg">
-            Staff
-          </TabsTrigger>
-        </TabsList>
+        <div style={{ overflowX: "auto" }}>
+          <TabsList
+            className="inline-flex rounded-xl h-10"
+            style={{
+              backgroundColor: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              minWidth: "100%",
+            }}
+          >
+            <TabsTrigger value="sessions" className="flex-1 text-xs rounded-lg">
+              Sessions
+            </TabsTrigger>
+            <TabsTrigger value="menu" className="flex-1 text-xs rounded-lg">
+              Menu
+            </TabsTrigger>
+            <TabsTrigger value="staff" className="flex-1 text-xs rounded-lg">
+              Staff
+            </TabsTrigger>
+            <TabsTrigger value="stats" className="flex-1 text-xs rounded-lg">
+              Stats
+            </TabsTrigger>
+            <TabsTrigger value="plan" className="flex-1 text-xs rounded-lg">
+              Plan
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="sessions" className="mt-4">
           <SessionsTab />
@@ -389,6 +755,12 @@ export default function AdminPage() {
         </TabsContent>
         <TabsContent value="staff" className="mt-4">
           <StaffTab />
+        </TabsContent>
+        <TabsContent value="stats" className="mt-4">
+          <StatsTab />
+        </TabsContent>
+        <TabsContent value="plan" className="mt-4">
+          <PlanTab />
         </TabsContent>
       </Tabs>
     </div>
