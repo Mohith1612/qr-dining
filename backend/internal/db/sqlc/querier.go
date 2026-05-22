@@ -28,6 +28,8 @@ type Querier interface {
 	GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error)
 	GetAssistanceRequestByID(ctx context.Context, id int64) (AssistanceRequest, error)
 	GetBranchByID(ctx context.Context, id int64) (Branch, error)
+	// Returns order count per hour-of-day (0–23) in the branch's configured timezone.
+	GetBusyHours(ctx context.Context, arg GetBusyHoursParams) ([]GetBusyHoursRow, error)
 	GetCartByID(ctx context.Context, id int64) (Cart, error)
 	GetCartBySessionAndParticipant(ctx context.Context, arg GetCartBySessionAndParticipantParams) (Cart, error)
 	GetCartItem(ctx context.Context, id int64) (CartItem, error)
@@ -37,6 +39,8 @@ type Querier interface {
 	GetOrCreateCart(ctx context.Context, arg GetOrCreateCartParams) (Cart, error)
 	GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error)
 	GetOrderByIdempotencyKey(ctx context.Context, idempotencyKey string) (Order, error)
+	// Returns daily order count and revenue for a branch within a time window.
+	GetOrderVolume(ctx context.Context, arg GetOrderVolumeParams) ([]GetOrderVolumeRow, error)
 	GetParticipantByID(ctx context.Context, id int64) (SessionParticipant, error)
 	GetPaymentByID(ctx context.Context, id int64) (Payment, error)
 	GetPlanByTier(ctx context.Context, tier PlanTier) (SubscriptionPlan, error)
@@ -50,6 +54,8 @@ type Querier interface {
 	GetSubscriptionByRestaurant(ctx context.Context, restaurantID int64) (GetSubscriptionByRestaurantRow, error)
 	GetTableByID(ctx context.Context, id int64) (Table, error)
 	GetTableByQRToken(ctx context.Context, qrCodeToken string) (Table, error)
+	// Returns the most ordered menu items for a branch within a time window.
+	GetTopOrderedItems(ctx context.Context, arg GetTopOrderedItemsParams) ([]GetTopOrderedItemsRow, error)
 	InsertEventLog(ctx context.Context, arg InsertEventLogParams) error
 	InsertMenuCategory(ctx context.Context, arg InsertMenuCategoryParams) (MenuCategory, error)
 	InsertMenuItem(ctx context.Context, arg InsertMenuItemParams) (MenuItem, error)

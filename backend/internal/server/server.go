@@ -70,6 +70,7 @@ func New(
 	staffSvc := services.NewStaffService(repos, cache, logger)
 	paymentSvc := services.NewPaymentService(repos, publisher, metrics)
 	subSvc := services.NewSubscriptionService(repos)
+	analyticsSvc := services.NewAnalyticsService(repos, subSvc, cache)
 
 	// ── Handlers ─────────────────────────────────────────────────────────────
 	health := handlers.NewHealthHandler(db, redis)
@@ -86,6 +87,7 @@ func New(
 	eventLogH := handlers.NewEventLogHandler(repos)
 	tenantH := handlers.NewTenantHandler(repos)
 	subH := handlers.NewSubscriptionHandler(repos, subSvc)
+	analyticsH := handlers.NewAnalyticsHandler(analyticsSvc)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -161,6 +163,9 @@ func New(
 	branchStaffAPI.POST("/menu/items", menuAdminH.CreateItem)
 	branchStaffAPI.POST("/staff", staffH.CreateStaff)
 	branchStaffAPI.GET("/events/recent", eventLogH.GetBranchRecentEvents)
+	branchStaffAPI.GET("/analytics/top-items", analyticsH.GetTopItems)
+	branchStaffAPI.GET("/analytics/busy-hours", analyticsH.GetBusyHours)
+	branchStaffAPI.GET("/analytics/order-volume", analyticsH.GetOrderVolume)
 
 	// Menu item updates — item-scoped, no branch param on path.
 	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)
