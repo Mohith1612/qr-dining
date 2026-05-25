@@ -9,6 +9,7 @@ import { formatCurrency } from "@/lib/format"
 import { MenuSkeleton } from "@/components/shared/LoadingSkeleton"
 import { BottomSheet } from "@/components/shared/BottomSheet"
 import { Vignette } from "@/components/shared/Vignette"
+import { FeaturedCarousel } from "@/components/shared/FeaturedCarousel"
 import { Minus, Plus, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
@@ -96,6 +97,7 @@ function ItemRow({ item, qty, onTap }: ItemRowProps) {
 export default function MenuPage({ params }: Props) {
   const { id: sessionId } = use(params)
   const router = useRouter()
+  const featured = useMenuStore((s) => s.featured)
   const categories = useMenuStore((s) => s.categories)
   const menuLoading = useMenuStore((s) => s.loading)
   const { session } = useSession()
@@ -124,7 +126,7 @@ export default function MenuPage({ params }: Props) {
     useMenuStore.getState().setLoading(true)
     menuApi
       .getMenu(session.branch_id)
-      .then((cats) => useMenuStore.getState().setCategories(cats))
+      .then((data) => useMenuStore.getState().setMenu(data))
       .catch(() => useMenuStore.getState().setError("Failed to load menu"))
       .finally(() => useMenuStore.getState().setLoading(false))
   }, [session?.branch_id, categories.length])
@@ -243,6 +245,9 @@ export default function MenuPage({ params }: Props) {
           {totalDishes} dishes across {categories.length} sections
         </p>
       </div>
+
+      {/* Featured carousel — above sticky bar, scrolls away */}
+      <FeaturedCarousel items={featured} onSelect={openSheet} />
 
       {/* Category pills — sticky within Shell's main scroller */}
       <div style={{

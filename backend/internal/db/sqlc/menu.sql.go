@@ -45,7 +45,7 @@ func (q *Queries) CreateTable(ctx context.Context, arg CreateTableParams) (Table
 }
 
 const getMenuItemByID = `-- name: GetMenuItemByID :one
-SELECT id, category_id, branch_id, name, description, price, is_available, position FROM menu_items WHERE id = $1
+SELECT id, category_id, branch_id, name, description, price, is_available, position, is_featured, featured_sort_order FROM menu_items WHERE id = $1
 `
 
 func (q *Queries) GetMenuItemByID(ctx context.Context, id int64) (MenuItem, error) {
@@ -60,12 +60,14 @@ func (q *Queries) GetMenuItemByID(ctx context.Context, id int64) (MenuItem, erro
 		&i.Price,
 		&i.IsAvailable,
 		&i.Position,
+		&i.IsFeatured,
+		&i.FeaturedSortOrder,
 	)
 	return i, err
 }
 
 const getMenuItemsByIDs = `-- name: GetMenuItemsByIDs :many
-SELECT id, category_id, branch_id, name, description, price, is_available, position FROM menu_items WHERE id = ANY($1::bigint[])
+SELECT id, category_id, branch_id, name, description, price, is_available, position, is_featured, featured_sort_order FROM menu_items WHERE id = ANY($1::bigint[])
 `
 
 func (q *Queries) GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]MenuItem, error) {
@@ -86,6 +88,8 @@ func (q *Queries) GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]Me
 			&i.Price,
 			&i.IsAvailable,
 			&i.Position,
+			&i.IsFeatured,
+			&i.FeaturedSortOrder,
 		); err != nil {
 			return nil, err
 		}
@@ -163,7 +167,7 @@ func (q *Queries) InsertMenuCategory(ctx context.Context, arg InsertMenuCategory
 const insertMenuItem = `-- name: InsertMenuItem :one
 INSERT INTO menu_items (category_id, branch_id, name, description, price, is_available, position)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, category_id, branch_id, name, description, price, is_available, position
+RETURNING id, category_id, branch_id, name, description, price, is_available, position, is_featured, featured_sort_order
 `
 
 type InsertMenuItemParams struct {
@@ -196,8 +200,49 @@ func (q *Queries) InsertMenuItem(ctx context.Context, arg InsertMenuItemParams) 
 		&i.Price,
 		&i.IsAvailable,
 		&i.Position,
+		&i.IsFeatured,
+		&i.FeaturedSortOrder,
 	)
 	return i, err
+}
+
+const listFeaturedMenuItems = `-- name: ListFeaturedMenuItems :many
+SELECT id, category_id, branch_id, name, description, price, is_available, position, is_featured, featured_sort_order FROM menu_items
+WHERE branch_id = $1
+  AND is_featured = TRUE
+  AND is_available = TRUE
+ORDER BY featured_sort_order ASC, id ASC
+`
+
+func (q *Queries) ListFeaturedMenuItems(ctx context.Context, branchID int64) ([]MenuItem, error) {
+	rows, err := q.db.Query(ctx, listFeaturedMenuItems, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MenuItem{}
+	for rows.Next() {
+		var i MenuItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.CategoryID,
+			&i.BranchID,
+			&i.Name,
+			&i.Description,
+			&i.Price,
+			&i.IsAvailable,
+			&i.Position,
+			&i.IsFeatured,
+			&i.FeaturedSortOrder,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listMenuCategoriesForBranch = `-- name: ListMenuCategoriesForBranch :many
@@ -233,7 +278,7 @@ func (q *Queries) ListMenuCategoriesForBranch(ctx context.Context, branchID int6
 }
 
 const listMenuItemsForCategory = `-- name: ListMenuItemsForCategory :many
-SELECT id, category_id, branch_id, name, description, price, is_available, position FROM menu_items
+SELECT id, category_id, branch_id, name, description, price, is_available, position, is_featured, featured_sort_order FROM menu_items
 WHERE category_id = $1 AND is_available = TRUE
 ORDER BY position ASC
 `
@@ -256,6 +301,8 @@ func (q *Queries) ListMenuItemsForCategory(ctx context.Context, categoryID int64
 			&i.Price,
 			&i.IsAvailable,
 			&i.Position,
+			&i.IsFeatured,
+			&i.FeaturedSortOrder,
 		); err != nil {
 			return nil, err
 		}
@@ -387,7 +434,7 @@ const updateMenuItem = `-- name: UpdateMenuItem :one
 UPDATE menu_items
 SET name = $2, description = $3, price = $4, position = $5
 WHERE id = $1
-RETURNING id, category_id, branch_id, name, description, price, is_available, position
+RETURNING id, category_id, branch_id, name, description, price, is_available, position, is_featured, featured_sort_order
 `
 
 type UpdateMenuItemParams struct {
@@ -416,6 +463,8 @@ func (q *Queries) UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) 
 		&i.Price,
 		&i.IsAvailable,
 		&i.Position,
+		&i.IsFeatured,
+		&i.FeaturedSortOrder,
 	)
 	return i, err
 }
@@ -431,6 +480,21 @@ type UpdateMenuItemAvailabilityParams struct {
 
 func (q *Queries) UpdateMenuItemAvailability(ctx context.Context, arg UpdateMenuItemAvailabilityParams) error {
 	_, err := q.db.Exec(ctx, updateMenuItemAvailability, arg.ID, arg.IsAvailable)
+	return err
+}
+
+const updateMenuItemFeatured = `-- name: UpdateMenuItemFeatured :exec
+UPDATE menu_items SET is_featured = $2, featured_sort_order = $3 WHERE id = $1
+`
+
+type UpdateMenuItemFeaturedParams struct {
+	ID                int64 `json:"id"`
+	IsFeatured        bool  `json:"is_featured"`
+	FeaturedSortOrder int16 `json:"featured_sort_order"`
+}
+
+func (q *Queries) UpdateMenuItemFeatured(ctx context.Context, arg UpdateMenuItemFeaturedParams) error {
+	_, err := q.db.Exec(ctx, updateMenuItemFeatured, arg.ID, arg.IsFeatured, arg.FeaturedSortOrder)
 	return err
 }
 

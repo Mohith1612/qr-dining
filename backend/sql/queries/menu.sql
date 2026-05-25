@@ -58,3 +58,13 @@ RETURNING *;
 
 -- name: RefreshTableQRToken :one
 UPDATE tables SET qr_code_token = $2 WHERE id = $1 RETURNING *;
+
+-- name: ListFeaturedMenuItems :many
+SELECT * FROM menu_items
+WHERE branch_id = $1
+  AND is_featured = TRUE
+  AND is_available = TRUE
+ORDER BY featured_sort_order ASC, id ASC;
+
+-- name: UpdateMenuItemFeatured :exec
+UPDATE menu_items SET is_featured = $2, featured_sort_order = $3 WHERE id = $1;

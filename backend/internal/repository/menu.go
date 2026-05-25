@@ -64,6 +64,18 @@ func (r *Repos) UpdateMenuItemAvailability(ctx context.Context, itemID int64, av
 	})
 }
 
+func (r *Repos) ListFeaturedMenuItems(ctx context.Context, branchID int64) ([]sqlc.MenuItem, error) {
+	return r.q.ListFeaturedMenuItems(ctx, branchID)
+}
+
+func (r *Repos) UpdateMenuItemFeatured(ctx context.Context, itemID int64, featured bool, sortOrder int16) error {
+	return r.q.UpdateMenuItemFeatured(ctx, sqlc.UpdateMenuItemFeaturedParams{
+		ID:                itemID,
+		IsFeatured:        featured,
+		FeaturedSortOrder: sortOrder,
+	})
+}
+
 func (r *Repos) GetBranchByID(ctx context.Context, id int64) (sqlc.Branch, error) {
 	b, err := r.q.GetBranchByID(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {

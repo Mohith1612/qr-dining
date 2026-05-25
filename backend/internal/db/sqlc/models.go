@@ -470,14 +470,16 @@ type MenuCategory struct {
 }
 
 type MenuItem struct {
-	ID          int64          `json:"id"`
-	CategoryID  int64          `json:"category_id"`
-	BranchID    int64          `json:"branch_id"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Price       pgtype.Numeric `json:"price"`
-	IsAvailable bool           `json:"is_available"`
-	Position    int16          `json:"position"`
+	ID                int64          `json:"id"`
+	CategoryID        int64          `json:"category_id"`
+	BranchID          int64          `json:"branch_id"`
+	Name              string         `json:"name"`
+	Description       string         `json:"description"`
+	Price             pgtype.Numeric `json:"price"`
+	IsAvailable       bool           `json:"is_available"`
+	Position          int16          `json:"position"`
+	IsFeatured        bool           `json:"is_featured"`
+	FeaturedSortOrder int16          `json:"featured_sort_order"`
 }
 
 type Order struct {

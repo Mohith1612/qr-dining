@@ -172,6 +172,39 @@ func (h *MenuAdminHandler) ToggleAvailability(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+type toggleFeaturedRequest struct {
+	Featured          bool  `json:"is_featured"`
+	FeaturedSortOrder int16 `json:"featured_sort_order"`
+	BranchID          int64 `json:"branch_id" binding:"required"`
+}
+
+func (h *MenuAdminHandler) ToggleFeatured(c *gin.Context) {
+	itemID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid item id")
+		return
+	}
+
+	var req toggleFeaturedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok || sess.BranchID != req.BranchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+
+	if err := h.svc.ToggleFeatured(c.Request.Context(), itemID, req.BranchID, req.Featured, req.FeaturedSortOrder, sess.Role); err != nil {
+		menuAdminError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func menuAdminError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrMenuItemNotFound):

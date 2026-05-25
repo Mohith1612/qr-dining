@@ -62,6 +62,8 @@ export interface MenuItem {
   price: string
   is_available: boolean
   position: number
+  is_featured?: boolean
+  featured_sort_order?: number
   modifiers?: ItemModifier[]
 }
 

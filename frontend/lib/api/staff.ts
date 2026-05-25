@@ -93,6 +93,19 @@ export const staffApi = {
       { staffToken }
     ),
 
+  toggleFeatured: (
+    itemId: number,
+    branchId: number,
+    isFeatured: boolean,
+    sortOrder: number,
+    staffToken: string
+  ) =>
+    api.patch<void>(
+      `/menu/items/${itemId}/featured`,
+      { is_featured: isFeatured, featured_sort_order: sortOrder, branch_id: branchId },
+      { staffToken }
+    ),
+
   updateBranch: (
     branchId: number,
     data: { session_timeout_minutes?: number },

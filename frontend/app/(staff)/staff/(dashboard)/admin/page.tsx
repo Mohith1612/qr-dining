@@ -130,10 +130,11 @@ function MenuTab() {
   const [categories, setCategories] = useState<MenuCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState<number | null>(null)
+  const [togglingFeatured, setTogglingFeatured] = useState<number | null>(null)
 
   useEffect(() => {
     if (!branchId) return
-    menuApi.getMenu(branchId).then(setCategories).catch(() => {
+    menuApi.getMenu(branchId).then(({ categories }) => setCategories(categories)).catch(() => {
       toast.error("Couldn't load menu.")
     }).finally(() => setLoading(false))
   }, [branchId])
@@ -164,6 +165,35 @@ function MenuTab() {
       toast.error("Couldn't update availability.")
     } finally {
       setToggling(null)
+    }
+  }
+
+  async function handleToggleFeatured(itemId: number, currentFeatured: boolean, sortOrder: number) {
+    if (!branchId || !token) return
+    setTogglingFeatured(itemId)
+    const next = !currentFeatured
+    setCategories((prev) =>
+      prev.map((cat) => ({
+        ...cat,
+        items: cat.items.map((item) =>
+          item.id === itemId ? { ...item, is_featured: next } : item
+        ),
+      }))
+    )
+    try {
+      await staffApi.toggleFeatured(itemId, branchId, next, sortOrder, token)
+    } catch {
+      setCategories((prev) =>
+        prev.map((cat) => ({
+          ...cat,
+          items: cat.items.map((item) =>
+            item.id === itemId ? { ...item, is_featured: currentFeatured } : item
+          ),
+        }))
+      )
+      toast.error("Couldn't update featured status.")
+    } finally {
+      setTogglingFeatured(null)
     }
   }
 
@@ -200,33 +230,61 @@ function MenuTab() {
                   </p>
                 </div>
                 {role === 'owner' && (
-                <button
-                  onClick={() => handleToggle(item.id, item.is_available)}
-                  disabled={toggling === item.id}
-                  className="press"
-                  style={{
-                    flexShrink: 0,
-                    fontSize: 12, fontWeight: 600,
-                    padding: "6px 14px",
-                    borderRadius: "var(--rad-pill)",
-                    border: "none",
-                    minHeight: 36, minWidth: 72,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: item.is_available ? "var(--ok)" : "var(--bg-elev-3)",
-                    color: item.is_available ? "white" : "var(--ink-3)",
-                    transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)",
-                    cursor: toggling === item.id ? "not-allowed" : "pointer",
-                  }}
-                  aria-label={item.is_available ? "Mark unavailable" : "Mark available"}
-                >
-                  {toggling === item.id ? (
-                    <Loader2 size={13} className="animate-spin" />
-                  ) : item.is_available ? (
-                    "Available"
-                  ) : (
-                    "Off"
-                  )}
-                </button>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={() => handleToggleFeatured(item.id, item.is_featured ?? false, item.featured_sort_order ?? 0)}
+                      disabled={togglingFeatured === item.id}
+                      className="press"
+                      style={{
+                        fontSize: 12, fontWeight: 600,
+                        padding: "6px 14px",
+                        borderRadius: "var(--rad-pill)",
+                        border: "1px solid",
+                        minHeight: 36,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        borderColor: item.is_featured ? "var(--accent)" : "var(--line-2)",
+                        background: item.is_featured ? "var(--accent-soft)" : "var(--bg-elev-2)",
+                        color: item.is_featured ? "var(--accent)" : "var(--ink-3)",
+                        transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)",
+                        cursor: togglingFeatured === item.id ? "not-allowed" : "pointer",
+                      }}
+                      aria-label={item.is_featured ? "Remove from featured" : "Add to featured"}
+                    >
+                      {togglingFeatured === item.id ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : item.is_featured ? (
+                        "Featured"
+                      ) : (
+                        "Feature"
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleToggle(item.id, item.is_available)}
+                      disabled={toggling === item.id}
+                      className="press"
+                      style={{
+                        fontSize: 12, fontWeight: 600,
+                        padding: "6px 14px",
+                        borderRadius: "var(--rad-pill)",
+                        border: "none",
+                        minHeight: 36, minWidth: 72,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        background: item.is_available ? "var(--ok)" : "var(--bg-elev-3)",
+                        color: item.is_available ? "white" : "var(--ink-3)",
+                        transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)",
+                        cursor: toggling === item.id ? "not-allowed" : "pointer",
+                      }}
+                      aria-label={item.is_available ? "Mark unavailable" : "Mark available"}
+                    >
+                      {toggling === item.id ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : item.is_available ? (
+                        "Available"
+                      ) : (
+                        "Off"
+                      )}
+                    </button>
+                  </div>
                 )}
               </HospitalityCard>
             ))}

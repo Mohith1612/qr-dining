@@ -176,6 +176,7 @@ func New(
 	// Menu item updates — item-scoped, no branch param on path.
 	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)
 	staffAPI.PATCH("/menu/items/:id/availability", menuAdminH.ToggleAvailability)
+	staffAPI.PATCH("/menu/items/:id/featured", menuAdminH.ToggleFeatured)
 
 	// Table QR token refresh — table-scoped; branch ownership verified in handler.
 	staffAPI.PATCH("/tables/:id/qr-refresh", tableH.RefreshQR)

@@ -70,6 +70,7 @@ type Querier interface {
 	// Queries used by background worker routines.
 	// Finds sessions that have exceeded their branch-configured timeout.
 	ListExpiredSessions(ctx context.Context) ([]ListExpiredSessionsRow, error)
+	ListFeaturedMenuItems(ctx context.Context, branchID int64) ([]MenuItem, error)
 	ListMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
 	ListMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error)
 	ListModifiersForItem(ctx context.Context, itemID int64) ([]ItemModifier, error)
@@ -93,6 +94,7 @@ type Querier interface {
 	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) (CartItem, error)
 	UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) (MenuItem, error)
 	UpdateMenuItemAvailability(ctx context.Context, arg UpdateMenuItemAvailabilityParams) error
+	UpdateMenuItemFeatured(ctx context.Context, arg UpdateMenuItemFeaturedParams) error
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
 	UpdateParticipantLastSeen(ctx context.Context, id int64) error
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)

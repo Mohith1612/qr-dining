@@ -40,7 +40,8 @@ type MenuCategoryWithItems struct {
 
 type FullMenu struct {
 	BranchID   int64                   `json:"branch_id"`
-	Categories []MenuCategoryWithItems `json:"categories"`
+	Featured   []MenuItemWithModifiers  `json:"featured"`
+	Categories []MenuCategoryWithItems  `json:"categories"`
 }
 
 const menuCacheTTL = 5 * time.Minute
@@ -250,5 +251,43 @@ func (s *MenuService) buildMenu(ctx context.Context, branchID int64) (FullMenu, 
 		})
 	}
 
+	featuredRows, err := s.repos.ListFeaturedMenuItems(ctx, branchID)
+	if err != nil {
+		return FullMenu{}, err
+	}
+	result.Featured = make([]MenuItemWithModifiers, 0, len(featuredRows))
+	for _, item := range featuredRows {
+		mods, err := s.repos.ListModifiersForItem(ctx, item.ID)
+		if err != nil {
+			return FullMenu{}, err
+		}
+		snapMods := make([]MenuModifier, 0, len(mods))
+		for _, m := range mods {
+			delta, err := m.PriceDelta.Float64Value()
+			if err != nil {
+				return FullMenu{}, fmt.Errorf("convert modifier price for id %d: %w", m.ID, err)
+			}
+			snapMods = append(snapMods, MenuModifier{
+				ID:         m.ID,
+				Name:       m.Name,
+				PriceDelta: delta.Float64,
+				IsRequired: m.IsRequired,
+			})
+		}
+		result.Featured = append(result.Featured, MenuItemWithModifiers{MenuItem: item, Modifiers: snapMods})
+	}
+
 	return result, nil
+}
+
+// ToggleFeatured sets is_featured and featured_sort_order on a menu item and invalidates the branch menu cache.
+func (s *MenuService) ToggleFeatured(ctx context.Context, itemID, branchID int64, featured bool, sortOrder int16, requiredRole sqlc.StaffRole) error {
+	if err := requireOwnerOrManager(requiredRole); err != nil {
+		return err
+	}
+	if err := s.repos.UpdateMenuItemFeatured(ctx, itemID, featured, sortOrder); err != nil {
+		return err
+	}
+	s.InvalidateMenuCache(ctx, branchID)
+	return nil
 }
