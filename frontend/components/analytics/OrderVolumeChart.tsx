@@ -27,7 +27,7 @@ function formatDay(dateStr: string): string {
 export function OrderVolumeChart({ days }: Props) {
   if (days.length === 0) {
     return (
-      <p style={{ color: "var(--color-text-muted)", fontSize: "14px", textAlign: "center", padding: "24px 0" }}>
+      <p style={{ color: "var(--ink-3)", fontSize: 13, textAlign: "center", padding: "24px 0" }}>
         No order data in this period.
       </p>
     )
@@ -41,27 +41,28 @@ export function OrderVolumeChart({ days }: Props) {
 
   return (
     <ResponsiveContainer width="100%" height={160}>
-      <LineChart data={data} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+      <LineChart data={data} margin={{ top: 4, right: 8, left: -28, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--line-1)" vertical={false} />
         <XAxis
           dataKey="label"
-          tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
+          tick={{ fontSize: 9, fill: "var(--ink-4)" }}
           axisLine={false}
           tickLine={false}
         />
         <YAxis
-          tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
+          tick={{ fontSize: 9, fill: "var(--ink-4)" }}
           axisLine={false}
           tickLine={false}
           allowDecimals={false}
         />
         <Tooltip
           contentStyle={{
-            background: "var(--color-surface)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "8px",
-            fontSize: "12px",
-            color: "var(--color-text)",
+            background: "var(--bg-elev-3)",
+            border: "1px solid var(--line-2)",
+            borderRadius: "var(--rad-md)",
+            fontSize: 12,
+            color: "var(--ink-1)",
+            boxShadow: "var(--shadow-2)",
           }}
           formatter={(value, name) => {
             const num = Number(value)
@@ -70,15 +71,15 @@ export function OrderVolumeChart({ days }: Props) {
               String(name) === "revenue" ? "Revenue" : "Orders",
             ]
           }}
-          cursor={{ stroke: "var(--color-accent)", strokeWidth: 1 }}
+          cursor={{ stroke: "var(--accent)", strokeWidth: 1, strokeDasharray: "4 2" }}
         />
         <Line
           type="monotone"
           dataKey="orders"
-          stroke="var(--color-accent)"
+          stroke="var(--accent)"
           strokeWidth={2}
           dot={false}
-          activeDot={{ r: 4, fill: "var(--color-accent)" }}
+          activeDot={{ r: 4, fill: "var(--accent)", strokeWidth: 0 }}
         />
       </LineChart>
     </ResponsiveContainer>

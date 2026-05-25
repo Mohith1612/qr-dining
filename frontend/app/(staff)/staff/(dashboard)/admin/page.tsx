@@ -50,24 +50,29 @@ function SessionsTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="size-6 animate-spin" style={{ color: "var(--color-text-muted)" }} />
+        <Loader2 className="size-6 animate-spin" style={{ color: "var(--ink-3)" }} />
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <p style={{ fontSize: 13, color: "var(--ink-3)" }}>
           {sessions.length} active session{sessions.length !== 1 ? "s" : ""}
         </p>
         <button
           onClick={fetchSessions}
-          className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg transition-opacity active:opacity-70"
-          style={{ color: "var(--color-text-muted)" }}
+          className="press"
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            fontSize: 12, color: "var(--ink-3)",
+            padding: "6px 10px", borderRadius: "var(--rad-md)",
+            background: "var(--bg-elev-2)", border: "1px solid var(--line-1)",
+          }}
           aria-label="Refresh sessions"
         >
-          <RefreshCw className="size-3.5" aria-hidden />
+          <RefreshCw size={12} aria-hidden />
           Refresh
         </button>
       </div>
@@ -79,26 +84,28 @@ function SessionsTab() {
           description="Active sessions will appear here."
         />
       ) : (
-        <div className="space-y-2">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {sessions.map((s) => (
             <HospitalityCard
               key={s.id}
-              style={{ padding: "0.875rem 1rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}
+              elev={1}
+              style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}
             >
-              <div className="space-y-0.5 min-w-0">
-                <p className="font-mono text-xs font-semibold truncate" style={{ color: "var(--color-text)" }}>
+              <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+                <p className="mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   #{s.id.slice(0, 8)}
                 </p>
-                <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                <p style={{ fontSize: 12, color: "var(--ink-3)" }}>
                   {s.table_identifier ?? `Table ${s.table_id}`} · {relativeTime(s.created_at)}
                 </p>
               </div>
               <span
-                className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0"
                 style={{
-                  backgroundColor: "var(--color-surface-inset)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text-muted)",
+                  fontSize: 11, fontWeight: 500,
+                  padding: "3px 10px", borderRadius: "var(--rad-pill)",
+                  background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+                  color: "var(--ink-3)", flexShrink: 0,
+                  letterSpacing: "0.03em", textTransform: "uppercase",
                 }}
               >
                 {s.status}
@@ -158,56 +165,63 @@ function MenuTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="size-6 animate-spin" style={{ color: "var(--color-text-muted)" }} />
+        <Loader2 className="size-6 animate-spin" style={{ color: "var(--ink-3)" }} />
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {categories.map((cat) => (
-        <section key={cat.id} className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
-            {cat.name}
-          </h3>
-          <div className="space-y-1">
+        <section key={cat.id}>
+          <p className="eyebrow" style={{ marginBottom: 10 }}>{cat.name}</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {cat.items.map((item) => (
-              <div
+              <HospitalityCard
                 key={item.id}
-                className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl"
+                elev={1}
                 style={{
-                  backgroundColor: "var(--color-surface)",
-                  border: "1px solid var(--color-border)",
-                  opacity: item.is_available ? 1 : 0.6,
+                  padding: "12px 16px",
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                  opacity: item.is_available ? 1 : 0.55,
                 }}
               >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: "var(--color-text)" }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {item.name}
                   </p>
-                  <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                  <p style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 1 }}>
                     {formatCurrency(item.price)}
                   </p>
                 </div>
                 <button
                   onClick={() => handleToggle(item.id, item.is_available)}
                   disabled={toggling === item.id}
-                  className="shrink-0 text-xs font-medium px-3 py-1.5 rounded-full transition-opacity active:opacity-70 min-h-[36px]"
+                  className="press"
                   style={{
-                    backgroundColor: item.is_available ? "var(--color-success)" : "var(--color-border)",
-                    color: item.is_available ? "white" : "var(--color-text-muted)",
+                    flexShrink: 0,
+                    fontSize: 12, fontWeight: 600,
+                    padding: "6px 14px",
+                    borderRadius: "var(--rad-pill)",
+                    border: "none",
+                    minHeight: 36, minWidth: 72,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: item.is_available ? "var(--ok)" : "var(--bg-elev-3)",
+                    color: item.is_available ? "white" : "var(--ink-3)",
+                    transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)",
+                    cursor: toggling === item.id ? "not-allowed" : "pointer",
                   }}
                   aria-label={item.is_available ? "Mark unavailable" : "Mark available"}
                 >
                   {toggling === item.id ? (
-                    <Loader2 className="size-3.5 animate-spin" />
+                    <Loader2 size={13} className="animate-spin" />
                   ) : item.is_available ? (
                     "Available"
                   ) : (
                     "Off"
                   )}
                 </button>
-              </div>
+              </HospitalityCard>
             ))}
           </div>
         </section>
@@ -219,7 +233,7 @@ function MenuTab() {
 // ─── Staff Tab ───────────────────────────────────────────────────────────────
 
 const STAFF_ROLES: { value: StaffRole; label: string }[] = [
-  { value: "waiter", label: "Waiter" },
+  { value: "waiter",  label: "Waiter"  },
   { value: "kitchen", label: "Kitchen" },
   { value: "manager", label: "Manager" },
 ]
@@ -251,29 +265,22 @@ function StaffTab() {
 
   if (!canManage) {
     return (
-      <div className="py-16 text-center" style={{ color: "var(--color-text-muted)" }}>
-        <p className="text-sm">Only owners and managers can manage staff accounts.</p>
+      <div style={{ padding: "48px 0", textAlign: "center", color: "var(--ink-3)" }}>
+        <p style={{ fontSize: 14 }}>Only owners and managers can manage staff accounts.</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div
-        className="rounded-2xl p-5 space-y-4"
-        style={{
-          backgroundColor: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-        }}
-      >
-        <h3 className="font-semibold text-sm" style={{ color: "var(--color-text)" }}>
+    <div>
+      <HospitalityCard elev={2} style={{ padding: 20 }}>
+        <p className="serif" style={{ fontSize: 18, fontWeight: 500, color: "var(--ink-1)", marginBottom: 16 }}>
           Add staff member
-        </h3>
+        </p>
 
-        <form onSubmit={handleCreate} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>
+        <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
               Name
             </label>
             <Input
@@ -281,32 +288,37 @@ function StaffTab() {
               onChange={(e) => setName(e.target.value)}
               placeholder="Staff name"
               required
-              className="h-11 rounded-xl"
               style={{
-                backgroundColor: "var(--color-bg)",
-                borderColor: "var(--color-border)",
-                color: "var(--color-text)",
+                height: 44,
+                borderRadius: "var(--rad-lg)",
+                background: "var(--bg-base)",
+                borderColor: "var(--line-2)",
+                color: "var(--ink-1)",
               }}
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
               Role
             </label>
-            <div className="flex gap-2">
+            <div style={{ display: "flex", gap: 6 }}>
               {STAFF_ROLES.map(({ value, label }) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setSelectedRole(value)}
-                  className="flex-1 py-2 rounded-xl text-xs font-medium transition-colors"
+                  className="press"
                   style={{
-                    backgroundColor:
-                      selectedRole === value ? "var(--color-accent)" : "var(--color-bg)",
-                    color: selectedRole === value ? "var(--color-accent-fg)" : "var(--color-text-muted)",
-                    border: "1px solid var(--color-border)",
-                    minHeight: "44px",
+                    flex: 1, padding: "10px 8px",
+                    borderRadius: "var(--rad-md)",
+                    fontSize: 13, fontWeight: 500,
+                    border: "1px solid",
+                    borderColor: selectedRole === value ? "var(--accent)" : "var(--line-2)",
+                    background: selectedRole === value ? "var(--accent-soft)" : "var(--bg-base)",
+                    color: selectedRole === value ? "var(--accent)" : "var(--ink-3)",
+                    minHeight: 44,
+                    transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)",
                   }}
                 >
                   {label}
@@ -315,8 +327,8 @@ function StaffTab() {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
               PIN
             </label>
             <Input
@@ -327,11 +339,13 @@ function StaffTab() {
               placeholder="4–6 digits"
               maxLength={6}
               required
-              className="h-11 rounded-xl tracking-widest"
               style={{
-                backgroundColor: "var(--color-bg)",
-                borderColor: "var(--color-border)",
-                color: "var(--color-text)",
+                height: 44,
+                borderRadius: "var(--rad-lg)",
+                background: "var(--bg-base)",
+                borderColor: "var(--line-2)",
+                color: "var(--ink-1)",
+                letterSpacing: "0.2em",
               }}
             />
           </div>
@@ -339,12 +353,17 @@ function StaffTab() {
           <Button
             type="submit"
             disabled={creating || !name || !pin}
-            className="w-full h-11 rounded-xl font-medium text-sm"
-            style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
+            style={{
+              width: "100%", height: 44,
+              borderRadius: "var(--rad-lg)",
+              background: creating ? "var(--bg-elev-3)" : "linear-gradient(180deg, var(--accent-strong), var(--accent))",
+              color: creating ? "var(--ink-3)" : "var(--accent-ink)",
+              border: "none", fontSize: 14, fontWeight: 600,
+            }}
           >
             {creating ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="size-4 animate-spin" />
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Loader2 size={16} className="animate-spin" />
                 Creating…
               </span>
             ) : (
@@ -352,7 +371,7 @@ function StaffTab() {
             )}
           </Button>
         </form>
-      </div>
+      </HospitalityCard>
     </div>
   )
 }
@@ -399,7 +418,7 @@ function StatsTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="size-6 animate-spin" style={{ color: "var(--color-text-muted)" }} />
+        <Loader2 className="size-6 animate-spin" style={{ color: "var(--ink-3)" }} />
       </div>
     )
   }
@@ -416,22 +435,22 @@ function StatsTab() {
   }
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <PeriodSelector value={period} onChange={setPeriod} />
 
-      <HospitalityCard style={{ padding: "1.25rem" }}>
-        <SectionHeader className="mb-4">Top items</SectionHeader>
+      <HospitalityCard elev={1} style={{ padding: 20 }}>
+        <SectionHeader style={{ marginBottom: 16 }}>Top items</SectionHeader>
         <TopItemsList items={topItems} />
       </HospitalityCard>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <HospitalityCard style={{ padding: "1.25rem" }}>
-          <SectionHeader className="mb-4">Busy hours</SectionHeader>
+      <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
+        <HospitalityCard elev={1} style={{ padding: 20 }}>
+          <SectionHeader style={{ marginBottom: 16 }}>Busy hours</SectionHeader>
           <BusyHoursChart hours={busyHours} />
         </HospitalityCard>
 
-        <HospitalityCard style={{ padding: "1.25rem" }}>
-          <SectionHeader className="mb-4">Order volume</SectionHeader>
+        <HospitalityCard elev={1} style={{ padding: 20 }}>
+          <SectionHeader style={{ marginBottom: 16 }}>Order volume</SectionHeader>
           <OrderVolumeChart days={orderVolume} />
         </HospitalityCard>
       </div>
@@ -455,10 +474,10 @@ function formatDate(dateStr: string): string {
 }
 
 const PLAN_FEATURES: { label: string; key: keyof Plan["features_json"] }[] = [
-  { label: "Branches", key: "max_branches" },
-  { label: "Tables", key: "max_tables" },
-  { label: "Analytics", key: "analytics" },
-  { label: "Multi-branch", key: "multi_branch" },
+  { label: "Branches",     key: "max_branches"  },
+  { label: "Tables",       key: "max_tables"     },
+  { label: "Analytics",    key: "analytics"      },
+  { label: "Multi-branch", key: "multi_branch"   },
 ]
 
 function PlanTab() {
@@ -487,22 +506,23 @@ function PlanTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="size-6 animate-spin" style={{ color: "var(--color-text-muted)" }} />
+        <Loader2 className="size-6 animate-spin" style={{ color: "var(--ink-3)" }} />
       </div>
     )
   }
 
   if (!restaurantId) {
     return (
-      <div className="py-16 text-center">
-        <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+      <div style={{ padding: "48px 0", textAlign: "center" }}>
+        <p style={{ fontSize: 13, color: "var(--ink-3)" }}>
           No tenant context. Set{" "}
           <code
             style={{
-              fontSize: "11px",
-              padding: "1px 5px",
-              borderRadius: "4px",
-              backgroundColor: "var(--color-border)",
+              fontSize: 11, padding: "2px 6px",
+              borderRadius: "var(--rad-sm)",
+              background: "var(--bg-elev-2)",
+              border: "1px solid var(--line-2)",
+              color: "var(--ink-2)",
             }}
           >
             NEXT_PUBLIC_TENANT_SLUG
@@ -515,72 +535,79 @@ function PlanTab() {
 
   if (!subscription || !features) {
     return (
-      <div className="py-16 text-center">
-        <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-          No subscription found.
-        </p>
+      <div style={{ padding: "48px 0", textAlign: "center" }}>
+        <p style={{ fontSize: 13, color: "var(--ink-3)" }}>No subscription found.</p>
       </div>
     )
   }
 
   const tierBadgeStyle =
     subscription.plan_tier === "free"
-      ? { backgroundColor: "var(--color-border)", color: "var(--color-text-muted)" }
-      : { backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }
+      ? { background: "var(--bg-elev-2)", color: "var(--ink-3)", border: "1px solid var(--line-2)" }
+      : { background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent)" }
 
   const statusStyle =
     subscription.status === "active"
-      ? { backgroundColor: "var(--color-success)", color: "white" }
+      ? { background: "var(--ok-soft)", color: "var(--ok)" }
       : subscription.status === "trial"
-      ? { backgroundColor: "var(--color-border)", color: "var(--color-text)" }
-      : { backgroundColor: "var(--color-border)", color: "var(--color-text-muted)" }
+      ? { background: "var(--warn-soft)", color: "var(--warn)" }
+      : { background: "var(--bg-elev-2)", color: "var(--ink-3)" }
 
   return (
-    <div className="space-y-4">
-      <HospitalityCard variant="elevated">
-        <div className="flex items-center gap-2 flex-wrap mb-1">
-          <span className="text-base font-bold" style={{ color: "var(--color-text)" }}>
+    <div>
+      <HospitalityCard elev={2} style={{ padding: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+          <span className="serif" style={{ fontSize: 18, fontWeight: 500, color: "var(--ink-1)" }}>
             {subscription.plan_name}
           </span>
           <span
-            className="text-[11px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-[0.04em]"
-            style={tierBadgeStyle}
+            style={{
+              fontSize: 10, fontWeight: 600,
+              padding: "2px 8px", borderRadius: "var(--rad-pill)",
+              textTransform: "uppercase", letterSpacing: "0.06em",
+              ...tierBadgeStyle,
+            }}
           >
             {subscription.plan_tier}
           </span>
           <span
-            className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-            style={statusStyle}
+            style={{
+              fontSize: 10, fontWeight: 600,
+              padding: "2px 8px", borderRadius: "var(--rad-pill)",
+              textTransform: "uppercase", letterSpacing: "0.06em",
+              ...statusStyle,
+            }}
           >
             {subscription.status}
           </span>
         </div>
 
         {subscription.status === "trial" && subscription.trial_ends_at && (
-          <p className="text-[13px] mb-4" style={{ color: "var(--color-text-muted)" }}>
+          <p style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 16 }}>
             Trial ends {formatDate(subscription.trial_ends_at)}
           </p>
         )}
 
-        <hr className="border-t my-4" style={{ borderColor: "var(--color-border)" }} />
+        <hr className="rule-strong" style={{ margin: "16px 0" }} />
 
-        <div className="flex flex-col gap-2.5 mb-5">
-          {PLAN_FEATURES.map(({ label, key }) => {
+        <div style={{ display: "flex", flexDirection: "column", gap: 0, marginBottom: 20 }}>
+          {PLAN_FEATURES.map(({ label, key }, i) => {
             const val = features[key]
             return (
-              <div key={key} className="flex justify-between items-center text-sm">
-                <span style={{ color: "var(--color-text-muted)" }}>{label}</span>
-                <span
-                  className="font-medium"
-                  style={{
-                    color:
-                      (typeof val === "boolean" && !val) || val === 0
-                        ? "var(--color-text-muted)"
-                        : "var(--color-text)",
-                  }}
-                >
-                  {formatFeatureVal(key, val)}
-                </span>
+              <div key={key}>
+                {i > 0 && <hr className="rule" />}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
+                  <span style={{ fontSize: 13, color: "var(--ink-3)" }}>{label}</span>
+                  <span
+                    className="serif"
+                    style={{
+                      fontSize: 15, fontWeight: 500,
+                      color: (typeof val === "boolean" && !val) || val === 0 ? "var(--ink-4)" : "var(--ink-1)",
+                    }}
+                  >
+                    {formatFeatureVal(key, val)}
+                  </span>
+                </div>
               </div>
             )
           })}
@@ -588,10 +615,18 @@ function PlanTab() {
 
         <Link
           href="/pricing"
-          className="block text-center py-2.5 rounded-[var(--radius-base)] border text-[13px] font-medium no-underline"
-          style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
+          className="press"
+          style={{
+            display: "block", textAlign: "center",
+            padding: "10px 0",
+            borderRadius: "var(--rad-md)",
+            border: "1px solid var(--line-2)",
+            fontSize: 13, fontWeight: 500,
+            color: "var(--ink-2)",
+            textDecoration: "none",
+          }}
         >
-          View pricing
+          View all plans
         </Link>
       </HospitalityCard>
     </div>
@@ -612,15 +647,13 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("sessions")
 
   return (
-    <div style={{ background: "var(--bg-base)", color: "var(--ink-1)", minHeight: "100vh", padding: "20px 16px" }}>
+    <div className="screen-enter" style={{ background: "var(--bg-base)", color: "var(--ink-1)", minHeight: "100vh", padding: "24px 20px" }}>
       {/* Heading */}
       <p className="eyebrow">Operations</p>
-      <h1 className="serif" style={{ fontSize: 34, fontWeight: 500, color: "var(--ink-1)", margin: "4px 0 0" }}>
-        House overview
-      </h1>
+      <h1 className="display-xl" style={{ margin: "6px 0 0" }}>House overview</h1>
 
       {/* Pill tab switcher */}
-      <div style={{ marginTop: 20, overflowX: "auto" }}>
+      <div style={{ marginTop: 24, overflowX: "auto", paddingBottom: 2 }} className="hscroll">
         <div style={{
           display: "inline-flex", gap: 2, padding: 3,
           background: "var(--bg-elev-1)", borderRadius: "var(--rad-pill)",
@@ -638,7 +671,7 @@ export default function AdminPage() {
                 fontSize: 13,
                 fontWeight: activeTab === id ? 600 : 400,
                 cursor: "pointer",
-                transition: "background 0.14s, color 0.14s, box-shadow 0.14s",
+                transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)",
                 background: activeTab === id ? "var(--bg-elev-3)" : "transparent",
                 color: activeTab === id ? "var(--ink-1)" : "var(--ink-3)",
                 boxShadow: activeTab === id ? "var(--shadow-1)" : "none",
@@ -652,7 +685,7 @@ export default function AdminPage() {
       </div>
 
       {/* Tab content */}
-      <div style={{ marginTop: 20 }}>
+      <div style={{ marginTop: 20 }} className="screen-enter">
         {activeTab === "sessions" && <SessionsTab />}
         {activeTab === "menu"     && <MenuTab />}
         {activeTab === "staff"    && <StaffTab />}
