@@ -84,23 +84,6 @@ function KitchenCard({
         </p>
       </div>
 
-      {/* Items */}
-      {order.items && order.items.length > 0 && (
-        <div style={{ marginBottom: 10, borderTop: "1px solid var(--line-1)", paddingTop: 8 }}>
-          {order.items.slice(0, 4).map((item, i) => (
-            <p key={i} style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
-              {item.quantity > 1 && <span style={{ color: "var(--accent)", fontWeight: 600 }}>{item.quantity}× </span>}
-              {item.name ?? `Item #${item.menu_item_id}`}
-            </p>
-          ))}
-          {order.items.length > 4 && (
-            <p style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 2 }}>
-              +{order.items.length - 4} more
-            </p>
-          )}
-        </div>
-      )}
-
       {/* Stale alert banner */}
       {mins >= 15 && (
         <div style={{
