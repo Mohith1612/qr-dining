@@ -180,7 +180,8 @@ export default function KitchenPage() {
   }
 
   return (
-    <div style={{ background: "var(--bg-base)", color: "var(--ink-1)", minHeight: "100vh", overflowX: "auto" }}>
+    <div style={{ position: "relative", background: "var(--bg-base)", color: "var(--ink-1)", minHeight: "100vh" }}>
+      <div style={{ overflowX: "auto" }}>
       <div style={{ padding: "24px 20px", minWidth: 900 }}>
         {/* Header */}
         <p className="eyebrow">
@@ -266,6 +267,9 @@ export default function KitchenPage() {
           </div>
         )}
       </div>
+      </div>
+      {/* Right-edge scroll fade indicator */}
+      <div aria-hidden style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 48, background: "linear-gradient(to right, transparent, var(--bg-base))", pointerEvents: "none", zIndex: 10 }} />
     </div>
   )
 }

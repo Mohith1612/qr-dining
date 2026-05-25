@@ -232,7 +232,7 @@ export default function WaiterPage() {
           {/* Right: floor overview */}
           <div>
             <p className="eyebrow" style={{ marginBottom: 10 }}>Floor</p>
-            <div className="grid grid-cols-2" style={{ gap: 10 }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
               {KNOWN_TABLES.map(({ id, label }) => {
                 const hasRequest = tableIdsWithRequests.has(id)
                 return (
