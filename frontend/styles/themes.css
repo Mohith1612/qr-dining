@@ -1,9 +1,15 @@
 /* Four theme presets — applied via [data-theme] on <html> */
 
 [data-theme="warm-cafe"] {
+  --font-display: var(--font-cormorant-garamond, 'Cormorant Garamond', Georgia, serif);
+  --font-body: var(--font-geist-sans, -apple-system, BlinkMacSystemFont, sans-serif);
+
   --color-bg: oklch(0.98 0.004 75);
   --color-surface: oklch(1 0 0);
+  --color-surface-raised: oklch(0.995 0.002 75);
+  --color-surface-inset: oklch(0.955 0.006 75);
   --color-border: oklch(0.88 0.01 75);
+  --color-overlay: oklch(0 0 0 / 0.45);
   --color-text: oklch(0.22 0.02 55);
   --color-text-muted: oklch(0.52 0.015 55);
   --color-accent: oklch(0.52 0.13 52);
@@ -11,15 +17,30 @@
   --color-success: oklch(0.56 0.12 150);
   --color-warning: oklch(0.72 0.15 75);
   --color-error: oklch(0.55 0.22 27);
+  --color-elapsed-warning: oklch(0.67 0.16 70);
+  --color-elapsed-critical: var(--color-error);
   --radius-base: 0.625rem;
   --radius-lg: 1rem;
   --shadow-card: 0 1px 3px oklch(0 0 0 / 0.06), 0 1px 2px oklch(0 0 0 / 0.04);
+  --shadow-elevated: 0 8px 24px oklch(0 0 0 / 0.12), 0 2px 8px oklch(0 0 0 / 0.06);
+  --space-page: 1rem;
+  --space-section: 1.5rem;
+  --space-card: 1.25rem;
+  --motion-fast: 150ms;
+  --motion-normal: 250ms;
+  --motion-slow: 400ms;
 }
 
 [data-theme="modern-minimal"] {
+  --font-display: var(--font-cormorant-garamond, 'Cormorant Garamond', Georgia, serif);
+  --font-body: var(--font-geist-sans, -apple-system, BlinkMacSystemFont, sans-serif);
+
   --color-bg: oklch(1 0 0);
   --color-surface: oklch(0.985 0 0);
+  --color-surface-raised: oklch(1 0 0);
+  --color-surface-inset: oklch(0.965 0 0);
   --color-border: oklch(0.91 0 0);
+  --color-overlay: oklch(0 0 0 / 0.45);
   --color-text: oklch(0.13 0 0);
   --color-text-muted: oklch(0.48 0 0);
   --color-accent: oklch(0.52 0.19 240);
@@ -27,31 +48,61 @@
   --color-success: oklch(0.56 0.14 155);
   --color-warning: oklch(0.72 0.16 75);
   --color-error: oklch(0.55 0.22 27);
+  --color-elapsed-warning: oklch(0.67 0.16 70);
+  --color-elapsed-critical: var(--color-error);
   --radius-base: 0.5rem;
   --radius-lg: 0.875rem;
   --shadow-card: 0 1px 3px oklch(0 0 0 / 0.08), 0 1px 2px oklch(0 0 0 / 0.04);
+  --shadow-elevated: 0 8px 24px oklch(0 0 0 / 0.14), 0 2px 8px oklch(0 0 0 / 0.06);
+  --space-page: 1rem;
+  --space-section: 1.5rem;
+  --space-card: 1.25rem;
+  --motion-fast: 150ms;
+  --motion-normal: 250ms;
+  --motion-slow: 400ms;
 }
 
 [data-theme="dark-luxury"] {
-  --color-bg: oklch(0.14 0.005 250);
-  --color-surface: oklch(0.19 0.005 250);
-  --color-border: oklch(0.28 0.005 250);
-  --color-text: oklch(0.93 0.005 75);
-  --color-text-muted: oklch(0.62 0.01 75);
-  --color-accent: oklch(0.72 0.14 75);
-  --color-accent-fg: oklch(0.12 0 0);
+  --font-display: var(--font-cormorant-garamond, 'Cormorant Garamond', Georgia, serif);
+  --font-body: var(--font-geist-sans, -apple-system, BlinkMacSystemFont, sans-serif);
+
+  --color-bg: oklch(0.095 0.004 55);
+  --color-surface: oklch(0.13 0.006 55);
+  --color-surface-raised: oklch(0.17 0.007 55);
+  --color-surface-inset: oklch(0.08 0.003 55);
+  --color-border: oklch(0.22 0.006 55);
+  --color-overlay: oklch(0 0 0 / 0.65);
+  --color-text: oklch(0.92 0.012 75);
+  --color-text-muted: oklch(0.57 0.02 70);
+  --color-accent: oklch(0.73 0.09 72);
+  --color-accent-fg: oklch(0.095 0.004 55);
   --color-success: oklch(0.65 0.14 155);
   --color-warning: oklch(0.78 0.16 75);
   --color-error: oklch(0.65 0.22 27);
+  --color-elapsed-warning: oklch(0.73 0.14 70);
+  --color-elapsed-critical: var(--color-error);
   --radius-base: 0.5rem;
   --radius-lg: 0.875rem;
-  --shadow-card: 0 2px 8px oklch(0 0 0 / 0.4);
+  --shadow-card: 0 1px 3px oklch(0 0 0 / 0.4), 0 1px 2px oklch(0 0 0 / 0.3);
+  --shadow-elevated: 0 8px 32px oklch(0 0 0 / 0.6), 0 2px 8px oklch(0 0 0 / 0.4);
+  --space-page: 1rem;
+  --space-section: 1.5rem;
+  --space-card: 1.25rem;
+  --motion-fast: 150ms;
+  --motion-normal: 250ms;
+  --motion-slow: 400ms;
 }
 
 [data-theme="vibrant"] {
+  --font-display: var(--font-cormorant-garamond, 'Cormorant Garamond', Georgia, serif);
+  --font-body: var(--font-geist-sans, -apple-system, BlinkMacSystemFont, sans-serif);
+
   --color-bg: oklch(1 0 0);
   --color-surface: oklch(0.98 0.003 280);
+  --color-surface-raised: oklch(1 0 0);
+  --color-surface-inset: oklch(0.965 0.005 280);
   --color-border: oklch(0.9 0.01 280);
+  --color-overlay: oklch(0 0 0 / 0.45);
   --color-text: oklch(0.15 0.01 280);
   --color-text-muted: oklch(0.48 0.01 280);
   --color-accent: oklch(0.52 0.23 290);
@@ -59,7 +110,16 @@
   --color-success: oklch(0.56 0.14 155);
   --color-warning: oklch(0.68 0.18 75);
   --color-error: oklch(0.55 0.22 27);
+  --color-elapsed-warning: oklch(0.67 0.16 70);
+  --color-elapsed-critical: var(--color-error);
   --radius-base: 0.75rem;
   --radius-lg: 1.25rem;
   --shadow-card: 0 1px 4px oklch(0 0 0 / 0.08), 0 1px 2px oklch(0 0 0 / 0.04);
+  --shadow-elevated: 0 8px 24px oklch(0 0 0 / 0.14), 0 2px 8px oklch(0 0 0 / 0.06);
+  --space-page: 1rem;
+  --space-section: 1.5rem;
+  --space-card: 1.25rem;
+  --motion-fast: 150ms;
+  --motion-normal: 250ms;
+  --motion-slow: 400ms;
 }
