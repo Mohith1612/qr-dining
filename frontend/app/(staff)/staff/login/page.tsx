@@ -6,7 +6,7 @@ import { useStaffStore } from "@/store/staff"
 import { staffApi } from "@/lib/api/staff"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Building2, Loader2 } from "lucide-react"
+import { UtensilsCrossed, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import type { StaffRole } from "@/types/api"
 
@@ -45,23 +45,27 @@ export default function StaffLoginPage() {
       className="min-h-screen flex items-center justify-center px-6"
       style={{ backgroundColor: "var(--color-bg)" }}
     >
-      <div className="w-full max-w-sm space-y-8">
-        <div className="text-center space-y-3">
+      <div className="w-full max-w-sm space-y-10">
+        {/* Brand mark */}
+        <div className="text-center space-y-4">
           <div
-            className="size-14 rounded-2xl flex items-center justify-center mx-auto"
+            className="size-20 rounded-3xl flex items-center justify-center mx-auto"
             style={{
               backgroundColor: "var(--color-surface)",
               border: "1px solid var(--color-border)",
-              boxShadow: "var(--shadow-card)",
+              boxShadow: "var(--shadow-elevated)",
             }}
           >
-            <Building2 className="size-7" style={{ color: "var(--color-accent)" }} aria-hidden />
+            <UtensilsCrossed className="size-9" style={{ color: "var(--color-accent)" }} aria-hidden />
           </div>
-          <div>
-            <h1 className="text-xl font-semibold" style={{ color: "var(--color-text)" }}>
+          <div className="space-y-1.5">
+            <h1
+              className="text-3xl font-medium"
+              style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
+            >
               Staff Portal
             </h1>
-            <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>
+            <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
               Sign in with your branch ID and PIN
             </p>
           </div>
@@ -71,8 +75,8 @@ export default function StaffLoginPage() {
           <div className="space-y-2">
             <label
               htmlFor="branch-id"
-              className="text-xs font-medium uppercase tracking-wider"
-              style={{ color: "var(--color-text-muted)" }}
+              className="text-xs font-semibold uppercase tracking-widest"
+              style={{ color: "var(--color-text-muted)", letterSpacing: "0.1em" }}
             >
               Branch ID
             </label>
@@ -85,11 +89,13 @@ export default function StaffLoginPage() {
               onChange={(e) => setBranchId(e.target.value)}
               required
               min={1}
-              className="h-12 text-base rounded-xl"
+              className="rounded-xl"
               style={{
                 backgroundColor: "var(--color-surface)",
                 borderColor: "var(--color-border)",
                 color: "var(--color-text)",
+                height: "52px",
+                fontSize: "16px",
               }}
             />
           </div>
@@ -97,8 +103,8 @@ export default function StaffLoginPage() {
           <div className="space-y-2">
             <label
               htmlFor="pin"
-              className="text-xs font-medium uppercase tracking-wider"
-              style={{ color: "var(--color-text-muted)" }}
+              className="text-xs font-semibold uppercase tracking-widest"
+              style={{ color: "var(--color-text-muted)", letterSpacing: "0.1em" }}
             >
               PIN
             </label>
@@ -112,11 +118,14 @@ export default function StaffLoginPage() {
               maxLength={6}
               required
               autoComplete="current-password"
-              className="h-12 text-base rounded-xl tracking-widest"
+              className="rounded-xl tracking-widest text-center"
               style={{
                 backgroundColor: "var(--color-surface)",
                 borderColor: "var(--color-border)",
                 color: "var(--color-text)",
+                height: "52px",
+                fontSize: "20px",
+                letterSpacing: "0.25em",
               }}
             />
           </div>
@@ -124,10 +133,12 @@ export default function StaffLoginPage() {
           <Button
             type="submit"
             disabled={loading || !branchId || !pin}
-            className="w-full h-12 rounded-xl font-medium text-base mt-2"
+            className="w-full rounded-xl font-medium mt-2"
             style={{
               backgroundColor: "var(--color-accent)",
               color: "var(--color-accent-fg)",
+              height: "52px",
+              fontSize: "15px",
             }}
           >
             {loading ? (

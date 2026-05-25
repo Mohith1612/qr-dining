@@ -12,11 +12,14 @@ import { PeriodSelector } from "@/components/shared/PeriodSelector"
 import { TopItemsList } from "@/components/analytics/TopItemsList"
 import { BusyHoursChart } from "@/components/analytics/BusyHoursChart"
 import { OrderVolumeChart } from "@/components/analytics/OrderVolumeChart"
+import { HospitalityCard } from "@/components/shared/HospitalityCard"
+import { SectionHeader } from "@/components/shared/SectionHeader"
+import { EmptyState } from "@/components/shared/EmptyState"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatCurrency, relativeTime } from "@/lib/format"
-import { RefreshCw, Loader2, Users } from "lucide-react"
+import { RefreshCw, Loader2, Users, BarChart2 } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 import type { Session, MenuCategory, StaffRole } from "@/types/api"
@@ -71,26 +74,17 @@ function SessionsTab() {
       </div>
 
       {sessions.length === 0 ? (
-        <div
-          className="rounded-2xl p-8 text-center"
-          style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-        >
-          <Users className="size-6 mx-auto mb-2" style={{ color: "var(--color-text-muted)" }} />
-          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            No active sessions
-          </p>
-        </div>
+        <EmptyState
+          icon={Users}
+          title="No active sessions"
+          description="Active sessions will appear here."
+        />
       ) : (
         <div className="space-y-2">
           {sessions.map((s) => (
-            <div
+            <HospitalityCard
               key={s.id}
-              className="rounded-2xl p-4 flex items-center justify-between gap-3"
-              style={{
-                backgroundColor: "var(--color-surface)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-lg)",
-              }}
+              style={{ padding: "0.875rem 1rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}
             >
               <div className="space-y-0.5 min-w-0">
                 <p className="font-mono text-xs font-semibold truncate" style={{ color: "var(--color-text)" }}>
@@ -101,16 +95,16 @@ function SessionsTab() {
                 </p>
               </div>
               <span
-                className="text-xs font-medium px-2 py-0.5 rounded-full shrink-0"
+                className="text-xs font-medium px-2.5 py-0.5 rounded-full shrink-0"
                 style={{
-                  backgroundColor: "var(--color-bg)",
+                  backgroundColor: "var(--color-surface-inset)",
                   border: "1px solid var(--color-border)",
                   color: "var(--color-text-muted)",
                 }}
               >
                 {s.status}
               </span>
-            </div>
+            </HospitalityCard>
           ))}
         </div>
       )}
@@ -413,30 +407,12 @@ function StatsTab() {
 
   if (gated) {
     return (
-      <div
-        style={{
-          backgroundColor: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          padding: "32px 24px",
-          textAlign: "center",
-        }}
-      >
-        <p className="text-sm" style={{ color: "var(--color-text)", marginBottom: "8px" }}>
-          Analytics is available on the Standard and Premium plans.
-        </p>
-        <Link
-          href="/pricing"
-          style={{
-            fontSize: "13px",
-            color: "var(--color-accent)",
-            textDecoration: "none",
-            fontWeight: 500,
-          }}
-        >
-          View pricing →
-        </Link>
-      </div>
+      <EmptyState
+        icon={BarChart2}
+        title="Analytics not available"
+        description="Analytics is available on Standard and Premium plans."
+        action={{ label: "View pricing", onClick: () => window.location.href = "/pricing" }}
+      />
     )
   }
 
@@ -444,55 +420,21 @@ function StatsTab() {
     <div className="space-y-4">
       <PeriodSelector value={period} onChange={setPeriod} />
 
-      <div
-        style={{
-          backgroundColor: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          padding: "20px",
-        }}
-      >
-        <h3
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-text-muted)", marginBottom: "16px" }}
-        >
-          Top items
-        </h3>
+      <HospitalityCard style={{ padding: "1.25rem" }}>
+        <SectionHeader className="mb-4">Top items</SectionHeader>
         <TopItemsList items={topItems} />
-      </div>
+      </HospitalityCard>
 
-      <div
-        style={{
-          backgroundColor: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          padding: "20px",
-        }}
-      >
-        <h3
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-text-muted)", marginBottom: "16px" }}
-        >
-          Busy hours
-        </h3>
-        <BusyHoursChart hours={busyHours} />
-      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <HospitalityCard style={{ padding: "1.25rem" }}>
+          <SectionHeader className="mb-4">Busy hours</SectionHeader>
+          <BusyHoursChart hours={busyHours} />
+        </HospitalityCard>
 
-      <div
-        style={{
-          backgroundColor: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          padding: "20px",
-        }}
-      >
-        <h3
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-text-muted)", marginBottom: "16px" }}
-        >
-          Order volume
-        </h3>
-        <OrderVolumeChart days={orderVolume} />
+        <HospitalityCard style={{ padding: "1.25rem" }}>
+          <SectionHeader className="mb-4">Order volume</SectionHeader>
+          <OrderVolumeChart days={orderVolume} />
+        </HospitalityCard>
       </div>
     </div>
   )
@@ -596,84 +538,45 @@ function PlanTab() {
 
   return (
     <div className="space-y-4">
-      <div
-        style={{
-          backgroundColor: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          padding: "20px",
-        }}
-      >
+      <HospitalityCard variant="elevated">
         {/* Plan header */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
-          <span
-            style={{
-              fontSize: "16px",
-              fontWeight: 700,
-              color: "var(--color-text)",
-            }}
-          >
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <span className="text-base font-bold" style={{ color: "var(--color-text)" }}>
             {subscription.plan_name}
           </span>
           <span
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              padding: "2px 8px",
-              borderRadius: "100px",
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              ...tierBadgeStyle,
-            }}
+            className="text-[11px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-[0.04em]"
+            style={tierBadgeStyle}
           >
             {subscription.plan_tier}
           </span>
           <span
-            style={{
-              fontSize: "11px",
-              fontWeight: 500,
-              padding: "2px 8px",
-              borderRadius: "100px",
-              ...statusStyle,
-            }}
+            className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+            style={statusStyle}
           >
             {subscription.status}
           </span>
         </div>
 
         {subscription.status === "trial" && subscription.trial_ends_at && (
-          <p style={{ fontSize: "13px", color: "var(--color-text-muted)", marginBottom: "16px" }}>
+          <p className="text-[13px] mb-4" style={{ color: "var(--color-text-muted)" }}>
             Trial ends {formatDate(subscription.trial_ends_at)}
           </p>
         )}
 
         {/* Divider */}
-        <div
-          style={{
-            height: "1px",
-            backgroundColor: "var(--color-border)",
-            margin: "16px 0",
-          }}
-        />
+        <hr className="border-t my-4" style={{ borderColor: "var(--color-border)" }} />
 
         {/* Feature list */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
+        <div className="flex flex-col gap-2.5 mb-5">
           {PLAN_FEATURES.map(({ label, key }) => {
             const val = features[key]
             return (
-              <div
-                key={key}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  fontSize: "14px",
-                }}
-              >
+              <div key={key} className="flex justify-between items-center text-sm">
                 <span style={{ color: "var(--color-text-muted)" }}>{label}</span>
                 <span
+                  className="font-medium"
                   style={{
-                    fontWeight: 500,
                     color:
                       (typeof val === "boolean" && !val) || val === 0
                         ? "var(--color-text-muted)"
@@ -690,21 +593,12 @@ function PlanTab() {
         {/* CTA */}
         <Link
           href="/pricing"
-          style={{
-            display: "block",
-            textAlign: "center",
-            padding: "9px 0",
-            borderRadius: "var(--radius-base)",
-            border: "1px solid var(--color-border)",
-            fontSize: "13px",
-            fontWeight: 500,
-            color: "var(--color-text)",
-            textDecoration: "none",
-          }}
+          className="block text-center py-2.5 rounded-[var(--radius-base)] border text-[13px] font-medium no-underline"
+          style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
         >
           View pricing
         </Link>
-      </div>
+      </HospitalityCard>
     </div>
   )
 }
@@ -717,16 +611,15 @@ export default function AdminPage() {
       className="px-4 py-6 space-y-6"
       style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
     >
-      <h1 className="text-lg font-semibold">Admin dashboard</h1>
+      <h1 className="text-lg font-semibold font-[family-name:var(--font-display)]" style={{ color: "var(--color-text)" }}>Admin dashboard</h1>
 
       <Tabs defaultValue="sessions">
-        <div style={{ overflowX: "auto" }}>
+        <div className="overflow-x-auto">
           <TabsList
-            className="inline-flex rounded-xl h-10"
+            className="inline-flex rounded-xl h-10 min-w-full border"
             style={{
               backgroundColor: "var(--color-surface)",
-              border: "1px solid var(--color-border)",
-              minWidth: "100%",
+              borderColor: "var(--color-border)",
             }}
           >
             <TabsTrigger value="sessions" className="flex-1 text-xs rounded-lg">

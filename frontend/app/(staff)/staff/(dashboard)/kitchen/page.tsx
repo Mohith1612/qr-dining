@@ -5,6 +5,9 @@ import { useStaffStore } from "@/store/staff"
 import { staffApi } from "@/lib/api/staff"
 import { ordersApi } from "@/lib/api/orders"
 import { StatusBadge } from "@/components/shared/StatusBadge"
+import { SectionHeader } from "@/components/shared/SectionHeader"
+import { EmptyState } from "@/components/shared/EmptyState"
+import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { relativeTime } from "@/lib/format"
 import { UtensilsCrossed, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -27,8 +30,8 @@ const NEXT_LABEL: Partial<Record<OrderStatus, string>> = {
 
 function elapsedColor(iso: string): string {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)
-  if (mins >= 30) return "var(--color-error)"
-  if (mins >= 15) return "#d97706"
+  if (mins >= 30) return "var(--color-elapsed-critical)"
+  if (mins >= 15) return "var(--color-elapsed-warning)"
   return "var(--color-text-muted)"
 }
 
@@ -52,48 +55,42 @@ function OrderCard({
   const shortId = order.id.slice(0, 8)
 
   return (
-    <div
-      className="rounded-2xl p-4 space-y-3"
-      style={{
-        backgroundColor: "var(--color-surface)",
-        border: "1px solid var(--color-border)",
-        boxShadow: "var(--shadow-card)",
-        borderRadius: "var(--radius-lg)",
-      }}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="space-y-0.5">
-          <p className="font-mono text-xs font-semibold" style={{ color: "var(--color-text)" }}>
-            #{shortId}
-          </p>
-          <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-            {relativeTime(order.created_at)}
-          </p>
+    <HospitalityCard style={{ padding: "1rem", gap: undefined }}>
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-0.5">
+            <p className="font-mono text-xs font-semibold" style={{ color: "var(--color-text)" }}>
+              #{shortId}
+            </p>
+            <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+              {relativeTime(order.created_at)}
+            </p>
+          </div>
+          <StatusBadge status={order.status} />
         </div>
-        <StatusBadge status={order.status} />
-      </div>
 
-      <div className="flex items-center justify-between">
-        <span
-          className="text-xs font-semibold tabular-nums"
-          style={{ color: elapsedColor(order.created_at) }}
-        >
-          {elapsedLabel(order.created_at)} elapsed
-        </span>
-
-        {next && nextLabel && (
-          <Button
-            size="sm"
-            disabled={advancing}
-            onClick={() => onAdvance(order.id, next)}
-            className="h-9 px-4 rounded-xl text-xs"
-            style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
+        <div className="flex items-center justify-between">
+          <span
+            className="text-xs font-semibold tabular-nums"
+            style={{ color: elapsedColor(order.created_at) }}
           >
-            {advancing ? <Loader2 className="size-3.5 animate-spin" /> : nextLabel}
-          </Button>
-        )}
+            {elapsedLabel(order.created_at)} elapsed
+          </span>
+
+          {next && nextLabel && (
+            <Button
+              size="sm"
+              disabled={advancing}
+              onClick={() => onAdvance(order.id, next)}
+              className="h-8 px-4 rounded-xl text-xs"
+              style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
+            >
+              {advancing ? <Loader2 className="size-3.5 animate-spin" /> : nextLabel}
+            </Button>
+          )}
+        </div>
       </div>
-    </div>
+    </HospitalityCard>
   )
 }
 
@@ -150,60 +147,63 @@ export default function KitchenPage() {
 
   if (orders.length === 0) {
     return (
-      <div
-        className="min-h-[60vh] flex flex-col items-center justify-center px-6 text-center gap-4"
-        style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
-      >
-        <div
-          className="size-14 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-        >
-          <UtensilsCrossed className="size-6" style={{ color: "var(--color-text-muted)" }} aria-hidden />
-        </div>
-        <div className="space-y-1">
-          <p className="font-medium">No active orders</p>
-          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            New orders will appear here automatically
-          </p>
-        </div>
+      <div style={{ backgroundColor: "var(--color-bg)" }} className="min-h-[60vh]">
+        <EmptyState
+          icon={UtensilsCrossed}
+          title="No active orders"
+          description="New orders will appear here automatically."
+        />
       </div>
     )
   }
 
   return (
     <div
-      className="px-4 py-6 space-y-6"
+      className="px-5 py-6 space-y-6"
       style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
     >
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Order queue</h1>
-        <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+        <h1
+          className="text-2xl font-medium"
+          style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
+        >
+          Order queue
+        </h1>
+        <span
+          className="text-xs font-medium px-2.5 py-1 rounded-full"
+          style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)" }}
+        >
           {orders.length} active
         </span>
       </div>
 
-      {ACTIVE_STATUSES.map((status) => {
-        const group = orders.filter((o) => o.status === status)
-        if (group.length === 0) return null
-        return (
-          <section key={status} className="space-y-3">
-            <h2
-              className="text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-text-muted)" }}
-            >
-              <StatusBadge status={status} className="text-xs" />
-            </h2>
-            {group.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                onAdvance={handleAdvance}
-                advancing={advancing === order.id}
-              />
-            ))}
-          </section>
-        )
-      })}
+      {/* Desktop: 2-column grid for wider screens */}
+      <div className="md:grid md:grid-cols-2 md:gap-6 space-y-6 md:space-y-0">
+        {ACTIVE_STATUSES.map((status) => {
+          const group = orders.filter((o) => o.status === status)
+          if (group.length === 0) return null
+          return (
+            <section key={status} className="space-y-3">
+              <div className="flex items-center gap-2">
+                <StatusBadge status={status} />
+                <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                  {group.length}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {group.map((order) => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    onAdvance={handleAdvance}
+                    advancing={advancing === order.id}
+                  />
+                ))}
+              </div>
+            </section>
+          )
+        })}
+      </div>
     </div>
   )
 }

@@ -4,6 +4,9 @@ import { useEffect, useState, useCallback } from "react"
 import { useStaffStore } from "@/store/staff"
 import { assistanceApi } from "@/lib/api/assistance"
 import { StatusBadge } from "@/components/shared/StatusBadge"
+import { SectionHeader } from "@/components/shared/SectionHeader"
+import { EmptyState } from "@/components/shared/EmptyState"
+import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { relativeTime } from "@/lib/format"
 import { CheckCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -26,52 +29,49 @@ function RequestCard({
   acting: boolean
 }) {
   return (
-    <div
-      className="rounded-2xl p-4 space-y-3"
-      style={{
-        backgroundColor: "var(--color-surface)",
-        border: "1px solid var(--color-border)",
-        boxShadow: "var(--shadow-card)",
-        borderRadius: "var(--radius-lg)",
-      }}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="space-y-0.5">
-          <p className="font-semibold text-sm" style={{ color: "var(--color-text)" }}>
-            Table {request.table_id} — {TYPE_LABEL[request.type]}
-          </p>
-          <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-            {relativeTime(request.created_at)}
-          </p>
+    <HospitalityCard style={{ padding: "1rem" }}>
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-0.5">
+            <p
+              className="font-medium text-base leading-snug"
+              style={{ fontFamily: "var(--font-display)", color: "var(--color-text)", fontSize: "16px" }}
+            >
+              Table {request.table_id} · {TYPE_LABEL[request.type]}
+            </p>
+            <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+              {relativeTime(request.created_at)}
+            </p>
+          </div>
+          <StatusBadge status={request.status} />
         </div>
-        <StatusBadge status={request.status} />
-      </div>
 
-      <div className="flex gap-2">
-        {request.status === "pending" && (
-          <Button
-            size="sm"
-            disabled={acting}
-            onClick={() => onAction(request.id, "ack")}
-            className="flex-1 h-9 rounded-xl text-xs"
-            style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
-          >
-            {acting ? <Loader2 className="size-3.5 animate-spin" /> : "Acknowledge"}
-          </Button>
-        )}
-        {request.status === "acknowledged" && (
-          <Button
-            size="sm"
-            disabled={acting}
-            onClick={() => onAction(request.id, "resolve")}
-            className="flex-1 h-9 rounded-xl text-xs"
-            style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
-          >
-            {acting ? <Loader2 className="size-3.5 animate-spin" /> : "Resolve"}
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {request.status === "pending" && (
+            <Button
+              size="sm"
+              disabled={acting}
+              onClick={() => onAction(request.id, "ack")}
+              className="flex-1 h-9 rounded-xl text-xs"
+              style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
+            >
+              {acting ? <Loader2 className="size-3.5 animate-spin" /> : "Acknowledge"}
+            </Button>
+          )}
+          {request.status === "acknowledged" && (
+            <Button
+              size="sm"
+              disabled={acting}
+              onClick={() => onAction(request.id, "resolve")}
+              className="flex-1 h-9 rounded-xl text-xs"
+              style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
+            >
+              {acting ? <Loader2 className="size-3.5 animate-spin" /> : "Resolve"}
+            </Button>
+          )}
+        </div>
       </div>
-    </div>
+    </HospitalityCard>
   )
 }
 
@@ -134,41 +134,31 @@ export default function WaiterPage() {
 
   if (requests.length === 0) {
     return (
-      <div
-        className="min-h-[60vh] flex flex-col items-center justify-center px-6 text-center gap-4"
-        style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
-      >
-        <div
-          className="size-14 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-        >
-          <CheckCircle className="size-6" style={{ color: "var(--color-success)" }} aria-hidden />
-        </div>
-        <div className="space-y-1">
-          <p className="font-medium">All clear</p>
-          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            No active requests right now
-          </p>
-        </div>
+      <div style={{ backgroundColor: "var(--color-bg)" }} className="min-h-[60vh]">
+        <EmptyState
+          icon={CheckCircle}
+          title="All clear"
+          description="No active requests right now."
+        />
       </div>
     )
   }
 
   return (
     <div
-      className="px-4 py-6 space-y-6"
+      className="px-5 py-6 space-y-6"
       style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
     >
-      <h1 className="text-lg font-semibold">Assistance queue</h1>
+      <h1
+        className="text-2xl font-medium"
+        style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
+      >
+        Assistance queue
+      </h1>
 
       {pending.length > 0 && (
         <section className="space-y-3">
-          <h2
-            className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            Needs attention
-          </h2>
+          <SectionHeader>Needs attention</SectionHeader>
           {pending.map((r) => (
             <RequestCard
               key={r.id}
@@ -182,12 +172,7 @@ export default function WaiterPage() {
 
       {acknowledged.length > 0 && (
         <section className="space-y-3">
-          <h2
-            className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            In progress
-          </h2>
+          <SectionHeader>In progress</SectionHeader>
           {acknowledged.map((r) => (
             <RequestCard
               key={r.id}
