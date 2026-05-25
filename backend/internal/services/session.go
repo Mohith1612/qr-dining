@@ -2,12 +2,11 @@ package services
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/Mohith1612/qr-dining/internal/crypto"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
@@ -54,7 +53,7 @@ func (s *SessionService) CreateSession(ctx context.Context, tableID int64, displ
 		return CreateSessionResult{}, err
 	}
 
-	token, err := generateToken()
+	token, err := crypto.GenerateToken()
 	if err != nil {
 		return CreateSessionResult{}, fmt.Errorf("generate session token: %w", err)
 	}
@@ -235,10 +234,3 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID) (
 	}, nil
 }
 
-func generateToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}

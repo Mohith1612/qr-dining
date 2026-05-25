@@ -88,6 +88,7 @@ func New(
 	tenantH := handlers.NewTenantHandler(repos)
 	subH := handlers.NewSubscriptionHandler(repos, subSvc)
 	analyticsH := handlers.NewAnalyticsHandler(analyticsSvc)
+	tableH := handlers.NewTableHandler(repos)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -166,10 +167,15 @@ func New(
 	branchStaffAPI.GET("/analytics/top-items", analyticsH.GetTopItems)
 	branchStaffAPI.GET("/analytics/busy-hours", analyticsH.GetBusyHours)
 	branchStaffAPI.GET("/analytics/order-volume", analyticsH.GetOrderVolume)
+	branchStaffAPI.GET("/tables", tableH.ListTables)
+	branchStaffAPI.POST("/tables", tableH.CreateTable)
 
 	// Menu item updates — item-scoped, no branch param on path.
 	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)
 	staffAPI.PATCH("/menu/items/:id/availability", menuAdminH.ToggleAvailability)
+
+	// Table QR token refresh — table-scoped; branch ownership verified in handler.
+	staffAPI.PATCH("/tables/:id/qr-refresh", tableH.RefreshQR)
 
 	// Staff management — owner only (role enforced in handler).
 	staffAPI.PATCH("/staff/:id/pin", staffH.RotatePIN)

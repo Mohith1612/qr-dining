@@ -35,3 +35,18 @@ func (r *Repos) UpdateTableStatus(ctx context.Context, id int64, status sqlc.Tab
 func (r *Repos) ListTablesForBranch(ctx context.Context, branchID int64) ([]sqlc.Table, error) {
 	return r.q.ListTablesForBranch(ctx, branchID)
 }
+
+func (r *Repos) CreateTable(ctx context.Context, p sqlc.CreateTableParams) (sqlc.Table, error) {
+	t, err := r.q.CreateTable(ctx, p)
+	if err != nil {
+		if isDuplicateError(err) {
+			return sqlc.Table{}, domain.ErrDuplicateTableIdentifier
+		}
+		return sqlc.Table{}, err
+	}
+	return t, nil
+}
+
+func (r *Repos) RefreshTableQRToken(ctx context.Context, tableID int64, newToken string) (sqlc.Table, error) {
+	return r.q.RefreshTableQRToken(ctx, sqlc.RefreshTableQRTokenParams{ID: tableID, QrCodeToken: newToken})
+}

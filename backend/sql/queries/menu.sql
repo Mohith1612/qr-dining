@@ -50,3 +50,11 @@ RETURNING *;
 
 -- name: UpdateMenuItemAvailability :exec
 UPDATE menu_items SET is_available = $2 WHERE id = $1;
+
+-- name: CreateTable :one
+INSERT INTO tables (branch_id, identifier, capacity, qr_code_token)
+VALUES ($1, $2, $3, $4)
+RETURNING *;
+
+-- name: RefreshTableQRToken :one
+UPDATE tables SET qr_code_token = $2 WHERE id = $1 RETURNING *;

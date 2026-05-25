@@ -11,6 +11,39 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createTable = `-- name: CreateTable :one
+INSERT INTO tables (branch_id, identifier, capacity, qr_code_token)
+VALUES ($1, $2, $3, $4)
+RETURNING id, branch_id, identifier, capacity, qr_code_token, status, created_at
+`
+
+type CreateTableParams struct {
+	BranchID    int64  `json:"branch_id"`
+	Identifier  string `json:"identifier"`
+	Capacity    int16  `json:"capacity"`
+	QrCodeToken string `json:"qr_code_token"`
+}
+
+func (q *Queries) CreateTable(ctx context.Context, arg CreateTableParams) (Table, error) {
+	row := q.db.QueryRow(ctx, createTable,
+		arg.BranchID,
+		arg.Identifier,
+		arg.Capacity,
+		arg.QrCodeToken,
+	)
+	var i Table
+	err := row.Scan(
+		&i.ID,
+		&i.BranchID,
+		&i.Identifier,
+		&i.Capacity,
+		&i.QrCodeToken,
+		&i.Status,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getMenuItemByID = `-- name: GetMenuItemByID :one
 SELECT id, category_id, branch_id, name, description, price, is_available, position FROM menu_items WHERE id = $1
 `
@@ -324,6 +357,30 @@ func (q *Queries) ListTablesForBranch(ctx context.Context, branchID int64) ([]Ta
 		return nil, err
 	}
 	return items, nil
+}
+
+const refreshTableQRToken = `-- name: RefreshTableQRToken :one
+UPDATE tables SET qr_code_token = $2 WHERE id = $1 RETURNING id, branch_id, identifier, capacity, qr_code_token, status, created_at
+`
+
+type RefreshTableQRTokenParams struct {
+	ID          int64  `json:"id"`
+	QrCodeToken string `json:"qr_code_token"`
+}
+
+func (q *Queries) RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error) {
+	row := q.db.QueryRow(ctx, refreshTableQRToken, arg.ID, arg.QrCodeToken)
+	var i Table
+	err := row.Scan(
+		&i.ID,
+		&i.BranchID,
+		&i.Identifier,
+		&i.Capacity,
+		&i.QrCodeToken,
+		&i.Status,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const updateMenuItem = `-- name: UpdateMenuItem :one

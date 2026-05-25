@@ -24,6 +24,7 @@ type Querier interface {
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff, error)
+	CreateTable(ctx context.Context, arg CreateTableParams) (Table, error)
 	DeactivateStaff(ctx context.Context, id int64) error
 	GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error)
 	GetAssistanceRequestByID(ctx context.Context, id int64) (AssistanceRequest, error)
@@ -82,6 +83,7 @@ type Querier interface {
 	ListTablesForBranch(ctx context.Context, branchID int64) ([]Table, error)
 	ListUnprocessedWebhooks(ctx context.Context) ([]PaymentWebhookEvent, error)
 	MarkWebhookProcessed(ctx context.Context, arg MarkWebhookProcessedParams) error
+	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
 	UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistanceStatusParams) (AssistanceRequest, error)

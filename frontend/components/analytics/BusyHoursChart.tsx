@@ -54,7 +54,7 @@ export function BusyHoursChart({ hours }: Props) {
             boxShadow: "var(--shadow-2)",
           }}
           formatter={(value) => [Number(value), "Orders"]}
-          labelFormatter={(label: string) => label}
+          labelFormatter={(label) => String(label)}
           cursor={{ fill: "var(--line-1)" }}
         />
         <Bar dataKey="order_count" radius={[3, 3, 0, 0]}>

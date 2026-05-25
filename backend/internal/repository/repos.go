@@ -2,9 +2,11 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 )
@@ -43,4 +45,10 @@ func (r *Repos) WithTx(ctx context.Context, fn func(*Repos) error) error {
 func (r *Repos) ExecRaw(ctx context.Context, sql string, args ...any) error {
 	_, err := r.db.Exec(ctx, sql, args...)
 	return err
+}
+
+// isDuplicateError reports whether err is a PostgreSQL unique constraint violation (code 23505).
+func isDuplicateError(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

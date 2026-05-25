@@ -164,3 +164,12 @@ export interface EventLogEntry {
   payload: Record<string, unknown>
   created_at: string
 }
+
+export interface Table {
+  id: number
+  branch_id: number
+  identifier: string
+  capacity: number
+  qr_code_token: string
+  status: 'available' | 'occupied' | 'reserved'
+}
