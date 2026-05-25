@@ -1,4 +1,5 @@
 import { plansApi, type Plan } from "@/lib/api/plans"
+import { HospitalityCard } from "@/components/shared/HospitalityCard"
 
 const FEATURE_ROWS: { label: string; key: keyof Plan["features_json"] }[] = [
   { label: "Branches", key: "max_branches" },
@@ -26,115 +27,71 @@ export default async function PricingPage() {
   const plans = await getPlans()
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "var(--color-bg)",
-        padding: "48px 24px",
-      }}
-    >
-      <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+    <div className="min-h-screen px-6 py-12" style={{ background: "var(--color-bg)" }}>
+      <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: "48px" }}>
+        <div className="text-center mb-12">
           <h1
-            style={{
-              fontSize: "clamp(24px, 4vw, 36px)",
-              fontWeight: 700,
-              color: "var(--color-text)",
-              margin: "0 0 12px",
-              letterSpacing: "-0.02em",
-            }}
+            className="text-[clamp(24px,4vw,36px)] font-bold mb-3 tracking-tight font-[family-name:var(--font-display)]"
+            style={{ color: "var(--color-text)" }}
           >
             Simple, transparent pricing
           </h1>
-          <p style={{ fontSize: "16px", color: "var(--color-text-muted)", margin: 0 }}>
+          <p className="text-base" style={{ color: "var(--color-text-muted)" }}>
             Start for free. Upgrade as your restaurant grows.
           </p>
         </div>
 
         {/* Plan cards */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: "20px",
-            marginBottom: "48px",
-          }}
-        >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-12">
           {plans.map(plan => {
             const isPopular = plan.tier === "standard"
             return (
-              <div
+              <HospitalityCard
                 key={plan.id}
-                style={{
-                  background: "var(--color-surface)",
-                  border: isPopular
-                    ? "2px solid var(--color-accent)"
-                    : "1px solid var(--color-border)",
-                  borderRadius: "var(--radius-lg)",
-                  padding: "28px 24px",
-                  position: "relative",
-                  boxShadow: isPopular ? "var(--shadow-card)" : "none",
-                }}
+                variant={isPopular ? "elevated" : "default"}
+                className="relative"
+                style={isPopular ? { border: "2px solid var(--color-accent)" } : undefined}
               >
                 {isPopular && (
                   <div
-                    style={{
-                      position: "absolute",
-                      top: "-12px",
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      background: "var(--color-accent)",
-                      color: "var(--color-accent-fg)",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      letterSpacing: "0.06em",
-                      padding: "3px 12px",
-                      borderRadius: "100px",
-                      textTransform: "uppercase",
-                    }}
+                    className="absolute -top-3 left-1/2 -translate-x-1/2 text-[11px] font-bold tracking-[0.06em] px-3 py-0.5 rounded-full uppercase"
+                    style={{ background: "var(--color-accent)", color: "var(--color-accent-fg)" }}
                   >
                     Most popular
                   </div>
                 )}
 
-                <h2 style={{ margin: "0 0 6px", fontSize: "18px", fontWeight: 700, color: "var(--color-text)" }}>
+                <h2
+                  className="text-lg font-bold mb-1.5 font-[family-name:var(--font-display)]"
+                  style={{ color: "var(--color-text)" }}
+                >
                   {plan.name}
                 </h2>
 
-                <div style={{ marginBottom: "20px" }}>
-                  <span style={{ fontSize: "32px", fontWeight: 700, color: "var(--color-text)" }}>
+                <div className="mb-5">
+                  <span className="text-[32px] font-bold" style={{ color: "var(--color-text)" }}>
                     {plan.price_monthly === 0 ? "Free" : `₹${plan.price_monthly}`}
                   </span>
                   {plan.price_monthly > 0 && (
-                    <span style={{ fontSize: "14px", color: "var(--color-text-muted)", marginLeft: "4px" }}>
+                    <span className="text-sm ml-1" style={{ color: "var(--color-text-muted)" }}>
                       / month
                     </span>
                   )}
                 </div>
 
                 {/* Feature rows */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+                <div className="flex flex-col gap-2.5 mb-6">
                   {FEATURE_ROWS.map(row => {
                     const val = plan.features_json[row.key]
                     const display = formatFeatureValue(row.key, val)
                     const active = typeof val === "boolean" ? val : true
                     return (
-                      <div
-                        key={row.key}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          fontSize: "14px",
-                        }}
-                      >
+                      <div key={row.key} className="flex justify-between items-center text-sm">
                         <span style={{ color: "var(--color-text-muted)" }}>{row.label}</span>
                         <span
-                          style={{
-                            fontWeight: 500,
-                            color: active ? "var(--color-text)" : "var(--color-text-muted)",
-                          }}
+                          className="font-medium"
+                          style={{ color: active ? "var(--color-text)" : "var(--color-text-muted)" }}
                         >
                           {display}
                         </span>
@@ -145,29 +102,25 @@ export default async function PricingPage() {
 
                 <a
                   href="mailto:hello@qrdining.app"
-                  style={{
-                    display: "block",
-                    textAlign: "center",
-                    padding: "10px 0",
-                    borderRadius: "var(--radius-base)",
-                    border: isPopular ? "none" : "1px solid var(--color-border)",
-                    background: isPopular ? "var(--color-accent)" : "transparent",
-                    color: isPopular ? "var(--color-accent-fg)" : "var(--color-text)",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    cursor: "pointer",
-                  }}
+                  className="block text-center py-2.5 rounded-[var(--radius-base)] text-sm font-semibold no-underline"
+                  style={
+                    isPopular
+                      ? { background: "var(--color-accent)", color: "var(--color-accent-fg)" }
+                      : { border: "1px solid var(--color-border)", color: "var(--color-text)" }
+                  }
                 >
                   {plan.tier === "free" ? "Get started" : "Contact us"}
                 </a>
-              </div>
+              </HospitalityCard>
             )
           })}
         </div>
 
-        <p style={{ textAlign: "center", fontSize: "13px", color: "var(--color-text-muted)" }}>
-          Need a custom plan? <a href="mailto:hello@qrdining.app" style={{ color: "var(--color-accent)" }}>Get in touch.</a>
+        <p className="text-center text-[13px]" style={{ color: "var(--color-text-muted)" }}>
+          Need a custom plan?{" "}
+          <a href="mailto:hello@qrdining.app" style={{ color: "var(--color-accent)" }}>
+            Get in touch.
+          </a>
         </p>
       </div>
     </div>

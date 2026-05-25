@@ -13,7 +13,7 @@ export default function Home() {
         <QrCode className="size-8" style={{ color: "var(--color-accent)" }} aria-hidden />
       </div>
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">QR Dining</h1>
+        <h1 className="text-2xl font-semibold tracking-tight font-[family-name:var(--font-display)]">QR Dining</h1>
         <p className="text-sm max-w-xs" style={{ color: "var(--color-text-muted)" }}>
           Scan the QR code at your table to begin ordering
         </p>
