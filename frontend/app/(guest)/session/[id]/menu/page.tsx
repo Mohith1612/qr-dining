@@ -114,6 +114,9 @@ export default function MenuPage({ params }: Props) {
 
   useEffect(() => {
     setPrefersReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    // Use Shell's main as the scroll container — avoids nested overflow-y-auto
+    const main = document.querySelector("main")
+    if (main) scrollContainerRef.current = main as HTMLDivElement
   }, [])
 
   useEffect(() => {
@@ -159,7 +162,10 @@ export default function MenuPage({ params }: Props) {
   }, [categories])
 
   useEffect(() => {
-    activePillRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" })
+    // Skip during programmatic scrolls — scrollIntoView would fight container.scrollTo()
+    if (!isScrollingRef.current) {
+      activePillRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" })
+    }
   }, [activeCatId])
 
   function scrollToCategory(catId: number) {
@@ -168,11 +174,16 @@ export default function MenuPage({ params }: Props) {
     const container = scrollContainerRef.current
     if (!el || !container) return
 
+    // Immediate pill feedback — observer only fires on intersection changes,
+    // so if scroll lands in a stable zone the callback never re-fires.
+    setActiveCatId(catId)
+
     const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 56
 
     isScrollingRef.current = true
     clearTimeout(scrollTimeoutRef.current)
-    scrollTimeoutRef.current = setTimeout(() => { isScrollingRef.current = false }, 300)
+    // 600ms covers typical smooth-scroll duration; observer resumes after.
+    scrollTimeoutRef.current = setTimeout(() => { isScrollingRef.current = false }, 600)
 
     container.scrollTo({ top, behavior: prefersReducedMotion ? "auto" : "smooth" })
   }
@@ -220,97 +231,94 @@ export default function MenuPage({ params }: Props) {
   if (menuLoading) return <MenuSkeleton />
 
   return (
-    <div className="flex flex-col h-full screen-enter" style={{ background: "var(--bg-base)" }}>
+    <div className="screen-enter" style={{ background: "var(--bg-base)" }}>
 
-      {/* Single scrollable container: header + sticky pills + all sections */}
-      <div
-        ref={scrollContainerRef}
-        className="scrollarea flex-1 overflow-y-auto"
-        style={{ overflowX: "hidden" }}
-      >
-        {/* Editorial header */}
-        <div className="page-glow" style={{ padding: "24px 20px 16px" }}>
-          <span className="eyebrow">The Carte</span>
-          <h1 className="display-lg" style={{ margin: "6px 0 4px" }}>
-            Tonight&apos;s menu
-          </h1>
-          <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 13 }}>
-            {totalDishes} dishes across {categories.length} sections
-          </p>
-        </div>
+      {/* Editorial header */}
+      <div className="page-glow" style={{ padding: "24px 20px 16px" }}>
+        <span className="eyebrow">The Carte</span>
+        <h1 className="display-lg" style={{ margin: "6px 0 4px" }}>
+          Tonight&apos;s menu
+        </h1>
+        <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 13 }}>
+          {totalDishes} dishes across {categories.length} sections
+        </p>
+      </div>
 
-        {/* Category pills — sticky */}
-        <div style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          background: "color-mix(in srgb, var(--bg-base) 92%, transparent)",
-          backdropFilter: "blur(12px)",
-          WebkitBackdropFilter: "blur(12px)",
-          borderBottom: "1px solid var(--line-1)",
-          padding: "10px 0 12px",
-        }}>
-          <div className="relative">
-            <div className="hscroll flex gap-1.5 px-5">
-              {categories.map((c) => {
-                const active = c.id === activeCatId
-                return (
-                  <button
-                    key={c.id}
-                    ref={(el) => { if (active) activePillRef.current = el }}
-                    onClick={() => scrollToCategory(c.id)}
-                    aria-current={active ? "true" : undefined}
-                    className={cn(
-                      "press px-4 py-2.5 rounded-full border text-[13px] whitespace-nowrap transition-[background,color,border-color] duration-[var(--dur-fast)]",
-                      active
-                        ? "font-semibold border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent),var(--shadow-1)]"
-                        : "font-medium border-[var(--line-2)] bg-[var(--bg-elev-1)] text-[var(--ink-2)] shadow-[var(--shadow-1)]"
-                    )}
-                  >
-                    {c.name}
-                  </button>
-                )
-              })}
-            </div>
-            {/* Right fade mask */}
-            <div style={{
-              position: "absolute", right: 0, top: 0, bottom: 0, width: 32, pointerEvents: "none",
-              background: "linear-gradient(to right, transparent, var(--bg-base))",
-            }} />
+      {/* Category pills — sticky within Shell's main scroller */}
+      <div style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+        background: "color-mix(in srgb, var(--bg-base) 92%, transparent)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        borderBottom: "1px solid var(--line-1)",
+        padding: "10px 0 12px",
+      }}>
+        <div className="relative">
+          <div className="hscroll flex gap-1.5 px-5">
+            {categories.map((c) => {
+              const active = c.id === activeCatId
+              return (
+                <button
+                  key={c.id}
+                  ref={(el) => { if (active) activePillRef.current = el }}
+                  onClick={() => scrollToCategory(c.id)}
+                  aria-current={active ? "true" : undefined}
+                  className={cn(
+                    "press px-4 py-2.5 rounded-full border text-[13px] whitespace-nowrap transition-[background,color,border-color] duration-[var(--dur-fast)]",
+                    active
+                      ? "font-semibold border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent),var(--shadow-1)]"
+                      : "font-medium border-[var(--line-2)] bg-[var(--bg-elev-1)] text-[var(--ink-2)] shadow-[var(--shadow-1)]"
+                  )}
+                >
+                  {c.name}
+                </button>
+              )
+            })}
           </div>
-        </div>
-
-        {/* All category sections */}
-        <div style={{ paddingBottom: itemCount > 0 ? 72 : 24 }}>
-          {categories.map((cat, idx) => (
-            <section
-              key={cat.id}
-              ref={(el) => { sectionRefs.current[idx] = el }}
-              style={{ paddingBottom: 32 }}
-            >
-              <div style={{ padding: "20px 20px 0" }}>
-                <h2 className="eyebrow">
-                  {cat.name} · {cat.items.length} {cat.items.length === 1 ? "dish" : "dishes"}
-                </h2>
-                <hr className="rule" style={{ margin: "10px 0 0" }} />
-              </div>
-              <div style={{ padding: "0 20px" }}>
-                {cat.items.map((item, i, arr) => (
-                  <div key={item.id}>
-                    <ItemRow item={item} qty={cartCountByItem[item.id] ?? 0} onTap={openSheet} />
-                    {i < arr.length - 1 && <hr className="rule" style={{ margin: 0 }} />}
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
+          {/* Right fade mask */}
+          <div style={{
+            position: "absolute", right: 0, top: 0, bottom: 0, width: 32, pointerEvents: "none",
+            background: "linear-gradient(to right, transparent, var(--bg-base))",
+          }} />
         </div>
       </div>
 
-      {/* Cart bar */}
+      {/* All category sections */}
+      <div style={{ paddingBottom: itemCount > 0 ? 80 : 24 }}>
+        {categories.map((cat, idx) => (
+          <section
+            key={cat.id}
+            ref={(el) => { sectionRefs.current[idx] = el }}
+            style={{ paddingBottom: 32 }}
+          >
+            <div style={{ padding: "20px 20px 0" }}>
+              <h2 className="eyebrow">
+                {cat.name} · {cat.items.length} {cat.items.length === 1 ? "dish" : "dishes"}
+              </h2>
+              <hr className="rule" style={{ margin: "10px 0 0" }} />
+            </div>
+            <div style={{ padding: "0 20px" }}>
+              {cat.items.map((item, i, arr) => (
+                <div key={item.id}>
+                  <ItemRow item={item} qty={cartCountByItem[item.id] ?? 0} onTap={openSheet} />
+                  {i < arr.length - 1 && <hr className="rule" style={{ margin: 0 }} />}
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      {/* Cart bar — fixed above bottom nav */}
       {itemCount > 0 && (
         <div style={{
-          padding: "10px 16px 8px", flexShrink: 0,
+          position: "fixed",
+          bottom: "calc(84px + env(safe-area-inset-bottom))",
+          left: 0, right: 0,
+          zIndex: 20,
+          padding: "10px 16px 8px",
           background: "color-mix(in srgb, var(--bg-base) 85%, transparent)",
           backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
           borderTop: "1px solid var(--line-1)",

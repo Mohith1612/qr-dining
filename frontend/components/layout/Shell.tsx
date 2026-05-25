@@ -12,7 +12,7 @@ interface ShellProps {
 export function Shell({ children, nav, topBar, banner }: ShellProps) {
   return (
     <div
-      className="flex flex-col min-h-svh"
+      className="flex flex-col h-svh overflow-hidden"
       style={{ backgroundColor: "var(--bg-base)", color: "var(--ink-1)" }}
     >
       {topBar}
