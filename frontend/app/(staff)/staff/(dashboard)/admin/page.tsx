@@ -15,7 +15,6 @@ import { OrderVolumeChart } from "@/components/analytics/OrderVolumeChart"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { SectionHeader } from "@/components/shared/SectionHeader"
 import { EmptyState } from "@/components/shared/EmptyState"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatCurrency, relativeTime } from "@/lib/format"
@@ -539,7 +538,6 @@ function PlanTab() {
   return (
     <div className="space-y-4">
       <HospitalityCard variant="elevated">
-        {/* Plan header */}
         <div className="flex items-center gap-2 flex-wrap mb-1">
           <span className="text-base font-bold" style={{ color: "var(--color-text)" }}>
             {subscription.plan_name}
@@ -564,10 +562,8 @@ function PlanTab() {
           </p>
         )}
 
-        {/* Divider */}
         <hr className="border-t my-4" style={{ borderColor: "var(--color-border)" }} />
 
-        {/* Feature list */}
         <div className="flex flex-col gap-2.5 mb-5">
           {PLAN_FEATURES.map(({ label, key }) => {
             const val = features[key]
@@ -590,7 +586,6 @@ function PlanTab() {
           })}
         </div>
 
-        {/* CTA */}
         <Link
           href="/pricing"
           className="block text-center py-2.5 rounded-[var(--radius-base)] border text-[13px] font-medium no-underline"
@@ -605,57 +600,65 @@ function PlanTab() {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
+const TABS = [
+  { id: "sessions", label: "Sessions" },
+  { id: "menu",     label: "Menu"     },
+  { id: "staff",    label: "Staff"    },
+  { id: "stats",    label: "Stats"    },
+  { id: "plan",     label: "Plan"     },
+]
+
 export default function AdminPage() {
+  const [activeTab, setActiveTab] = useState("sessions")
+
   return (
-    <div
-      className="px-4 py-6 space-y-6"
-      style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
-    >
-      <h1 className="text-lg font-semibold font-[family-name:var(--font-display)]" style={{ color: "var(--color-text)" }}>Admin dashboard</h1>
+    <div style={{ background: "var(--bg-base)", color: "var(--ink-1)", minHeight: "100vh", padding: "20px 16px" }}>
+      {/* Heading */}
+      <p className="eyebrow">Operations</p>
+      <h1 className="serif" style={{ fontSize: 34, fontWeight: 500, color: "var(--ink-1)", margin: "4px 0 0" }}>
+        House overview
+      </h1>
 
-      <Tabs defaultValue="sessions">
-        <div className="overflow-x-auto">
-          <TabsList
-            className="inline-flex rounded-xl h-10 min-w-full border"
-            style={{
-              backgroundColor: "var(--color-surface)",
-              borderColor: "var(--color-border)",
-            }}
-          >
-            <TabsTrigger value="sessions" className="flex-1 text-xs rounded-lg">
-              Sessions
-            </TabsTrigger>
-            <TabsTrigger value="menu" className="flex-1 text-xs rounded-lg">
-              Menu
-            </TabsTrigger>
-            <TabsTrigger value="staff" className="flex-1 text-xs rounded-lg">
-              Staff
-            </TabsTrigger>
-            <TabsTrigger value="stats" className="flex-1 text-xs rounded-lg">
-              Stats
-            </TabsTrigger>
-            <TabsTrigger value="plan" className="flex-1 text-xs rounded-lg">
-              Plan
-            </TabsTrigger>
-          </TabsList>
+      {/* Pill tab switcher */}
+      <div style={{ marginTop: 20, overflowX: "auto" }}>
+        <div style={{
+          display: "inline-flex", gap: 2, padding: 3,
+          background: "var(--bg-elev-1)", borderRadius: "var(--rad-pill)",
+          border: "1px solid var(--line-1)",
+        }}>
+          {TABS.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className="press"
+              style={{
+                padding: "8px 18px",
+                borderRadius: "var(--rad-pill)",
+                border: "none",
+                fontSize: 13,
+                fontWeight: activeTab === id ? 600 : 400,
+                cursor: "pointer",
+                transition: "background 0.14s, color 0.14s, box-shadow 0.14s",
+                background: activeTab === id ? "var(--bg-elev-3)" : "transparent",
+                color: activeTab === id ? "var(--ink-1)" : "var(--ink-3)",
+                boxShadow: activeTab === id ? "var(--shadow-1)" : "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
+      </div>
 
-        <TabsContent value="sessions" className="mt-4">
-          <SessionsTab />
-        </TabsContent>
-        <TabsContent value="menu" className="mt-4">
-          <MenuTab />
-        </TabsContent>
-        <TabsContent value="staff" className="mt-4">
-          <StaffTab />
-        </TabsContent>
-        <TabsContent value="stats" className="mt-4">
-          <StatsTab />
-        </TabsContent>
-        <TabsContent value="plan" className="mt-4">
-          <PlanTab />
-        </TabsContent>
-      </Tabs>
+      {/* Tab content */}
+      <div style={{ marginTop: 20 }}>
+        {activeTab === "sessions" && <SessionsTab />}
+        {activeTab === "menu"     && <MenuTab />}
+        {activeTab === "staff"    && <StaffTab />}
+        {activeTab === "stats"    && <StatsTab />}
+        {activeTab === "plan"     && <PlanTab />}
+      </div>
     </div>
   )
 }
