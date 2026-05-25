@@ -17,8 +17,9 @@ import { SectionHeader } from "@/components/shared/SectionHeader"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
 import { formatCurrency, relativeTime } from "@/lib/format"
-import { RefreshCw, Loader2, Users, BarChart2 } from "lucide-react"
+import { RefreshCw, Loader2, Users, BarChart2, CreditCard } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 import type { Session, MenuCategory, StaffRole } from "@/types/api"
@@ -435,22 +436,22 @@ function StatsTab() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="flex flex-col gap-4">
       <PeriodSelector value={period} onChange={setPeriod} />
 
-      <HospitalityCard elev={1} style={{ padding: 20 }}>
-        <SectionHeader style={{ marginBottom: 16 }}>Top items</SectionHeader>
+      <HospitalityCard elev={1} className="p-5">
+        <SectionHeader className="mb-4">Top items</SectionHeader>
         <TopItemsList items={topItems} />
       </HospitalityCard>
 
-      <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 16 }}>
-        <HospitalityCard elev={1} style={{ padding: 20 }}>
-          <SectionHeader style={{ marginBottom: 16 }}>Busy hours</SectionHeader>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <HospitalityCard elev={1} className="p-5">
+          <SectionHeader className="mb-4">Busy hours</SectionHeader>
           <BusyHoursChart hours={busyHours} />
         </HospitalityCard>
 
-        <HospitalityCard elev={1} style={{ padding: 20 }}>
-          <SectionHeader style={{ marginBottom: 16 }}>Order volume</SectionHeader>
+        <HospitalityCard elev={1} className="p-5">
+          <SectionHeader className="mb-4">Order volume</SectionHeader>
           <OrderVolumeChart days={orderVolume} />
         </HospitalityCard>
       </div>
@@ -506,25 +507,17 @@ function PlanTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="size-6 animate-spin" style={{ color: "var(--ink-3)" }} />
+        <Loader2 className="size-6 animate-spin opacity-40" />
       </div>
     )
   }
 
   if (!restaurantId) {
     return (
-      <div style={{ padding: "48px 0", textAlign: "center" }}>
-        <p style={{ fontSize: 13, color: "var(--ink-3)" }}>
+      <div className="py-12 text-center">
+        <p className="text-[13px] text-[var(--ink-3)]">
           No tenant context. Set{" "}
-          <code
-            style={{
-              fontSize: 11, padding: "2px 6px",
-              borderRadius: "var(--rad-sm)",
-              background: "var(--bg-elev-2)",
-              border: "1px solid var(--line-2)",
-              color: "var(--ink-2)",
-            }}
-          >
+          <code className="font-mono text-[11px] px-1.5 py-0.5 rounded-[var(--rad-sm)] bg-[var(--bg-elev-2)] border border-[var(--line-2)] text-[var(--ink-2)]">
             NEXT_PUBLIC_TENANT_SLUG
           </code>{" "}
           in your local environment.
@@ -534,77 +527,62 @@ function PlanTab() {
   }
 
   if (!subscription || !features) {
-    return (
-      <div style={{ padding: "48px 0", textAlign: "center" }}>
-        <p style={{ fontSize: 13, color: "var(--ink-3)" }}>No subscription found.</p>
-      </div>
-    )
+    return <EmptyState icon={CreditCard} title="No subscription found." />
   }
 
-  const tierBadgeStyle =
-    subscription.plan_tier === "free"
-      ? { background: "var(--bg-elev-2)", color: "var(--ink-3)", border: "1px solid var(--line-2)" }
-      : { background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent)" }
-
-  const statusStyle =
-    subscription.status === "active"
-      ? { background: "var(--ok-soft)", color: "var(--ok)" }
-      : subscription.status === "trial"
-      ? { background: "var(--warn-soft)", color: "var(--warn)" }
-      : { background: "var(--bg-elev-2)", color: "var(--ink-3)" }
+  const isPaid = subscription.plan_tier !== "free"
+  const isActive = subscription.status === "active"
+  const isTrial = subscription.status === "trial"
 
   return (
     <div>
-      <HospitalityCard elev={2} style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-          <span className="serif" style={{ fontSize: 18, fontWeight: 500, color: "var(--ink-1)" }}>
+      <HospitalityCard elev={2} className="p-5">
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <span className="serif text-lg font-medium text-[var(--ink-1)]">
             {subscription.plan_name}
           </span>
           <span
-            style={{
-              fontSize: 10, fontWeight: 600,
-              padding: "2px 8px", borderRadius: "var(--rad-pill)",
-              textTransform: "uppercase", letterSpacing: "0.06em",
-              ...tierBadgeStyle,
-            }}
+            className={cn(
+              "text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-widest border",
+              isPaid
+                ? "bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--accent)]"
+                : "bg-[var(--bg-elev-2)] text-[var(--ink-3)] border-[var(--line-2)]"
+            )}
           >
             {subscription.plan_tier}
           </span>
           <span
-            style={{
-              fontSize: 10, fontWeight: 600,
-              padding: "2px 8px", borderRadius: "var(--rad-pill)",
-              textTransform: "uppercase", letterSpacing: "0.06em",
-              ...statusStyle,
-            }}
+            className={cn(
+              "text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-widest",
+              isActive
+                ? "bg-[var(--ok-soft)] text-[var(--ok)]"
+                : isTrial
+                ? "bg-[var(--warn-soft)] text-[var(--warn)]"
+                : "bg-[var(--bg-elev-2)] text-[var(--ink-3)]"
+            )}
           >
             {subscription.status}
           </span>
         </div>
 
-        {subscription.status === "trial" && subscription.trial_ends_at && (
-          <p style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 16 }}>
+        {isTrial && subscription.trial_ends_at && (
+          <p className="text-[13px] text-[var(--ink-3)] mb-4">
             Trial ends {formatDate(subscription.trial_ends_at)}
           </p>
         )}
 
-        <hr className="rule-strong" style={{ margin: "16px 0" }} />
+        <hr className="rule-strong my-4" />
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 0, marginBottom: 20 }}>
+        <div className="flex flex-col mb-5">
           {PLAN_FEATURES.map(({ label, key }, i) => {
             const val = features[key]
+            const inactive = (typeof val === "boolean" && !val) || val === 0
             return (
               <div key={key}>
                 {i > 0 && <hr className="rule" />}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
-                  <span style={{ fontSize: 13, color: "var(--ink-3)" }}>{label}</span>
-                  <span
-                    className="serif"
-                    style={{
-                      fontSize: 15, fontWeight: 500,
-                      color: (typeof val === "boolean" && !val) || val === 0 ? "var(--ink-4)" : "var(--ink-1)",
-                    }}
-                  >
+                <div className="flex justify-between items-center py-2.5">
+                  <span className="text-[13px] text-[var(--ink-3)]">{label}</span>
+                  <span className={cn("serif text-[15px] font-medium", inactive ? "text-[var(--ink-4)]" : "text-[var(--ink-1)]")}>
                     {formatFeatureVal(key, val)}
                   </span>
                 </div>
@@ -615,16 +593,7 @@ function PlanTab() {
 
         <Link
           href="/pricing"
-          className="press"
-          style={{
-            display: "block", textAlign: "center",
-            padding: "10px 0",
-            borderRadius: "var(--rad-md)",
-            border: "1px solid var(--line-2)",
-            fontSize: 13, fontWeight: 500,
-            color: "var(--ink-2)",
-            textDecoration: "none",
-          }}
+          className="press block text-center py-2.5 rounded-[var(--rad-md)] border border-[var(--line-2)] text-[13px] font-medium text-[var(--ink-2)] no-underline"
         >
           View all plans
         </Link>
@@ -647,36 +616,24 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("sessions")
 
   return (
-    <div className="screen-enter" style={{ background: "var(--bg-base)", color: "var(--ink-1)", minHeight: "100vh", padding: "24px 20px" }}>
+    <div className="screen-enter bg-[var(--bg-base)] text-[var(--ink-1)] min-h-screen px-5 py-6">
       {/* Heading */}
       <p className="eyebrow">Operations</p>
-      <h1 className="display-xl" style={{ margin: "6px 0 0" }}>House overview</h1>
+      <h1 className="display-xl mt-1.5">House overview</h1>
 
       {/* Pill tab switcher */}
-      <div style={{ marginTop: 24, overflowX: "auto", paddingBottom: 2 }} className="hscroll">
-        <div style={{
-          display: "inline-flex", gap: 2, padding: 3,
-          background: "var(--bg-elev-1)", borderRadius: "var(--rad-pill)",
-          border: "1px solid var(--line-1)",
-        }}>
+      <div className="hscroll mt-6 overflow-x-auto pb-0.5">
+        <div className="inline-flex gap-0.5 p-[3px] bg-[var(--bg-elev-1)] rounded-full border border-[var(--line-1)]">
           {TABS.map(({ id, label }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className="press"
-              style={{
-                padding: "8px 18px",
-                borderRadius: "var(--rad-pill)",
-                border: "none",
-                fontSize: 13,
-                fontWeight: activeTab === id ? 600 : 400,
-                cursor: "pointer",
-                transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)",
-                background: activeTab === id ? "var(--bg-elev-3)" : "transparent",
-                color: activeTab === id ? "var(--ink-1)" : "var(--ink-3)",
-                boxShadow: activeTab === id ? "var(--shadow-1)" : "none",
-                whiteSpace: "nowrap",
-              }}
+              className={cn(
+                "press px-[18px] py-2 rounded-full border-0 text-[13px] cursor-pointer whitespace-nowrap transition-[background,color,box-shadow] duration-[var(--dur-fast)]",
+                activeTab === id
+                  ? "font-semibold bg-[var(--bg-elev-3)] text-[var(--ink-1)] shadow-[var(--shadow-1)]"
+                  : "font-normal bg-transparent text-[var(--ink-3)]"
+              )}
             >
               {label}
             </button>
@@ -685,7 +642,7 @@ export default function AdminPage() {
       </div>
 
       {/* Tab content */}
-      <div style={{ marginTop: 20 }} className="screen-enter">
+      <div className="screen-enter mt-5">
         {activeTab === "sessions" && <SessionsTab />}
         {activeTab === "menu"     && <MenuTab />}
         {activeTab === "staff"    && <StaffTab />}
