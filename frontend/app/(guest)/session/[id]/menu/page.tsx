@@ -99,7 +99,7 @@ export default function MenuPage({ params }: Props) {
   if (menuLoading) return <MenuSkeleton />
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "var(--bg-base)", overflow: "hidden" }}>
+    <div className="flex flex-col h-full screen-enter" style={{ background: "var(--bg-base)", overflow: "hidden" }}>
 
       {/* Editorial header with warm glow */}
       <div className="page-glow" style={{ padding: "24px 20px 0", flexShrink: 0 }}>

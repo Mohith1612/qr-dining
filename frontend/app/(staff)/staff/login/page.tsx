@@ -43,7 +43,7 @@ export default function StaffLoginPage() {
 
   return (
     <div
-      className="atmos min-h-screen flex items-center justify-center px-6"
+      className="atmos min-h-screen flex items-center justify-center px-6 screen-enter"
       style={{ background: "var(--bg-base)", color: "var(--ink-1)", backgroundImage: "var(--glow-warm)" }}
     >
       <div style={{ width: "100%", maxWidth: 420 }}>
