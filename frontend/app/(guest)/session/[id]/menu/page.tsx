@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useMenuStore } from "@/store/menu"
 import { useCart } from "@/hooks/useCart"
 import { useSession } from "@/hooks/useSession"
@@ -27,8 +27,70 @@ interface Props {
   params: Promise<{ id: string }>
 }
 
+interface ItemRowProps {
+  item: MenuItem
+  qty: number
+  onTap: (item: MenuItem) => void
+}
+
 function itemHue(id: number): number {
   return (id * 47 + 15) % 60 + 20
+}
+
+function ItemRow({ item, qty, onTap }: ItemRowProps) {
+  return (
+    <button
+      onClick={() => item.is_available && onTap(item)}
+      disabled={!item.is_available}
+      className="press"
+      style={{
+        border: 0, background: "transparent", padding: "18px 0",
+        display: "flex", gap: 16, alignItems: "flex-start", textAlign: "left",
+        width: "100%", opacity: item.is_available ? 1 : 0.4,
+      }}
+      aria-disabled={!item.is_available}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span className="serif" style={{ fontSize: 20, fontWeight: 500, letterSpacing: "-0.015em", color: "var(--ink-1)", lineHeight: 1.15 }}>
+            {item.name}
+          </span>
+          <span className="leader" />
+          <span className="serif" style={{ fontSize: 17, color: "var(--accent)", fontWeight: 500, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+            {formatCurrency(item.price)}
+          </span>
+        </div>
+        {item.description && (
+          <div style={{ color: "var(--ink-3)", fontSize: 13, lineHeight: 1.6, marginTop: 5 }}>
+            {item.description}
+          </div>
+        )}
+        {!item.is_available && (
+          <div style={{ color: "var(--ink-4)", fontSize: 11, marginTop: 5, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+            Not available
+          </div>
+        )}
+      </div>
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <Vignette hue={itemHue(item.id)} size={66} ring={qty > 0} />
+        {qty > 0 && (
+          <span style={{
+            position: "absolute", bottom: -3, right: -3,
+            minWidth: 22, height: 22, borderRadius: 999, padding: "0 7px",
+            background: "var(--accent)", color: "var(--accent-ink)",
+            border: "2px solid var(--bg-base)",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            fontSize: 11, fontWeight: 700, letterSpacing: "-0.005em",
+            fontVariantNumeric: "tabular-nums",
+            boxShadow: "0 4px 12px -4px rgba(0,0,0,0.5)",
+            animation: "pop 0.32s var(--ease-back)",
+          }}>
+            {qty}
+          </span>
+        )}
+      </div>
+    </button>
+  )
 }
 
 export default function MenuPage({ params }: Props) {
@@ -41,6 +103,18 @@ export default function MenuPage({ params }: Props) {
   const [activeCatId, setActiveCatId] = useState<number | null>(null)
   const [sheet, setSheet] = useState<SheetState | null>(null)
   const [adding, setAdding] = useState(false)
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const sectionRefs = useRef<(HTMLElement | null)[]>([])
+  const activePillRef = useRef<HTMLButtonElement | null>(null)
+  const observerRef = useRef<IntersectionObserver | null>(null)
+  const isScrollingRef = useRef(false)
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  useEffect(() => {
+    setPrefersReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+  }, [])
 
   useEffect(() => {
     if (!session?.branch_id || categories.length > 0) return
@@ -57,6 +131,51 @@ export default function MenuPage({ params }: Props) {
       setActiveCatId(categories[0].id)
     }
   }, [categories.length, activeCatId])
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (categories.length === 0 || !container) return
+
+    observerRef.current?.disconnect()
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (isScrollingRef.current) return
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const idx = sectionRefs.current.indexOf(entry.target as HTMLElement)
+            if (idx !== -1) setActiveCatId(categories[idx].id)
+          }
+        })
+      },
+      { root: container, rootMargin: "-20% 0px -70% 0px" }
+    )
+
+    sectionRefs.current.forEach((el) => {
+      if (el) observerRef.current!.observe(el)
+    })
+
+    return () => observerRef.current?.disconnect()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories])
+
+  useEffect(() => {
+    activePillRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" })
+  }, [activeCatId])
+
+  function scrollToCategory(catId: number) {
+    const idx = categories.findIndex((c) => c.id === catId)
+    const el = sectionRefs.current[idx]
+    const container = scrollContainerRef.current
+    if (!el || !container) return
+
+    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 56
+
+    isScrollingRef.current = true
+    clearTimeout(scrollTimeoutRef.current)
+    scrollTimeoutRef.current = setTimeout(() => { isScrollingRef.current = false }, 300)
+
+    container.scrollTo({ top, behavior: prefersReducedMotion ? "auto" : "smooth" })
+  }
 
   function openSheet(item: MenuItem) {
     setSheet({ item, quantity: 1, selectedModifiers: [], note: "" })
@@ -96,124 +215,96 @@ export default function MenuPage({ params }: Props) {
     const modTotal = ci.selected_modifiers.reduce((m, mod) => m + mod.price_delta, 0)
     return s + ((ci.item_price ?? 0) + modTotal) * ci.quantity
   }, 0)
-  const activeCategory = categories.find((c) => c.id === activeCatId) ?? categories[0]
   const totalDishes = categories.reduce((s, c) => s + c.items.length, 0)
 
   if (menuLoading) return <MenuSkeleton />
 
   return (
-    <div className="flex flex-col h-full screen-enter" style={{ background: "var(--bg-base)", overflow: "hidden" }}>
+    <div className="flex flex-col h-full screen-enter" style={{ background: "var(--bg-base)" }}>
 
-      {/* Editorial header with warm glow */}
-      <div className="page-glow" style={{ padding: "24px 20px 0", flexShrink: 0 }}>
-        <span className="eyebrow">The Carte</span>
-        <h1 className="display-lg" style={{ margin: "6px 0 4px" }}>
-          Tonight&apos;s menu
-        </h1>
-        <p style={{ margin: "0 0 18px", color: "var(--ink-2)", fontSize: 13 }}>
-          {totalDishes} dishes available
-        </p>
-      </div>
-
-      {/* Category pills — edge-faded scroll */}
-      <div className="relative shrink-0">
-        <div className="hscroll flex gap-1.5 px-5 pb-4">
-          {categories.map((c) => {
-            const active = c.id === activeCatId
-            return (
-              <button
-                key={c.id}
-                onClick={() => setActiveCatId(c.id)}
-                className={cn(
-                  "press px-4 py-2.5 rounded-full border text-[13px] whitespace-nowrap transition-[background,color,border-color] duration-[var(--dur-fast)]",
-                  active
-                    ? "font-semibold border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent),var(--shadow-1)]"
-                    : "font-medium border-[var(--line-2)] bg-[var(--bg-elev-1)] text-[var(--ink-2)] shadow-[var(--shadow-1)]"
-                )}
-              >
-                {c.name}
-              </button>
-            )
-          })}
+      {/* Single scrollable container: header + sticky pills + all sections */}
+      <div
+        ref={scrollContainerRef}
+        className="scrollarea flex-1 overflow-y-auto"
+        style={{ overflowX: "hidden" }}
+      >
+        {/* Editorial header */}
+        <div className="page-glow" style={{ padding: "24px 20px 16px" }}>
+          <span className="eyebrow">The Carte</span>
+          <h1 className="display-lg" style={{ margin: "6px 0 4px" }}>
+            Tonight&apos;s menu
+          </h1>
+          <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 13 }}>
+            {totalDishes} dishes across {categories.length} sections
+          </p>
         </div>
-        {/* Right fade mask */}
-        <div style={{
-          position: "absolute", right: 0, top: 0, bottom: 0, width: 32, pointerEvents: "none",
-          background: "linear-gradient(to right, transparent, var(--bg-base))",
-        }} />
-      </div>
 
-      {/* Item list */}
-      <div className="scrollarea flex-1 overflow-y-auto" style={{ paddingBottom: itemCount > 0 ? 72 : 24 }}>
-        {activeCategory && (
-          <div style={{ padding: "0 20px 28px" }}>
-            <div className="eyebrow" style={{ marginBottom: 14 }}>
-              {activeCategory.name} · {activeCategory.items.length} {activeCategory.items.length === 1 ? "dish" : "dishes"}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {activeCategory.items.map((item, idx, arr) => {
-                const qty = cartCountByItem[item.id] ?? 0
+        {/* Category pills — sticky */}
+        <div style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+          background: "color-mix(in srgb, var(--bg-base) 92%, transparent)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          borderBottom: "1px solid var(--line-1)",
+          padding: "10px 0 12px",
+        }}>
+          <div className="relative">
+            <div className="hscroll flex gap-1.5 px-5">
+              {categories.map((c) => {
+                const active = c.id === activeCatId
                 return (
-                  <div key={item.id} className="presence">
-                    <button
-                      onClick={() => item.is_available && openSheet(item)}
-                      disabled={!item.is_available}
-                      className="press"
-                      style={{
-                        border: 0, background: "transparent", padding: "18px 0",
-                        display: "flex", gap: 16, alignItems: "flex-start", textAlign: "left",
-                        width: "100%", opacity: item.is_available ? 1 : 0.4,
-                      }}
-                      aria-disabled={!item.is_available}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                          <span className="serif" style={{ fontSize: 20, fontWeight: 500, letterSpacing: "-0.015em", color: "var(--ink-1)", lineHeight: 1.15 }}>
-                            {item.name}
-                          </span>
-                          <span className="leader" />
-                          <span className="serif" style={{ fontSize: 17, color: "var(--accent)", fontWeight: 500, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                            {formatCurrency(item.price)}
-                          </span>
-                        </div>
-                        {item.description && (
-                          <div style={{ color: "var(--ink-3)", fontSize: 13, lineHeight: 1.6, marginTop: 5 }}>
-                            {item.description}
-                          </div>
-                        )}
-                        {!item.is_available && (
-                          <div style={{ color: "var(--ink-4)", fontSize: 11, marginTop: 5, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                            Not available
-                          </div>
-                        )}
-                      </div>
-                      {/* Vignette + qty dot */}
-                      <div style={{ position: "relative", flexShrink: 0 }}>
-                        <Vignette hue={itemHue(item.id)} size={66} ring={qty > 0} />
-                        {qty > 0 && (
-                          <span style={{
-                            position: "absolute", bottom: -3, right: -3,
-                            minWidth: 22, height: 22, borderRadius: 999, padding: "0 7px",
-                            background: "var(--accent)", color: "var(--accent-ink)",
-                            border: "2px solid var(--bg-base)",
-                            display: "inline-flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 11, fontWeight: 700, letterSpacing: "-0.005em",
-                            fontVariantNumeric: "tabular-nums",
-                            boxShadow: "0 4px 12px -4px rgba(0,0,0,0.5)",
-                            animation: "pop 0.32s var(--ease-back)",
-                          }}>
-                            {qty}
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                    {idx < arr.length - 1 && <hr className="rule" style={{ margin: 0 }} />}
-                  </div>
+                  <button
+                    key={c.id}
+                    ref={(el) => { if (active) activePillRef.current = el }}
+                    onClick={() => scrollToCategory(c.id)}
+                    aria-current={active ? "true" : undefined}
+                    className={cn(
+                      "press px-4 py-2.5 rounded-full border text-[13px] whitespace-nowrap transition-[background,color,border-color] duration-[var(--dur-fast)]",
+                      active
+                        ? "font-semibold border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent),var(--shadow-1)]"
+                        : "font-medium border-[var(--line-2)] bg-[var(--bg-elev-1)] text-[var(--ink-2)] shadow-[var(--shadow-1)]"
+                    )}
+                  >
+                    {c.name}
+                  </button>
                 )
               })}
             </div>
+            {/* Right fade mask */}
+            <div style={{
+              position: "absolute", right: 0, top: 0, bottom: 0, width: 32, pointerEvents: "none",
+              background: "linear-gradient(to right, transparent, var(--bg-base))",
+            }} />
           </div>
-        )}
+        </div>
+
+        {/* All category sections */}
+        <div style={{ paddingBottom: itemCount > 0 ? 72 : 24 }}>
+          {categories.map((cat, idx) => (
+            <section
+              key={cat.id}
+              ref={(el) => { sectionRefs.current[idx] = el }}
+              style={{ paddingBottom: 32 }}
+            >
+              <div style={{ padding: "20px 20px 0" }}>
+                <h2 className="eyebrow">
+                  {cat.name} · {cat.items.length} {cat.items.length === 1 ? "dish" : "dishes"}
+                </h2>
+                <hr className="rule" style={{ margin: "10px 0 0" }} />
+              </div>
+              <div style={{ padding: "0 20px" }}>
+                {cat.items.map((item, i, arr) => (
+                  <div key={item.id}>
+                    <ItemRow item={item} qty={cartCountByItem[item.id] ?? 0} onTap={openSheet} />
+                    {i < arr.length - 1 && <hr className="rule" style={{ margin: 0 }} />}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       </div>
 
       {/* Cart bar */}
@@ -250,7 +341,7 @@ export default function MenuPage({ params }: Props) {
         </div>
       )}
 
-      {/* Item bottom sheet — cinematic */}
+      {/* Item bottom sheet */}
       <BottomSheet
         open={!!sheet}
         onClose={() => setSheet(null)}
@@ -265,7 +356,6 @@ export default function MenuPage({ params }: Props) {
               marginTop: -4,
             }} />
 
-            {/* Description */}
             {sheet.item.description && (
               <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 14, lineHeight: 1.65 }}>
                 {sheet.item.description}
