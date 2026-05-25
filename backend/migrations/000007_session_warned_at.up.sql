@@ -1,0 +1,1 @@
+ALTER TABLE sessions ADD COLUMN warned_at TIMESTAMPTZ;

@@ -11,8 +11,10 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
 	"github.com/Mohith1612/qr-dining/internal/observability"
+	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -20,10 +22,11 @@ type SessionService struct {
 	repos     *repository.Repos
 	publisher *events.Publisher
 	metrics   *observability.Metrics
+	presence  *redisPkg.Presence
 }
 
-func NewSessionService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics) *SessionService {
-	return &SessionService{repos: repos, publisher: publisher, metrics: metrics}
+func NewSessionService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics, presence *redisPkg.Presence) *SessionService {
+	return &SessionService{repos: repos, publisher: publisher, metrics: metrics, presence: presence}
 }
 
 type CreateSessionResult struct {
@@ -124,19 +127,23 @@ func (s *SessionService) ListActiveForBranch(ctx context.Context, branchID int64
 }
 
 // CloseSession closes an active session. Only the host participant may close it.
-func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, requesterID int64) error {
+// Pass nil for requesterID to indicate a system-initiated close (payment, worker) — host check is skipped.
+func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, requesterID *int64) error {
 	sess, err := s.repos.GetSessionByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	if sess.Status != sqlc.SessionStatusActive {
-		return domain.ErrSessionClosed
-	}
-	if !sess.HostParticipantID.Valid || sess.HostParticipantID.Int64 != requesterID {
-		return domain.ErrNotSessionHost
+
+	if requesterID != nil {
+		if !sess.HostParticipantID.Valid || sess.HostParticipantID.Int64 != *requesterID {
+			return domain.ErrNotSessionHost
+		}
 	}
 
-	if err := s.repos.CloseSession(ctx, id); err != nil {
+	if _, err := s.repos.CloseSessionIfActive(ctx, id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil // already closed — idempotent
+		}
 		return err
 	}
 	if err := s.repos.UpdateTableStatus(ctx, sess.TableID, sqlc.TableStatusAvailable); err != nil {
@@ -144,9 +151,14 @@ func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, request
 	}
 
 	s.metrics.SessionDuration.Observe(time.Since(sess.CreatedAt).Seconds())
+	s.presence.Delete(ctx, id)
 
+	actorID := int64(0)
+	if requesterID != nil {
+		actorID = *requesterID
+	}
 	s.publisher.SessionClosed(ctx, id, map[string]any{"session_id": id})
-	s.repos.LogEvent(ctx, id, sess.BranchID, "SESSION_CLOSED", "participant", requesterID, map[string]any{"session_id": id})
+	s.repos.LogEvent(ctx, id, sess.BranchID, "SESSION_CLOSED", "participant", actorID, map[string]any{"session_id": id})
 	return nil
 }
 

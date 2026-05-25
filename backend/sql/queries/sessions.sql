@@ -12,10 +12,23 @@ SELECT * FROM sessions WHERE id = $1;
 -- name: SetSessionHost :exec
 UPDATE sessions SET host_participant_id = $2 WHERE id = $1;
 
--- name: CloseSession :exec
+-- name: CloseSessionIfActive :one
 UPDATE sessions
 SET status = 'closed', closed_at = NOW()
-WHERE id = $1 AND status = 'active';
+WHERE id = $1 AND status = 'active'
+RETURNING id;
+
+-- name: ListSessionsExpiringSoon :many
+SELECT s.id, s.branch_id, s.created_at, b.session_timeout_minutes
+FROM sessions s
+JOIN branches b ON b.id = s.branch_id
+WHERE s.status = 'active'
+  AND s.warned_at IS NULL
+  AND s.created_at + (b.session_timeout_minutes || ' minutes')::interval
+      BETWEEN NOW() AND NOW() + INTERVAL '15 minutes';
+
+-- name: MarkSessionWarned :exec
+UPDATE sessions SET warned_at = NOW() WHERE id = $1 AND warned_at IS NULL;
 
 -- name: AbandonSession :exec
 UPDATE sessions

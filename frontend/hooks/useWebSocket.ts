@@ -9,8 +9,9 @@ import { useOrdersStore } from "@/store/orders"
 import { useAssistanceStore } from "@/store/assistance"
 import { useWsStore } from "@/store/ws"
 import { cartApi } from "@/lib/api/cart"
+import { toast } from "sonner"
 import type { WSEventHandlerMap } from "@/types/ws"
-import type { Participant, Order, AssistanceRequest, SessionSnapshot } from "@/types/api"
+import type { Participant, Order, AssistanceRequest, Payment, SessionSnapshot } from "@/types/api"
 
 export function useWebSocket(sessionId: string, participantId: number) {
   const connRef = useRef<WSConnection | null>(null)
@@ -19,6 +20,18 @@ export function useWebSocket(sessionId: string, participantId: number) {
     const handlers: WSEventHandlerMap = {
       SESSION_CLOSED: () => {
         useSessionStore.getState().markClosed()
+      },
+
+      SESSION_EXPIRING_SOON: () => {
+        toast.warning("Your session closes in about 15 minutes.", {
+          duration: 8000,
+          id: "session-expiring",
+        })
+      },
+
+      PAYMENT_COMPLETED: (payload) => {
+        const payment = payload as Payment
+        useSessionStore.getState().setCompletedPayment(payment)
       },
 
       PARTICIPANT_JOINED: (payload) => {

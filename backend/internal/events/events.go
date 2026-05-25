@@ -107,3 +107,7 @@ func (p *Publisher) PaymentCompleted(ctx context.Context, sessionID uuid.UUID, p
 func (p *Publisher) SessionClosed(ctx context.Context, sessionID uuid.UUID, payload any) {
 	p.publish(ctx, ws.EventSessionClosed, sessionID, payload)
 }
+
+func (p *Publisher) SessionExpiringSoon(ctx context.Context, sessionID uuid.UUID) {
+	p.publish(ctx, ws.EventSessionExpiringSoon, sessionID, nil)
+}

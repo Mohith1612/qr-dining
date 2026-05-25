@@ -418,12 +418,13 @@ type AssistanceRequest struct {
 }
 
 type Branch struct {
-	ID           int64     `json:"id"`
-	RestaurantID int64     `json:"restaurant_id"`
-	Name         string    `json:"name"`
-	Address      string    `json:"address"`
-	Timezone     string    `json:"timezone"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID                    int64     `json:"id"`
+	RestaurantID          int64     `json:"restaurant_id"`
+	Name                  string    `json:"name"`
+	Address               string    `json:"address"`
+	Timezone              string    `json:"timezone"`
+	CreatedAt             time.Time `json:"created_at"`
+	SessionTimeoutMinutes int16     `json:"session_timeout_minutes"`
 }
 
 type Cart struct {
@@ -554,6 +555,7 @@ type Session struct {
 	SessionToken      string             `json:"session_token"`
 	CreatedAt         time.Time          `json:"created_at"`
 	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
+	WarnedAt          pgtype.Timestamptz `json:"warned_at"`
 }
 
 type SessionParticipant struct {

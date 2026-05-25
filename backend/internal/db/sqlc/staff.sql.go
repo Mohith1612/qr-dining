@@ -52,7 +52,7 @@ func (q *Queries) DeactivateStaff(ctx context.Context, id int64) error {
 }
 
 const getBranchByID = `-- name: GetBranchByID :one
-SELECT id, restaurant_id, name, address, timezone, created_at FROM branches WHERE id = $1
+SELECT id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes FROM branches WHERE id = $1
 `
 
 func (q *Queries) GetBranchByID(ctx context.Context, id int64) (Branch, error) {
@@ -65,6 +65,7 @@ func (q *Queries) GetBranchByID(ctx context.Context, id int64) (Branch, error) {
 		&i.Address,
 		&i.Timezone,
 		&i.CreatedAt,
+		&i.SessionTimeoutMinutes,
 	)
 	return i, err
 }
@@ -167,6 +168,20 @@ func (q *Queries) ListStaffForBranch(ctx context.Context, branchID int64) ([]Sta
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateBranchSessionTimeout = `-- name: UpdateBranchSessionTimeout :exec
+UPDATE branches SET session_timeout_minutes = $2 WHERE id = $1
+`
+
+type UpdateBranchSessionTimeoutParams struct {
+	ID                    int64 `json:"id"`
+	SessionTimeoutMinutes int16 `json:"session_timeout_minutes"`
+}
+
+func (q *Queries) UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error {
+	_, err := q.db.Exec(ctx, updateBranchSessionTimeout, arg.ID, arg.SessionTimeoutMinutes)
+	return err
 }
 
 const updateStaffPIN = `-- name: UpdateStaffPIN :exec

@@ -61,14 +61,14 @@ func New(
 	presence := redisPkg.NewPresence(redis)
 
 	// ── Services ─────────────────────────────────────────────────────────────
-	sessionSvc := services.NewSessionService(repos, publisher, metrics)
+	sessionSvc := services.NewSessionService(repos, publisher, metrics, presence)
 	participantSvc := services.NewParticipantService(repos, publisher, presence)
 	cartSvc := services.NewCartService(repos, publisher)
 	orderSvc := services.NewOrderService(repos, publisher, metrics)
 	assistanceSvc := services.NewAssistanceService(repos, publisher)
 	menuSvc := services.NewMenuService(repos, cache)
 	staffSvc := services.NewStaffService(repos, cache, logger)
-	paymentSvc := services.NewPaymentService(repos, publisher, metrics)
+	paymentSvc := services.NewPaymentService(repos, publisher, metrics, sessionSvc, logger)
 	subSvc := services.NewSubscriptionService(repos)
 	analyticsSvc := services.NewAnalyticsService(repos, subSvc, cache)
 
@@ -89,6 +89,7 @@ func New(
 	subH := handlers.NewSubscriptionHandler(repos, subSvc)
 	analyticsH := handlers.NewAnalyticsHandler(analyticsSvc)
 	tableH := handlers.NewTableHandler(repos)
+	branchH := handlers.NewBranchHandler(repos)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -169,6 +170,8 @@ func New(
 	branchStaffAPI.GET("/analytics/order-volume", analyticsH.GetOrderVolume)
 	branchStaffAPI.GET("/tables", tableH.ListTables)
 	branchStaffAPI.POST("/tables", tableH.CreateTable)
+	branchStaffAPI.GET("", branchH.GetBranch)
+	branchStaffAPI.PATCH("", branchH.UpdateBranch)
 
 	// Menu item updates — item-scoped, no branch param on path.
 	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)

@@ -67,6 +67,11 @@ func (p *Presence) Remove(ctx context.Context, sessionID uuid.UUID, participantI
 	return p.client.HDel(ctx, presenceKey(sessionID), field).Err()
 }
 
+// Delete removes the entire presence hash for a session (called on session close/abandon).
+func (p *Presence) Delete(ctx context.Context, sessionID uuid.UUID) {
+	p.client.Del(ctx, presenceKey(sessionID))
+}
+
 func presenceKey(sessionID uuid.UUID) string {
 	return "presence:" + sessionID.String()
 }

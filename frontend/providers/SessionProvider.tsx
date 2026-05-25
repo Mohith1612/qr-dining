@@ -20,6 +20,7 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
   const [sessionClosed, setSessionClosed] = useState(false)
   const { status } = useWebSocket(sessionId, participantId)
   const session = useSessionStore((s) => s.session)
+  const completedPayment = useSessionStore((s) => s.completedPayment)
 
   useEffect(() => {
     let cancelled = false
@@ -53,7 +54,12 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
     }
   }, [session?.status])
 
-  if (sessionClosed) return <SessionEndedScreen />
+  if (sessionClosed) return (
+    <SessionEndedScreen
+      paymentStatus={completedPayment ? "completed" : null}
+      totalAmount={completedPayment ? parseFloat(completedPayment.amount) : undefined}
+    />
+  )
 
   return (
     <ErrorBoundary>

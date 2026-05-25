@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -23,21 +24,24 @@ func (q *Queries) AbandonSession(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const closeSession = `-- name: CloseSession :exec
+const closeSessionIfActive = `-- name: CloseSessionIfActive :one
 UPDATE sessions
 SET status = 'closed', closed_at = NOW()
 WHERE id = $1 AND status = 'active'
+RETURNING id
 `
 
-func (q *Queries) CloseSession(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, closeSession, id)
-	return err
+func (q *Queries) CloseSessionIfActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, closeSessionIfActive, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
 }
 
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (branch_id, table_id, session_token)
 VALUES ($1, $2, $3)
-RETURNING id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at
+RETURNING id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at
 `
 
 type CreateSessionParams struct {
@@ -58,12 +62,13 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.SessionToken,
 		&i.CreatedAt,
 		&i.ClosedAt,
+		&i.WarnedAt,
 	)
 	return i, err
 }
 
 const getActiveSessionForTable = `-- name: GetActiveSessionForTable :one
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at FROM sessions
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at FROM sessions
 WHERE table_id = $1 AND status = 'active'
 LIMIT 1
 `
@@ -80,12 +85,13 @@ func (q *Queries) GetActiveSessionForTable(ctx context.Context, tableID int64) (
 		&i.SessionToken,
 		&i.CreatedAt,
 		&i.ClosedAt,
+		&i.WarnedAt,
 	)
 	return i, err
 }
 
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at FROM sessions WHERE id = $1
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error) {
@@ -100,12 +106,13 @@ func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, er
 		&i.SessionToken,
 		&i.CreatedAt,
 		&i.ClosedAt,
+		&i.WarnedAt,
 	)
 	return i, err
 }
 
 const getSessionByToken = `-- name: GetSessionByToken :one
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at FROM sessions WHERE session_token = $1 AND status = 'active'
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at FROM sessions WHERE session_token = $1 AND status = 'active'
 `
 
 func (q *Queries) GetSessionByToken(ctx context.Context, sessionToken string) (Session, error) {
@@ -120,12 +127,13 @@ func (q *Queries) GetSessionByToken(ctx context.Context, sessionToken string) (S
 		&i.SessionToken,
 		&i.CreatedAt,
 		&i.ClosedAt,
+		&i.WarnedAt,
 	)
 	return i, err
 }
 
 const listActiveSessionsForBranch = `-- name: ListActiveSessionsForBranch :many
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at FROM sessions
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at FROM sessions
 WHERE branch_id = $1 AND status = 'active'
 ORDER BY created_at DESC
 `
@@ -148,6 +156,7 @@ func (q *Queries) ListActiveSessionsForBranch(ctx context.Context, branchID int6
 			&i.SessionToken,
 			&i.CreatedAt,
 			&i.ClosedAt,
+			&i.WarnedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -157,6 +166,57 @@ func (q *Queries) ListActiveSessionsForBranch(ctx context.Context, branchID int6
 		return nil, err
 	}
 	return items, nil
+}
+
+const listSessionsExpiringSoon = `-- name: ListSessionsExpiringSoon :many
+SELECT s.id, s.branch_id, s.created_at, b.session_timeout_minutes
+FROM sessions s
+JOIN branches b ON b.id = s.branch_id
+WHERE s.status = 'active'
+  AND s.warned_at IS NULL
+  AND s.created_at + (b.session_timeout_minutes || ' minutes')::interval
+      BETWEEN NOW() AND NOW() + INTERVAL '15 minutes'
+`
+
+type ListSessionsExpiringSoonRow struct {
+	ID                    uuid.UUID `json:"id"`
+	BranchID              int64     `json:"branch_id"`
+	CreatedAt             time.Time `json:"created_at"`
+	SessionTimeoutMinutes int16     `json:"session_timeout_minutes"`
+}
+
+func (q *Queries) ListSessionsExpiringSoon(ctx context.Context) ([]ListSessionsExpiringSoonRow, error) {
+	rows, err := q.db.Query(ctx, listSessionsExpiringSoon)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionsExpiringSoonRow{}
+	for rows.Next() {
+		var i ListSessionsExpiringSoonRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BranchID,
+			&i.CreatedAt,
+			&i.SessionTimeoutMinutes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markSessionWarned = `-- name: MarkSessionWarned :exec
+UPDATE sessions SET warned_at = NOW() WHERE id = $1 AND warned_at IS NULL
+`
+
+func (q *Queries) MarkSessionWarned(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markSessionWarned, id)
+	return err
 }
 
 const setSessionHost = `-- name: SetSessionHost :exec

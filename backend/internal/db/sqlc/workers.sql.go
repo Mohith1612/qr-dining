@@ -7,10 +7,8 @@ package sqlc
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const abandonStaleSession = `-- name: AbandonStaleSession :exec
@@ -24,50 +22,34 @@ func (q *Queries) AbandonStaleSession(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const listStaleSessions = `-- name: ListStaleSessions :many
+const listExpiredSessions = `-- name: ListExpiredSessions :many
 
-SELECT s.id, s.branch_id, s.table_id, s.host_participant_id, s.status, s.session_token, s.created_at, s.closed_at, t.id AS table_id_ref
+SELECT s.id, s.branch_id, s.table_id
 FROM sessions s
-JOIN tables t ON t.id = s.table_id
+JOIN branches b ON b.id = s.branch_id
 WHERE s.status = 'active'
-  AND s.created_at < NOW() - $1::interval
+  AND s.created_at < NOW() - (b.session_timeout_minutes || ' minutes')::interval
 ORDER BY s.created_at ASC
 `
 
-type ListStaleSessionsRow struct {
-	ID                uuid.UUID          `json:"id"`
-	BranchID          int64              `json:"branch_id"`
-	TableID           int64              `json:"table_id"`
-	HostParticipantID pgtype.Int8        `json:"host_participant_id"`
-	Status            SessionStatus      `json:"status"`
-	SessionToken      string             `json:"session_token"`
-	CreatedAt         time.Time          `json:"created_at"`
-	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
-	TableIDRef        int64              `json:"table_id_ref"`
+type ListExpiredSessionsRow struct {
+	ID       uuid.UUID `json:"id"`
+	BranchID int64     `json:"branch_id"`
+	TableID  int64     `json:"table_id"`
 }
 
 // Queries used by background worker routines.
-// Finds sessions active for more than the given interval (passed as an interval string, e.g. '2 hours').
-func (q *Queries) ListStaleSessions(ctx context.Context, dollar_1 pgtype.Interval) ([]ListStaleSessionsRow, error) {
-	rows, err := q.db.Query(ctx, listStaleSessions, dollar_1)
+// Finds sessions that have exceeded their branch-configured timeout.
+func (q *Queries) ListExpiredSessions(ctx context.Context) ([]ListExpiredSessionsRow, error) {
+	rows, err := q.db.Query(ctx, listExpiredSessions)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListStaleSessionsRow{}
+	items := []ListExpiredSessionsRow{}
 	for rows.Next() {
-		var i ListStaleSessionsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.BranchID,
-			&i.TableID,
-			&i.HostParticipantID,
-			&i.Status,
-			&i.SessionToken,
-			&i.CreatedAt,
-			&i.ClosedAt,
-			&i.TableIDRef,
-		); err != nil {
+		var i ListExpiredSessionsRow
+		if err := rows.Scan(&i.ID, &i.BranchID, &i.TableID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

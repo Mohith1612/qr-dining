@@ -83,6 +83,7 @@ func main() {
 	wq := &workerQuerier{repos: repos}
 	w := worker.New(db, wq, redisClient, publisher, presence, metrics, logger)
 	go w.RunStaleSessionCleaner(ctx, cfg.Worker.StaleSessionInterval)
+	go w.RunSessionExpiryWarner(ctx, 5*time.Minute)
 	go w.RunPresenceExpiry(ctx, cfg.Worker.PresenceExpiryInterval)
 
 	// 14b. Poll DB pool stats every 30s and export to Prometheus.

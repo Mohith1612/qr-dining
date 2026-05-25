@@ -50,16 +50,14 @@ func (r *Repos) GetActiveSessionForTable(ctx context.Context, tableID int64) (sq
 	return s, err
 }
 
-func (r *Repos) CloseSession(ctx context.Context, id uuid.UUID) error {
-	return r.q.CloseSession(ctx, id)
+// CloseSessionIfActive closes the session only if it's currently active.
+// Returns pgx.ErrNoRows if the session was already closed — callers treat that as idempotent success.
+func (r *Repos) CloseSessionIfActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return r.q.CloseSessionIfActive(ctx, id)
 }
 
 func (r *Repos) AbandonSession(ctx context.Context, id uuid.UUID) error {
 	return r.q.AbandonSession(ctx, id)
-}
-
-func (r *Repos) AbandonStaleSession(ctx context.Context, id uuid.UUID) error {
-	return r.q.AbandonStaleSession(ctx, id)
 }
 
 func (r *Repos) ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]sqlc.Session, error) {

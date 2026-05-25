@@ -16,7 +16,7 @@ type Querier interface {
 	AbandonStaleSession(ctx context.Context, id uuid.UUID) error
 	AddCartItem(ctx context.Context, arg AddCartItemParams) (CartItem, error)
 	ClearCart(ctx context.Context, cartID int64) error
-	CloseSession(ctx context.Context, id uuid.UUID) error
+	CloseSessionIfActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	CreateAssistanceRequest(ctx context.Context, arg CreateAssistanceRequestParams) (AssistanceRequest, error)
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
@@ -67,6 +67,9 @@ type Querier interface {
 	ListActiveStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
 	ListAssistanceForSession(ctx context.Context, sessionID uuid.UUID) ([]AssistanceRequest, error)
 	ListCartItems(ctx context.Context, cartID int64) ([]ListCartItemsRow, error)
+	// Queries used by background worker routines.
+	// Finds sessions that have exceeded their branch-configured timeout.
+	ListExpiredSessions(ctx context.Context) ([]ListExpiredSessionsRow, error)
 	ListMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
 	ListMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error)
 	ListModifiersForItem(ctx context.Context, itemID int64) ([]ItemModifier, error)
@@ -76,17 +79,17 @@ type Querier interface {
 	ListParticipantsBySession(ctx context.Context, sessionID uuid.UUID) ([]SessionParticipant, error)
 	ListPaymentsForSession(ctx context.Context, sessionID uuid.UUID) ([]Payment, error)
 	ListPlans(ctx context.Context) ([]SubscriptionPlan, error)
+	ListSessionsExpiringSoon(ctx context.Context) ([]ListSessionsExpiringSoonRow, error)
 	ListStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
-	// Queries used by background worker routines.
-	// Finds sessions active for more than the given interval (passed as an interval string, e.g. '2 hours').
-	ListStaleSessions(ctx context.Context, dollar_1 pgtype.Interval) ([]ListStaleSessionsRow, error)
 	ListTablesForBranch(ctx context.Context, branchID int64) ([]Table, error)
 	ListUnprocessedWebhooks(ctx context.Context) ([]PaymentWebhookEvent, error)
+	MarkSessionWarned(ctx context.Context, id uuid.UUID) error
 	MarkWebhookProcessed(ctx context.Context, arg MarkWebhookProcessedParams) error
 	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
 	UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistanceStatusParams) (AssistanceRequest, error)
+	UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error
 	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) (CartItem, error)
 	UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) (MenuItem, error)
 	UpdateMenuItemAvailability(ctx context.Context, arg UpdateMenuItemAvailabilityParams) error

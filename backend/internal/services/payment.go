@@ -12,16 +12,36 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/rs/zerolog"
 )
 
-type PaymentService struct {
-	repos     *repository.Repos
-	publisher *events.Publisher
-	metrics   *observability.Metrics
+// SessionCloser is a narrow interface to close a session; avoids circular import with services package.
+type SessionCloser interface {
+	CloseSession(ctx context.Context, id uuid.UUID, requesterID *int64) error
 }
 
-func NewPaymentService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics) *PaymentService {
-	return &PaymentService{repos: repos, publisher: publisher, metrics: metrics}
+type PaymentService struct {
+	repos         *repository.Repos
+	publisher     *events.Publisher
+	metrics       *observability.Metrics
+	sessionCloser SessionCloser
+	logger        zerolog.Logger
+}
+
+func NewPaymentService(
+	repos *repository.Repos,
+	publisher *events.Publisher,
+	metrics *observability.Metrics,
+	sessionCloser SessionCloser,
+	logger zerolog.Logger,
+) *PaymentService {
+	return &PaymentService{
+		repos:         repos,
+		publisher:     publisher,
+		metrics:       metrics,
+		sessionCloser: sessionCloser,
+		logger:        logger,
+	}
 }
 
 type InitiatePaymentRequest struct {
@@ -105,6 +125,10 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, req ProcessWebhookR
 		s.publisher.PaymentCompleted(ctx, payment.SessionID, updated)
 		sess, _ := s.repos.GetSessionByID(ctx, payment.SessionID)
 		s.repos.LogEvent(ctx, payment.SessionID, sess.BranchID, "PAYMENT_COMPLETED", "system", 0, updated)
+
+		if err := s.sessionCloser.CloseSession(ctx, payment.SessionID, nil); err != nil {
+			s.logger.Warn().Err(err).Str("session_id", payment.SessionID.String()).Msg("auto-close session after payment failed")
+		}
 	}
 
 	return nil

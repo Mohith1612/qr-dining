@@ -92,4 +92,14 @@ export const staffApi = {
       { available, branch_id: branchId },
       { staffToken }
     ),
+
+  updateBranch: (
+    branchId: number,
+    data: { session_timeout_minutes?: number },
+    staffToken: string
+  ) =>
+    api.patch<void>(`/branches/${branchId}`, data, { staffToken }),
+
+  getBranch: (branchId: number, staffToken: string) =>
+    api.get<{ id: number; session_timeout_minutes: number }>(`/branches/${branchId}`, { staffToken }),
 }

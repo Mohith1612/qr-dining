@@ -29,6 +29,7 @@ const (
 	EventPaymentInitiated        EventType = "PAYMENT_INITIATED"
 	EventPaymentCompleted        EventType = "PAYMENT_COMPLETED"
 	EventSessionClosed           EventType = "SESSION_CLOSED"
+	EventSessionExpiringSoon     EventType = "SESSION_EXPIRING_SOON"
 	EventPing                    EventType = "PING"
 	EventPong                    EventType = "PONG"
 )

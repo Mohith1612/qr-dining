@@ -4,9 +4,21 @@ import (
 	"context"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
-func (r *Repos) ListStaleSessions(ctx context.Context, olderThan pgtype.Interval) ([]sqlc.ListStaleSessionsRow, error) {
-	return r.q.ListStaleSessions(ctx, olderThan)
+func (r *Repos) ListExpiredSessions(ctx context.Context) ([]sqlc.ListExpiredSessionsRow, error) {
+	return r.q.ListExpiredSessions(ctx)
+}
+
+func (r *Repos) AbandonStaleSession(ctx context.Context, id uuid.UUID) error {
+	return r.q.AbandonStaleSession(ctx, id)
+}
+
+func (r *Repos) ListSessionsExpiringSoon(ctx context.Context) ([]sqlc.ListSessionsExpiringSoonRow, error) {
+	return r.q.ListSessionsExpiringSoon(ctx)
+}
+
+func (r *Repos) MarkSessionWarned(ctx context.Context, id uuid.UUID) error {
+	return r.q.MarkSessionWarned(ctx, id)
 }

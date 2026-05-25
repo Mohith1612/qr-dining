@@ -887,6 +887,71 @@ function TablesTab() {
   )
 }
 
+// ─── Settings Tab ────────────────────────────────────────────────────────────
+
+function SettingsTab() {
+  const { branchId, token, role } = useStaffStore()
+  const [timeoutMinutes, setTimeoutMinutes] = useState(120)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const canEdit = role === "owner" || role === "manager"
+
+  useEffect(() => {
+    if (!branchId || !token) { setLoading(false); return }
+    staffApi
+      .getBranch(branchId, token)
+      .then((b) => setTimeoutMinutes(b.session_timeout_minutes))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [branchId, token])
+
+  async function handleSave() {
+    if (!branchId || !token) return
+    setSaving(true)
+    try {
+      await staffApi.updateBranch(branchId, { session_timeout_minutes: timeoutMinutes }, token)
+      toast.success("Settings saved")
+    } catch {
+      toast.error("Failed to save settings")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return null
+
+  return (
+    <HospitalityCard elev={1} style={{ padding: "20px 20px" }}>
+      <p className="eyebrow" style={{ marginBottom: 6 }}>Session timeout</p>
+      <p className="text-sm" style={{ color: "var(--ink-3)", marginBottom: 14 }}>
+        Sessions are automatically closed after this many minutes of inactivity.
+      </p>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Input
+          type="number"
+          min={15}
+          max={480}
+          step={15}
+          value={timeoutMinutes}
+          onChange={(e) => setTimeoutMinutes(parseInt(e.target.value) || 120)}
+          disabled={!canEdit}
+          style={{ width: 90 }}
+        />
+        <span className="text-sm" style={{ color: "var(--ink-2)" }}>minutes</span>
+        {canEdit && (
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            style={{ marginLeft: 8 }}
+          >
+            {saving ? <Loader2 className="size-4 animate-spin" /> : "Save"}
+          </Button>
+        )}
+      </div>
+    </HospitalityCard>
+  )
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -896,6 +961,7 @@ const TABS = [
   { id: "staff",    label: "Staff"    },
   { id: "stats",    label: "Stats"    },
   { id: "plan",     label: "Plan"     },
+  { id: "settings", label: "Settings" },
 ]
 
 export default function AdminPage() {
@@ -935,6 +1001,7 @@ export default function AdminPage() {
         {activeTab === "staff"    && <StaffTab />}
         {activeTab === "stats"    && <StatsTab />}
         {activeTab === "plan"     && <PlanTab />}
+        {activeTab === "settings" && <SettingsTab />}
       </div>
     </div>
   )

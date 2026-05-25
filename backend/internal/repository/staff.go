@@ -32,3 +32,10 @@ func (r *Repos) UpdateStaffPIN(ctx context.Context, staffID int64, pinHash strin
 func (r *Repos) DeactivateStaff(ctx context.Context, staffID int64) error {
 	return r.q.DeactivateStaff(ctx, staffID)
 }
+
+func (r *Repos) UpdateBranchSessionTimeout(ctx context.Context, branchID int64, timeoutMinutes int16) error {
+	return r.q.UpdateBranchSessionTimeout(ctx, sqlc.UpdateBranchSessionTimeoutParams{
+		ID:                    branchID,
+		SessionTimeoutMinutes: timeoutMinutes,
+	})
+}

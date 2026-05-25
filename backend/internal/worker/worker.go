@@ -15,31 +15,37 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// StaleSession is the minimal projection of a session needed by the cleaner.
-type StaleSession struct {
+// ExpiredSession is the minimal projection needed by the stale session cleaner.
+type ExpiredSession struct {
 	ID      uuid.UUID
 	TableID int64
+}
+
+// ExpiringSoonSession is the projection used by the expiry warner.
+type ExpiringSoonSession struct {
+	ID uuid.UUID
 }
 
 // Querier abstracts the DB queries the worker needs.
 // Implemented by *sqlc.Queries after code generation; interface allows compilation before that.
 type Querier interface {
-	ListStaleSessions(ctx context.Context, interval string) ([]StaleSession, error)
+	ListExpiredSessions(ctx context.Context) ([]ExpiredSession, error)
 	AbandonStaleSession(ctx context.Context, id uuid.UUID) error
+	ListSessionsExpiringSoon(ctx context.Context) ([]ExpiringSoonSession, error)
+	MarkSessionWarned(ctx context.Context, id uuid.UUID) error
 }
 
 // Worker runs lightweight background maintenance goroutines.
 // NOT a distributed job queue — simple goroutines coordinated via Redis locks
 // to prevent duplicate runs when multiple instances are deployed.
 type Worker struct {
-	db           *pgxpool.Pool
-	queries      Querier
-	redis        *goredis.Client
-	publisher    *events.Publisher
-	presence     *redisPkg.Presence
-	metrics      *observability.Metrics
-	logger       zerolog.Logger
-	staleAfter   time.Duration
+	db        *pgxpool.Pool
+	queries   Querier
+	redis     *goredis.Client
+	publisher *events.Publisher
+	presence  *redisPkg.Presence
+	metrics   *observability.Metrics
+	logger    zerolog.Logger
 }
 
 func New(
@@ -52,20 +58,19 @@ func New(
 	logger zerolog.Logger,
 ) *Worker {
 	return &Worker{
-		db:         db,
-		queries:    queries,
-		redis:      redis,
-		publisher:  publisher,
-		presence:   presence,
-		metrics:    metrics,
-		logger:     logger.With().Str("component", "worker").Logger(),
-		staleAfter: 2 * time.Hour,
+		db:        db,
+		queries:   queries,
+		redis:     redis,
+		publisher: publisher,
+		presence:  presence,
+		metrics:   metrics,
+		logger:    logger.With().Str("component", "worker").Logger(),
 	}
 }
 
-// RunStaleSessionCleaner marks sessions abandoned after they've been active
-// without a placed order or presence heartbeat for longer than staleAfter.
-// Runs on the given interval and skips if another instance holds the Redis lock.
+// RunStaleSessionCleaner marks sessions abandoned after they've exceeded their
+// branch-configured timeout. Runs on the given interval and skips if another
+// instance holds the Redis lock.
 func (w *Worker) RunStaleSessionCleaner(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -80,6 +85,28 @@ func (w *Worker) RunStaleSessionCleaner(ctx context.Context, interval time.Durat
 					tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 					defer cancel()
 					w.cleanStaleSessions(tickCtx)
+				})
+			})
+		}
+	}
+}
+
+// RunSessionExpiryWarner sends SESSION_EXPIRING_SOON to sessions whose timeout
+// is within the next 15 minutes. Runs every 5 minutes.
+func (w *Worker) RunSessionExpiryWarner(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.runWithLock(ctx, "expiry_warner", 4*time.Minute, func() {
+				w.safeRun("expiry_warner", func() {
+					tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					defer cancel()
+					w.warnExpiringSessions(tickCtx)
 				})
 			})
 		}
@@ -110,13 +137,9 @@ func (w *Worker) RunPresenceExpiry(ctx context.Context, interval time.Duration) 
 }
 
 func (w *Worker) cleanStaleSessions(ctx context.Context) {
-	// staleAfter is derived from Worker.staleAfter (default 2h, matches config STALE_SESSION_INTERVAL intent).
-	// Passed as a PostgreSQL interval string to the ListStaleSessions query.
-	staleInterval := fmt.Sprintf("%d seconds", int(w.staleAfter.Seconds()))
-
-	sessions, err := w.queries.ListStaleSessions(ctx, staleInterval)
+	sessions, err := w.queries.ListExpiredSessions(ctx)
 	if err != nil {
-		w.logger.Error().Err(err).Msg("list stale sessions")
+		w.logger.Error().Err(err).Msg("list expired sessions")
 		w.metrics.WorkerRunsTotal.WithLabelValues("stale_session_cleaner", "error").Inc()
 		return
 	}
@@ -129,6 +152,7 @@ func (w *Worker) cleanStaleSessions(ctx context.Context) {
 			continue
 		}
 		w.publisher.SessionClosed(ctx, s.ID, map[string]string{"reason": "stale"})
+		w.presence.Delete(ctx, s.ID)
 		abandoned++
 	}
 
@@ -136,6 +160,24 @@ func (w *Worker) cleanStaleSessions(ctx context.Context) {
 		w.logger.Info().Int("abandoned", abandoned).Msg("stale session cleanup")
 	}
 	w.metrics.WorkerRunsTotal.WithLabelValues("stale_session_cleaner", "ok").Inc()
+}
+
+func (w *Worker) warnExpiringSessions(ctx context.Context) {
+	sessions, err := w.queries.ListSessionsExpiringSoon(ctx)
+	if err != nil {
+		w.logger.Error().Err(err).Msg("list sessions expiring soon")
+		return
+	}
+	for i := range sessions {
+		s := &sessions[i]
+		w.publisher.SessionExpiringSoon(ctx, s.ID)
+		if err := w.queries.MarkSessionWarned(ctx, s.ID); err != nil {
+			w.logger.Error().Err(err).Str("session_id", s.ID.String()).Msg("mark session warned")
+		}
+	}
+	if len(sessions) > 0 {
+		w.logger.Info().Int("warned", len(sessions)).Msg("expiry warnings sent")
+	}
 }
 
 // safeRun wraps fn with panic recovery. Panics are logged with a stack trace

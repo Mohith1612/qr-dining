@@ -78,7 +78,7 @@ func (h *SessionHandler) Close(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.CloseSession(c.Request.Context(), id, participantID); err != nil {
+	if err := h.svc.CloseSession(c.Request.Context(), id, &participantID); err != nil {
 		sessionError(c, err)
 		return
 	}

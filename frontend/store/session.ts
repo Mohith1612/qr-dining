@@ -1,16 +1,18 @@
 import { create } from "zustand"
-import type { Session, Participant } from "@/types/api"
+import type { Session, Participant, Payment } from "@/types/api"
 
 interface SessionState {
   session: Session | null
   participant: Participant | null
   participants: Participant[]
   isHost: boolean
+  completedPayment: Payment | null
 
   setSession: (session: Session, participant: Participant) => void
   setFromSnapshot: (session: Session, participants: Participant[]) => void
   addParticipant: (p: Participant) => void
   markClosed: () => void
+  setCompletedPayment: (payment: Payment) => void
   clear: () => void
 }
 
@@ -19,6 +21,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   participant: null,
   participants: [],
   isHost: false,
+  completedPayment: null,
 
   setSession(session, participant) {
     set({
@@ -50,7 +53,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }))
   },
 
+  setCompletedPayment(payment) {
+    set({ completedPayment: payment })
+  },
+
   clear() {
-    set({ session: null, participant: null, participants: [], isHost: false })
+    set({ session: null, participant: null, participants: [], isHost: false, completedPayment: null })
   },
 }))

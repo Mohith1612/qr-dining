@@ -23,3 +23,6 @@ UPDATE staff SET is_active = FALSE WHERE id = $1;
 
 -- name: ListActiveStaffForBranch :many
 SELECT * FROM staff WHERE branch_id = $1 AND is_active = TRUE ORDER BY name ASC;
+
+-- name: UpdateBranchSessionTimeout :exec
+UPDATE branches SET session_timeout_minutes = $2 WHERE id = $1;
