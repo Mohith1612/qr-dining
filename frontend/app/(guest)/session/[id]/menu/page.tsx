@@ -13,6 +13,7 @@ import { Minus, Plus, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { use } from "react"
+import { cn } from "@/lib/utils"
 import type { MenuItem, ItemModifier } from "@/types/api"
 
 interface SheetState {
@@ -112,28 +113,20 @@ export default function MenuPage({ params }: Props) {
       </div>
 
       {/* Category pills — edge-faded scroll */}
-      <div style={{ position: "relative", flexShrink: 0 }}>
-        <div
-          className="hscroll"
-          style={{ padding: "0 20px 16px", display: "flex", gap: 6 }}
-        >
+      <div className="relative shrink-0">
+        <div className="hscroll flex gap-1.5 px-5 pb-4">
           {categories.map((c) => {
             const active = c.id === activeCatId
             return (
               <button
                 key={c.id}
                 onClick={() => setActiveCatId(c.id)}
-                className="press"
-                style={{
-                  padding: "9px 16px", borderRadius: 999, border: "1px solid",
-                  borderColor: active ? "var(--accent)" : "var(--line-2)",
-                  background: active ? "var(--accent-soft)" : "var(--bg-elev-1)",
-                  color: active ? "var(--accent)" : "var(--ink-2)",
-                  fontSize: 13, fontWeight: active ? 600 : 500,
-                  whiteSpace: "nowrap",
-                  boxShadow: active ? "inset 0 0 0 1px var(--accent), var(--shadow-1)" : "var(--shadow-1)",
-                  transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)",
-                }}
+                className={cn(
+                  "press px-4 py-2.5 rounded-full border text-[13px] whitespace-nowrap transition-[background,color,border-color] duration-[var(--dur-fast)]",
+                  active
+                    ? "font-semibold border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent),var(--shadow-1)]"
+                    : "font-medium border-[var(--line-2)] bg-[var(--bg-elev-1)] text-[var(--ink-2)] shadow-[var(--shadow-1)]"
+                )}
               >
                 {c.name}
               </button>
