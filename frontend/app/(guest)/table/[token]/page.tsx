@@ -11,10 +11,17 @@ interface Props {
   params: Promise<{ token: string }>
 }
 
+interface TableInfo {
+  table_id: number
+  branch_id: number
+  label?: string
+  session_id?: string
+}
+
 export default function TableEntryPage({ params }: Props) {
   const { token } = use(params)
   const router = useRouter()
-  const [tableInfo, setTableInfo] = useState<{ table_id: number; branch_id: number; label?: string } | null>(null)
+  const [tableInfo, setTableInfo] = useState<TableInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [loading, setLoading] = useState(false)
@@ -27,16 +34,31 @@ export default function TableEntryPage({ params }: Props) {
       .finally(() => setResolving(false))
   }, [token])
 
+  const isJoining = Boolean(tableInfo?.session_id)
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!tableInfo || !name.trim()) return
     setLoading(true)
     try {
-      const { session, participant } = await sessionsApi.create(tableInfo.table_id, name.trim())
-      useSessionStore.getState().setSession(session, participant)
-      sessionStorage.setItem("session_id", session.id)
-      sessionStorage.setItem("participant_id", String(participant.id))
-      router.push(`/session/${session.id}`)
+      let sessionId: string
+      if (tableInfo.session_id) {
+        // Table has an active session — join it
+        const participant = await sessionsApi.join(tableInfo.session_id, name.trim())
+        const session = await sessionsApi.get(tableInfo.session_id)
+        useSessionStore.getState().setSession(session, participant)
+        sessionStorage.setItem("session_id", session.id)
+        sessionStorage.setItem("participant_id", String(participant.id))
+        sessionId = session.id
+      } else {
+        // No active session — create one
+        const { session, participant } = await sessionsApi.create(tableInfo.table_id, name.trim())
+        useSessionStore.getState().setSession(session, participant)
+        sessionStorage.setItem("session_id", session.id)
+        sessionStorage.setItem("participant_id", String(participant.id))
+        sessionId = session.id
+      }
+      router.push(`/session/${sessionId}`)
     } catch {
       setError("Something went wrong. Please try again.")
       setLoading(false)
@@ -75,20 +97,31 @@ export default function TableEntryPage({ params }: Props) {
     <div className="atmos min-h-svh flex flex-col items-center justify-center screen-enter" style={{ background: "var(--bg-base)" }}>
       <div style={{ position: "absolute", inset: 0, background: "var(--glow-warm)", pointerEvents: "none" }} />
       <div className="relative z-10 w-full px-7" style={{ maxWidth: 420 }}>
+
         {/* Heading */}
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <p className="eyebrow">Table {tableInfo?.label ?? tableInfo?.table_id}</p>
-          <h1 className="serif" style={{ margin: "10px 0 6px", fontSize: 38, fontWeight: 500, letterSpacing: "-0.02em", color: "var(--ink-1)", lineHeight: 1.05 }}>
-            Welcome.
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <p className="eyebrow" style={{ marginBottom: 12 }}>
+            Table {tableInfo?.label ?? tableInfo?.table_id}
+          </p>
+          <h1 className="serif" style={{ margin: "0 0 10px", fontSize: 40, fontWeight: 500, letterSpacing: "-0.02em", color: "var(--ink-1)", lineHeight: 1.05 }}>
+            {isJoining ? "Join the party." : "Welcome."}
           </h1>
-          <p style={{ color: "var(--ink-2)", fontSize: 14.5, lineHeight: 1.55, maxWidth: 260, marginInline: "auto" }}>
-            What should we call you? Your party will see your name on shared orders.
+          <p style={{ color: "var(--ink-2)", fontSize: 14.5, lineHeight: 1.6, maxWidth: 260, marginInline: "auto" }}>
+            {isJoining
+              ? "A session is already in progress. Enter your name to join your party."
+              : "What should we call you? Your party will see your name on shared orders."}
           </p>
         </div>
 
-        {/* Card form */}
-        <div style={{ background: "var(--bg-elev-2)", border: "1px solid var(--line-2)", borderRadius: "var(--rad-lg)", boxShadow: "var(--shadow-2)", padding: "18px 18px 16px" }}>
-          <label className="eyebrow" style={{ display: "block", marginBottom: 8 }}>Your name</label>
+        {/* Name card */}
+        <div style={{
+          background: "var(--bg-elev-2)",
+          border: "1px solid var(--line-2)",
+          borderRadius: "var(--rad-lg)",
+          boxShadow: "var(--shadow-2)",
+          padding: "20px 20px 18px",
+        }}>
+          <label className="eyebrow" style={{ display: "block", marginBottom: 10, fontSize: 10 }}>Your name</label>
           <form onSubmit={handleSubmit}>
             <input
               value={name}
@@ -100,11 +133,13 @@ export default function TableEntryPage({ params }: Props) {
               style={{
                 width: "100%", border: 0, outline: 0, background: "transparent",
                 fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-                fontSize: 22, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.01em",
+                fontSize: 24, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.01em",
               }}
             />
-            <hr className="rule" style={{ marginTop: 6, marginBottom: 14 }} />
-            {error && <p style={{ color: "var(--alert)", fontSize: 12, marginBottom: 10, textAlign: "center" }}>{error}</p>}
+            <div style={{ height: 1, background: "var(--line-2)", margin: "10px 0 16px" }} />
+            {error && (
+              <p style={{ color: "var(--alert)", fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</p>
+            )}
             <button
               type="submit"
               disabled={!name.trim() || loading}
@@ -112,19 +147,22 @@ export default function TableEntryPage({ params }: Props) {
               style={{
                 width: "100%", height: 52, borderRadius: "var(--rad-md)",
                 background: "var(--accent)", color: "var(--accent-ink)",
-                border: 0, fontSize: 15, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer",
-                opacity: !name.trim() || loading ? 0.6 : 1,
+                border: 0, fontSize: 15, fontWeight: 600,
+                letterSpacing: "0.01em",
+                cursor: !name.trim() || loading ? "not-allowed" : "pointer",
+                opacity: !name.trim() || loading ? 0.55 : 1,
+                transition: "opacity 140ms ease",
               }}
             >
-              {loading ? "Joining…" : "Join the table →"}
+              {loading ? "Joining…" : isJoining ? "Join the party →" : "Take your seat →"}
             </button>
           </form>
         </div>
 
         {/* Footer */}
-        <div style={{ marginTop: 22, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "var(--ink-3)", fontSize: 12 }}>
+        <div style={{ marginTop: 24, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "var(--ink-3)", fontSize: 12 }}>
           <span className="live-dot" />
-          Live · joining as guest
+          {isJoining ? "Live · session in progress" : "Live · starting a new session"}
         </div>
       </div>
     </div>

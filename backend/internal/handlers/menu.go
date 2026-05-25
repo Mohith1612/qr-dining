@@ -38,10 +38,10 @@ func (h *MenuHandler) GetTableByQR(c *gin.Context) {
 		return
 	}
 
-	table, err := h.svc.GetTableByQRToken(c.Request.Context(), token)
+	resp, err := h.svc.GetTableWithActiveSession(c.Request.Context(), token)
 	if err != nil {
 		respondError(c, http.StatusNotFound, CodeSessionNotFound, "table not found")
 		return
 	}
-	c.JSON(http.StatusOK, table)
+	c.JSON(http.StatusOK, resp)
 }

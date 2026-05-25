@@ -67,6 +67,31 @@ func (s *MenuService) GetTableByQRToken(ctx context.Context, token string) (sqlc
 	return s.repos.GetTableByQRToken(ctx, token)
 }
 
+// TableQRResponse is returned by GetTableByQR and includes the active session ID when the table is occupied.
+type TableQRResponse struct {
+	ID         int64  `json:"id"`
+	BranchID   int64  `json:"branch_id"`
+	Identifier string `json:"identifier"`
+	SessionID  string `json:"session_id,omitempty"`
+}
+
+// GetTableWithActiveSession resolves a QR token and includes the active session ID if the table is occupied.
+func (s *MenuService) GetTableWithActiveSession(ctx context.Context, token string) (TableQRResponse, error) {
+	table, err := s.repos.GetTableByQRToken(ctx, token)
+	if err != nil {
+		return TableQRResponse{}, err
+	}
+	resp := TableQRResponse{
+		ID:         table.ID,
+		BranchID:   table.BranchID,
+		Identifier: table.Identifier,
+	}
+	if session, err := s.repos.GetActiveSessionForTable(ctx, table.ID); err == nil {
+		resp.SessionID = session.ID.String()
+	}
+	return resp, nil
+}
+
 // InvalidateMenuCache evicts the cached menu for a branch so the next request rebuilds from DB.
 // Call this whenever menu items, categories, or modifiers change.
 func (s *MenuService) InvalidateMenuCache(ctx context.Context, branchID int64) {
