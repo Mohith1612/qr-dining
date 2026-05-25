@@ -92,7 +92,10 @@ export default function MenuPage({ params }: Props) {
     cartCountByItem[ci.menu_item_id] = (cartCountByItem[ci.menu_item_id] ?? 0) + ci.quantity
   }
 
-  const cartTotal = cartItems.reduce((s, ci) => s + (ci.item_price ?? 0) * ci.quantity, 0)
+  const cartTotal = cartItems.reduce((s, ci) => {
+    const modTotal = ci.selected_modifiers.reduce((m, mod) => m + mod.price_delta, 0)
+    return s + ((ci.item_price ?? 0) + modTotal) * ci.quantity
+  }, 0)
   const activeCategory = categories.find((c) => c.id === activeCatId) ?? categories[0]
   const totalDishes = categories.reduce((s, c) => s + c.items.length, 0)
 

@@ -122,7 +122,7 @@ function SessionsTab() {
 // ─── Menu Tab ────────────────────────────────────────────────────────────────
 
 function MenuTab() {
-  const { branchId, token } = useStaffStore()
+  const { branchId, token, role } = useStaffStore()
   const [categories, setCategories] = useState<MenuCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState<number | null>(null)
@@ -195,6 +195,7 @@ function MenuTab() {
                     {formatCurrency(item.price)}
                   </p>
                 </div>
+                {role === 'owner' && (
                 <button
                   onClick={() => handleToggle(item.id, item.is_available)}
                   disabled={toggling === item.id}
@@ -222,6 +223,7 @@ function MenuTab() {
                     "Off"
                   )}
                 </button>
+                )}
               </HospitalityCard>
             ))}
           </div>
