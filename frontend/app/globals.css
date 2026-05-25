@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "../styles/themes.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -124,8 +125,227 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   html {
     @apply font-sans;
   }
+}
+
+/* ── Motion tokens ──────────────────────────────────────────────────── */
+:root {
+  --ease:      cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-out:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:   cubic-bezier(0.55, 0, 0.85, 0);
+  --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast:  140ms;
+  --dur-med:   260ms;
+  --dur-slow:  420ms;
+}
+
+/* ── Keyframes ──────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes sheetUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-16px); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+@keyframes pop {
+  0%   { transform: scale(0.92); }
+  60%  { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+@keyframes screenFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes presenceIn {
+  from { transform: translateX(-8px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes presenceOut {
+  from { transform: translateX(0);   opacity: 1; }
+  to   { transform: translateX(8px); opacity: 0; }
+}
+
+@keyframes softPulse {
+  0%, 100% { opacity: 0.7; }
+  50%       { opacity: 1; }
+}
+
+@keyframes pulseDot {
+  0%   { transform: scale(1);   opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes sheen {
+  from { background-position: -200% center; }
+  to   { background-position:  200% center; }
+}
+
+/* ── Utility classes ────────────────────────────────────────────────── */
+.eyebrow {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+
+.serif {
+  font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
+}
+
+.mono {
+  font-family: var(--font-geist-mono, 'Geist Mono', ui-monospace, monospace);
+}
+
+.atmos {
+  position: relative;
+  overflow: hidden;
+}
+.atmos::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--grain);
+  opacity: 0.45;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.leader {
+  flex: 1;
+  min-width: 8px;
+  margin: 0 8px;
+  border-bottom: 1px dotted var(--line-2);
+  align-self: flex-end;
+  margin-bottom: 4px;
+}
+
+hr.rule,
+.rule {
+  border: 0;
+  border-bottom: 1px solid var(--line-1);
+  margin: 0;
+}
+
+hr.rule-strong,
+.rule-strong {
+  border: 0;
+  border-bottom: 1px solid var(--line-2);
+  margin: 0;
+}
+
+.live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex-shrink: 0;
+  animation: pulseDot 2s ease-out infinite;
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elev-1) 25%,
+    var(--bg-elev-2) 50%,
+    var(--bg-elev-1) 75%
+  );
+  background-size: 200% 100%;
+  animation: sheen 1.8s linear infinite;
+}
+
+.seg-track {
+  display: flex;
+  gap: 3px;
+  height: 3px;
+}
+
+.seg {
+  flex: 1;
+  border-radius: 2px;
+  background: var(--line-2);
+}
+
+.seg.done {
+  background: var(--ok);
+}
+
+.seg.active {
+  background: var(--accent);
+}
+
+.press {
+  cursor: default;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.press:active {
+  transform: scale(0.985);
+}
+
+.screen-enter {
+  animation: screenFade 0.32s var(--ease-out);
+}
+
+.presence {
+  animation: presenceIn 0.4s var(--ease-out);
+}
+
+.presence-out {
+  animation: presenceOut 0.28s var(--ease-in) forwards;
+}
+
+.hscroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.hscroll::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollarea {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+.scrollarea::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollarea::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 2px;
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
