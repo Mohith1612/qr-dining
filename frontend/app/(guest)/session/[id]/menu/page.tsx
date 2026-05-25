@@ -105,10 +105,7 @@ export default function MenuPage({ params }: Props) {
                 <TabsTrigger
                   key={cat.id}
                   value={cat.name}
-                  className="relative px-4 py-3.5 text-sm font-medium whitespace-nowrap bg-transparent rounded-none border-0 data-[state=active]:bg-transparent data-[state=active]:shadow-none transition-colors"
-                  style={{
-                    color: "var(--color-text-muted)",
-                  }}
+                  className="relative px-4 py-3.5 text-sm font-medium whitespace-nowrap bg-transparent rounded-none border-0 border-b-2 border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:[border-bottom-color:var(--color-accent)] transition-colors text-[var(--color-text-muted)] data-[state=active]:text-[var(--color-accent)]"
                 >
                   <span className="relative">
                     {cat.name}
