@@ -3,45 +3,18 @@
 import Link from "next/link"
 import { use } from "react"
 import { useSession } from "@/hooks/useSession"
-import { UtensilsCrossed, ClipboardList, Bell, CreditCard } from "lucide-react"
+import { Avatar } from "@/components/shared/Avatar"
+import { UtensilsCrossed, ClipboardList, Bell, CreditCard, ChevronRight } from "lucide-react"
 
 interface Props {
   params: Promise<{ id: string }>
 }
 
-function ParticipantStrip({ participants }: { participants: { id: number; display_name: string }[] }) {
-  const visible = participants.slice(0, 5)
-  const overflow = participants.length - 5
-
-  return (
-    <div className="flex items-center gap-2 flex-wrap">
-      {visible.map((p) => (
-        <div
-          key={p.id}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-          style={{
-            backgroundColor: "var(--color-surface)",
-            border: "1px solid var(--color-border)",
-            color: "var(--color-text)",
-          }}
-        >
-          <span
-            className="size-5 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
-            style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
-            aria-hidden
-          >
-            {p.display_name[0]?.toUpperCase()}
-          </span>
-          {p.display_name}
-        </div>
-      ))}
-      {overflow > 0 && (
-        <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-          +{overflow} more
-        </span>
-      )}
-    </div>
-  )
+const TILE_TONES: Record<string, { bg: string; fg: string }> = {
+  accent:  { bg: "var(--accent-soft)",  fg: "var(--accent)"  },
+  info:    { bg: "var(--info-soft)",    fg: "var(--info)"    },
+  warn:    { bg: "var(--warn-soft)",    fg: "var(--warn)"    },
+  neutral: { bg: "var(--line-1)",       fg: "var(--ink-2)"   },
 }
 
 export default function SessionLandingPage({ params }: Props) {
@@ -49,78 +22,92 @@ export default function SessionLandingPage({ params }: Props) {
   const { session, participant, participants } = useSession()
 
   const actions = [
-    { href: `/session/${id}/menu`, label: "View Menu", description: "Browse what's available", icon: UtensilsCrossed },
-    { href: `/session/${id}/orders`, label: "Orders", description: "Track your orders live", icon: ClipboardList },
-    { href: `/session/${id}/assist`, label: "Need Help", description: "Call a waiter or request bill", icon: Bell },
-    { href: `/session/${id}/payment`, label: "Pay Bill", description: "Settle up when ready", icon: CreditCard },
+    { href: `/session/${id}/menu`,    label: "View Menu",  sub: "Tonight's offerings",            icon: UtensilsCrossed, tone: "accent"  },
+    { href: `/session/${id}/orders`,  label: "Orders",     sub: "Track live from the kitchen",    icon: ClipboardList,   tone: "info"    },
+    { href: `/session/${id}/assist`,  label: "Need Help",  sub: "Call a host, or anything else",  icon: Bell,            tone: "warn"    },
+    { href: `/session/${id}/payment`, label: "Pay Bill",   sub: "Settle when you're ready",       icon: CreditCard,      tone: "neutral" },
   ]
 
+  const tableLabel = session ? (session.table_identifier ?? `Table ${session.table_id}`) : "Table"
+
   return (
-    <div
-      className="px-5 py-8 space-y-8"
-      style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
-    >
-      {/* Welcome heading */}
-      <div className="space-y-1.5">
-        <h1
-          className="text-3xl font-medium leading-tight"
-          style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
-        >
-          {participant ? `Welcome, ${participant.display_name}` : "Your table"}
+    <div className="screen-enter px-5 py-6 pb-8" style={{ background: "var(--bg-base)", color: "var(--ink-1)" }}>
+      {/* Greeting */}
+      <div style={{ marginBottom: 24 }}>
+        <p className="eyebrow">Good evening</p>
+        <h1 className="serif" style={{ fontSize: 34, fontWeight: 500, letterSpacing: "-0.02em", color: "var(--ink-1)", lineHeight: 1.1, margin: "6px 0 0" }}>
+          {participant ? `Welcome, ${participant.display_name}.` : "Welcome."}
         </h1>
-        {session && (
-          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            {session.table_identifier ?? `Table ${session.table_id}`}
-          </p>
-        )}
+        <p style={{ color: "var(--ink-2)", fontSize: 14, marginTop: 4 }}>Seated at {tableLabel}</p>
       </div>
 
-      {/* Participant strip */}
-      {participants.length > 0 && (
-        <div className="space-y-3">
-          <p
-            className="text-xs font-semibold uppercase tracking-widest"
-            style={{ color: "var(--color-text-muted)", letterSpacing: "0.1em" }}
-          >
-            At this table
-          </p>
-          <ParticipantStrip participants={participants} />
+      {/* Dining party card */}
+      <div style={{
+        background: "linear-gradient(180deg, var(--bg-elev-2), var(--bg-elev-1))",
+        border: "1px solid var(--line-2)",
+        borderRadius: "var(--rad-lg)",
+        boxShadow: "var(--shadow-2)",
+        padding: 16,
+        marginBottom: 24,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <p className="eyebrow">At this table</p>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--ink-3)", fontSize: 11.5 }}>
+            <span className="live-dot" />
+            in sync
+          </span>
         </div>
-      )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {participants.slice(0, 6).map((p) => {
+            const isYou = p.id === participant?.id
+            return (
+              <div key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 12px 5px 5px", borderRadius: 999, background: "var(--bg-elev-3)", border: "1px solid var(--line-1)" }}>
+                <Avatar name={p.display_name} size={24} />
+                <span style={{ fontSize: 12.5, color: "var(--ink-1)", fontWeight: 500 }}>{p.display_name}</span>
+                {isYou && <span style={{ fontSize: 10, color: "var(--accent)", letterSpacing: "0.08em", fontWeight: 600 }}>YOU</span>}
+              </div>
+            )
+          })}
+          {participants.length > 6 && <span style={{ fontSize: 12, color: "var(--ink-3)" }}>+{participants.length - 6} more</span>}
+        </div>
+      </div>
 
-      {/* Action grid */}
-      <div className="grid grid-cols-2 gap-3">
-        {actions.map(({ href, label, description, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className="flex flex-col gap-4 p-5 rounded-2xl transition-opacity active:opacity-70"
-            style={{
-              backgroundColor: "var(--color-surface)",
-              border: "1px solid var(--color-border)",
-              boxShadow: "var(--shadow-card)",
-              borderRadius: "var(--radius-lg)",
-            }}
-          >
-            <div
-              className="size-10 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: "var(--color-bg)" }}
+      {/* Action tiles 2×2 */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {actions.map(({ href, label, sub, icon: Icon, tone }) => {
+          const colors = TILE_TONES[tone]
+          return (
+            <Link
+              key={href}
+              href={href}
+              className="press"
+              style={{
+                display: "flex", flexDirection: "column", gap: 12,
+                padding: "16px 14px",
+                borderRadius: "var(--rad-lg)",
+                background: "var(--bg-elev-1)",
+                border: "1px solid var(--line-1)",
+                boxShadow: "var(--shadow-1)",
+                minHeight: 110,
+                textDecoration: "none",
+              }}
             >
-              <Icon className="size-5" style={{ color: "var(--color-accent)" }} aria-hidden />
-            </div>
-            <div>
-              <p
-                className="font-medium text-sm leading-snug"
-                style={{ fontFamily: "var(--font-display)", fontSize: "15px" }}
-              >
-                {label}
-              </p>
-              <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                {description}
-              </p>
-            </div>
-          </Link>
-        ))}
+              <span style={{ width: 36, height: 36, borderRadius: 12, background: colors.bg, color: colors.fg, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon size={18} />
+              </span>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-1)", letterSpacing: "-0.005em" }}>{label}</div>
+                <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2, lineHeight: 1.4 }}>{sub}</div>
+              </div>
+            </Link>
+          )
+        })}
+      </div>
+
+      {/* Footer brand */}
+      <div style={{ marginTop: 36, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, color: "var(--ink-4)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+        <UtensilsCrossed size={11} aria-hidden />
+        QR Dining
       </div>
     </div>
   )

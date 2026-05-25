@@ -1,93 +1,69 @@
 "use client"
 
-import { AnimatePresence, motion } from "framer-motion"
 import { useOrders } from "@/hooks/useOrders"
 import { StatusBadge } from "@/components/shared/StatusBadge"
-import { SectionHeader } from "@/components/shared/SectionHeader"
 import { EmptyState } from "@/components/shared/EmptyState"
-import { OrderSkeleton } from "@/components/shared/LoadingSkeleton"
 import { formatCurrency, relativeTime } from "@/lib/format"
 import { ClipboardList } from "lucide-react"
-import { springGentle, prefersReduced } from "@/lib/motion"
 import type { Order, OrderStatus } from "@/types/api"
 
 const STATUS_STEPS: OrderStatus[] = ["pending", "confirmed", "preparing", "ready", "served"]
-
-function OrderProgressBar({ status }: { status: OrderStatus }) {
-  if (status === "cancelled") return null
-  const stepIndex = STATUS_STEPS.indexOf(status)
-
-  return (
-    <div className="flex gap-1.5 mt-3" aria-label={`Order status: ${status}`}>
-      {STATUS_STEPS.map((step, i) => (
-        <div
-          key={step}
-          className="flex-1 h-1 rounded-full"
-          style={{
-            backgroundColor: i <= stepIndex ? "var(--color-accent)" : "var(--color-border)",
-            transition: prefersReduced ? "none" : "background-color 0.4s ease",
-          }}
-          aria-hidden
-        />
-      ))}
-    </div>
-  )
+const STAGE_LABELS: Record<OrderStatus, string> = {
+  pending: "Sent", confirmed: "Confirmed", preparing: "Preparing", ready: "Ready", served: "Served", cancelled: "Cancelled"
 }
 
 function OrderCard({ order }: { order: Order }) {
+  const stepIdx = STATUS_STEPS.indexOf(order.status as OrderStatus)
+  const isLive = !["served", "cancelled"].includes(order.status)
+
   return (
-    <motion.div
-      layout={!prefersReduced}
-      initial={prefersReduced ? {} : { opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={prefersReduced ? {} : { opacity: 0, y: -6 }}
-      transition={prefersReduced ? { duration: 0 } : springGentle}
-      className="rounded-2xl p-5 space-y-1"
-      style={{
-        backgroundColor: "var(--color-surface)",
-        border: "1px solid var(--color-border)",
-        boxShadow: "var(--shadow-card)",
-        borderRadius: "var(--radius-lg)",
-      }}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="space-y-0.5">
-          <p
-            className="text-lg font-medium leading-none"
-            style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
-          >
-            Order
+    <div style={{
+      background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+      borderRadius: "var(--rad-lg)", boxShadow: "var(--shadow-2)",
+      padding: 16, marginBottom: 12,
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+        <div>
+          <p className="mono" style={{ fontSize: 12.5, color: "var(--ink-2)", marginBottom: 2 }}>
+            Order · #{order.id?.toString().slice(0, 8)}
           </p>
-          <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-            {relativeTime(order.created_at)}
-          </p>
+          <p style={{ fontSize: 12, color: "var(--ink-3)" }}>{relativeTime(order.created_at)}</p>
         </div>
-        <StatusBadge status={order.status} />
+        <StatusBadge status={order.status as OrderStatus} />
       </div>
 
-      <OrderProgressBar status={order.status} />
+      {/* Segment progress bar */}
+      {order.status !== "cancelled" && (
+        <>
+          <div className="seg-track" aria-label={`Order status: ${order.status}`}>
+            {STATUS_STEPS.map((step, i) => (
+              <div key={step} className={`seg${i < stepIdx ? " done" : i === stepIdx ? " active" : ""}`} aria-hidden />
+            ))}
+          </div>
+          {/* Stage labels */}
+          <div style={{ display: "flex", marginTop: 6 }}>
+            {STATUS_STEPS.map((step, i) => (
+              <div key={step} style={{ flex: 1, fontSize: 9, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.06em", color: i <= stepIdx ? "var(--ink-2)" : "var(--ink-4)", fontWeight: i === stepIdx ? 700 : 400 }}>
+                {STAGE_LABELS[step]}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {order.status === "ready" && (
-        <div
-          className="mt-3 rounded-xl px-4 py-3 text-sm font-medium text-center"
-          style={{
-            backgroundColor: "color-mix(in oklch, var(--color-success) 15%, transparent)",
-            color: "var(--color-success)",
-            border: "1px solid color-mix(in oklch, var(--color-success) 30%, transparent)",
-          }}
-          role="alert"
-          aria-live="assertive"
-        >
+        <div style={{ marginTop: 10, background: "var(--ok-soft)", border: "1px solid var(--ok)", borderRadius: "var(--rad-sm)", padding: "8px 12px", textAlign: "center", fontSize: 13, fontWeight: 600, color: "var(--ok)" }} role="alert" aria-live="assertive">
           Your order is ready — enjoy!
         </div>
       )}
 
-      {order.status === "cancelled" && (
-        <p className="text-xs mt-2" style={{ color: "var(--color-error)" }}>
-          This order was cancelled.
-        </p>
+      {isLive && order.status !== "ready" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, color: "var(--ink-3)", fontSize: 12 }}>
+          <span className="live-dot" />
+          Updates arrive automatically
+        </div>
       )}
-    </motion.div>
+    </div>
   )
 }
 
@@ -99,9 +75,10 @@ export default function OrdersPage() {
 
   if (orders.length === 0) {
     return (
-      <div style={{ backgroundColor: "var(--color-bg)" }} className="min-h-[60vh]">
+      <div style={{ minHeight: "70vh", display: "flex", flexDirection: "column" }}>
         <EmptyState
           icon={ClipboardList}
+          eyebrow="From the kitchen"
           title="No orders yet"
           description="Your orders will appear here as they're placed."
         />
@@ -110,23 +87,33 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="px-5 py-7 space-y-7" style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}>
+    <div className="screen-enter px-5 pt-6 pb-8" style={{ background: "var(--bg-base)", color: "var(--ink-1)" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 20 }}>
+        <p className="eyebrow">From the kitchen</p>
+        <h1 className="serif" style={{ fontSize: 28, fontWeight: 500, color: "var(--ink-1)", margin: "6px 0 0", letterSpacing: "-0.01em" }}>
+          Your active orders
+        </h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, color: "var(--ink-3)", fontSize: 12 }}>
+          <span className="live-dot" />
+          Updates arrive automatically
+        </div>
+      </div>
+
       {active.length > 0 && (
-        <section className="space-y-3">
-          <SectionHeader>Active orders</SectionHeader>
-          <AnimatePresence initial={false}>
-            {active.map((order) => (
-              <OrderCard key={order.id} order={order} />
-            ))}
-          </AnimatePresence>
+        <section style={{ marginBottom: 28 }}>
+          <p className="eyebrow" style={{ marginBottom: 12 }}>Active</p>
+          {active.map((order) => <OrderCard key={order.id} order={order} />)}
         </section>
       )}
 
       {completed.length > 0 && (
-        <section className="space-y-3">
-          <SectionHeader>Completed</SectionHeader>
+        <section>
+          <p className="eyebrow" style={{ marginBottom: 12 }}>Completed</p>
           {completed.map((order) => (
-            <OrderCard key={order.id} order={order} />
+            <div key={order.id} style={{ opacity: 0.6 }}>
+              <OrderCard order={order} />
+            </div>
           ))}
         </section>
       )}

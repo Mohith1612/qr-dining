@@ -8,8 +8,6 @@ import { useCartStore } from "@/store/cart"
 import { formatCurrency } from "@/lib/format"
 import { CartSkeleton } from "@/components/shared/LoadingSkeleton"
 import { EmptyState } from "@/components/shared/EmptyState"
-import { HospitalityCard } from "@/components/shared/HospitalityCard"
-import { Button } from "@/components/ui/button"
 import { Trash2, ShoppingCart } from "lucide-react"
 import { toast } from "sonner"
 import type { CartItem } from "@/types/api"
@@ -23,47 +21,52 @@ function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: (id: number
   const unitPrice = (item.item_price ?? 0) + modifierTotal
 
   return (
-    <div className="flex gap-4 items-start py-4 border-b" style={{ borderColor: "var(--color-border)" }}>
-      {/* Quantity badge */}
-      <div
-        className="size-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 text-sm font-semibold"
-        style={{ backgroundColor: "var(--color-surface-inset)", color: "var(--color-text-muted)" }}
-      >
-        {item.quantity}
+    <div style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "14px 0", borderBottom: "1px solid var(--line-1)" }}>
+      {/* Vignette + quantity */}
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: "var(--bg-elev-2)", border: "1px solid var(--line-2)" }} />
+        <span style={{
+          position: "absolute", top: -4, right: -4,
+          width: 20, height: 20, borderRadius: "50%",
+          background: "var(--bg-elev-3)", border: "1px solid var(--line-2)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 10, fontWeight: 700, color: "var(--ink-2)",
+        }}>
+          {item.quantity}
+        </span>
       </div>
 
-      <div className="flex-1 space-y-1 min-w-0">
-        <p
-          className="font-medium text-base leading-snug"
-          style={{ fontFamily: "var(--font-display)", color: "var(--color-text)", fontSize: "16px" }}
-        >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p className="serif" style={{ fontSize: 16, fontWeight: 500, color: "var(--ink-1)", lineHeight: 1.2, marginBottom: 2 }}>
           {item.item_name ?? `Item #${item.menu_item_id}`}
         </p>
         {item.selected_modifiers?.length > 0 && (
-          <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
+          <p style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.5 }}>
             {item.selected_modifiers.map((m) => m.name).join(" · ")}
           </p>
         )}
         {item.note && (
-          <p className="text-xs italic" style={{ color: "var(--color-text-muted)" }}>
-            "{item.note}"
-          </p>
+          <p style={{ fontSize: 12, fontStyle: "italic", color: "var(--ink-3)" }}>"{item.note}"</p>
         )}
       </div>
 
-      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
         {unitPrice > 0 && (
-          <p className="text-sm font-semibold" style={{ color: "var(--color-text)" }}>
+          <p className="serif" style={{ fontSize: 15, fontWeight: 500, color: "var(--accent)" }}>
             {formatCurrency(unitPrice * item.quantity)}
           </p>
         )}
         <button
           onClick={() => onRemove(item.id)}
-          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl transition-opacity active:opacity-60"
-          style={{ color: "var(--color-text-muted)" }}
+          style={{
+            width: 30, height: 30, borderRadius: "50%",
+            background: "var(--bg-elev-2)", border: "1px solid var(--line-1)",
+            color: "var(--ink-3)", display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer",
+          }}
           aria-label="Remove item"
         >
-          <Trash2 className="size-4" aria-hidden />
+          <Trash2 size={13} aria-hidden />
         </button>
       </div>
     </div>
@@ -115,10 +118,11 @@ export default function CartPage({ params }: Props) {
 
   if (items.length === 0) {
     return (
-      <div style={{ backgroundColor: "var(--color-bg)" }} className="min-h-[60vh]">
+      <div style={{ minHeight: "70vh", display: "flex", flexDirection: "column" }}>
         <EmptyState
           icon={ShoppingCart}
-          title="Your cart is empty"
+          eyebrow="Your selection"
+          title="Nothing here yet"
           description="Browse the menu to add items to your order."
           action={{ label: "Browse menu", onClick: () => router.push(`/session/${sessionId}/menu`) }}
         />
@@ -126,48 +130,55 @@ export default function CartPage({ params }: Props) {
     )
   }
 
-  return (
-    <div
-      className="px-5 py-7 space-y-6"
-      style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
-    >
-      <h1
-        className="text-3xl font-medium"
-        style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
-      >
-        Your order
-      </h1>
+  const itemCount = items.reduce((s, i) => s + i.quantity, 0)
+  const subtotal = items.reduce((s, i) => {
+    const modTotal = i.selected_modifiers?.reduce((sum, m) => sum + m.price_delta, 0) ?? 0
+    return s + ((i.item_price ?? 0) + modTotal) * i.quantity
+  }, 0)
 
-      <div>
+  return (
+    <div className="screen-enter px-5 pt-6 pb-8" style={{ background: "var(--bg-base)", color: "var(--ink-1)" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 20 }}>
+        <p className="eyebrow">Your selection</p>
+        <h1 className="serif" style={{ fontSize: 28, fontWeight: 500, color: "var(--ink-1)", margin: "6px 0 0", letterSpacing: "-0.01em" }}>
+          Ready to send to the kitchen
+        </h1>
+      </div>
+
+      {/* Item list */}
+      <div style={{ marginBottom: 20 }}>
         {items.map((item) => (
           <CartItemRow key={item.id} item={item} onRemove={handleRemove} />
         ))}
       </div>
 
-      <HospitalityCard variant="elevated" style={{ padding: "1.25rem" }}>
-        <div className="flex justify-between text-sm items-center">
-          <span style={{ color: "var(--color-text-muted)" }}>
-            {items.reduce((s, i) => s + i.quantity, 0)} {items.reduce((s, i) => s + i.quantity, 0) === 1 ? "item" : "items"}
-          </span>
-          <span className="text-xs font-medium px-2.5 py-1 rounded-full" style={{ backgroundColor: "var(--color-surface-inset)", color: "var(--color-text-muted)" }}>
-            Confirm total at counter
-          </span>
+      {/* Totals card */}
+      <div style={{ background: "var(--bg-elev-2)", border: "1px solid var(--line-2)", borderRadius: "var(--rad-lg)", boxShadow: "var(--shadow-2)", padding: "16px 18px", marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 13, color: "var(--ink-3)" }}>{itemCount} {itemCount === 1 ? "item" : "items"}</span>
+          <span style={{ fontSize: 12, color: "var(--ink-3)" }}>Subtotal</span>
         </div>
-      </HospitalityCard>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span className="serif" style={{ fontSize: 22, fontWeight: 500, color: "var(--accent)" }}>{formatCurrency(subtotal)}</span>
+          <span style={{ fontSize: 11, color: "var(--ink-4)", fontStyle: "italic" }}>Confirmed at counter</span>
+        </div>
+      </div>
 
-      <Button
+      {/* CTA */}
+      <button
         onClick={handlePlaceOrder}
         disabled={placing || items.length === 0}
-        className="w-full rounded-xl font-medium"
+        className="press"
         style={{
-          backgroundColor: "var(--color-accent)",
-          color: "var(--color-accent-fg)",
-          height: "52px",
-          fontSize: "15px",
+          width: "100%", height: 52, borderRadius: "var(--rad-md)",
+          background: placing ? "var(--bg-elev-2)" : "var(--accent)",
+          color: placing ? "var(--ink-3)" : "var(--accent-ink)",
+          border: 0, fontSize: 15, fontWeight: 600, cursor: placing ? "not-allowed" : "pointer",
         }}
       >
-        {placing ? "Placing order…" : "Place order"}
-      </Button>
+        {placing ? "Sending to kitchen…" : `Send to the kitchen · ${formatCurrency(subtotal)}`}
+      </button>
     </div>
   )
 }

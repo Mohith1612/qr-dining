@@ -5,11 +5,10 @@ import { useOrders } from "@/hooks/useOrders"
 import { useSession } from "@/hooks/useSession"
 import { paymentsApi } from "@/lib/api/payments"
 import { formatCurrency } from "@/lib/format"
-import { SectionHeader } from "@/components/shared/SectionHeader"
-import { HospitalityCard } from "@/components/shared/HospitalityCard"
-import { Banknote, CreditCard, Smartphone, CheckCircle, Loader2 } from "lucide-react"
+import { Banknote, CreditCard, Smartphone, CheckCircle, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import type { PaymentMethod } from "@/types/api"
+import { HospitalityCard } from "@/components/shared/HospitalityCard"
 
 const PAYMENT_OPTIONS: {
   method: PaymentMethod
@@ -17,30 +16,20 @@ const PAYMENT_OPTIONS: {
   description: string
   icon: React.ElementType
 }[] = [
-  {
-    method: "cash",
-    label: "Cash",
-    description: "Pay with cash — your waiter will collect",
-    icon: Banknote,
-  },
-  {
-    method: "card",
-    label: "Card",
-    description: "Credit or debit card via POS terminal",
-    icon: CreditCard,
-  },
-  {
-    method: "digital",
-    label: "Digital / UPI",
-    description: "UPI, Google Pay, PhonePe, and more",
-    icon: Smartphone,
-  },
+  { method: "cash",    label: "Cash",      description: "A host will collect at the table",    icon: Banknote   },
+  { method: "card",    label: "Card",       description: "Bring the POS terminal to the table", icon: CreditCard },
+  { method: "digital", label: "UPI",        description: "GPay, PhonePe, or any UPI app",       icon: Smartphone },
 ]
 
-const METHOD_LABEL: Record<PaymentMethod, string> = {
-  cash: "Cash",
-  card: "Card",
-  digital: "UPI",
+const METHOD_LABEL: Record<PaymentMethod, string> = { cash: "Cash", card: "Card", digital: "UPI" }
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0" }}>
+      <span style={{ color: "var(--ink-3)", fontSize: 13 }}>{label}</span>
+      <span style={{ color: "var(--ink-1)", fontSize: 13, fontWeight: 500 }}>{value}</span>
+    </div>
+  )
 }
 
 export default function PaymentPage() {
@@ -70,119 +59,119 @@ export default function PaymentPage() {
   if (paid) {
     return (
       <div
-        className="min-h-[60vh] flex flex-col items-center justify-center px-6 text-center gap-6"
-        style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
+        className="flex-1 flex flex-col items-center justify-center px-7 text-center screen-enter"
+        style={{ background: "var(--bg-base)" }}
       >
-        <div
-          className="size-20 rounded-3xl flex items-center justify-center"
+        <div style={{
+          width: 84, height: 84, borderRadius: 999,
+          background: "var(--ok-soft)", border: "1px solid var(--ok)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 0 0 8px var(--ok-soft), 0 12px 30px -10px rgba(0,0,0,0.4)",
+          marginBottom: 18,
+        }}>
+          <CheckCircle style={{ width: 36, height: 36, color: "var(--ok)" }} aria-hidden />
+        </div>
+
+        <p className="eyebrow" style={{ marginBottom: 6 }}>Payment recorded</p>
+        <h2 className="serif" style={{ margin: 0, fontSize: 32, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.02em" }}>
+          Thank you
+        </h2>
+        <p style={{ margin: "10px 0 22px", color: "var(--ink-2)", fontSize: 14, lineHeight: 1.6, maxWidth: 300 }}>
+          {paid === "cash"
+            ? `A host will be with you shortly to collect ${formatCurrency(total)}.`
+            : paid === "card"
+            ? `Our team is bringing a card terminal for ${formatCurrency(total)}. Please remain seated.`
+            : `We're awaiting confirmation of your ${formatCurrency(total)} UPI transfer.`}
+        </p>
+
+        <HospitalityCard elev={1} style={{ padding: "12px 16px", marginBottom: 22, minWidth: 240, textAlign: "left" }}>
+          <Row label="Method" value={METHOD_LABEL[paid]} />
+          <Row label="Amount" value={total > 0 ? formatCurrency(total) : "—"} />
+          {session?.table_identifier && <Row label="Table" value={session.table_identifier} />}
+        </HospitalityCard>
+
+        <button
+          onClick={() => window.history.back()}
+          className="press"
           style={{
-            backgroundColor: "color-mix(in oklch, var(--color-success) 12%, transparent)",
-            border: "1px solid color-mix(in oklch, var(--color-success) 30%, transparent)",
+            padding: "10px 22px", borderRadius: "var(--rad-pill)",
+            border: "1px solid var(--line-2)", color: "var(--ink-1)",
+            background: "var(--bg-elev-1)", fontSize: 14, fontWeight: 500,
           }}
         >
-          <CheckCircle className="size-10" style={{ color: "var(--color-success)" }} aria-hidden />
-        </div>
-        <div className="space-y-2">
-          <h2
-            className="text-3xl font-medium"
-            style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
-          >
-            Payment recorded
-          </h2>
-          <p className="text-base font-semibold" style={{ color: "var(--color-accent)" }}>
-            {total > 0 ? formatCurrency(total) : "—"}
-          </p>
-          <p className="text-sm max-w-xs" style={{ color: "var(--color-text-muted)" }}>
-            {METHOD_LABEL[paid]} — your waiter will come to complete the transaction. Thank you!
-          </p>
-        </div>
+          Return to table
+        </button>
       </div>
     )
   }
 
   return (
-    <div
-      className="px-5 py-7 space-y-7"
-      style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
-    >
-      <div className="space-y-1.5">
-        <h1
-          className="text-3xl font-medium"
-          style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
-        >
-          Pay bill
+    <div className="scrollarea flex-1 overflow-y-auto screen-enter" style={{ background: "var(--bg-base)" }}>
+      {/* Header */}
+      <div style={{ padding: "22px 20px 14px" }}>
+        <span className="eyebrow">Settle up</span>
+        <h1 className="serif" style={{ margin: "6px 0 4px", fontSize: 28, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.02em" }}>
+          Pay your bill
         </h1>
-        <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-          Choose how you'd like to pay.
-        </p>
+        <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 13 }}>Choose a method — we'll do the rest.</p>
       </div>
 
-      {/* Total */}
-      <HospitalityCard variant="elevated" style={{ padding: "1.25rem 1.5rem" }}>
-        <div className="flex items-baseline justify-between gap-4">
-          <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            Total due
-          </span>
-          <span
-            className="text-3xl font-medium"
-            style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
-          >
+      {/* Amount card */}
+      <div style={{ padding: "0 20px 16px" }}>
+        <HospitalityCard elev={3} style={{ padding: "20px 22px", background: "linear-gradient(160deg, var(--bg-elev-3), var(--bg-elev-2))" }}>
+          <span className="eyebrow">Amount due</span>
+          <div className="serif" style={{ marginTop: 4, fontSize: 44, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.02em", lineHeight: 1.05 }}>
             {total > 0 ? formatCurrency(total) : "—"}
-          </span>
-        </div>
-        {total === 0 && (
-          <p className="text-xs mt-2 leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
-            Total updates as orders are confirmed.
-          </p>
-        )}
-      </HospitalityCard>
+          </div>
+          <div style={{ marginTop: 8, color: "var(--ink-3)", fontSize: 12, display: "flex", justifyContent: "space-between" }}>
+            <span>Includes service &amp; taxes</span>
+            {session?.table_identifier && <span>Table {session.table_identifier}</span>}
+          </div>
+        </HospitalityCard>
+      </div>
 
-      <section className="space-y-3">
-        <SectionHeader>Payment method</SectionHeader>
-
-        {PAYMENT_OPTIONS.map(({ method, label, description, icon: Icon }) => {
-          const isLoading = loading === method
-          return (
-            <button
-              key={method}
-              onClick={() => handlePay(method)}
-              disabled={loading !== null}
-              className="w-full flex items-center gap-4 text-left transition-opacity active:opacity-70 disabled:cursor-not-allowed"
-              style={{
-                backgroundColor: "var(--color-surface)",
-                border: "1px solid var(--color-border)",
-                boxShadow: "var(--shadow-card)",
-                borderRadius: "var(--radius-lg)",
-                padding: "1rem",
-                minHeight: "76px",
-              }}
-              aria-label={`Pay with ${label}`}
-            >
-              <div
-                className="size-11 rounded-xl flex items-center justify-center shrink-0"
-                style={{ backgroundColor: "var(--color-bg)" }}
+      {/* Payment methods */}
+      <div style={{ padding: "0 20px 28px" }}>
+        <span className="eyebrow" style={{ marginBottom: 10, display: "block" }}>Payment method</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {PAYMENT_OPTIONS.map(({ method, label, description, icon: Icon }) => {
+            const isLoading = loading === method
+            return (
+              <button
+                key={method}
+                onClick={() => handlePay(method)}
+                disabled={loading !== null}
+                className="press"
+                style={{
+                  textAlign: "left", padding: "16px",
+                  borderRadius: "var(--rad-lg)", background: "var(--bg-elev-1)",
+                  border: "1px solid var(--line-1)", boxShadow: "var(--shadow-1)",
+                  display: "flex", alignItems: "center", gap: 14,
+                  opacity: loading !== null && !isLoading ? 0.5 : 1,
+                  transition: "opacity 0.14s",
+                }}
+                aria-label={`Pay with ${label}`}
               >
-                {isLoading ? (
-                  <Loader2 className="size-5 animate-spin" style={{ color: "var(--color-accent)" }} aria-hidden />
-                ) : (
-                  <Icon className="size-5" style={{ color: "var(--color-accent)" }} aria-hidden />
-                )}
-              </div>
-              <div className="space-y-0.5">
-                <p
-                  className="font-medium text-base leading-snug"
-                  style={{ fontFamily: "var(--font-display)", color: "var(--color-text)", fontSize: "16px" }}
-                >
-                  {label}
-                </p>
-                <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
-                  {description}
-                </p>
-              </div>
-            </button>
-          )
-        })}
-      </section>
+                <span style={{
+                  width: 44, height: 44, borderRadius: 14,
+                  background: "var(--accent-soft)", color: "var(--accent)",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                }}>
+                  {isLoading
+                    ? <Loader2 style={{ width: 20, height: 20 }} className="animate-spin" aria-hidden />
+                    : <Icon style={{ width: 20, height: 20 }} aria-hidden />
+                  }
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-1)" }}>{label}</div>
+                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2, lineHeight: 1.4 }}>{description}</div>
+                </div>
+                <ChevronRight style={{ width: 16, height: 16, color: "var(--ink-3)", flexShrink: 0 }} aria-hidden />
+              </button>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }

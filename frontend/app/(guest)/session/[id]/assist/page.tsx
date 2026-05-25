@@ -3,10 +3,8 @@
 import { useState } from "react"
 import { useAssistance } from "@/hooks/useAssistance"
 import { StatusBadge } from "@/components/shared/StatusBadge"
-import { SectionHeader } from "@/components/shared/SectionHeader"
-import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { relativeTime } from "@/lib/format"
-import { Bell, CreditCard, MessageSquare, CheckCircle, Loader2 } from "lucide-react"
+import { Bell, CreditCard, MessageSquare, CheckCircle, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import type { AssistanceRequest, AssistanceType } from "@/types/api"
 
@@ -44,28 +42,25 @@ const TYPE_LABEL: Record<AssistanceType, string> = {
 
 function ActiveRequestCard({ request }: { request: AssistanceRequest }) {
   return (
-    <HospitalityCard style={{ padding: "1rem" }}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="space-y-0.5">
-          <p
-            className="font-medium text-base leading-snug"
-            style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
-          >
+    <div style={{
+      background: "linear-gradient(180deg, var(--bg-elev-2), var(--bg-elev-1))",
+      border: "1px solid var(--line-2)", borderRadius: "var(--rad-lg)",
+      boxShadow: "var(--shadow-2)", padding: 16, marginBottom: 12,
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+        <div>
+          <p className="serif" style={{ fontSize: 16, fontWeight: 600, color: "var(--ink-1)", lineHeight: 1.2 }}>
             {TYPE_LABEL[request.type]} request
           </p>
-          <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-            {relativeTime(request.created_at)}
-          </p>
+          <p style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{relativeTime(request.created_at)}</p>
         </div>
         <StatusBadge status={request.status} />
       </div>
-
-      <p className="text-xs mt-3 leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
-        {request.status === "pending"
-          ? "A staff member has been notified and will be with you shortly."
-          : "Someone is on their way to your table."}
-      </p>
-    </HospitalityCard>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--ink-3)", fontSize: 12, marginTop: 8 }}>
+        <span className="live-dot" />
+        {request.status === "pending" ? "A staff member will be with you shortly." : "Someone is on their way."}
+      </div>
+    </div>
   )
 }
 
@@ -89,34 +84,25 @@ export default function AssistPage() {
   }
 
   return (
-    <div
-      className="px-5 py-7 space-y-7"
-      style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
-    >
-      <div className="space-y-1.5">
-        <h1
-          className="text-3xl font-medium"
-          style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
-        >
-          Need something?
+    <div className="screen-enter px-5 pt-6 pb-8" style={{ background: "var(--bg-base)", color: "var(--ink-1)" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <p className="eyebrow">At your service</p>
+        <h1 className="serif" style={{ fontSize: 28, fontWeight: 500, color: "var(--ink-1)", margin: "6px 0 4px", letterSpacing: "-0.01em" }}>
+          How can we help?
         </h1>
-        <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-          Tap below and a team member will come to you.
-        </p>
+        <p style={{ color: "var(--ink-2)", fontSize: 13.5 }}>Tap below and a team member will come to you.</p>
       </div>
 
       {active.length > 0 && (
-        <section className="space-y-3">
-          <SectionHeader>Active requests</SectionHeader>
-          {active.map((req) => (
-            <ActiveRequestCard key={req.id} request={req} />
-          ))}
-        </section>
+        <div style={{ marginBottom: 24 }}>
+          <p className="eyebrow" style={{ marginBottom: 10 }}>Active requests</p>
+          {active.map((req) => <ActiveRequestCard key={req.id} request={req} />)}
+        </div>
       )}
 
-      <section className="space-y-3">
-        {active.length > 0 && <SectionHeader>Request another</SectionHeader>}
-
+      <div>
+        {active.length > 0 && <p className="eyebrow" style={{ marginBottom: 10 }}>Request another</p>}
         {ASSIST_OPTIONS.map(({ type, label, description, icon: Icon }) => {
           const isActive = activeTypes.has(type)
           const isLoading = requesting === type
@@ -126,45 +112,44 @@ export default function AssistPage() {
               key={type}
               onClick={() => handleRequest(type)}
               disabled={isActive || requesting !== null}
-              className="w-full flex items-center gap-4 text-left transition-opacity active:opacity-70 disabled:cursor-not-allowed"
+              className="press"
               style={{
-                backgroundColor: isActive ? "var(--color-surface-inset)" : "var(--color-surface)",
-                border: "1px solid var(--color-border)",
-                boxShadow: isActive ? "none" : "var(--shadow-card)",
-                borderRadius: "var(--radius-lg)",
+                width: "100%", display: "flex", alignItems: "center", gap: 14,
+                textAlign: "left", cursor: isActive ? "default" : "pointer",
+                background: isActive ? "var(--bg-elev-1)" : "var(--bg-elev-1)",
+                border: `1px solid ${isActive ? "var(--line-1)" : "var(--line-2)"}`,
+                boxShadow: isActive ? "none" : "var(--shadow-1)",
+                borderRadius: "var(--rad-lg)",
                 opacity: isActive ? 0.55 : 1,
-                padding: "1rem",
-                minHeight: "76px",
+                padding: "14px 16px",
+                minHeight: 76,
+                marginBottom: 10,
               }}
               aria-label={`${label}: ${description}`}
             >
-              <div
-                className="size-11 rounded-xl flex items-center justify-center shrink-0"
-                style={{ backgroundColor: "var(--color-bg)" }}
-              >
+              <div style={{
+                width: 44, height: 44, borderRadius: "var(--rad-md)", flexShrink: 0,
+                background: isActive ? "var(--ok-soft)" : "var(--accent-soft)",
+                color: isActive ? "var(--ok)" : "var(--accent)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
                 {isLoading ? (
-                  <Loader2 className="size-5 animate-spin" style={{ color: "var(--color-accent)" }} aria-hidden />
+                  <Loader2 size={18} className="animate-spin" aria-hidden />
                 ) : isActive ? (
-                  <CheckCircle className="size-5" style={{ color: "var(--color-success)" }} aria-hidden />
+                  <CheckCircle size={18} aria-hidden />
                 ) : (
-                  <Icon className="size-5" style={{ color: "var(--color-accent)" }} aria-hidden />
+                  <Icon size={18} aria-hidden />
                 )}
               </div>
-              <div className="flex-1 space-y-0.5">
-                <p
-                  className="font-medium text-base leading-snug"
-                  style={{ fontFamily: "var(--font-display)", color: "var(--color-text)", fontSize: "16px" }}
-                >
-                  {label}
-                </p>
-                <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
-                  {isActive ? "Request already sent" : description}
-                </p>
+              <div style={{ flex: 1 }}>
+                <p className="serif" style={{ fontSize: 16, fontWeight: 600, color: "var(--ink-1)", lineHeight: 1.2, marginBottom: 2 }}>{label}</p>
+                <p style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.4 }}>{isActive ? "Request already sent" : description}</p>
               </div>
+              {!isActive && <ChevronRight size={16} style={{ color: "var(--ink-3)", flexShrink: 0 }} aria-hidden />}
             </button>
           )
         })}
-      </section>
+      </div>
     </div>
   )
 }
