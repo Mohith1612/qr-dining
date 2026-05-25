@@ -8,6 +8,7 @@ import { useCartStore } from "@/store/cart"
 import { formatCurrency } from "@/lib/format"
 import { CartSkeleton } from "@/components/shared/LoadingSkeleton"
 import { EmptyState } from "@/components/shared/EmptyState"
+import { Vignette } from "@/components/shared/Vignette"
 import { Trash2, ShoppingCart } from "lucide-react"
 import { toast } from "sonner"
 import type { CartItem } from "@/types/api"
@@ -16,28 +17,32 @@ interface Props {
   params: Promise<{ id: string }>
 }
 
+function itemHue(id: number): number {
+  return (id * 47 + 15) % 60 + 20
+}
+
 function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: (id: number) => void }) {
   const modifierTotal = item.selected_modifiers?.reduce((sum, m) => sum + m.price_delta, 0) ?? 0
   const unitPrice = (item.item_price ?? 0) + modifierTotal
 
   return (
-    <div style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "14px 0", borderBottom: "1px solid var(--line-1)" }}>
+    <div style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "18px 0", borderBottom: "1px solid var(--line-1)" }}>
       {/* Vignette + quantity */}
       <div style={{ position: "relative", flexShrink: 0 }}>
-        <div style={{ width: 56, height: 56, borderRadius: "50%", background: "var(--bg-elev-2)", border: "1px solid var(--line-2)" }} />
+        <Vignette hue={itemHue(item.menu_item_id)} size={56} />
         <span style={{
           position: "absolute", top: -4, right: -4,
           width: 20, height: 20, borderRadius: "50%",
-          background: "var(--bg-elev-3)", border: "1px solid var(--line-2)",
+          background: "var(--accent)", border: "2px solid var(--bg-base)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 10, fontWeight: 700, color: "var(--ink-2)",
+          fontSize: 10, fontWeight: 700, color: "var(--accent-ink)",
         }}>
           {item.quantity}
         </span>
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p className="serif" style={{ fontSize: 16, fontWeight: 500, color: "var(--ink-1)", lineHeight: 1.2, marginBottom: 2 }}>
+        <p className="serif" style={{ fontSize: 17, fontWeight: 500, color: "var(--ink-1)", lineHeight: 1.2, marginBottom: 3 }}>
           {item.item_name ?? `Item #${item.menu_item_id}`}
         </p>
         {item.selected_modifiers?.length > 0 && (
@@ -46,13 +51,13 @@ function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: (id: number
           </p>
         )}
         {item.note && (
-          <p style={{ fontSize: 12, fontStyle: "italic", color: "var(--ink-3)" }}>"{item.note}"</p>
+          <p style={{ fontSize: 12, fontStyle: "italic", color: "var(--ink-3)", marginTop: 2 }}>"{item.note}"</p>
         )}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
         {unitPrice > 0 && (
-          <p className="serif" style={{ fontSize: 15, fontWeight: 500, color: "var(--accent)" }}>
+          <p className="serif" style={{ fontSize: 16, fontWeight: 500, color: "var(--accent)" }}>
             {formatCurrency(unitPrice * item.quantity)}
           </p>
         )}
@@ -61,8 +66,9 @@ function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: (id: number
           style={{
             width: 30, height: 30, borderRadius: "50%",
             background: "var(--bg-elev-2)", border: "1px solid var(--line-1)",
-            color: "var(--ink-3)", display: "flex", alignItems: "center", justifyContent: "center",
+            color: "var(--ink-4)", display: "flex", alignItems: "center", justifyContent: "center",
             cursor: "pointer",
+            transition: "color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease)",
           }}
           aria-label="Remove item"
         >
@@ -137,31 +143,39 @@ export default function CartPage({ params }: Props) {
   }, 0)
 
   return (
-    <div className="screen-enter px-5 pt-6 pb-8" style={{ background: "var(--bg-base)", color: "var(--ink-1)" }}>
+    <div className="screen-enter" style={{ padding: "24px 20px 32px", background: "var(--bg-base)", color: "var(--ink-1)" }}>
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 24 }}>
         <p className="eyebrow">Your selection</p>
-        <h1 className="serif" style={{ fontSize: 28, fontWeight: 500, color: "var(--ink-1)", margin: "6px 0 0", letterSpacing: "-0.01em" }}>
-          Ready to send to the kitchen
+        <h1 className="display-lg" style={{ margin: "6px 0 0" }}>
+          Ready to send
         </h1>
       </div>
 
       {/* Item list */}
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 24 }}>
         {items.map((item) => (
           <CartItemRow key={item.id} item={item} onRemove={handleRemove} />
         ))}
       </div>
 
       {/* Totals card */}
-      <div style={{ background: "var(--bg-elev-2)", border: "1px solid var(--line-2)", borderRadius: "var(--rad-lg)", boxShadow: "var(--shadow-2)", padding: "16px 18px", marginBottom: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <span style={{ fontSize: 13, color: "var(--ink-3)" }}>{itemCount} {itemCount === 1 ? "item" : "items"}</span>
-          <span style={{ fontSize: 12, color: "var(--ink-3)" }}>Subtotal</span>
-        </div>
+      <div
+        className="atmos"
+        style={{
+          background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+          borderRadius: "var(--rad-lg)", boxShadow: "var(--shadow-2)",
+          padding: "18px 20px", marginBottom: 24,
+        }}
+      >
+        <p className="eyebrow" style={{ marginBottom: 12 }}>
+          {itemCount} {itemCount === 1 ? "item" : "items"}
+        </p>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <span className="serif" style={{ fontSize: 22, fontWeight: 500, color: "var(--accent)" }}>{formatCurrency(subtotal)}</span>
-          <span style={{ fontSize: 11, color: "var(--ink-4)", fontStyle: "italic" }}>Confirmed at counter</span>
+          <span className="serif" style={{ fontSize: 28, fontWeight: 500, color: "var(--accent)", letterSpacing: "-0.015em" }}>
+            {formatCurrency(subtotal)}
+          </span>
+          <span style={{ fontSize: 11, color: "var(--ink-4)", fontStyle: "italic" }}>Confirmed at table</span>
         </div>
       </div>
 
@@ -171,13 +185,19 @@ export default function CartPage({ params }: Props) {
         disabled={placing || items.length === 0}
         className="press"
         style={{
-          width: "100%", height: 52, borderRadius: "var(--rad-md)",
-          background: placing ? "var(--bg-elev-2)" : "var(--accent)",
+          width: "100%", height: 54, borderRadius: 16,
+          background: placing
+            ? "var(--bg-elev-3)"
+            : "linear-gradient(180deg, var(--accent-strong), var(--accent))",
           color: placing ? "var(--ink-3)" : "var(--accent-ink)",
-          border: 0, fontSize: 15, fontWeight: 600, cursor: placing ? "not-allowed" : "pointer",
+          border: placing ? "1px solid var(--line-2)" : "1px solid var(--accent)",
+          boxShadow: placing ? "none" : "var(--shadow-2), inset 0 1px 0 rgba(255,255,255,0.18)",
+          fontSize: 16, fontWeight: 600,
+          cursor: placing ? "not-allowed" : "pointer",
+          transition: "background var(--dur-fast) var(--ease)",
         }}
       >
-        {placing ? "Sending to kitchen…" : `Send to the kitchen · ${formatCurrency(subtotal)}`}
+        {placing ? "Sending to kitchen…" : `Confirm your order · ${formatCurrency(subtotal)}`}
       </button>
     </div>
   )
