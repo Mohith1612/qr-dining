@@ -5,6 +5,8 @@ import { useOrders } from "@/hooks/useOrders"
 import { useSession } from "@/hooks/useSession"
 import { paymentsApi } from "@/lib/api/payments"
 import { formatCurrency } from "@/lib/format"
+import { SectionHeader } from "@/components/shared/SectionHeader"
+import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { Banknote, CreditCard, Smartphone, CheckCircle, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import type { PaymentMethod } from "@/types/api"
@@ -68,22 +70,30 @@ export default function PaymentPage() {
   if (paid) {
     return (
       <div
-        className="min-h-[60vh] flex flex-col items-center justify-center px-6 text-center gap-5"
+        className="min-h-[60vh] flex flex-col items-center justify-center px-6 text-center gap-6"
         style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
       >
         <div
-          className="size-16 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}
+          className="size-20 rounded-3xl flex items-center justify-center"
+          style={{
+            backgroundColor: "color-mix(in oklch, var(--color-success) 12%, transparent)",
+            border: "1px solid color-mix(in oklch, var(--color-success) 30%, transparent)",
+          }}
         >
-          <CheckCircle className="size-8" style={{ color: "var(--color-success)" }} aria-hidden />
+          <CheckCircle className="size-10" style={{ color: "var(--color-success)" }} aria-hidden />
         </div>
-        <div className="space-y-1.5">
-          <p className="text-lg font-semibold">Payment recorded</p>
-          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            {METHOD_LABEL[paid]} — {total > 0 ? formatCurrency(total) : "your bill"}
+        <div className="space-y-2">
+          <h2
+            className="text-3xl font-medium"
+            style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
+          >
+            Payment recorded
+          </h2>
+          <p className="text-base font-semibold" style={{ color: "var(--color-accent)" }}>
+            {total > 0 ? formatCurrency(total) : "—"}
           </p>
-          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            Your waiter will come to complete the transaction. Thank you!
+          <p className="text-sm max-w-xs" style={{ color: "var(--color-text-muted)" }}>
+            {METHOD_LABEL[paid]} — your waiter will come to complete the transaction. Thank you!
           </p>
         </div>
       </div>
@@ -92,45 +102,43 @@ export default function PaymentPage() {
 
   return (
     <div
-      className="px-4 py-6 space-y-6"
+      className="px-5 py-7 space-y-7"
       style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
     >
-      <div className="space-y-1">
-        <h1 className="text-lg font-semibold">Pay bill</h1>
+      <div className="space-y-1.5">
+        <h1
+          className="text-3xl font-medium"
+          style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
+        >
+          Pay bill
+        </h1>
         <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
           Choose how you'd like to pay.
         </p>
       </div>
 
-      <div
-        className="rounded-2xl p-5 flex items-center justify-between"
-        style={{
-          backgroundColor: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-        }}
-      >
-        <span className="text-sm font-medium" style={{ color: "var(--color-text-muted)" }}>
-          Total
-        </span>
-        <span className="text-2xl font-bold" style={{ color: "var(--color-text)" }}>
-          {total > 0 ? formatCurrency(total) : "—"}
-        </span>
-      </div>
-
-      {total === 0 && (
-        <p className="text-xs text-center" style={{ color: "var(--color-text-muted)" }}>
-          No orders placed yet. The total will update as orders are confirmed.
-        </p>
-      )}
+      {/* Total */}
+      <HospitalityCard variant="elevated" style={{ padding: "1.25rem 1.5rem" }}>
+        <div className="flex items-baseline justify-between gap-4">
+          <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+            Total due
+          </span>
+          <span
+            className="text-3xl font-medium"
+            style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
+          >
+            {total > 0 ? formatCurrency(total) : "—"}
+          </span>
+        </div>
+        {total === 0 && (
+          <p className="text-xs mt-2 leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
+            Total updates as orders are confirmed.
+          </p>
+        )}
+      </HospitalityCard>
 
       <section className="space-y-3">
-        <h2
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-text-muted)" }}
-        >
-          Payment method
-        </h2>
+        <SectionHeader>Payment method</SectionHeader>
 
         {PAYMENT_OPTIONS.map(({ method, label, description, icon: Icon }) => {
           const isLoading = loading === method
@@ -139,18 +147,19 @@ export default function PaymentPage() {
               key={method}
               onClick={() => handlePay(method)}
               disabled={loading !== null}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-opacity active:opacity-70 disabled:cursor-not-allowed"
+              className="w-full flex items-center gap-4 text-left transition-opacity active:opacity-70 disabled:cursor-not-allowed"
               style={{
                 backgroundColor: "var(--color-surface)",
                 border: "1px solid var(--color-border)",
                 boxShadow: "var(--shadow-card)",
                 borderRadius: "var(--radius-lg)",
-                minHeight: "72px",
+                padding: "1rem",
+                minHeight: "76px",
               }}
               aria-label={`Pay with ${label}`}
             >
               <div
-                className="size-10 rounded-xl flex items-center justify-center shrink-0"
+                className="size-11 rounded-xl flex items-center justify-center shrink-0"
                 style={{ backgroundColor: "var(--color-bg)" }}
               >
                 {isLoading ? (
@@ -160,7 +169,12 @@ export default function PaymentPage() {
                 )}
               </div>
               <div className="space-y-0.5">
-                <p className="font-semibold text-sm">{label}</p>
+                <p
+                  className="font-medium text-base leading-snug"
+                  style={{ fontFamily: "var(--font-display)", color: "var(--color-text)", fontSize: "16px" }}
+                >
+                  {label}
+                </p>
                 <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
                   {description}
                 </p>

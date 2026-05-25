@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { useAssistance } from "@/hooks/useAssistance"
 import { StatusBadge } from "@/components/shared/StatusBadge"
+import { SectionHeader } from "@/components/shared/SectionHeader"
+import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { relativeTime } from "@/lib/format"
 import { Bell, CreditCard, MessageSquare, CheckCircle, Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -42,18 +44,13 @@ const TYPE_LABEL: Record<AssistanceType, string> = {
 
 function ActiveRequestCard({ request }: { request: AssistanceRequest }) {
   return (
-    <div
-      className="rounded-2xl p-4 space-y-3"
-      style={{
-        backgroundColor: "var(--color-surface)",
-        border: "1px solid var(--color-border)",
-        boxShadow: "var(--shadow-card)",
-        borderRadius: "var(--radius-lg)",
-      }}
-    >
+    <HospitalityCard style={{ padding: "1rem" }}>
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-0.5">
-          <p className="font-semibold text-sm" style={{ color: "var(--color-text)" }}>
+          <p
+            className="font-medium text-base leading-snug"
+            style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
+          >
             {TYPE_LABEL[request.type]} request
           </p>
           <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
@@ -63,17 +60,12 @@ function ActiveRequestCard({ request }: { request: AssistanceRequest }) {
         <StatusBadge status={request.status} />
       </div>
 
-      {request.status === "pending" && (
-        <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-          A staff member has been notified and will be with you shortly.
-        </p>
-      )}
-      {request.status === "acknowledged" && (
-        <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-          Someone is on their way to your table.
-        </p>
-      )}
-    </div>
+      <p className="text-xs mt-3 leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
+        {request.status === "pending"
+          ? "A staff member has been notified and will be with you shortly."
+          : "Someone is on their way to your table."}
+      </p>
+    </HospitalityCard>
   )
 }
 
@@ -98,11 +90,16 @@ export default function AssistPage() {
 
   return (
     <div
-      className="px-4 py-6 space-y-6"
+      className="px-5 py-7 space-y-7"
       style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
     >
-      <div className="space-y-1">
-        <h1 className="text-lg font-semibold">Need something?</h1>
+      <div className="space-y-1.5">
+        <h1
+          className="text-3xl font-medium"
+          style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
+        >
+          Need something?
+        </h1>
         <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
           Tap below and a team member will come to you.
         </p>
@@ -110,12 +107,7 @@ export default function AssistPage() {
 
       {active.length > 0 && (
         <section className="space-y-3">
-          <h2
-            className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            Active requests
-          </h2>
+          <SectionHeader>Active requests</SectionHeader>
           {active.map((req) => (
             <ActiveRequestCard key={req.id} request={req} />
           ))}
@@ -123,14 +115,7 @@ export default function AssistPage() {
       )}
 
       <section className="space-y-3">
-        {active.length > 0 && (
-          <h2
-            className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            Request another
-          </h2>
-        )}
+        {active.length > 0 && <SectionHeader>Request another</SectionHeader>}
 
         {ASSIST_OPTIONS.map(({ type, label, description, icon: Icon }) => {
           const isActive = activeTypes.has(type)
@@ -141,19 +126,20 @@ export default function AssistPage() {
               key={type}
               onClick={() => handleRequest(type)}
               disabled={isActive || requesting !== null}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-opacity active:opacity-70 disabled:cursor-not-allowed"
+              className="w-full flex items-center gap-4 text-left transition-opacity active:opacity-70 disabled:cursor-not-allowed"
               style={{
-                backgroundColor: isActive ? "var(--color-bg)" : "var(--color-surface)",
+                backgroundColor: isActive ? "var(--color-surface-inset)" : "var(--color-surface)",
                 border: "1px solid var(--color-border)",
                 boxShadow: isActive ? "none" : "var(--shadow-card)",
                 borderRadius: "var(--radius-lg)",
-                opacity: isActive ? 0.5 : 1,
-                minHeight: "72px",
+                opacity: isActive ? 0.55 : 1,
+                padding: "1rem",
+                minHeight: "76px",
               }}
               aria-label={`${label}: ${description}`}
             >
               <div
-                className="size-10 rounded-xl flex items-center justify-center shrink-0"
+                className="size-11 rounded-xl flex items-center justify-center shrink-0"
                 style={{ backgroundColor: "var(--color-bg)" }}
               >
                 {isLoading ? (
@@ -165,7 +151,12 @@ export default function AssistPage() {
                 )}
               </div>
               <div className="flex-1 space-y-0.5">
-                <p className="font-semibold text-sm">{label}</p>
+                <p
+                  className="font-medium text-base leading-snug"
+                  style={{ fontFamily: "var(--font-display)", color: "var(--color-text)", fontSize: "16px" }}
+                >
+                  {label}
+                </p>
                 <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
                   {isActive ? "Request already sent" : description}
                 </p>

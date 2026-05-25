@@ -7,6 +7,8 @@ import { useOrders } from "@/hooks/useOrders"
 import { useCartStore } from "@/store/cart"
 import { formatCurrency } from "@/lib/format"
 import { CartSkeleton } from "@/components/shared/LoadingSkeleton"
+import { EmptyState } from "@/components/shared/EmptyState"
+import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { Button } from "@/components/ui/button"
 import { Trash2, ShoppingCart } from "lucide-react"
 import { toast } from "sonner"
@@ -21,14 +23,25 @@ function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: (id: number
   const unitPrice = (item.item_price ?? 0) + modifierTotal
 
   return (
-    <div className="flex gap-3 items-start py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-      <div className="flex-1 space-y-1">
-        <p className="font-medium text-sm" style={{ color: "var(--color-text)" }}>
-          {item.quantity}× {item.item_name ?? `Item #${item.menu_item_id}`}
+    <div className="flex gap-4 items-start py-4 border-b" style={{ borderColor: "var(--color-border)" }}>
+      {/* Quantity badge */}
+      <div
+        className="size-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 text-sm font-semibold"
+        style={{ backgroundColor: "var(--color-surface-inset)", color: "var(--color-text-muted)" }}
+      >
+        {item.quantity}
+      </div>
+
+      <div className="flex-1 space-y-1 min-w-0">
+        <p
+          className="font-medium text-base leading-snug"
+          style={{ fontFamily: "var(--font-display)", color: "var(--color-text)", fontSize: "16px" }}
+        >
+          {item.item_name ?? `Item #${item.menu_item_id}`}
         </p>
         {item.selected_modifiers?.length > 0 && (
-          <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-            {item.selected_modifiers.map((m) => m.name).join(", ")}
+          <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
+            {item.selected_modifiers.map((m) => m.name).join(" · ")}
           </p>
         )}
         {item.note && (
@@ -37,15 +50,16 @@ function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: (id: number
           </p>
         )}
       </div>
-      <div className="flex flex-col items-end gap-1">
+
+      <div className="flex flex-col items-end gap-2 flex-shrink-0">
         {unitPrice > 0 && (
-          <p className="text-sm font-medium" style={{ color: "var(--color-text)" }}>
+          <p className="text-sm font-semibold" style={{ color: "var(--color-text)" }}>
             {formatCurrency(unitPrice * item.quantity)}
           </p>
         )}
         <button
           onClick={() => onRemove(item.id)}
-          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
+          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl transition-opacity active:opacity-60"
           style={{ color: "var(--color-text-muted)" }}
           aria-label="Remove item"
         >
@@ -101,36 +115,28 @@ export default function CartPage({ params }: Props) {
 
   if (items.length === 0) {
     return (
-      <div
-        className="min-h-[60vh] flex flex-col items-center justify-center px-6 text-center gap-4"
-        style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
-      >
-        <div
-          className="size-14 rounded-full flex items-center justify-center"
-          style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-        >
-          <ShoppingCart className="size-6" style={{ color: "var(--color-text-muted)" }} aria-hidden />
-        </div>
-        <div className="space-y-1">
-          <p className="font-medium">Your cart is empty</p>
-          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            Browse the menu to add items
-          </p>
-        </div>
-        <Button
-          onClick={() => router.push(`/session/${sessionId}/menu`)}
-          variant="outline"
-          className="mt-2"
-        >
-          Browse menu
-        </Button>
+      <div style={{ backgroundColor: "var(--color-bg)" }} className="min-h-[60vh]">
+        <EmptyState
+          icon={ShoppingCart}
+          title="Your cart is empty"
+          description="Browse the menu to add items to your order."
+          action={{ label: "Browse menu", onClick: () => router.push(`/session/${sessionId}/menu`) }}
+        />
       </div>
     )
   }
 
   return (
-    <div className="px-4 py-6 space-y-6" style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}>
-      <h1 className="text-lg font-semibold">Your cart</h1>
+    <div
+      className="px-5 py-7 space-y-6"
+      style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
+    >
+      <h1
+        className="text-3xl font-medium"
+        style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
+      >
+        Your order
+      </h1>
 
       <div>
         {items.map((item) => (
@@ -138,27 +144,27 @@ export default function CartPage({ params }: Props) {
         ))}
       </div>
 
-      <div
-        className="rounded-2xl p-4 space-y-3"
-        style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-      >
-        <div className="flex justify-between text-sm">
-          <span style={{ color: "var(--color-text-muted)" }}>Items</span>
-          <span className="font-medium">{items.reduce((s, i) => s + i.quantity, 0)}</span>
-        </div>
-        <div className="pt-2 border-t flex justify-between" style={{ borderColor: "var(--color-border)" }}>
-          <span className="font-semibold">Total</span>
-          <span className="font-semibold" style={{ color: "var(--color-accent)" }}>
-            Confirm at counter
+      <HospitalityCard variant="elevated" style={{ padding: "1.25rem" }}>
+        <div className="flex justify-between text-sm items-center">
+          <span style={{ color: "var(--color-text-muted)" }}>
+            {items.reduce((s, i) => s + i.quantity, 0)} {items.reduce((s, i) => s + i.quantity, 0) === 1 ? "item" : "items"}
+          </span>
+          <span className="text-xs font-medium px-2.5 py-1 rounded-full" style={{ backgroundColor: "var(--color-surface-inset)", color: "var(--color-text-muted)" }}>
+            Confirm total at counter
           </span>
         </div>
-      </div>
+      </HospitalityCard>
 
       <Button
         onClick={handlePlaceOrder}
         disabled={placing || items.length === 0}
-        className="w-full h-12 rounded-xl font-medium text-base"
-        style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
+        className="w-full rounded-xl font-medium"
+        style={{
+          backgroundColor: "var(--color-accent)",
+          color: "var(--color-accent-fg)",
+          height: "52px",
+          fontSize: "15px",
+        }}
       >
         {placing ? "Placing order…" : "Place order"}
       </Button>

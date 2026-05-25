@@ -18,7 +18,7 @@ function ParticipantStrip({ participants }: { participants: { id: number; displa
       {visible.map((p) => (
         <div
           key={p.id}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
           style={{
             backgroundColor: "var(--color-surface)",
             border: "1px solid var(--color-border)",
@@ -26,7 +26,7 @@ function ParticipantStrip({ participants }: { participants: { id: number; displa
           }}
         >
           <span
-            className="size-5 rounded-full flex items-center justify-center text-xs font-semibold"
+            className="size-5 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
             style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
             aria-hidden
           >
@@ -57,11 +57,15 @@ export default function SessionLandingPage({ params }: Props) {
 
   return (
     <div
-      className="px-4 py-6 space-y-6"
+      className="px-5 py-8 space-y-8"
       style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)" }}
     >
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold">
+      {/* Welcome heading */}
+      <div className="space-y-1.5">
+        <h1
+          className="text-3xl font-medium leading-tight"
+          style={{ fontFamily: "var(--font-display)", color: "var(--color-text)" }}
+        >
           {participant ? `Welcome, ${participant.display_name}` : "Your table"}
         </h1>
         {session && (
@@ -71,21 +75,26 @@ export default function SessionLandingPage({ params }: Props) {
         )}
       </div>
 
+      {/* Participant strip */}
       {participants.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+        <div className="space-y-3">
+          <p
+            className="text-xs font-semibold uppercase tracking-widest"
+            style={{ color: "var(--color-text-muted)", letterSpacing: "0.1em" }}
+          >
             At this table
           </p>
           <ParticipantStrip participants={participants} />
         </div>
       )}
 
+      {/* Action grid */}
       <div className="grid grid-cols-2 gap-3">
         {actions.map(({ href, label, description, icon: Icon }) => (
           <Link
             key={href}
             href={href}
-            className="flex flex-col gap-3 p-4 rounded-2xl transition-opacity active:opacity-70"
+            className="flex flex-col gap-4 p-5 rounded-2xl transition-opacity active:opacity-70"
             style={{
               backgroundColor: "var(--color-surface)",
               border: "1px solid var(--color-border)",
@@ -100,7 +109,12 @@ export default function SessionLandingPage({ params }: Props) {
               <Icon className="size-5" style={{ color: "var(--color-accent)" }} aria-hidden />
             </div>
             <div>
-              <p className="font-semibold text-sm">{label}</p>
+              <p
+                className="font-medium text-sm leading-snug"
+                style={{ fontFamily: "var(--font-display)", fontSize: "15px" }}
+              >
+                {label}
+              </p>
               <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
                 {description}
               </p>

@@ -72,13 +72,19 @@ export default function MenuPage({ params }: Props) {
     setAdding(true)
     try {
       await addItem(sheet.item.id, sheet.quantity, sheet.selectedModifiers, sheet.note || undefined)
-      toast.success(`${sheet.item.name} added to cart`)
+      toast.success(`${sheet.item.name} added`)
       setSheet(null)
     } catch {
       toast.error("Couldn't add item. Please try again.")
     } finally {
       setAdding(false)
     }
+  }
+
+  // Count how many of each item ID are in the cart
+  const cartCountByItem: Record<number, number> = {}
+  for (const ci of cartItems) {
+    cartCountByItem[ci.menu_item_id] = (cartCountByItem[ci.menu_item_id] ?? 0) + ci.quantity
   }
 
   if (menuLoading) return <MenuSkeleton />
@@ -88,122 +94,169 @@ export default function MenuPage({ params }: Props) {
   return (
     <div className="flex flex-col h-full">
       <Tabs defaultValue={firstCategory} className="flex-1 flex flex-col">
+        {/* Category tab bar */}
         <div
-          className="sticky top-0 z-20 border-b px-4 pt-2"
+          className="sticky top-0 z-20 border-b"
           style={{ backgroundColor: "var(--color-bg)", borderColor: "var(--color-border)" }}
         >
-          <div className="overflow-x-auto scrollbar-none">
-            <TabsList className="h-auto gap-1 bg-transparent p-0 pb-2 flex-nowrap w-max">
+          <div className="overflow-x-auto scrollbar-none px-5">
+            <TabsList className="h-auto gap-0 bg-transparent p-0 pb-0 flex-nowrap w-max">
               {categories.map((cat) => (
                 <TabsTrigger
                   key={cat.id}
                   value={cat.name}
-                  className="rounded-full px-4 py-1.5 text-sm font-medium whitespace-nowrap data-[state=active]:bg-accent data-[state=active]:text-accent-foreground"
+                  className="relative px-4 py-3.5 text-sm font-medium whitespace-nowrap bg-transparent rounded-none border-0 data-[state=active]:bg-transparent data-[state=active]:shadow-none transition-colors"
+                  style={{
+                    color: "var(--color-text-muted)",
+                  }}
                 >
-                  {cat.name}
+                  <span className="relative">
+                    {cat.name}
+                  </span>
                 </TabsTrigger>
               ))}
             </TabsList>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto pb-24">
+        <div className="flex-1 overflow-y-auto pb-28">
           {categories.map((cat) => (
-            <TabsContent key={cat.id} value={cat.name} className="mt-0 px-4 py-4 space-y-3">
-              {cat.items.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => item.is_available && openSheet(item)}
-                  disabled={!item.is_available}
-                  className="w-full flex gap-3 items-start text-left transition-opacity active:opacity-60"
-                  style={{ opacity: item.is_available ? 1 : 0.45 }}
-                  aria-disabled={!item.is_available}
-                >
-                  <div className="flex-1 space-y-1 py-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-medium text-sm leading-snug" style={{ color: "var(--color-text)" }}>
-                        {item.name}
-                        {!item.is_available && (
-                          <span className="ml-2 text-xs font-normal" style={{ color: "var(--color-text-muted)" }}>
-                            Not available
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    {item.description && (
-                      <p className="text-xs line-clamp-2" style={{ color: "var(--color-text-muted)" }}>
-                        {item.description}
-                      </p>
-                    )}
-                    <p className="text-sm font-semibold" style={{ color: "var(--color-accent)" }}>
-                      {formatCurrency(item.price)}
-                    </p>
-                  </div>
-                  {item.is_available && (
-                    <div
-                      className="size-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1"
-                      style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
-                      aria-hidden
+            <TabsContent key={cat.id} value={cat.name} className="mt-0">
+              <div className="divide-y" style={{ borderColor: "var(--color-border)" }}>
+                {cat.items.map((item) => {
+                  const inCartCount = cartCountByItem[item.id] ?? 0
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => item.is_available && openSheet(item)}
+                      disabled={!item.is_available}
+                      className="w-full flex gap-4 items-center text-left px-5 py-4 transition-opacity active:opacity-60"
+                      style={{ opacity: item.is_available ? 1 : 0.4 }}
+                      aria-disabled={!item.is_available}
                     >
-                      <Plus className="size-4" />
-                    </div>
-                  )}
-                </button>
-              ))}
+                      <div className="flex-1 space-y-1 min-w-0">
+                        <div className="flex items-start gap-2">
+                          <p
+                            className="font-medium leading-snug text-base"
+                            style={{
+                              fontFamily: "var(--font-display)",
+                              color: "var(--color-text)",
+                              fontSize: "16px",
+                            }}
+                          >
+                            {item.name}
+                          </p>
+                          {inCartCount > 0 && (
+                            <span
+                              className="flex-shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded-full mt-0.5"
+                              style={{
+                                backgroundColor: "var(--color-accent)",
+                                color: "var(--color-accent-fg)",
+                                fontSize: "10px",
+                              }}
+                            >
+                              {inCartCount}
+                            </span>
+                          )}
+                        </div>
+                        {item.description && (
+                          <p className="text-xs line-clamp-2 leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
+                            {item.description}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold" style={{ color: "var(--color-accent)" }}>
+                            {formatCurrency(item.price)}
+                          </p>
+                          {!item.is_available && (
+                            <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                              · Not available
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {item.is_available && (
+                        <div
+                          className="size-9 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{
+                            backgroundColor: inCartCount > 0 ? "var(--color-accent)" : "var(--color-surface)",
+                            border: inCartCount > 0 ? "none" : "1px solid var(--color-border)",
+                            color: inCartCount > 0 ? "var(--color-accent-fg)" : "var(--color-text-muted)",
+                          }}
+                          aria-hidden
+                        >
+                          <Plus className="size-4" />
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
             </TabsContent>
           ))}
         </div>
       </Tabs>
 
+      {/* Cart bar */}
       {itemCount > 0 && (
         <div
-          className="fixed bottom-16 left-0 right-0 px-4 pb-2 z-30"
-          style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
+          className="fixed bottom-[3.25rem] left-0 right-0 px-5 z-30"
+          style={{ paddingBottom: "calc(0.625rem + env(safe-area-inset-bottom))", paddingTop: "0.5rem" }}
         >
-          <Button
+          <button
             onClick={() => router.push(`/session/${sessionId}/cart`)}
-            className="w-full h-12 rounded-xl flex items-center justify-between px-4 font-medium"
-            style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
+            className="w-full h-13 rounded-2xl flex items-center justify-between px-5 font-medium transition-opacity active:opacity-80"
+            style={{
+              backgroundColor: "var(--color-accent)",
+              color: "var(--color-accent-fg)",
+              height: "52px",
+              boxShadow: "var(--shadow-elevated)",
+            }}
           >
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-2.5">
               <ShoppingCart className="size-4" aria-hidden />
-              {itemCount} {itemCount === 1 ? "item" : "items"}
+              <span className="text-sm font-semibold">{itemCount} {itemCount === 1 ? "item" : "items"}</span>
             </span>
-            <span>View Cart</span>
-          </Button>
+            <span className="text-sm font-semibold">View Cart →</span>
+          </button>
         </div>
       )}
 
+      {/* Item detail bottom sheet */}
       <BottomSheet
         open={!!sheet}
         onClose={() => setSheet(null)}
         title={sheet?.item.name}
       >
         {sheet && (
-          <div className="space-y-5 pb-4">
+          <div className="space-y-6 pb-2">
             {sheet.item.description && (
-              <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
                 {sheet.item.description}
               </p>
             )}
 
+            {/* Price + quantity */}
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-lg" style={{ color: "var(--color-accent)" }}>
+              <span
+                className="text-2xl font-medium"
+                style={{ fontFamily: "var(--font-display)", color: "var(--color-accent)" }}
+              >
                 {formatCurrency(sheet.item.price)}
               </span>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setSheet((s) => s ? { ...s, quantity: Math.max(1, s.quantity - 1) } : s)}
-                  className="size-8 rounded-full flex items-center justify-center border"
+                  className="size-9 rounded-full flex items-center justify-center border transition-opacity active:opacity-60"
                   style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
                   aria-label="Decrease quantity"
                 >
                   <Minus className="size-3.5" aria-hidden />
                 </button>
-                <span className="w-6 text-center font-medium text-sm">{sheet.quantity}</span>
+                <span className="w-7 text-center font-semibold text-base">{sheet.quantity}</span>
                 <button
                   onClick={() => setSheet((s) => s ? { ...s, quantity: s.quantity + 1 } : s)}
-                  className="size-8 rounded-full flex items-center justify-center"
+                  className="size-9 rounded-full flex items-center justify-center transition-opacity active:opacity-60"
                   style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
                   aria-label="Increase quantity"
                 >
@@ -212,55 +265,90 @@ export default function MenuPage({ params }: Props) {
               </div>
             </div>
 
+            {/* Modifiers */}
             {sheet.item.modifiers && sheet.item.modifiers.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+              <div className="space-y-3">
+                <p
+                  className="text-xs font-semibold uppercase tracking-widest"
+                  style={{ color: "var(--color-text-muted)", letterSpacing: "0.1em" }}
+                >
                   Customise
                 </p>
-                {sheet.item.modifiers.map((mod: ItemModifier) => (
-                  <label
-                    key={mod.id}
-                    className="flex items-center justify-between py-2 cursor-pointer"
-                  >
-                    <span className="text-sm" style={{ color: "var(--color-text)" }}>{mod.name}</span>
-                    <div className="flex items-center gap-3">
-                      {mod.price_delta !== 0 && (
-                        <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-                          +{formatCurrency(mod.price_delta)}
-                        </span>
-                      )}
-                      <input
-                        type="checkbox"
-                        checked={sheet.selectedModifiers.includes(mod.id)}
-                        onChange={() => toggleModifier(mod.id)}
-                        className="size-5 rounded"
-                        style={{ accentColor: "var(--color-accent)" }}
-                      />
-                    </div>
-                  </label>
-                ))}
+                <div
+                  className="rounded-xl overflow-hidden"
+                  style={{ border: "1px solid var(--color-border)" }}
+                >
+                  {sheet.item.modifiers.map((mod: ItemModifier, i: number) => (
+                    <label
+                      key={mod.id}
+                      className="flex items-center justify-between px-4 py-3.5 cursor-pointer transition-opacity active:opacity-70"
+                      style={{
+                        borderTop: i > 0 ? "1px solid var(--color-border)" : undefined,
+                      }}
+                    >
+                      <span className="text-sm" style={{ color: "var(--color-text)" }}>{mod.name}</span>
+                      <div className="flex items-center gap-3">
+                        {mod.price_delta !== 0 && (
+                          <span className="text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>
+                            +{formatCurrency(mod.price_delta)}
+                          </span>
+                        )}
+                        <input
+                          type="checkbox"
+                          checked={sheet.selectedModifiers.includes(mod.id)}
+                          onChange={() => toggleModifier(mod.id)}
+                          className="size-5 rounded"
+                          style={{ accentColor: "var(--color-accent)" }}
+                        />
+                      </div>
+                    </label>
+                  ))}
+                </div>
               </div>
             )}
 
+            {/* Note */}
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+              <p
+                className="text-xs font-semibold uppercase tracking-widest"
+                style={{ color: "var(--color-text-muted)", letterSpacing: "0.1em" }}
+              >
                 Special note
               </p>
               <Input
                 value={sheet.note}
                 onChange={(e) => setSheet((s) => s ? { ...s, note: e.target.value } : s)}
                 placeholder="e.g. No onions, extra spicy…"
-                className="text-sm"
+                className="text-sm rounded-xl"
+                style={{
+                  backgroundColor: "var(--color-surface-inset)",
+                  borderColor: "var(--color-border)",
+                  color: "var(--color-text)",
+                }}
               />
             </div>
 
+            {/* Add to cart CTA */}
             <Button
               onClick={handleAddToCart}
               disabled={adding}
-              className="w-full h-12 rounded-xl font-medium text-base"
-              style={{ backgroundColor: "var(--color-accent)", color: "var(--color-accent-fg)" }}
+              className="w-full rounded-xl font-medium text-base"
+              style={{
+                backgroundColor: "var(--color-accent)",
+                color: "var(--color-accent-fg)",
+                height: "52px",
+              }}
             >
-              {adding ? "Adding…" : `Add to cart — ${formatCurrency(parseFloat(sheet.item.price) * sheet.quantity)}`}
+              {adding
+                ? "Adding…"
+                : `Add to cart — ${formatCurrency(
+                    (parseFloat(sheet.item.price) +
+                      sheet.selectedModifiers.reduce((sum, id) => {
+                        const mod = sheet.item.modifiers?.find((m) => m.id === id)
+                        return sum + (mod ? parseFloat(String(mod.price_delta)) : 0)
+                      }, 0)) * sheet.quantity
+                  )}`
+              }
             </Button>
           </div>
         )}
