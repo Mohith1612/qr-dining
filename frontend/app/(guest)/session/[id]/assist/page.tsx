@@ -56,7 +56,7 @@ function ActiveRequestCard({ request }: { request: AssistanceRequest }) {
         </div>
         <StatusBadge status={request.status} />
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--ink-3)", fontSize: 12, marginTop: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--ink-2)", fontSize: 12.5, marginTop: 8 }}>
         <span className="live-dot" />
         {request.status === "pending" ? "A staff member will be with you shortly." : "Someone is on their way."}
       </div>
@@ -84,15 +84,16 @@ export default function AssistPage() {
   }
 
   return (
-    <div className="screen-enter px-5 pt-6 pb-8" style={{ background: "var(--bg-base)", color: "var(--ink-1)" }}>
+    <div className="screen-enter" style={{ background: "var(--bg-base)", color: "var(--ink-1)" }}>
       {/* Header */}
-      <div style={{ marginBottom: 24 }}>
+      <div className="page-glow" style={{ padding: "24px 20px 16px", marginBottom: 4 }}>
         <p className="eyebrow">At your service</p>
-        <h1 className="serif" style={{ fontSize: 28, fontWeight: 500, color: "var(--ink-1)", margin: "6px 0 4px", letterSpacing: "-0.01em" }}>
+        <h1 className="display-lg" style={{ margin: "6px 0 4px" }}>
           How can we help?
         </h1>
-        <p style={{ color: "var(--ink-2)", fontSize: 13.5 }}>Tap below and a team member will come to you.</p>
+        <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 13.5, lineHeight: 1.5 }}>Tap below and a team member will come to you.</p>
       </div>
+      <div style={{ padding: "0 20px 28px" }}>
 
       {active.length > 0 && (
         <div style={{ marginBottom: 24 }}>
@@ -116,13 +117,12 @@ export default function AssistPage() {
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 14,
                 textAlign: "left", cursor: isActive ? "default" : "pointer",
-                background: isActive ? "var(--bg-elev-1)" : "var(--bg-elev-1)",
+                background: "var(--bg-elev-1)",
                 border: `1px solid ${isActive ? "var(--line-1)" : "var(--line-2)"}`,
                 boxShadow: isActive ? "none" : "var(--shadow-1)",
                 borderRadius: "var(--rad-lg)",
                 opacity: isActive ? 0.55 : 1,
-                padding: "14px 16px",
-                minHeight: 76,
+                padding: "16px",
                 marginBottom: 10,
               }}
               aria-label={`${label}: ${description}`}
@@ -143,12 +143,13 @@ export default function AssistPage() {
               </div>
               <div style={{ flex: 1 }}>
                 <p className="serif" style={{ fontSize: 16, fontWeight: 600, color: "var(--ink-1)", lineHeight: 1.2, marginBottom: 2 }}>{label}</p>
-                <p style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.4 }}>{isActive ? "Request already sent" : description}</p>
+                <p style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.5 }}>{isActive ? "Request already sent" : description}</p>
               </div>
               {!isActive && <ChevronRight size={16} style={{ color: "var(--ink-3)", flexShrink: 0 }} aria-hidden />}
             </button>
           )
         })}
+      </div>
       </div>
     </div>
   )

@@ -43,7 +43,7 @@ function OrderCard({ order }: { order: Order }) {
           {/* Stage labels */}
           <div style={{ display: "flex", marginTop: 6 }}>
             {STATUS_STEPS.map((step, i) => (
-              <div key={step} style={{ flex: 1, fontSize: 9, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.06em", color: i <= stepIdx ? "var(--ink-2)" : "var(--ink-4)", fontWeight: i === stepIdx ? 700 : 400 }}>
+              <div key={step} style={{ flex: 1, fontSize: 10, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.05em", color: i <= stepIdx ? "var(--ink-2)" : "var(--ink-4)", fontWeight: i === stepIdx ? 700 : 400 }}>
                 {STAGE_LABELS[step]}
               </div>
             ))}
@@ -58,7 +58,7 @@ function OrderCard({ order }: { order: Order }) {
       )}
 
       {isLive && order.status !== "ready" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, color: "var(--ink-3)", fontSize: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, color: "var(--ink-2)", fontSize: 12.5 }}>
           <span className="live-dot" />
           Updates arrive automatically
         </div>
@@ -87,18 +87,20 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="screen-enter px-5 pt-6 pb-8" style={{ background: "var(--bg-base)", color: "var(--ink-1)" }}>
+    <div className="screen-enter" style={{ background: "var(--bg-base)", color: "var(--ink-1)" }}>
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
+      <div className="page-glow" style={{ padding: "24px 20px 16px", marginBottom: 4 }}>
         <p className="eyebrow">From the kitchen</p>
-        <h1 className="serif" style={{ fontSize: 28, fontWeight: 500, color: "var(--ink-1)", margin: "6px 0 0", letterSpacing: "-0.01em" }}>
-          Your active orders
+        <h1 className="display-lg" style={{ margin: "6px 0 4px" }}>
+          Your orders
         </h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, color: "var(--ink-3)", fontSize: 12 }}>
+        <p style={{ margin: "0 0 8px", color: "var(--ink-2)", fontSize: 13.5 }}>Placed orders update in real time as the kitchen works.</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--ink-2)", fontSize: 12.5 }}>
           <span className="live-dot" />
-          Updates arrive automatically
+          Live updates
         </div>
       </div>
+      <div style={{ padding: "0 20px" }}>
 
       {active.length > 0 && (
         <section style={{ marginBottom: 28 }}>
@@ -117,6 +119,7 @@ export default function OrdersPage() {
           ))}
         </section>
       )}
+      </div>
     </div>
   )
 }

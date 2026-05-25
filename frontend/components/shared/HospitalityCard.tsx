@@ -45,13 +45,13 @@ export function HospitalityCard({
 
   return (
     <div
-      className={cn(press && "press cursor-pointer", className)}
+      className={cn(press && "press press-hover cursor-pointer", className)}
       style={{
         backgroundColor: bgByElev[level],
         boxShadow: shadowByElev[level],
         border: borderByElev[level],
         borderRadius: "var(--rad-lg)",
-        transition: "transform 0.14s ease, box-shadow 0.14s ease",
+        transition: "transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease)",
         ...style,
       }}
       {...props}

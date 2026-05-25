@@ -108,12 +108,12 @@ export default function PaymentPage() {
   return (
     <div className="scrollarea flex-1 overflow-y-auto screen-enter" style={{ background: "var(--bg-base)" }}>
       {/* Header */}
-      <div style={{ padding: "22px 20px 14px" }}>
+      <div className="page-glow" style={{ padding: "24px 20px 16px" }}>
         <span className="eyebrow">Settle up</span>
-        <h1 className="serif" style={{ margin: "6px 0 4px", fontSize: 28, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.02em" }}>
+        <h1 className="display-lg" style={{ margin: "6px 0 4px" }}>
           Pay your bill
         </h1>
-        <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 13 }}>Choose a method — we'll do the rest.</p>
+        <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 13 }}>Choose a method — we'll do the rest.</p>
       </div>
 
       {/* Amount card */}
@@ -148,7 +148,7 @@ export default function PaymentPage() {
                   border: "1px solid var(--line-1)", boxShadow: "var(--shadow-1)",
                   display: "flex", alignItems: "center", gap: 14,
                   opacity: loading !== null && !isLoading ? 0.5 : 1,
-                  transition: "opacity 0.14s",
+                  transition: "opacity var(--dur-fast) var(--ease)",
                 }}
                 aria-label={`Pay with ${label}`}
               >
@@ -163,8 +163,8 @@ export default function PaymentPage() {
                   }
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-1)" }}>{label}</div>
-                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2, lineHeight: 1.4 }}>{description}</div>
+                  <div className="serif" style={{ fontSize: 15, fontWeight: 500, color: "var(--ink-1)" }}>{label}</div>
+                  <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2, lineHeight: 1.5 }}>{description}</div>
                 </div>
                 <ChevronRight style={{ width: 16, height: 16, color: "var(--ink-3)", flexShrink: 0 }} aria-hidden />
               </button>

@@ -310,6 +310,10 @@ hr.rule-strong,
   transform: scale(0.985);
 }
 
+.press-hover:hover {
+  box-shadow: var(--shadow-2);
+}
+
 .screen-enter {
   animation: screenFade 0.32s var(--ease-out);
 }
