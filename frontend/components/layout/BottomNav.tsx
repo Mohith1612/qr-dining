@@ -3,9 +3,6 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UtensilsCrossed, ClipboardList, Bell } from "lucide-react"
-import { motion } from "framer-motion"
-import { springSnappy } from "@/lib/motion"
-import { cn } from "@/lib/utils"
 
 interface BottomNavProps {
   sessionId: string
@@ -22,35 +19,36 @@ export function BottomNav({ sessionId }: BottomNavProps) {
 
   return (
     <nav
-      className="flex border-t"
+      className="flex"
       style={{
-        backgroundColor: "var(--color-surface)",
-        borderColor: "var(--color-border)",
+        height: 84,
+        background: "color-mix(in srgb, var(--bg-base) 88%, transparent)",
+        backdropFilter: "blur(24px) saturate(120%)",
+        WebkitBackdropFilter: "blur(24px) saturate(120%)",
+        borderTop: "1px solid var(--line-1)",
       }}
       aria-label="Session navigation"
     >
       {tabs.map(({ href, label, icon: Icon }) => {
         const active = pathname === href
         return (
-          <motion.div
+          <Link
             key={href}
-            className="flex flex-1"
-            whileTap={{ scale: 0.92 }}
-            transition={springSnappy}
+            href={href}
+            className="press flex flex-1 flex-col items-center justify-start"
+            style={{
+              paddingTop: 10,
+              paddingBottom: 24,
+              gap: 5,
+              color: active ? "var(--accent)" : "var(--ink-3)",
+              fontWeight: active ? 600 : 400,
+              WebkitTapHighlightColor: "transparent",
+            }}
+            aria-current={active ? "page" : undefined}
           >
-            <Link
-              href={href}
-              className={cn(
-                "flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-xs font-medium min-h-[3.25rem]",
-                active ? "" : "opacity-45 hover:opacity-65 transition-opacity"
-              )}
-              style={{ color: active ? "var(--color-accent)" : "var(--color-text-muted)" }}
-              aria-current={active ? "page" : undefined}
-            >
-              <Icon className="size-[1.125rem]" aria-hidden />
-              <span style={{ letterSpacing: "0.03em", fontSize: "10px" }}>{label}</span>
-            </Link>
-          </motion.div>
+            <Icon size={22} strokeWidth={active ? 1.8 : 1.4} aria-hidden />
+            <span style={{ fontSize: 10.5, letterSpacing: "0.04em" }}>{label}</span>
+          </Link>
         )
       })}
     </nav>

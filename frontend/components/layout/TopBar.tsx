@@ -1,8 +1,7 @@
 "use client"
 
-import { Users } from "lucide-react"
+import { Utensils } from "lucide-react"
 import { useSessionStore } from "@/store/session"
-import { RealtimeIndicator } from "@/components/shared/RealtimeIndicator"
 
 export function TopBar() {
   const session = useSessionStore((s) => s.session)
@@ -14,27 +13,35 @@ export function TopBar() {
 
   return (
     <header
-      className="flex items-center justify-between px-5 border-b sticky top-0 z-30"
+      className="flex items-center justify-between px-4 sticky top-0 z-30"
       style={{
-        backgroundColor: "var(--color-surface)",
-        borderColor: "var(--color-border)",
-        paddingTop: "calc(0.875rem + env(safe-area-inset-top))",
-        paddingBottom: "0.875rem",
+        height: 56,
+        background: "var(--bg-base)",
+        borderBottom: "1px solid var(--line-1)",
+        paddingTop: "env(safe-area-inset-top)",
       }}
     >
-      <span
-        className="text-xs font-semibold tracking-widest uppercase"
-        style={{ color: "var(--color-text-muted)", letterSpacing: "0.12em" }}
+      {/* Table pill */}
+      <div
+        className="flex items-center gap-2 press"
+        style={{
+          padding: "6px 12px",
+          borderRadius: "var(--rad-pill)",
+          background: "var(--bg-elev-1)",
+          border: "1px solid var(--line-2)",
+          boxShadow: "var(--shadow-1)",
+        }}
       >
-        {tableLabel}
-      </span>
+        <Utensils size={12} style={{ color: "var(--accent)" }} aria-hidden />
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-1)" }}>
+          {tableLabel}
+        </span>
+      </div>
 
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1.5" style={{ color: "var(--color-text-muted)" }}>
-          <Users className="size-3" aria-hidden />
-          <span className="text-xs font-medium">{participants.length}</span>
-        </div>
-        <RealtimeIndicator />
+      {/* Right slot */}
+      <div className="flex items-center gap-2.5" style={{ color: "var(--ink-3)" }}>
+        <span style={{ fontSize: 12, fontWeight: 500 }}>{participants.length}</span>
+        <span className="live-dot" aria-hidden />
       </div>
     </header>
   )

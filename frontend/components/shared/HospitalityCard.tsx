@@ -1,47 +1,57 @@
 import { cn } from "@/lib/utils"
 import type { CSSProperties, HTMLAttributes } from "react"
 
-type CardVariant = "default" | "elevated" | "interactive" | "inset"
+export type CardElev = 1 | 2 | 3
 
 interface HospitalityCardProps extends HTMLAttributes<HTMLDivElement> {
-  variant?: CardVariant
+  elev?: CardElev
+  /** @deprecated use elev prop */
+  variant?: "default" | "elevated" | "interactive" | "inset"
+  press?: boolean
   style?: CSSProperties
 }
 
-const surfaceByVariant: Record<CardVariant, string> = {
-  default: "var(--color-surface)",
-  elevated: "var(--color-surface-raised)",
-  interactive: "var(--color-surface)",
-  inset: "var(--color-surface-inset)",
+const bgByElev: Record<CardElev, string> = {
+  1: "var(--bg-elev-1)",
+  2: "var(--bg-elev-2)",
+  3: "var(--bg-elev-3)",
+}
+const shadowByElev: Record<CardElev, string> = {
+  1: "var(--shadow-1)",
+  2: "var(--shadow-2)",
+  3: "var(--shadow-3)",
+}
+const borderByElev: Record<CardElev, string> = {
+  1: "1px solid var(--line-1)",
+  2: "1px solid var(--line-2)",
+  3: "1px solid var(--line-2)",
 }
 
-const shadowByVariant: Record<CardVariant, string> = {
-  default: "var(--shadow-card)",
-  elevated: "var(--shadow-elevated)",
-  interactive: "var(--shadow-card)",
-  inset: "none",
+function variantToElev(variant?: string): CardElev {
+  if (variant === "elevated") return 2
+  return 1
 }
 
 export function HospitalityCard({
-  variant = "default",
+  elev,
+  variant,
+  press,
   className,
   style,
   children,
   ...props
 }: HospitalityCardProps) {
+  const level: CardElev = elev ?? variantToElev(variant)
+
   return (
     <div
-      className={cn(
-        "rounded-2xl border",
-        variant === "interactive" && "transition-opacity active:opacity-70 cursor-pointer",
-        className
-      )}
+      className={cn(press && "press cursor-pointer", className)}
       style={{
-        backgroundColor: surfaceByVariant[variant],
-        borderColor: "var(--color-border)",
-        borderRadius: "var(--radius-lg)",
-        boxShadow: shadowByVariant[variant],
-        padding: "var(--space-card)",
+        backgroundColor: bgByElev[level],
+        boxShadow: shadowByElev[level],
+        border: borderByElev[level],
+        borderRadius: "var(--rad-lg)",
+        transition: "transform 0.14s ease, box-shadow 0.14s ease",
         ...style,
       }}
       {...props}

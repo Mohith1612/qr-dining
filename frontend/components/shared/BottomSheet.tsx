@@ -1,10 +1,8 @@
 "use client"
 
 import { ReactNode, useEffect, useRef } from "react"
-import { AnimatePresence, motion } from "framer-motion"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { springGentle, prefersReduced } from "@/lib/motion"
 
 interface BottomSheetProps {
   open: boolean
@@ -19,9 +17,7 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
 
   useEffect(() => {
     if (!open) return
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
-    }
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     document.addEventListener("keydown", handleKey)
     return () => document.removeEventListener("keydown", handleKey)
   }, [open, onClose])
@@ -36,90 +32,85 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
     return () => { document.body.style.overflow = "" }
   }, [open])
 
+  if (!open) return null
+
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: prefersReduced ? 0 : 0.2 }}
-            className="fixed inset-0 z-50"
-            style={{
-              backgroundColor: "var(--color-overlay)",
-              backdropFilter: "blur(4px)",
-              WebkitBackdropFilter: "blur(4px)",
-            }}
-            onClick={onClose}
-            aria-hidden
-          />
-          <motion.div
-            key="sheet"
-            ref={sheetRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={title}
-            tabIndex={-1}
-            initial={prefersReduced ? {} : { y: "100%" }}
-            animate={{ y: 0 }}
-            exit={prefersReduced ? {} : { y: "100%" }}
-            transition={springGentle}
-            className={cn(
-              "fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl outline-none",
-              "max-h-[92svh] flex flex-col",
-              className
-            )}
-            style={{
-              backgroundColor: "var(--color-surface)",
-              boxShadow: "var(--shadow-elevated)",
-              paddingBottom: "env(safe-area-inset-bottom)",
-            }}
-          >
-            {/* Handle bar */}
-            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-              <div
-                className="w-12 h-1.5 rounded-full"
-                style={{ backgroundColor: "var(--color-border)" }}
-              />
-            </div>
+    <>
+      <div
+        className="fixed inset-0 z-50"
+        style={{
+          background: "var(--bg-overlay)",
+          backdropFilter: "blur(2px)",
+          WebkitBackdropFilter: "blur(2px)",
+          animation: "fadeIn 0.24s var(--ease-out)",
+        }}
+        onClick={onClose}
+        aria-hidden
+      />
+      <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        className={cn(
+          "fixed bottom-0 left-0 right-0 z-50 outline-none flex flex-col",
+          className
+        )}
+        style={{
+          background: "var(--bg-elev-1)",
+          border: "1px solid var(--line-2)",
+          borderBottom: "none",
+          borderRadius: "22px 22px 0 0",
+          boxShadow: "var(--shadow-3)",
+          maxHeight: "86svh",
+          paddingBottom: "env(safe-area-inset-bottom)",
+          animation: "sheetUp 0.42s var(--ease-out)",
+        }}
+      >
+        {/* Grabber */}
+        <div className="flex justify-center pt-2.5 pb-1 flex-shrink-0">
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--line-3)" }} />
+        </div>
 
-            {/* Header */}
-            <div
-              className="flex items-center justify-between px-5 pb-4 pt-1 border-b flex-shrink-0"
-              style={{ borderColor: "var(--color-border)" }}
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-5 pb-3 pt-2 flex-shrink-0"
+          style={{ borderBottom: "1px solid var(--line-1)" }}
+        >
+          {title ? (
+            <span
+              className="serif"
+              style={{ fontSize: 22, fontWeight: 500, color: "var(--ink-1)", lineHeight: 1.2 }}
             >
-              {title ? (
-                <span
-                  className="text-xl font-medium leading-snug"
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  {title}
-                </span>
-              ) : (
-                <span />
-              )}
-              <button
-                onClick={onClose}
-                className="p-2 rounded-full min-h-[44px] min-w-[44px] flex items-center justify-center transition-opacity active:opacity-60"
-                style={{ color: "var(--color-text-muted)" }}
-                aria-label="Close"
-              >
-                <X className="size-5" aria-hidden />
-              </button>
-            </div>
+              {title}
+            </span>
+          ) : (
+            <span />
+          )}
+          <button
+            onClick={onClose}
+            className="flex items-center justify-center"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              background: "var(--bg-elev-2)",
+              border: "1px solid var(--line-1)",
+              color: "var(--ink-3)",
+              cursor: "pointer",
+            }}
+            aria-label="Close"
+          >
+            <X size={16} aria-hidden />
+          </button>
+        </div>
 
-            {/* Content */}
-            <div className="overflow-y-auto flex-1 px-5 py-5">
-              {children}
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+        {/* Content */}
+        <div className="overflow-y-auto flex-1 px-5 py-5 scrollarea">
+          {children}
+        </div>
+      </div>
+    </>
   )
 }
