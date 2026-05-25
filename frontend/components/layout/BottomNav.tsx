@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UtensilsCrossed, ClipboardList, Bell } from "lucide-react"
+import { motion } from "framer-motion"
+import { springSnappy } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 
 interface BottomNavProps {
@@ -30,19 +32,25 @@ export function BottomNav({ sessionId }: BottomNavProps) {
       {tabs.map(({ href, label, icon: Icon }) => {
         const active = pathname === href
         return (
-          <Link
+          <motion.div
             key={href}
-            href={href}
-            className={cn(
-              "flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs font-medium transition-colors min-h-[3rem]",
-              active ? "opacity-100" : "opacity-50 hover:opacity-75"
-            )}
-            style={{ color: active ? "var(--color-accent)" : "var(--color-text-muted)" }}
-            aria-current={active ? "page" : undefined}
+            className="flex flex-1"
+            whileTap={{ scale: 0.92 }}
+            transition={springSnappy}
           >
-            <Icon className="size-5" aria-hidden />
-            <span>{label}</span>
-          </Link>
+            <Link
+              href={href}
+              className={cn(
+                "flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-xs font-medium min-h-[3.25rem]",
+                active ? "" : "opacity-45 hover:opacity-65 transition-opacity"
+              )}
+              style={{ color: active ? "var(--color-accent)" : "var(--color-text-muted)" }}
+              aria-current={active ? "page" : undefined}
+            >
+              <Icon className="size-[1.125rem]" aria-hidden />
+              <span style={{ letterSpacing: "0.03em", fontSize: "10px" }}>{label}</span>
+            </Link>
+          </motion.div>
         )
       })}
     </nav>

@@ -4,11 +4,7 @@ import { ReactNode, useEffect, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const prefersReduced =
-  typeof window !== "undefined"
-    ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    : false
+import { springGentle, prefersReduced } from "@/lib/motion"
 
 interface BottomSheetProps {
   open: boolean
@@ -50,7 +46,12 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: prefersReduced ? 0 : 0.2 }}
-            className="fixed inset-0 z-50 bg-black/40"
+            className="fixed inset-0 z-50"
+            style={{
+              backgroundColor: "var(--color-overlay)",
+              backdropFilter: "blur(4px)",
+              WebkitBackdropFilter: "blur(4px)",
+            }}
             onClick={onClose}
             aria-hidden
           />
@@ -64,37 +65,56 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
             initial={prefersReduced ? {} : { y: "100%" }}
             animate={{ y: 0 }}
             exit={prefersReduced ? {} : { y: "100%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            transition={springGentle}
             className={cn(
-              "fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl outline-none",
-              "max-h-[90svh] flex flex-col",
+              "fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl outline-none",
+              "max-h-[92svh] flex flex-col",
               className
             )}
             style={{
               backgroundColor: "var(--color-surface)",
+              boxShadow: "var(--shadow-elevated)",
               paddingBottom: "env(safe-area-inset-bottom)",
             }}
           >
+            {/* Handle bar */}
+            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+              <div
+                className="w-12 h-1.5 rounded-full"
+                style={{ backgroundColor: "var(--color-border)" }}
+              />
+            </div>
+
+            {/* Header */}
             <div
-              className="flex items-center justify-between px-4 py-4 border-b flex-shrink-0"
+              className="flex items-center justify-between px-5 pb-4 pt-1 border-b flex-shrink-0"
               style={{ borderColor: "var(--color-border)" }}
             >
-              <div className="w-10 h-1 rounded-full mx-auto absolute left-1/2 -translate-x-1/2 top-3" style={{ backgroundColor: "var(--color-border)" }} />
-              {title && (
-                <span className="font-semibold text-base" style={{ color: "var(--color-text)" }}>
+              {title ? (
+                <span
+                  className="text-xl font-medium leading-snug"
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    color: "var(--color-text)",
+                  }}
+                >
                   {title}
                 </span>
+              ) : (
+                <span />
               )}
               <button
                 onClick={onClose}
-                className="ml-auto p-2 rounded-full min-h-[44px] min-w-[44px] flex items-center justify-center"
+                className="p-2 rounded-full min-h-[44px] min-w-[44px] flex items-center justify-center transition-opacity active:opacity-60"
                 style={{ color: "var(--color-text-muted)" }}
                 aria-label="Close"
               >
                 <X className="size-5" aria-hidden />
               </button>
             </div>
-            <div className="overflow-y-auto flex-1 px-4 py-4">
+
+            {/* Content */}
+            <div className="overflow-y-auto flex-1 px-5 py-5">
               {children}
             </div>
           </motion.div>

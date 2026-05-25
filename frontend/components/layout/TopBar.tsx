@@ -14,29 +14,24 @@ export function TopBar() {
 
   return (
     <header
-      className="flex items-center justify-between px-4 py-3 border-b sticky top-0 z-30"
+      className="flex items-center justify-between px-5 border-b sticky top-0 z-30"
       style={{
         backgroundColor: "var(--color-surface)",
         borderColor: "var(--color-border)",
-        paddingTop: "calc(0.75rem + env(safe-area-inset-top))",
+        paddingTop: "calc(0.875rem + env(safe-area-inset-top))",
+        paddingBottom: "0.875rem",
       }}
     >
-      <div className="flex items-center gap-2">
-        <span
-          className="text-xs font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full"
-          style={{
-            backgroundColor: "var(--color-bg)",
-            color: "var(--color-text-muted)",
-            border: "1px solid var(--color-border)",
-          }}
-        >
-          {tableLabel}
-        </span>
-      </div>
+      <span
+        className="text-xs font-semibold tracking-widest uppercase"
+        style={{ color: "var(--color-text-muted)", letterSpacing: "0.12em" }}
+      >
+        {tableLabel}
+      </span>
 
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1" style={{ color: "var(--color-text-muted)" }}>
-          <Users className="size-3.5" aria-hidden />
+        <div className="flex items-center gap-1.5" style={{ color: "var(--color-text-muted)" }}>
+          <Users className="size-3" aria-hidden />
           <span className="text-xs font-medium">{participants.length}</span>
         </div>
         <RealtimeIndicator />
