@@ -28,6 +28,7 @@ type Querier interface {
 	CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff, error)
 	CreateTable(ctx context.Context, arg CreateTableParams) (Table, error)
 	DeactivateStaff(ctx context.Context, id int64) error
+	DeleteCustomer(ctx context.Context, arg DeleteCustomerParams) error
 	DeleteItemModifier(ctx context.Context, id int64) error
 	DeleteMenuCategory(ctx context.Context, arg DeleteMenuCategoryParams) error
 	DeleteMenuItem(ctx context.Context, arg DeleteMenuItemParams) error
@@ -39,6 +40,8 @@ type Querier interface {
 	GetCartByID(ctx context.Context, id int64) (Cart, error)
 	GetCartBySessionAndParticipant(ctx context.Context, arg GetCartBySessionAndParticipantParams) (Cart, error)
 	GetCartItem(ctx context.Context, id int64) (CartItem, error)
+	GetCustomerByPhone(ctx context.Context, arg GetCustomerByPhoneParams) (Customer, error)
+	GetCustomerSessionHistory(ctx context.Context, customerID pgtype.Int8) ([]GetCustomerSessionHistoryRow, error)
 	GetEventsBySession(ctx context.Context, sessionID pgtype.UUID) ([]EventLog, error)
 	GetMenuItemByID(ctx context.Context, id int64) (MenuItem, error)
 	GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]MenuItem, error)
@@ -66,6 +69,7 @@ type Querier interface {
 	InsertMenuCategory(ctx context.Context, arg InsertMenuCategoryParams) (MenuCategory, error)
 	InsertMenuItem(ctx context.Context, arg InsertMenuItemParams) (MenuItem, error)
 	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) (PaymentWebhookEvent, error)
+	LinkSessionToCustomer(ctx context.Context, arg LinkSessionToCustomerParams) error
 	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]AssistanceRequest, error)
 	ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]ListActiveOrdersForBranchRow, error)
 	ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]Session, error)
@@ -95,6 +99,7 @@ type Querier interface {
 	MarkWebhookProcessed(ctx context.Context, arg MarkWebhookProcessedParams) error
 	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
+	SearchCustomersByPhone(ctx context.Context, arg SearchCustomersByPhoneParams) ([]Customer, error)
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
 	UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistanceStatusParams) (AssistanceRequest, error)
 	UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error
@@ -108,6 +113,7 @@ type Querier interface {
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
 	UpdateStaffPIN(ctx context.Context, arg UpdateStaffPINParams) error
 	UpdateTableStatus(ctx context.Context, arg UpdateTableStatusParams) error
+	UpsertCustomer(ctx context.Context, arg UpsertCustomerParams) (Customer, error)
 	UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) (RestaurantSubscription, error)
 }
 

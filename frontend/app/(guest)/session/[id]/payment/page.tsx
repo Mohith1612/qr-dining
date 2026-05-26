@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useOrders } from "@/hooks/useOrders"
 import { useSession } from "@/hooks/useSession"
 import { paymentsApi } from "@/lib/api/payments"
@@ -9,6 +9,7 @@ import { Banknote, CreditCard, Smartphone, CheckCircle, Loader2, ChevronRight } 
 import { toast } from "sonner"
 import type { PaymentMethod } from "@/types/api"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
+import { CustomerOptIn } from "@/components/shared/CustomerOptIn"
 
 const PAYMENT_OPTIONS: {
   method: PaymentMethod
@@ -34,9 +35,16 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function PaymentPage() {
   const { orders } = useOrders()
-  const { session } = useSession()
+  const { session, participant } = useSession()
   const [loading, setLoading] = useState<PaymentMethod | null>(null)
   const [paid, setPaid] = useState<PaymentMethod | null>(null)
+  const [showOptIn, setShowOptIn] = useState(false)
+
+  useEffect(() => {
+    if (!paid) return
+    const timer = setTimeout(() => setShowOptIn(true), 1500)
+    return () => clearTimeout(timer)
+  }, [paid])
 
   const total = orders
     .filter((o) => o.status !== "cancelled")
@@ -58,6 +66,7 @@ export default function PaymentPage() {
 
   if (paid) {
     return (
+      <>
       <div
         className="flex-1 flex flex-col items-center justify-center px-7 text-center screen-enter"
         style={{ background: "var(--bg-base)" }}
@@ -102,6 +111,15 @@ export default function PaymentPage() {
           Return to table
         </button>
       </div>
+
+      {showOptIn && session && participant && (
+        <CustomerOptIn
+          sessionId={session.id}
+          participantId={participant.id}
+          onComplete={() => setShowOptIn(false)}
+        />
+      )}
+      </>
     )
   }
 

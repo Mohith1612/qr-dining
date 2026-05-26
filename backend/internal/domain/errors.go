@@ -83,6 +83,13 @@ var (
 	ErrAnalyticsGated = errors.New("analytics not available on current plan")
 )
 
+// Customers
+var (
+	ErrInvalidPhone     = errors.New("invalid phone number")
+	ErrCustomerNotFound = errors.New("customer not found")
+	ErrFeatureDisabled  = errors.New("feature disabled for this restaurant")
+)
+
 // Generic
 var (
 	ErrInternalError = errors.New("internal server error")

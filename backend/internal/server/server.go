@@ -71,6 +71,7 @@ func New(
 	paymentSvc := services.NewPaymentService(repos, publisher, metrics, sessionSvc, logger)
 	subSvc := services.NewSubscriptionService(repos)
 	analyticsSvc := services.NewAnalyticsService(repos, subSvc, cache)
+	customerSvc := services.NewCustomerService(repos)
 
 	// ── Handlers ─────────────────────────────────────────────────────────────
 	health := handlers.NewHealthHandler(db, redis)
@@ -90,6 +91,7 @@ func New(
 	analyticsH := handlers.NewAnalyticsHandler(analyticsSvc)
 	tableH := handlers.NewTableHandler(repos)
 	branchH := handlers.NewBranchHandler(repos)
+	customerH := handlers.NewCustomerHandler(customerSvc, repos)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -125,6 +127,9 @@ func New(
 	// Payments
 	api.POST("/sessions/:id/payments", paymentH.InitiatePayment)
 	api.POST("/webhooks/payments/:provider", paymentH.Webhook)
+
+	// Customer opt-in (guest, no auth)
+	api.POST("/sessions/:id/customer", customerH.LinkCustomer)
 
 	// Menu & tables — public (branch tenant-guarded when BASE_DOMAIN is set)
 	branchPublicAPI := api.Group("/branches/:id")
@@ -173,6 +178,7 @@ func New(
 	branchStaffAPI.POST("/tables", tableH.CreateTable)
 	branchStaffAPI.GET("", branchH.GetBranch)
 	branchStaffAPI.PATCH("", branchH.UpdateBranch)
+	branchStaffAPI.GET("/customers", customerH.SearchCustomers)
 
 	// Menu item updates — item-scoped, no branch param on path.
 	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)
@@ -196,6 +202,10 @@ func New(
 
 	// Subscription status — staff-protected.
 	staffAPI.GET("/restaurants/:id/subscription", subH.GetSubscription)
+
+	// Customer history and deletion — staff-protected.
+	staffAPI.GET("/customers/:id/history", customerH.GetCustomerHistory)
+	staffAPI.DELETE("/customers/:id", customerH.DeleteCustomer)
 
 	// WebSocket
 	r.GET("/ws", wsH.Upgrade)

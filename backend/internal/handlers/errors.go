@@ -44,6 +44,9 @@ const (
 	CodeTenantNotFound           = "TENANT_NOT_FOUND"
 	CodePlanNotFound             = "PLAN_NOT_FOUND"
 	CodeAnalyticsGated           = "ANALYTICS_GATED"
+	CodeInvalidPhone             = "INVALID_PHONE"
+	CodeCustomerNotFound         = "CUSTOMER_NOT_FOUND"
+	CodeFeatureDisabled          = "FEATURE_DISABLED"
 )
 
 // respondError writes a structured API error response.

@@ -442,6 +442,18 @@ type CartItem struct {
 	Note                  string          `json:"note"`
 }
 
+type Customer struct {
+	ID           int64              `json:"id"`
+	RestaurantID int64              `json:"restaurant_id"`
+	PhoneE164    string             `json:"phone_e164"`
+	DisplayName  string             `json:"display_name"`
+	OptedIn      bool               `json:"opted_in"`
+	OptedInAt    pgtype.Timestamptz `json:"opted_in_at"`
+	LastSeenAt   time.Time          `json:"last_seen_at"`
+	VisitCount   int32              `json:"visit_count"`
+	CreatedAt    time.Time          `json:"created_at"`
+}
+
 type EventLog struct {
 	ID        int64           `json:"id"`
 	SessionID pgtype.UUID     `json:"session_id"`
@@ -562,6 +574,7 @@ type Session struct {
 	CreatedAt         time.Time          `json:"created_at"`
 	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
 	WarnedAt          pgtype.Timestamptz `json:"warned_at"`
+	CustomerID        pgtype.Int8        `json:"customer_id"`
 }
 
 type SessionParticipant struct {

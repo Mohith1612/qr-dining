@@ -184,3 +184,20 @@ export interface Table {
   qr_code_token: string
   status: 'available' | 'occupied' | 'reserved'
 }
+
+export interface Customer {
+  id: number
+  phone_masked: string
+  display_name: string
+  visit_count: number
+  last_seen_at: string
+  opted_in: boolean
+}
+
+export interface CustomerHistoryEntry {
+  session_id: string
+  created_at: string
+  closed_at: string | null
+  table_identifier: string
+  total_spent: string
+}
