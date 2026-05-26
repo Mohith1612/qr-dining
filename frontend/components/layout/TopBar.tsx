@@ -1,11 +1,16 @@
 "use client"
 
-import { Utensils } from "lucide-react"
+import { Utensils, Search } from "lucide-react"
+import { usePathname } from "next/navigation"
 import { useSessionStore } from "@/store/session"
+import { useMenuStore } from "@/store/menu"
 
 export function TopBar() {
   const session = useSessionStore((s) => s.session)
   const participants = useSessionStore((s) => s.participants)
+  const setSearchMode = useMenuStore((s) => s.setSearchMode)
+  const pathname = usePathname()
+  const isMenuRoute = pathname?.includes("/menu") ?? false
 
   const tableLabel = session
     ? (session.table_identifier ?? `Table ${session.table_id}`)
@@ -40,6 +45,15 @@ export function TopBar() {
 
       {/* Right slot */}
       <div className="flex items-center gap-2.5" style={{ color: "var(--ink-3)" }}>
+        {isMenuRoute && (
+          <button
+            onClick={() => setSearchMode(true)}
+            style={{ background: "none", border: "none", padding: 8, color: "var(--ink-2)", cursor: "pointer", display: "flex" }}
+            aria-label="Search menu"
+          >
+            <Search style={{ width: 18, height: 18 }} />
+          </button>
+        )}
         <span style={{ fontSize: 12, fontWeight: 500 }}>{participants.length}</span>
         <span className="live-dot" aria-hidden />
       </div>

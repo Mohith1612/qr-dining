@@ -11,12 +11,15 @@ import { BottomSheet } from "@/components/shared/BottomSheet"
 import { Vignette } from "@/components/shared/Vignette"
 import { FeaturedCarousel } from "@/components/shared/FeaturedCarousel"
 import { DietaryTag, BadgeTag, SpiceIndicator } from "@/components/shared/MetaTag"
-import { Minus, Plus, ChevronRight } from "lucide-react"
+import { Minus, Plus, ChevronRight, Search } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { use } from "react"
 import { cn, groupBy } from "@/lib/utils"
 import { BeverageModifierGroup, isBeverageCategory } from "@/components/shared/BeverageModifierGrid"
+import { SearchBar } from "@/components/shared/SearchBar"
+import { EmptyState } from "@/components/shared/EmptyState"
+import { useFilteredMenu } from "@/hooks/useFilteredMenu"
 import type { MenuItem, ItemModifier, DietaryFlag, ItemBadge } from "@/types/api"
 
 interface SheetState {
@@ -219,6 +222,11 @@ export default function MenuPage({ params }: Props) {
   const activeFilters = useMenuStore((s) => s.activeFilters)
   const setActiveFilters = useMenuStore((s) => s.setActiveFilters)
   const clearFilters = useMenuStore((s) => s.clearFilters)
+  const isSearchMode = useMenuStore((s) => s.isSearchMode)
+  const setSearchMode = useMenuStore((s) => s.setSearchMode)
+  const searchQuery = useMenuStore((s) => s.searchQuery)
+  const setSearchQuery = useMenuStore((s) => s.setSearchQuery)
+  const { categories: filteredCategories, isFiltered } = useFilteredMenu()
   const { session } = useSession()
   const { items: cartItems, itemCount, addItem } = useCart()
   const [activeCatId, setActiveCatId] = useState<number | null>(null)
@@ -288,6 +296,13 @@ export default function MenuPage({ params }: Props) {
       activePillRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" })
     }
   }, [activeCatId])
+
+  useEffect(() => {
+    return () => {
+      useMenuStore.getState().setSearchMode(false)
+      useMenuStore.getState().setSearchQuery("")
+    }
+  }, [])
 
   function scrollToCategory(catId: number) {
     const idx = categories.findIndex((c) => c.id === catId)
@@ -361,29 +376,6 @@ export default function MenuPage({ params }: Props) {
   const hasActiveFilters =
     activeFilters.dietary.length > 0 || activeFilters.badges.length > 0 || activeFilters.spice !== null
 
-  const filteredCategories = useMemo(() => {
-    if (!hasActiveFilters) return categories
-    return categories
-      .map((cat) => ({
-        ...cat,
-        items: cat.items.filter((item) => {
-          if (activeFilters.dietary.length > 0) {
-            const match = activeFilters.dietary.some((f) => item.dietary_flags?.includes(f))
-            if (!match) return false
-          }
-          if (activeFilters.badges.length > 0) {
-            const match = activeFilters.badges.some((b) => item.item_badges?.includes(b))
-            if (!match) return false
-          }
-          if (activeFilters.spice !== null) {
-            if ((item.spice_level ?? 0) !== activeFilters.spice) return false
-          }
-          return true
-        }),
-      }))
-      .filter((cat) => cat.items.length > 0)
-  }, [categories, activeFilters, hasActiveFilters])
-
   const totalDishes = categories.reduce((s, c) => s + c.items.length, 0)
 
   if (menuLoading) return <MenuSkeleton />
@@ -402,8 +394,17 @@ export default function MenuPage({ params }: Props) {
         </p>
       </div>
 
-      {/* Featured carousel — above sticky bar, scrolls away */}
-      <FeaturedCarousel items={featured} onSelect={openSheet} />
+      {/* Search bar — search mode only, replaces carousel */}
+      {isSearchMode ? (
+        <SearchBar
+          onClose={() => {
+            setSearchMode(false)
+            setSearchQuery("")
+          }}
+        />
+      ) : (
+        <FeaturedCarousel items={featured} onSelect={openSheet} />
+      )}
 
       {/* Filter bar — scrolls away with content */}
       <FilterBar
@@ -421,53 +422,69 @@ export default function MenuPage({ params }: Props) {
         onClear={clearFilters}
       />
 
-      {/* Category pills — sticky within Shell's main scroller */}
-      <div style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 10,
-        background: "color-mix(in srgb, var(--bg-base) 92%, transparent)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
-        borderBottom: "1px solid var(--line-1)",
-        padding: "10px 0 12px",
-      }}>
-        <div className="relative">
-          <div className="hscroll flex gap-1.5 px-5">
-            {categories.map((c) => {
-              const active = c.id === activeCatId
-              return (
-                <button
-                  key={c.id}
-                  ref={(el) => { if (active) activePillRef.current = el }}
-                  onClick={() => scrollToCategory(c.id)}
-                  aria-current={active ? "true" : undefined}
-                  className={cn(
-                    "press px-4 py-2.5 rounded-full border text-[13px] whitespace-nowrap transition-[background,color,border-color] duration-[var(--dur-fast)]",
-                    active
-                      ? "font-semibold border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent),var(--shadow-1)]"
-                      : "font-medium border-[var(--line-2)] bg-[var(--bg-elev-1)] text-[var(--ink-2)] shadow-[var(--shadow-1)]"
-                  )}
-                >
-                  {c.name}
-                </button>
-              )
-            })}
+      {/* Category pills — sticky, hidden in search mode */}
+      {!isSearchMode && (
+        <div style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+          background: "color-mix(in srgb, var(--bg-base) 92%, transparent)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          borderBottom: "1px solid var(--line-1)",
+          padding: "10px 0 12px",
+        }}>
+          <div className="relative">
+            <div className="hscroll flex gap-1.5 px-5">
+              {categories.map((c) => {
+                const active = c.id === activeCatId
+                return (
+                  <button
+                    key={c.id}
+                    ref={(el) => { if (active) activePillRef.current = el }}
+                    onClick={() => scrollToCategory(c.id)}
+                    aria-current={active ? "true" : undefined}
+                    className={cn(
+                      "press px-4 py-2.5 rounded-full border text-[13px] whitespace-nowrap transition-[background,color,border-color] duration-[var(--dur-fast)]",
+                      active
+                        ? "font-semibold border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent),var(--shadow-1)]"
+                        : "font-medium border-[var(--line-2)] bg-[var(--bg-elev-1)] text-[var(--ink-2)] shadow-[var(--shadow-1)]"
+                    )}
+                  >
+                    {c.name}
+                  </button>
+                )
+              })}
+            </div>
+            {/* Right fade mask */}
+            <div style={{
+              position: "absolute", right: 0, top: 0, bottom: 0, width: 32, pointerEvents: "none",
+              background: "linear-gradient(to right, transparent, var(--bg-base))",
+            }} />
           </div>
-          {/* Right fade mask */}
-          <div style={{
-            position: "absolute", right: 0, top: 0, bottom: 0, width: 32, pointerEvents: "none",
-            background: "linear-gradient(to right, transparent, var(--bg-base))",
-          }} />
         </div>
-      </div>
+      )}
 
       {/* All category sections */}
       <div style={{ paddingBottom: itemCount > 0 ? 80 : 24 }}>
-        {filteredCategories.length === 0 && hasActiveFilters ? (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--ink-3)", fontSize: 14 }}>
-            No items match the selected filters.
+        {/* Results count when search or filter is active */}
+        {isFiltered && filteredCategories.length > 0 && (
+          <div
+            aria-live="polite"
+            className="eyebrow"
+            style={{ padding: "8px 20px", color: "var(--ink-3)", fontSize: 12 }}
+          >
+            {filteredCategories.reduce((s, c) => s + c.items.length, 0)} dishes found
           </div>
+        )}
+
+        {isFiltered && filteredCategories.length === 0 ? (
+          <EmptyState
+            icon={Search}
+            title={searchQuery ? `No dishes match "${searchQuery}"` : "No dishes match these filters"}
+            description="Try a different search or browse by category"
+            action={{ label: "Clear search", onClick: () => { setSearchQuery(""); clearFilters() } }}
+          />
         ) : (
           filteredCategories.map((cat, idx) => (
             <section

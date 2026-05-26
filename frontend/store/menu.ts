@@ -13,6 +13,8 @@ interface MenuState {
   loading: boolean
   error: string | null
   activeFilters: ActiveFilters
+  searchQuery: string
+  isSearchMode: boolean
 
   setMenu: (data: { featured: MenuItem[]; categories: MenuCategory[] }) => void
   setCategories: (categories: MenuCategory[]) => void
@@ -21,6 +23,8 @@ interface MenuState {
   markItemUnavailable: (menuItemId: number) => void
   setActiveFilters: (f: Partial<ActiveFilters>) => void
   clearFilters: () => void
+  setSearchQuery: (q: string) => void
+  setSearchMode: (active: boolean) => void
 }
 
 const defaultFilters: ActiveFilters = { dietary: [], badges: [], spice: null }
@@ -31,6 +35,8 @@ export const useMenuStore = create<MenuState>((set) => ({
   loading: false,
   error: null,
   activeFilters: defaultFilters,
+  searchQuery: "",
+  isSearchMode: false,
 
   setMenu({ featured, categories }) {
     set({ featured, categories, loading: false, error: null })
@@ -66,5 +72,13 @@ export const useMenuStore = create<MenuState>((set) => ({
 
   clearFilters() {
     set({ activeFilters: defaultFilters })
+  },
+
+  setSearchQuery(q) {
+    set({ searchQuery: q })
+  },
+
+  setSearchMode(active) {
+    set({ isSearchMode: active })
   },
 }))
