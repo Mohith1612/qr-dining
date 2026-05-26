@@ -480,6 +480,9 @@ type MenuItem struct {
 	Position          int16          `json:"position"`
 	IsFeatured        bool           `json:"is_featured"`
 	FeaturedSortOrder int16          `json:"featured_sort_order"`
+	DietaryFlags      []string       `json:"dietary_flags"`
+	ItemBadges        []string       `json:"item_badges"`
+	SpiceLevel        int16          `json:"spice_level"`
 }
 
 type Order struct {

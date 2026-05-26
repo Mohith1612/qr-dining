@@ -1,24 +1,36 @@
 import { create } from "zustand"
-import type { MenuCategory, MenuItem } from "@/types/api"
+import type { MenuCategory, MenuItem, DietaryFlag, ItemBadge } from "@/types/api"
+
+interface ActiveFilters {
+  dietary: DietaryFlag[]
+  badges: ItemBadge[]
+  spice: number | null
+}
 
 interface MenuState {
   featured: MenuItem[]
   categories: MenuCategory[]
   loading: boolean
   error: string | null
+  activeFilters: ActiveFilters
 
   setMenu: (data: { featured: MenuItem[]; categories: MenuCategory[] }) => void
   setCategories: (categories: MenuCategory[]) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   markItemUnavailable: (menuItemId: number) => void
+  setActiveFilters: (f: Partial<ActiveFilters>) => void
+  clearFilters: () => void
 }
+
+const defaultFilters: ActiveFilters = { dietary: [], badges: [], spice: null }
 
 export const useMenuStore = create<MenuState>((set) => ({
   featured: [],
   categories: [],
   loading: false,
   error: null,
+  activeFilters: defaultFilters,
 
   setMenu({ featured, categories }) {
     set({ featured, categories, loading: false, error: null })
@@ -46,5 +58,13 @@ export const useMenuStore = create<MenuState>((set) => ({
         ),
       })),
     }))
+  },
+
+  setActiveFilters(f) {
+    set((s) => ({ activeFilters: { ...s.activeFilters, ...f } }))
+  },
+
+  clearFilters() {
+    set({ activeFilters: defaultFilters })
   },
 }))

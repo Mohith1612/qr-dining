@@ -7,6 +7,8 @@ import type {
   Order,
   MenuCategory,
   MenuItem,
+  DietaryFlag,
+  ItemBadge,
 } from "@/types/api"
 
 export const staffApi = {
@@ -76,7 +78,7 @@ export const staffApi = {
   updateMenuItem: (
     itemId: number,
     branchId: number,
-    data: { name: string; price: number; description?: string; position?: number },
+    data: { name: string; price: number; description?: string; position?: number; dietary_flags?: DietaryFlag[]; item_badges?: ItemBadge[]; spice_level?: number },
     staffToken: string
   ) =>
     api.patch<MenuItem>(`/menu/items/${itemId}`, { ...data, branch_id: branchId }, { staffToken }),

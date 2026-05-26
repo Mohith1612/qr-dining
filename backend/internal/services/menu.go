@@ -148,12 +148,15 @@ func (s *MenuService) CreateItem(ctx context.Context, p CreateMenuItemParams, re
 }
 
 type UpdateMenuItemParams struct {
-	ID          int64
-	BranchID    int64
-	Name        string
-	Description string
-	Price       float64
-	Position    int16
+	ID           int64
+	BranchID     int64
+	Name         string
+	Description  string
+	Price        float64
+	Position     int16
+	DietaryFlags []string
+	ItemBadges   []string
+	SpiceLevel   int16
 }
 
 // UpdateItem modifies a menu item and invalidates the branch menu cache.
@@ -166,11 +169,14 @@ func (s *MenuService) UpdateItem(ctx context.Context, p UpdateMenuItemParams, re
 		return sqlc.MenuItem{}, fmt.Errorf("invalid price: %w", err)
 	}
 	item, err := s.repos.UpdateMenuItem(ctx, sqlc.UpdateMenuItemParams{
-		ID:          p.ID,
-		Name:        p.Name,
-		Description: p.Description,
-		Price:       price,
-		Position:    p.Position,
+		ID:           p.ID,
+		Name:         p.Name,
+		Description:  p.Description,
+		Price:        price,
+		Position:     p.Position,
+		DietaryFlags: p.DietaryFlags,
+		ItemBadges:   p.ItemBadges,
+		SpiceLevel:   p.SpiceLevel,
 	})
 	if err != nil {
 		return sqlc.MenuItem{}, err

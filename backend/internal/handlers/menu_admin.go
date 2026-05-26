@@ -98,11 +98,14 @@ func (h *MenuAdminHandler) CreateItem(c *gin.Context) {
 }
 
 type updateMenuItemRequest struct {
-	Name        string  `json:"name" binding:"required,min=1,max=100"`
-	Description string  `json:"description"`
-	Price       float64 `json:"price" binding:"required,min=0"`
-	Position    int16   `json:"position"`
-	BranchID    int64   `json:"branch_id" binding:"required"`
+	Name         string   `json:"name" binding:"required,min=1,max=100"`
+	Description  string   `json:"description"`
+	Price        float64  `json:"price" binding:"required,min=0"`
+	Position     int16    `json:"position"`
+	BranchID     int64    `json:"branch_id" binding:"required"`
+	DietaryFlags []string `json:"dietary_flags"`
+	ItemBadges   []string `json:"item_badges"`
+	SpiceLevel   int16    `json:"spice_level"`
 }
 
 func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
@@ -124,13 +127,42 @@ func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
 		return
 	}
 
+	validDietary := map[string]bool{"vegetarian": true, "vegan": true, "jain": true, "egg": true, "non-veg": true}
+	validBadges := map[string]bool{"chef-special": true, "bestseller": true, "seasonal": true, "new": true}
+	for _, f := range req.DietaryFlags {
+		if !validDietary[f] {
+			respondValidationError(c, "invalid dietary_flag: "+f)
+			return
+		}
+	}
+	for _, b := range req.ItemBadges {
+		if !validBadges[b] {
+			respondValidationError(c, "invalid item_badge: "+b)
+			return
+		}
+	}
+	if req.SpiceLevel < 0 || req.SpiceLevel > 3 {
+		respondValidationError(c, "spice_level must be 0-3")
+		return
+	}
+
+	if req.DietaryFlags == nil {
+		req.DietaryFlags = []string{}
+	}
+	if req.ItemBadges == nil {
+		req.ItemBadges = []string{}
+	}
+
 	item, err := h.svc.UpdateItem(c.Request.Context(), services.UpdateMenuItemParams{
-		ID:          itemID,
-		BranchID:    req.BranchID,
-		Name:        req.Name,
-		Description: req.Description,
-		Price:       req.Price,
-		Position:    req.Position,
+		ID:           itemID,
+		BranchID:     req.BranchID,
+		Name:         req.Name,
+		Description:  req.Description,
+		Price:        req.Price,
+		Position:     req.Position,
+		DietaryFlags: req.DietaryFlags,
+		ItemBadges:   req.ItemBadges,
+		SpiceLevel:   req.SpiceLevel,
 	}, sess.Role)
 	if err != nil {
 		menuAdminError(c, err)

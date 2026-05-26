@@ -53,6 +53,9 @@ export interface ItemModifier {
   price_delta: number
 }
 
+export type DietaryFlag = 'vegetarian' | 'vegan' | 'jain' | 'egg' | 'non-veg'
+export type ItemBadge = 'chef-special' | 'bestseller' | 'seasonal' | 'new'
+
 export interface MenuItem {
   id: number
   category_id: number
@@ -65,6 +68,9 @@ export interface MenuItem {
   is_featured?: boolean
   featured_sort_order?: number
   modifiers?: ItemModifier[]
+  dietary_flags?: DietaryFlag[]
+  item_badges?: ItemBadge[]
+  spice_level?: number
 }
 
 export interface MenuCategory {

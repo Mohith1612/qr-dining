@@ -19,10 +19,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { formatCurrency, relativeTime } from "@/lib/format"
-import { RefreshCw, Loader2, Users, BarChart2, CreditCard, Printer, MoreVertical, RotateCcw, QrCode } from "lucide-react"
+import { RefreshCw, Loader2, Users, BarChart2, CreditCard, Printer, MoreVertical, RotateCcw, QrCode, Settings2 } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
-import type { Session, MenuCategory, StaffRole, Table } from "@/types/api"
+import type { Session, MenuCategory, MenuItem, StaffRole, Table, DietaryFlag, ItemBadge } from "@/types/api"
 import { tablesApi } from "@/lib/api/tables"
 import { QRCard } from "@/components/admin/QRCard"
 import { PrintTemplate } from "@/components/admin/PrintTemplate"
@@ -125,12 +125,49 @@ function SessionsTab() {
 
 // ─── Menu Tab ────────────────────────────────────────────────────────────────
 
+interface MetaEditState {
+  item: MenuItem
+  dietaryFlags: DietaryFlag[]
+  itemBadges: ItemBadge[]
+  spiceLevel: number
+  saving: boolean
+}
+
+const DIETARY_OPTIONS: { flag: DietaryFlag; label: string }[] = [
+  { flag: "vegetarian", label: "Vegetarian" },
+  { flag: "vegan", label: "Vegan" },
+  { flag: "jain", label: "Jain" },
+  { flag: "egg", label: "Contains Egg" },
+  { flag: "non-veg", label: "Non-Vegetarian" },
+]
+
+const BADGE_OPTIONS: { badge: ItemBadge; label: string }[] = [
+  { badge: "chef-special", label: "Chef Special" },
+  { badge: "bestseller", label: "Bestseller" },
+  { badge: "seasonal", label: "Seasonal" },
+  { badge: "new", label: "New" },
+]
+
+const SPICE_LABELS = ["None", "Mild", "Medium", "Hot"]
+
+function applyDietaryLogic(flags: DietaryFlag[], toggled: DietaryFlag, checked: boolean): DietaryFlag[] {
+  let next: DietaryFlag[] = checked ? [...flags, toggled] : flags.filter((f) => f !== toggled)
+  if (checked) {
+    if (toggled === "jain") next = [...new Set([...next, "vegan" as DietaryFlag, "vegetarian" as DietaryFlag])]
+    if (toggled === "vegan") next = [...new Set([...next, "vegetarian" as DietaryFlag])]
+    if (toggled === "non-veg") next = next.filter((f) => !(["vegetarian", "vegan", "jain", "egg"] as DietaryFlag[]).includes(f))
+    if ((["vegetarian", "vegan", "jain"] as DietaryFlag[]).includes(toggled)) next = next.filter((f) => f !== "non-veg")
+  }
+  return next
+}
+
 function MenuTab() {
   const { branchId, token, role } = useStaffStore()
   const [categories, setCategories] = useState<MenuCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState<number | null>(null)
   const [togglingFeatured, setTogglingFeatured] = useState<number | null>(null)
+  const [metaEdit, setMetaEdit] = useState<MetaEditState | null>(null)
 
   useEffect(() => {
     if (!branchId) return
@@ -197,6 +234,40 @@ function MenuTab() {
     }
   }
 
+  async function handleSaveMeta() {
+    if (!metaEdit || !branchId || !token) return
+    setMetaEdit((s) => s && { ...s, saving: true })
+    const { item, dietaryFlags, itemBadges, spiceLevel } = metaEdit
+    try {
+      const updated = await staffApi.updateMenuItem(
+        item.id,
+        branchId,
+        {
+          name: item.name,
+          price: parseFloat(item.price),
+          description: item.description,
+          position: item.position,
+          dietary_flags: dietaryFlags,
+          item_badges: itemBadges,
+          spice_level: spiceLevel,
+        },
+        token
+      )
+      setCategories((prev) =>
+        prev.map((cat) => ({
+          ...cat,
+          items: cat.items.map((i) => (i.id === item.id ? { ...i, ...updated } : i)),
+        }))
+      )
+      toast.success("Metadata saved")
+      setMetaEdit(null)
+    } catch {
+      toast.error("Couldn't save metadata.")
+    } finally {
+      setMetaEdit((s) => s && { ...s, saving: false })
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -206,6 +277,7 @@ function MenuTab() {
   }
 
   return (
+    <>
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {categories.map((cat) => (
         <section key={cat.id}>
@@ -231,6 +303,27 @@ function MenuTab() {
                 </div>
                 {role === 'owner' && (
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={() => setMetaEdit({
+                        item,
+                        dietaryFlags: item.dietary_flags ?? [],
+                        itemBadges: item.item_badges ?? [],
+                        spiceLevel: item.spice_level ?? 0,
+                        saving: false,
+                      })}
+                      className="press"
+                      style={{
+                        minHeight: 36, minWidth: 36,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        borderRadius: "var(--rad-pill)",
+                        border: "1px solid var(--line-2)",
+                        background: "var(--bg-elev-2)",
+                        color: "var(--ink-3)",
+                      }}
+                      aria-label="Edit metadata"
+                    >
+                      <Settings2 size={14} />
+                    </button>
                     <button
                       onClick={() => handleToggleFeatured(item.id, item.is_featured ?? false, item.featured_sort_order ?? 0)}
                       disabled={togglingFeatured === item.id}
@@ -292,6 +385,123 @@ function MenuTab() {
         </section>
       ))}
     </div>
+
+    {/* Metadata edit sheet */}
+    {metaEdit && (
+      <BottomSheet
+        open={true}
+        onClose={() => setMetaEdit(null)}
+        title={metaEdit.item.name}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 24, paddingBottom: 16 }}>
+          {/* Dietary flags */}
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 10 }}>Dietary</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {DIETARY_OPTIONS.map(({ flag, label }) => {
+                const checked = metaEdit.dietaryFlags.includes(flag)
+                return (
+                  <label key={flag} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => setMetaEdit((s) => s && {
+                        ...s,
+                        dietaryFlags: applyDietaryLogic(s.dietaryFlags, flag, e.target.checked),
+                      })}
+                      style={{ width: 18, height: 18, accentColor: "var(--accent)", cursor: "pointer" }}
+                    />
+                    <span style={{ fontSize: 14, color: "var(--ink-2)" }}>{label}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Item badges */}
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 10 }}>Badges</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {BADGE_OPTIONS.map(({ badge, label }) => {
+                const active = metaEdit.itemBadges.includes(badge)
+                return (
+                  <button
+                    key={badge}
+                    onClick={() => setMetaEdit((s) => s && {
+                      ...s,
+                      itemBadges: active
+                        ? s.itemBadges.filter((b) => b !== badge)
+                        : [...s.itemBadges, badge],
+                    })}
+                    className="press"
+                    style={{
+                      fontSize: 13, fontWeight: 600,
+                      padding: "8px 16px",
+                      borderRadius: "var(--rad-pill)",
+                      border: "1px solid",
+                      borderColor: active ? "var(--accent)" : "var(--line-2)",
+                      background: active ? "var(--accent-soft)" : "var(--bg-elev-2)",
+                      color: active ? "var(--accent)" : "var(--ink-3)",
+                      transition: "all var(--dur-fast) var(--ease)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Spice level */}
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 10 }}>Spice Level</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              {SPICE_LABELS.map((label, level) => {
+                const active = metaEdit.spiceLevel === level
+                return (
+                  <button
+                    key={level}
+                    onClick={() => setMetaEdit((s) => s && { ...s, spiceLevel: level })}
+                    className="press"
+                    style={{
+                      flex: 1, fontSize: 12, fontWeight: 600,
+                      padding: "8px 4px",
+                      borderRadius: "var(--rad-md)",
+                      border: "1px solid",
+                      borderColor: active ? "var(--accent)" : "var(--line-2)",
+                      background: active ? "var(--accent-soft)" : "var(--bg-elev-2)",
+                      color: active ? "var(--accent)" : "var(--ink-3)",
+                      transition: "all var(--dur-fast) var(--ease)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Save */}
+          <button
+            onClick={handleSaveMeta}
+            disabled={metaEdit.saving}
+            className="press btn-primary"
+            style={{
+              width: "100%", height: 52, borderRadius: 14,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 15, fontWeight: 700,
+              opacity: metaEdit.saving ? 0.6 : 1,
+              cursor: metaEdit.saving ? "not-allowed" : "pointer",
+            }}
+          >
+            {metaEdit.saving ? <Loader2 size={16} className="animate-spin" /> : "Save Metadata"}
+          </button>
+        </div>
+      </BottomSheet>
+    )}
+    </>
   )
 }
 

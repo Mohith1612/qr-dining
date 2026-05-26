@@ -151,6 +151,24 @@ components:
         position:
           type: integer
           description: Display order within the category
+        is_featured:
+          type: boolean
+        featured_sort_order:
+          type: integer
+        dietary_flags:
+          type: array
+          items:
+            type: string
+            enum: [vegetarian, vegan, jain, egg, non-veg]
+        item_badges:
+          type: array
+          items:
+            type: string
+            enum: [chef-special, bestseller, seasonal, new]
+        spice_level:
+          type: integer
+          minimum: 0
+          maximum: 3
 
     MenuCategory:
       type: object

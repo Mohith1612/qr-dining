@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useMenuStore } from "@/store/menu"
 import { useCart } from "@/hooks/useCart"
 import { useSession } from "@/hooks/useSession"
@@ -10,12 +10,13 @@ import { MenuSkeleton } from "@/components/shared/LoadingSkeleton"
 import { BottomSheet } from "@/components/shared/BottomSheet"
 import { Vignette } from "@/components/shared/Vignette"
 import { FeaturedCarousel } from "@/components/shared/FeaturedCarousel"
+import { DietaryTag, BadgeTag, SpiceIndicator } from "@/components/shared/MetaTag"
 import { Minus, Plus, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { use } from "react"
 import { cn } from "@/lib/utils"
-import type { MenuItem, ItemModifier } from "@/types/api"
+import type { MenuItem, ItemModifier, DietaryFlag, ItemBadge } from "@/types/api"
 
 interface SheetState {
   item: MenuItem
@@ -66,6 +67,13 @@ function ItemRow({ item, qty, onTap }: ItemRowProps) {
             {item.description}
           </div>
         )}
+        {(item.dietary_flags?.length || item.item_badges?.length || !!item.spice_level) ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+            {item.dietary_flags?.map((f) => <DietaryTag key={f} flag={f} />)}
+            {item.item_badges?.map((b) => <BadgeTag key={b} badge={b} />)}
+            {item.spice_level ? <SpiceIndicator level={item.spice_level} /> : null}
+          </div>
+        ) : null}
         {!item.is_available && (
           <div style={{ color: "var(--ink-4)", fontSize: 11, marginTop: 5, letterSpacing: "0.05em", textTransform: "uppercase" }}>
             Not available
@@ -94,12 +102,121 @@ function ItemRow({ item, qty, onTap }: ItemRowProps) {
   )
 }
 
+const DIETARY_FILTERS: { flag: DietaryFlag; label: string }[] = [
+  { flag: "vegetarian", label: "Veg" },
+  { flag: "vegan", label: "Vegan" },
+  { flag: "non-veg", label: "Non-Veg" },
+  { flag: "jain", label: "Jain" },
+  { flag: "egg", label: "Egg" },
+]
+
+const BADGE_FILTERS: { badge: ItemBadge; label: string }[] = [
+  { badge: "chef-special", label: "Chef Special" },
+  { badge: "bestseller", label: "Bestseller" },
+  { badge: "new", label: "New" },
+]
+
+interface FilterBarProps {
+  activeFilters: { dietary: DietaryFlag[]; badges: ItemBadge[]; spice: number | null }
+  hasActiveFilters: boolean
+  onDietary: (flag: DietaryFlag) => void
+  onBadge: (badge: ItemBadge) => void
+  onSpice: (level: number) => void
+  onClear: () => void
+}
+
+function FilterPill({
+  active, onClick, children,
+}: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className="press"
+      style={{
+        flexShrink: 0,
+        fontSize: 12, fontWeight: 600,
+        padding: "6px 13px",
+        borderRadius: "var(--rad-pill)",
+        border: "1px solid",
+        borderColor: active ? "var(--accent)" : "var(--line-2)",
+        background: active ? "var(--accent-soft)" : "var(--bg-elev-1)",
+        color: active ? "var(--accent)" : "var(--ink-3)",
+        transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function FilterDivider() {
+  return (
+    <span style={{
+      flexShrink: 0,
+      width: 1, height: 20, alignSelf: "center",
+      background: "var(--line-2)",
+      marginLeft: 4,
+    }} />
+  )
+}
+
+function FilterBar({ activeFilters, hasActiveFilters, onDietary, onBadge, onSpice, onClear }: FilterBarProps) {
+  return (
+    <div style={{ padding: "10px 0 12px", borderBottom: "1px solid var(--line-1)" }}>
+      <div className="relative">
+        <div className="hscroll flex gap-1.5 px-5 items-center">
+          <FilterPill active={!hasActiveFilters} onClick={onClear}>All</FilterPill>
+          <FilterDivider />
+          {DIETARY_FILTERS.map(({ flag, label }) => (
+            <FilterPill
+              key={flag}
+              active={activeFilters.dietary.includes(flag)}
+              onClick={() => onDietary(flag)}
+            >
+              {label}
+            </FilterPill>
+          ))}
+          <FilterDivider />
+          {BADGE_FILTERS.map(({ badge, label }) => (
+            <FilterPill
+              key={badge}
+              active={activeFilters.badges.includes(badge)}
+              onClick={() => onBadge(badge)}
+            >
+              {label}
+            </FilterPill>
+          ))}
+          <FilterDivider />
+          {[1, 2, 3].map((level) => (
+            <FilterPill
+              key={level}
+              active={activeFilters.spice === level}
+              onClick={() => onSpice(level)}
+            >
+              {"🌶".repeat(level)}
+            </FilterPill>
+          ))}
+        </div>
+        <div style={{
+          position: "absolute", right: 0, top: 0, bottom: 0, width: 32, pointerEvents: "none",
+          background: "linear-gradient(to right, transparent, var(--bg-base))",
+        }} />
+      </div>
+    </div>
+  )
+}
+
 export default function MenuPage({ params }: Props) {
   const { id: sessionId } = use(params)
   const router = useRouter()
   const featured = useMenuStore((s) => s.featured)
   const categories = useMenuStore((s) => s.categories)
   const menuLoading = useMenuStore((s) => s.loading)
+  const activeFilters = useMenuStore((s) => s.activeFilters)
+  const setActiveFilters = useMenuStore((s) => s.setActiveFilters)
+  const clearFilters = useMenuStore((s) => s.clearFilters)
   const { session } = useSession()
   const { items: cartItems, itemCount, addItem } = useCart()
   const [activeCatId, setActiveCatId] = useState<number | null>(null)
@@ -228,6 +345,32 @@ export default function MenuPage({ params }: Props) {
     const modTotal = ci.selected_modifiers.reduce((m, mod) => m + mod.price_delta, 0)
     return s + ((ci.item_price ?? 0) + modTotal) * ci.quantity
   }, 0)
+  const hasActiveFilters =
+    activeFilters.dietary.length > 0 || activeFilters.badges.length > 0 || activeFilters.spice !== null
+
+  const filteredCategories = useMemo(() => {
+    if (!hasActiveFilters) return categories
+    return categories
+      .map((cat) => ({
+        ...cat,
+        items: cat.items.filter((item) => {
+          if (activeFilters.dietary.length > 0) {
+            const match = activeFilters.dietary.some((f) => item.dietary_flags?.includes(f))
+            if (!match) return false
+          }
+          if (activeFilters.badges.length > 0) {
+            const match = activeFilters.badges.some((b) => item.item_badges?.includes(b))
+            if (!match) return false
+          }
+          if (activeFilters.spice !== null) {
+            if ((item.spice_level ?? 0) !== activeFilters.spice) return false
+          }
+          return true
+        }),
+      }))
+      .filter((cat) => cat.items.length > 0)
+  }, [categories, activeFilters, hasActiveFilters])
+
   const totalDishes = categories.reduce((s, c) => s + c.items.length, 0)
 
   if (menuLoading) return <MenuSkeleton />
@@ -248,6 +391,22 @@ export default function MenuPage({ params }: Props) {
 
       {/* Featured carousel — above sticky bar, scrolls away */}
       <FeaturedCarousel items={featured} onSelect={openSheet} />
+
+      {/* Filter bar — scrolls away with content */}
+      <FilterBar
+        activeFilters={activeFilters}
+        hasActiveFilters={hasActiveFilters}
+        onDietary={(flag) => {
+          const already = activeFilters.dietary.includes(flag)
+          setActiveFilters({ dietary: already ? activeFilters.dietary.filter((f) => f !== flag) : [...activeFilters.dietary, flag] })
+        }}
+        onBadge={(badge) => {
+          const already = activeFilters.badges.includes(badge)
+          setActiveFilters({ badges: already ? activeFilters.badges.filter((b) => b !== badge) : [...activeFilters.badges, badge] })
+        }}
+        onSpice={(level) => setActiveFilters({ spice: activeFilters.spice === level ? null : level })}
+        onClear={clearFilters}
+      />
 
       {/* Category pills — sticky within Shell's main scroller */}
       <div style={{
@@ -292,28 +451,34 @@ export default function MenuPage({ params }: Props) {
 
       {/* All category sections */}
       <div style={{ paddingBottom: itemCount > 0 ? 80 : 24 }}>
-        {categories.map((cat, idx) => (
-          <section
-            key={cat.id}
-            ref={(el) => { sectionRefs.current[idx] = el }}
-            style={{ paddingBottom: 32 }}
-          >
-            <div style={{ padding: "20px 20px 0" }}>
-              <h2 className="eyebrow">
-                {cat.name} · {cat.items.length} {cat.items.length === 1 ? "dish" : "dishes"}
-              </h2>
-              <hr className="rule" style={{ margin: "10px 0 0" }} />
-            </div>
-            <div style={{ padding: "0 20px" }}>
-              {cat.items.map((item, i, arr) => (
-                <div key={item.id}>
-                  <ItemRow item={item} qty={cartCountByItem[item.id] ?? 0} onTap={openSheet} />
-                  {i < arr.length - 1 && <hr className="rule" style={{ margin: 0 }} />}
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
+        {filteredCategories.length === 0 && hasActiveFilters ? (
+          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--ink-3)", fontSize: 14 }}>
+            No items match the selected filters.
+          </div>
+        ) : (
+          filteredCategories.map((cat, idx) => (
+            <section
+              key={cat.id}
+              ref={(el) => { sectionRefs.current[idx] = el }}
+              style={{ paddingBottom: 32 }}
+            >
+              <div style={{ padding: "20px 20px 0" }}>
+                <h2 className="eyebrow">
+                  {cat.name} · {cat.items.length} {cat.items.length === 1 ? "dish" : "dishes"}
+                </h2>
+                <hr className="rule" style={{ margin: "10px 0 0" }} />
+              </div>
+              <div style={{ padding: "0 20px" }}>
+                {cat.items.map((item, i, arr) => (
+                  <div key={item.id}>
+                    <ItemRow item={item} qty={cartCountByItem[item.id] ?? 0} onTap={openSheet} />
+                    {i < arr.length - 1 && <hr className="rule" style={{ margin: 0 }} />}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))
+        )}
       </div>
 
       {/* Cart bar — fixed above bottom nav */}

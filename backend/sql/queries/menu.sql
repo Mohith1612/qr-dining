@@ -44,7 +44,8 @@ RETURNING *;
 
 -- name: UpdateMenuItem :one
 UPDATE menu_items
-SET name = $2, description = $3, price = $4, position = $5
+SET name = $2, description = $3, price = $4, position = $5,
+    dietary_flags = $6, item_badges = $7, spice_level = $8
 WHERE id = $1
 RETURNING *;
 
