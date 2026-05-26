@@ -15,7 +15,8 @@ import { Minus, Plus, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { use } from "react"
-import { cn } from "@/lib/utils"
+import { cn, groupBy } from "@/lib/utils"
+import { BeverageModifierGroup, isBeverageCategory } from "@/components/shared/BeverageModifierGrid"
 import type { MenuItem, ItemModifier, DietaryFlag, ItemBadge } from "@/types/api"
 
 interface SheetState {
@@ -23,6 +24,7 @@ interface SheetState {
   quantity: number
   selectedModifiers: number[]
   note: string
+  isBeverage: boolean
 }
 
 interface Props {
@@ -307,8 +309,8 @@ export default function MenuPage({ params }: Props) {
     container.scrollTo({ top, behavior: prefersReducedMotion ? "auto" : "smooth" })
   }
 
-  function openSheet(item: MenuItem) {
-    setSheet({ item, quantity: 1, selectedModifiers: [], note: "" })
+  function openSheet(item: MenuItem, categoryName?: string) {
+    setSheet({ item, quantity: 1, selectedModifiers: [], note: "", isBeverage: isBeverageCategory(categoryName ?? "") })
   }
 
   function toggleModifier(id: number) {
@@ -345,6 +347,17 @@ export default function MenuPage({ params }: Props) {
     const modTotal = ci.selected_modifiers.reduce((m, mod) => m + mod.price_delta, 0)
     return s + ((ci.item_price ?? 0) + modTotal) * ci.quantity
   }, 0)
+  const requiredGroupsFulfilled = useMemo(() => {
+    if (!sheet?.isBeverage) return true
+    const requiredGroups = [...new Set(
+      sheet.item.modifiers?.filter((m) => m.is_required).map((m) => m.modifier_group ?? "") ?? []
+    )]
+    return requiredGroups.every((group) =>
+      sheet.item.modifiers?.filter((m) => (m.modifier_group ?? "") === group)
+        .some((m) => sheet.selectedModifiers.includes(m.id))
+    )
+  }, [sheet])
+
   const hasActiveFilters =
     activeFilters.dietary.length > 0 || activeFilters.badges.length > 0 || activeFilters.spice !== null
 
@@ -471,7 +484,7 @@ export default function MenuPage({ params }: Props) {
               <div style={{ padding: "0 20px" }}>
                 {cat.items.map((item, i, arr) => (
                   <div key={item.id}>
-                    <ItemRow item={item} qty={cartCountByItem[item.id] ?? 0} onTap={openSheet} />
+                    <ItemRow item={item} qty={cartCountByItem[item.id] ?? 0} onTap={(item) => openSheet(item, cat.name)} />
                     {i < arr.length - 1 && <hr className="rule" style={{ margin: 0 }} />}
                   </div>
                 ))}
@@ -582,35 +595,49 @@ export default function MenuPage({ params }: Props) {
             {sheet.item.modifiers && sheet.item.modifiers.length > 0 && (
               <div>
                 <span className="eyebrow" style={{ display: "block", marginBottom: 10 }}>Customise</span>
-                <div style={{ borderRadius: "var(--rad-lg)", overflow: "hidden", border: "1px solid var(--line-2)" }}>
-                  {sheet.item.modifiers.map((mod: ItemModifier, i: number) => (
-                    <label
-                      key={mod.id}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        padding: "14px 16px", cursor: "default",
-                        borderTop: i > 0 ? "1px solid var(--line-1)" : "none",
-                        background: sheet.selectedModifiers.includes(mod.id) ? "var(--accent-soft)" : "transparent",
-                        transition: "background var(--dur-fast) var(--ease)",
-                      }}
-                    >
-                      <span style={{ fontSize: 14, color: "var(--ink-1)" }}>{mod.name}</span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        {mod.price_delta !== 0 && (
-                          <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
-                            +{formatCurrency(mod.price_delta)}
-                          </span>
-                        )}
-                        <input
-                          type="checkbox"
-                          checked={sheet.selectedModifiers.includes(mod.id)}
-                          onChange={() => toggleModifier(mod.id)}
-                          style={{ width: 18, height: 18, accentColor: "var(--accent)" }}
-                        />
-                      </div>
-                    </label>
-                  ))}
-                </div>
+                {sheet.isBeverage ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                    {Object.entries(groupBy(sheet.item.modifiers, (m) => m.modifier_group ?? "add-ons")).map(([group, mods]) => (
+                      <BeverageModifierGroup
+                        key={group}
+                        groupName={group}
+                        modifiers={mods}
+                        selected={sheet.selectedModifiers}
+                        onToggle={toggleModifier}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ borderRadius: "var(--rad-lg)", overflow: "hidden", border: "1px solid var(--line-2)" }}>
+                    {sheet.item.modifiers.map((mod: ItemModifier, i: number) => (
+                      <label
+                        key={mod.id}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "14px 16px", cursor: "default",
+                          borderTop: i > 0 ? "1px solid var(--line-1)" : "none",
+                          background: sheet.selectedModifiers.includes(mod.id) ? "var(--accent-soft)" : "transparent",
+                          transition: "background var(--dur-fast) var(--ease)",
+                        }}
+                      >
+                        <span style={{ fontSize: 14, color: "var(--ink-1)" }}>{mod.name}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          {mod.price_delta !== 0 && (
+                            <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                              +{formatCurrency(mod.price_delta)}
+                            </span>
+                          )}
+                          <input
+                            type="checkbox"
+                            checked={sheet.selectedModifiers.includes(mod.id)}
+                            onChange={() => toggleModifier(mod.id)}
+                            style={{ width: 18, height: 18, accentColor: "var(--accent)" }}
+                          />
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -634,17 +661,17 @@ export default function MenuPage({ params }: Props) {
             {/* CTA */}
             <button
               onClick={handleAddToCart}
-              disabled={adding}
+              disabled={adding || !requiredGroupsFulfilled}
               className="press"
               style={{
                 width: "100%", height: 54, borderRadius: 16,
-                background: adding
+                background: adding || !requiredGroupsFulfilled
                   ? "var(--bg-elev-3)"
                   : "linear-gradient(180deg, var(--accent-strong), var(--accent))",
-                color: adding ? "var(--ink-3)" : "var(--accent-ink)",
+                color: adding || !requiredGroupsFulfilled ? "var(--ink-3)" : "var(--accent-ink)",
                 fontSize: 16, fontWeight: 600,
-                border: adding ? "1px solid var(--line-2)" : "1px solid var(--accent)",
-                boxShadow: adding ? "none" : "var(--shadow-2), inset 0 1px 0 rgba(255,255,255,0.18)",
+                border: adding || !requiredGroupsFulfilled ? "1px solid var(--line-2)" : "1px solid var(--accent)",
+                boxShadow: adding || !requiredGroupsFulfilled ? "none" : "var(--shadow-2), inset 0 1px 0 rgba(255,255,255,0.18)",
                 transition: "background var(--dur-fast) var(--ease)",
               }}
             >
