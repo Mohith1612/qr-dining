@@ -7,6 +7,7 @@ import type {
   Order,
   MenuCategory,
   MenuItem,
+  ItemModifier,
   DietaryFlag,
   ItemBadge,
 } from "@/types/api"
@@ -78,7 +79,7 @@ export const staffApi = {
   updateMenuItem: (
     itemId: number,
     branchId: number,
-    data: { name: string; price: number; description?: string; position?: number; dietary_flags?: DietaryFlag[]; item_badges?: ItemBadge[]; spice_level?: number },
+    data: { name: string; price: number; description?: string; position?: number; dietary_flags?: DietaryFlag[]; item_badges?: ItemBadge[]; spice_level?: number; category_id?: number },
     staffToken: string
   ) =>
     api.patch<MenuItem>(`/menu/items/${itemId}`, { ...data, branch_id: branchId }, { staffToken }),
@@ -117,4 +118,32 @@ export const staffApi = {
 
   getBranch: (branchId: number, staffToken: string) =>
     api.get<{ id: number; session_timeout_minutes: number }>(`/branches/${branchId}`, { staffToken }),
+
+  getAdminMenu: (branchId: number, staffToken: string) =>
+    api.get<{ branch_id: number; categories: MenuCategory[] }>(`/branches/${branchId}/menu/full`, { staffToken }),
+
+  deleteMenuItem: (itemId: number, branchId: number, staffToken: string) =>
+    api.delete<void>(`/menu/items/${itemId}?branch_id=${branchId}`, { staffToken }),
+
+  deleteCategory: (categoryId: number, branchId: number, staffToken: string) =>
+    api.delete<void>(`/menu/categories/${categoryId}?branch_id=${branchId}`, { staffToken }),
+
+  updateCategory: (
+    categoryId: number,
+    branchId: number,
+    data: { name: string; position: number; is_active: boolean },
+    staffToken: string
+  ) =>
+    api.patch<MenuCategory>(`/menu/categories/${categoryId}`, { ...data, branch_id: branchId }, { staffToken }),
+
+  addModifier: (
+    itemId: number,
+    branchId: number,
+    data: { name: string; price_delta: number; is_required: boolean; modifier_group: string },
+    staffToken: string
+  ) =>
+    api.post<ItemModifier>(`/menu/items/${itemId}/modifiers`, { ...data, branch_id: branchId }, { staffToken }),
+
+  deleteModifier: (modifierId: number, branchId: number, staffToken: string) =>
+    api.delete<void>(`/menu/modifiers/${modifierId}?branch_id=${branchId}`, { staffToken }),
 }

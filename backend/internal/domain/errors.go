@@ -59,6 +59,12 @@ var (
 	ErrDuplicateTableIdentifier   = errors.New("table identifier already exists for this branch")
 )
 
+// Menu categories
+var (
+	ErrCategoryNotFound = errors.New("category not found")
+	ErrCategoryNotEmpty = errors.New("category has items and cannot be deleted")
+)
+
 // Auth
 var (
 	ErrUnauthorized = errors.New("unauthorized")

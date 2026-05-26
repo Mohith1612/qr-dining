@@ -161,6 +161,7 @@ func New(
 	branchStaffAPI.GET("/orders/active", orderH.ListActiveForBranch)
 	branchStaffAPI.GET("/sessions/active", sessionH.ListActiveForBranch)
 	branchStaffAPI.GET("/assist/active", assistanceH.ListActiveForBranch)
+	branchStaffAPI.GET("/menu/full", menuAdminH.GetAdminMenu)
 	branchStaffAPI.POST("/menu/categories", menuAdminH.CreateCategory)
 	branchStaffAPI.POST("/menu/items", menuAdminH.CreateItem)
 	branchStaffAPI.POST("/staff", staffH.CreateStaff)
@@ -175,8 +176,13 @@ func New(
 
 	// Menu item updates — item-scoped, no branch param on path.
 	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)
+	staffAPI.DELETE("/menu/items/:id", menuAdminH.DeleteMenuItem)
 	staffAPI.PATCH("/menu/items/:id/availability", menuAdminH.ToggleAvailability)
 	staffAPI.PATCH("/menu/items/:id/featured", menuAdminH.ToggleFeatured)
+	staffAPI.POST("/menu/items/:id/modifiers", menuAdminH.AddItemModifier)
+	staffAPI.DELETE("/menu/categories/:id", menuAdminH.DeleteMenuCategory)
+	staffAPI.PATCH("/menu/categories/:id", menuAdminH.UpdateMenuCategory)
+	staffAPI.DELETE("/menu/modifiers/:id", menuAdminH.DeleteItemModifier)
 
 	// Table QR token refresh — table-scoped; branch ownership verified in handler.
 	staffAPI.PATCH("/tables/:id/qr-refresh", tableH.RefreshQR)

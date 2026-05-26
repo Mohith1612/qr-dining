@@ -34,6 +34,8 @@ const (
 	CodeTableNotFound            = "TABLE_NOT_FOUND"
 	CodeTableOccupied            = "TABLE_OCCUPIED"
 	CodeDuplicateTableIdentifier = "DUPLICATE_TABLE_IDENTIFIER"
+	CodeCategoryNotFound         = "CATEGORY_NOT_FOUND"
+	CodeCategoryNotEmpty         = "CATEGORY_NOT_EMPTY"
 	CodeUnauthorized             = "UNAUTHORIZED"
 	CodeForbidden                = "FORBIDDEN"
 	CodeRateLimited              = "RATE_LIMITED"

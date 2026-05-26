@@ -11,6 +11,51 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countItemsInCategory = `-- name: CountItemsInCategory :one
+SELECT COUNT(*) FROM menu_items WHERE category_id = $1
+`
+
+func (q *Queries) CountItemsInCategory(ctx context.Context, categoryID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countItemsInCategory, categoryID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createItemModifier = `-- name: CreateItemModifier :one
+INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, item_id, name, price_delta, is_required, modifier_group
+`
+
+type CreateItemModifierParams struct {
+	ItemID        int64          `json:"item_id"`
+	Name          string         `json:"name"`
+	PriceDelta    pgtype.Numeric `json:"price_delta"`
+	IsRequired    bool           `json:"is_required"`
+	ModifierGroup string         `json:"modifier_group"`
+}
+
+func (q *Queries) CreateItemModifier(ctx context.Context, arg CreateItemModifierParams) (ItemModifier, error) {
+	row := q.db.QueryRow(ctx, createItemModifier,
+		arg.ItemID,
+		arg.Name,
+		arg.PriceDelta,
+		arg.IsRequired,
+		arg.ModifierGroup,
+	)
+	var i ItemModifier
+	err := row.Scan(
+		&i.ID,
+		&i.ItemID,
+		&i.Name,
+		&i.PriceDelta,
+		&i.IsRequired,
+		&i.ModifierGroup,
+	)
+	return i, err
+}
+
 const createTable = `-- name: CreateTable :one
 INSERT INTO tables (branch_id, identifier, capacity, qr_code_token)
 VALUES ($1, $2, $3, $4)
@@ -42,6 +87,43 @@ func (q *Queries) CreateTable(ctx context.Context, arg CreateTableParams) (Table
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const deleteItemModifier = `-- name: DeleteItemModifier :exec
+DELETE FROM item_modifiers WHERE id = $1
+`
+
+func (q *Queries) DeleteItemModifier(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteItemModifier, id)
+	return err
+}
+
+const deleteMenuCategory = `-- name: DeleteMenuCategory :exec
+DELETE FROM menu_categories WHERE id = $1 AND branch_id = $2
+`
+
+type DeleteMenuCategoryParams struct {
+	ID       int64 `json:"id"`
+	BranchID int64 `json:"branch_id"`
+}
+
+func (q *Queries) DeleteMenuCategory(ctx context.Context, arg DeleteMenuCategoryParams) error {
+	_, err := q.db.Exec(ctx, deleteMenuCategory, arg.ID, arg.BranchID)
+	return err
+}
+
+const deleteMenuItem = `-- name: DeleteMenuItem :exec
+DELETE FROM menu_items WHERE id = $1 AND branch_id = $2
+`
+
+type DeleteMenuItemParams struct {
+	ID       int64 `json:"id"`
+	BranchID int64 `json:"branch_id"`
+}
+
+func (q *Queries) DeleteMenuItem(ctx context.Context, arg DeleteMenuItemParams) error {
+	_, err := q.db.Exec(ctx, deleteMenuItem, arg.ID, arg.BranchID)
+	return err
 }
 
 const getMenuItemByID = `-- name: GetMenuItemByID :one
@@ -215,6 +297,78 @@ func (q *Queries) InsertMenuItem(ctx context.Context, arg InsertMenuItemParams) 
 	return i, err
 }
 
+const listAllMenuCategoriesForBranch = `-- name: ListAllMenuCategoriesForBranch :many
+SELECT id, branch_id, name, position, is_active FROM menu_categories
+WHERE branch_id = $1
+ORDER BY position ASC, id ASC
+`
+
+func (q *Queries) ListAllMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error) {
+	rows, err := q.db.Query(ctx, listAllMenuCategoriesForBranch, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MenuCategory{}
+	for rows.Next() {
+		var i MenuCategory
+		if err := rows.Scan(
+			&i.ID,
+			&i.BranchID,
+			&i.Name,
+			&i.Position,
+			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllMenuItemsForCategory = `-- name: ListAllMenuItemsForCategory :many
+SELECT id, category_id, branch_id, name, description, price, is_available, position, is_featured, featured_sort_order, dietary_flags, item_badges, spice_level FROM menu_items
+WHERE category_id = $1
+ORDER BY position ASC, id ASC
+`
+
+func (q *Queries) ListAllMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error) {
+	rows, err := q.db.Query(ctx, listAllMenuItemsForCategory, categoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MenuItem{}
+	for rows.Next() {
+		var i MenuItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.CategoryID,
+			&i.BranchID,
+			&i.Name,
+			&i.Description,
+			&i.Price,
+			&i.IsAvailable,
+			&i.Position,
+			&i.IsFeatured,
+			&i.FeaturedSortOrder,
+			&i.DietaryFlags,
+			&i.ItemBadges,
+			&i.SpiceLevel,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFeaturedMenuItems = `-- name: ListFeaturedMenuItems :many
 SELECT id, category_id, branch_id, name, description, price, is_available, position, is_featured, featured_sort_order, dietary_flags, item_badges, spice_level FROM menu_items
 WHERE branch_id = $1
@@ -330,7 +484,7 @@ func (q *Queries) ListMenuItemsForCategory(ctx context.Context, categoryID int64
 }
 
 const listModifiersForItem = `-- name: ListModifiersForItem :many
-SELECT id, item_id, name, price_delta, is_required FROM item_modifiers WHERE item_id = $1 ORDER BY id ASC
+SELECT id, item_id, name, price_delta, is_required, modifier_group FROM item_modifiers WHERE item_id = $1 ORDER BY id ASC
 `
 
 func (q *Queries) ListModifiersForItem(ctx context.Context, itemID int64) ([]ItemModifier, error) {
@@ -348,6 +502,7 @@ func (q *Queries) ListModifiersForItem(ctx context.Context, itemID int64) ([]Ite
 			&i.Name,
 			&i.PriceDelta,
 			&i.IsRequired,
+			&i.ModifierGroup,
 		); err != nil {
 			return nil, err
 		}
@@ -360,7 +515,7 @@ func (q *Queries) ListModifiersForItem(ctx context.Context, itemID int64) ([]Ite
 }
 
 const listModifiersForItems = `-- name: ListModifiersForItems :many
-SELECT id, item_id, name, price_delta, is_required FROM item_modifiers WHERE item_id = ANY($1::bigint[]) ORDER BY item_id, id ASC
+SELECT id, item_id, name, price_delta, is_required, modifier_group FROM item_modifiers WHERE item_id = ANY($1::bigint[]) ORDER BY item_id, id ASC
 `
 
 func (q *Queries) ListModifiersForItems(ctx context.Context, dollar_1 []int64) ([]ItemModifier, error) {
@@ -378,6 +533,7 @@ func (q *Queries) ListModifiersForItems(ctx context.Context, dollar_1 []int64) (
 			&i.Name,
 			&i.PriceDelta,
 			&i.IsRequired,
+			&i.ModifierGroup,
 		); err != nil {
 			return nil, err
 		}
@@ -445,10 +601,45 @@ func (q *Queries) RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTok
 	return i, err
 }
 
+const updateMenuCategory = `-- name: UpdateMenuCategory :one
+UPDATE menu_categories
+SET name = $2, position = $3, is_active = $4
+WHERE id = $1 AND branch_id = $5
+RETURNING id, branch_id, name, position, is_active
+`
+
+type UpdateMenuCategoryParams struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Position int16  `json:"position"`
+	IsActive bool   `json:"is_active"`
+	BranchID int64  `json:"branch_id"`
+}
+
+func (q *Queries) UpdateMenuCategory(ctx context.Context, arg UpdateMenuCategoryParams) (MenuCategory, error) {
+	row := q.db.QueryRow(ctx, updateMenuCategory,
+		arg.ID,
+		arg.Name,
+		arg.Position,
+		arg.IsActive,
+		arg.BranchID,
+	)
+	var i MenuCategory
+	err := row.Scan(
+		&i.ID,
+		&i.BranchID,
+		&i.Name,
+		&i.Position,
+		&i.IsActive,
+	)
+	return i, err
+}
+
 const updateMenuItem = `-- name: UpdateMenuItem :one
 UPDATE menu_items
 SET name = $2, description = $3, price = $4, position = $5,
-    dietary_flags = $6, item_badges = $7, spice_level = $8
+    dietary_flags = $6, item_badges = $7, spice_level = $8,
+    category_id = COALESCE($9, category_id)
 WHERE id = $1
 RETURNING id, category_id, branch_id, name, description, price, is_available, position, is_featured, featured_sort_order, dietary_flags, item_badges, spice_level
 `
@@ -462,6 +653,7 @@ type UpdateMenuItemParams struct {
 	DietaryFlags []string       `json:"dietary_flags"`
 	ItemBadges   []string       `json:"item_badges"`
 	SpiceLevel   int16          `json:"spice_level"`
+	CategoryID   pgtype.Int8    `json:"category_id"`
 }
 
 func (q *Queries) UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) (MenuItem, error) {
@@ -474,6 +666,7 @@ func (q *Queries) UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) 
 		arg.DietaryFlags,
 		arg.ItemBadges,
 		arg.SpiceLevel,
+		arg.CategoryID,
 	)
 	var i MenuItem
 	err := row.Scan(

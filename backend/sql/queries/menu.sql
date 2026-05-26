@@ -45,7 +45,8 @@ RETURNING *;
 -- name: UpdateMenuItem :one
 UPDATE menu_items
 SET name = $2, description = $3, price = $4, position = $5,
-    dietary_flags = $6, item_badges = $7, spice_level = $8
+    dietary_flags = $6, item_badges = $7, spice_level = $8,
+    category_id = COALESCE(sqlc.narg('category_id'), category_id)
 WHERE id = $1
 RETURNING *;
 
@@ -69,3 +70,36 @@ ORDER BY featured_sort_order ASC, id ASC;
 
 -- name: UpdateMenuItemFeatured :exec
 UPDATE menu_items SET is_featured = $2, featured_sort_order = $3 WHERE id = $1;
+
+-- name: ListAllMenuCategoriesForBranch :many
+SELECT * FROM menu_categories
+WHERE branch_id = $1
+ORDER BY position ASC, id ASC;
+
+-- name: ListAllMenuItemsForCategory :many
+SELECT * FROM menu_items
+WHERE category_id = $1
+ORDER BY position ASC, id ASC;
+
+-- name: DeleteMenuItem :exec
+DELETE FROM menu_items WHERE id = $1 AND branch_id = $2;
+
+-- name: CountItemsInCategory :one
+SELECT COUNT(*) FROM menu_items WHERE category_id = $1;
+
+-- name: DeleteMenuCategory :exec
+DELETE FROM menu_categories WHERE id = $1 AND branch_id = $2;
+
+-- name: UpdateMenuCategory :one
+UPDATE menu_categories
+SET name = $2, position = $3, is_active = $4
+WHERE id = $1 AND branch_id = $5
+RETURNING *;
+
+-- name: CreateItemModifier :one
+INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: DeleteItemModifier :exec
+DELETE FROM item_modifiers WHERE id = $1;

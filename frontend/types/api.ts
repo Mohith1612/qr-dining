@@ -51,6 +51,8 @@ export interface ItemModifier {
   menu_item_id: number
   name: string
   price_delta: number
+  is_required?: boolean
+  modifier_group?: string
 }
 
 export type DietaryFlag = 'vegetarian' | 'vegan' | 'jain' | 'egg' | 'non-veg'
@@ -78,6 +80,7 @@ export interface MenuCategory {
   branch_id: number
   name: string
   position: number
+  is_active: boolean
   items: MenuItem[]
 }
 

@@ -19,10 +19,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { formatCurrency, relativeTime } from "@/lib/format"
-import { RefreshCw, Loader2, Users, BarChart2, CreditCard, Printer, MoreVertical, RotateCcw, QrCode, Settings2 } from "lucide-react"
+import { RefreshCw, Loader2, Users, BarChart2, CreditCard, Printer, MoreVertical, RotateCcw, QrCode, Settings2, ChevronDown, ChevronRight, Plus, Trash2, Edit2, ChevronUp } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
-import type { Session, MenuCategory, MenuItem, StaffRole, Table, DietaryFlag, ItemBadge } from "@/types/api"
+import type { Session, MenuCategory, MenuItem, ItemModifier, StaffRole, Table, DietaryFlag, ItemBadge } from "@/types/api"
 import { tablesApi } from "@/lib/api/tables"
 import { QRCard } from "@/components/admin/QRCard"
 import { PrintTemplate } from "@/components/admin/PrintTemplate"
@@ -125,14 +125,6 @@ function SessionsTab() {
 
 // ─── Menu Tab ────────────────────────────────────────────────────────────────
 
-interface MetaEditState {
-  item: MenuItem
-  dietaryFlags: DietaryFlag[]
-  itemBadges: ItemBadge[]
-  spiceLevel: number
-  saving: boolean
-}
-
 const DIETARY_OPTIONS: { flag: DietaryFlag; label: string }[] = [
   { flag: "vegetarian", label: "Vegetarian" },
   { flag: "vegan", label: "Vegan" },
@@ -161,110 +153,328 @@ function applyDietaryLogic(flags: DietaryFlag[], toggled: DietaryFlag, checked: 
   return next
 }
 
+interface EditItemForm {
+  name: string
+  description: string
+  price: string
+  position: number
+  categoryId: number
+  dietaryFlags: DietaryFlag[]
+  itemBadges: ItemBadge[]
+  spiceLevel: number
+  isFeatured: boolean
+  featuredSortOrder: number
+  saving: boolean
+  errors: { name?: string; price?: string }
+}
+
+interface NewModForm {
+  name: string
+  modifier_group: string
+  price_delta: string
+  is_required: boolean
+}
+
 function MenuTab() {
   const { branchId, token, role } = useStaffStore()
+  const canManage = role === "owner" || role === "manager"
+
   const [categories, setCategories] = useState<MenuCategory[]>([])
   const [loading, setLoading] = useState(true)
-  const [toggling, setToggling] = useState<number | null>(null)
-  const [togglingFeatured, setTogglingFeatured] = useState<number | null>(null)
-  const [metaEdit, setMetaEdit] = useState<MetaEditState | null>(null)
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
-  useEffect(() => {
-    if (!branchId) return
-    menuApi.getMenu(branchId).then(({ categories }) => setCategories(categories)).catch(() => {
+  // Per-item states
+  const [toggling, setToggling] = useState<number | null>(null)
+  const [bulkToggling, setBulkToggling] = useState<number | null>(null) // category ID
+
+  // Edit item sheet
+  const [editItem, setEditItem] = useState<MenuItem | null>(null)
+  const [editForm, setEditForm] = useState<EditItemForm | null>(null)
+  const [addingMod, setAddingMod] = useState(false)
+  const [newMod, setNewMod] = useState<NewModForm>({ name: "", modifier_group: "", price_delta: "0", is_required: false })
+  const [savingMod, setSavingMod] = useState(false)
+
+  // Category management
+  const [catMore, setCatMore] = useState<number | null>(null) // category ID with open dropdown
+  const [renaming, setRenaming] = useState<number | null>(null)
+  const [renameValue, setRenameValue] = useState("")
+
+  // Add item inline form
+  const [addItemCat, setAddItemCat] = useState<number | null>(null)
+  const [newItemForm, setNewItemForm] = useState({ name: "", price: "", description: "" })
+  const [addingItem, setAddingItem] = useState(false)
+
+  // Add category
+  const [addingCat, setAddingCat] = useState(false)
+  const [newCatName, setNewCatName] = useState("")
+  const [creatingCat, setCreatingCat] = useState(false)
+
+  const loadMenu = useCallback(async () => {
+    if (!branchId || !token) return
+    setLoading(true)
+    try {
+      const data = await staffApi.getAdminMenu(branchId, token)
+      setCategories(data.categories)
+      setExpanded(new Set(data.categories.map((c) => c.id)))
+    } catch {
       toast.error("Couldn't load menu.")
-    }).finally(() => setLoading(false))
-  }, [branchId])
+    } finally {
+      setLoading(false)
+    }
+  }, [branchId, token])
+
+  useEffect(() => { loadMenu() }, [loadMenu])
+
+  function updateItemInState(itemId: number, patch: Partial<MenuItem>) {
+    setCategories((prev) =>
+      prev.map((cat) => ({
+        ...cat,
+        items: cat.items.map((item) => item.id === itemId ? { ...item, ...patch } : item),
+      }))
+    )
+  }
 
   async function handleToggle(itemId: number, current: boolean) {
     if (!branchId || !token) return
     setToggling(itemId)
     const next = !current
-    setCategories((prev) =>
-      prev.map((cat) => ({
-        ...cat,
-        items: cat.items.map((item) =>
-          item.id === itemId ? { ...item, is_available: next } : item
-        ),
-      }))
-    )
+    updateItemInState(itemId, { is_available: next })
     try {
       await staffApi.toggleAvailability(itemId, branchId, next, token)
     } catch {
-      setCategories((prev) =>
-        prev.map((cat) => ({
-          ...cat,
-          items: cat.items.map((item) =>
-            item.id === itemId ? { ...item, is_available: current } : item
-          ),
-        }))
-      )
+      updateItemInState(itemId, { is_available: current })
       toast.error("Couldn't update availability.")
     } finally {
       setToggling(null)
     }
   }
 
-  async function handleToggleFeatured(itemId: number, currentFeatured: boolean, sortOrder: number) {
+  async function handleBulkToggle(catId: number, available: boolean) {
     if (!branchId || !token) return
-    setTogglingFeatured(itemId)
-    const next = !currentFeatured
-    setCategories((prev) =>
-      prev.map((cat) => ({
-        ...cat,
-        items: cat.items.map((item) =>
-          item.id === itemId ? { ...item, is_featured: next } : item
-        ),
-      }))
-    )
+    const cat = categories.find((c) => c.id === catId)
+    if (!cat) return
+    setBulkToggling(catId)
+    setCatMore(null)
     try {
-      await staffApi.toggleFeatured(itemId, branchId, next, sortOrder, token)
+      for (const item of cat.items) {
+        await staffApi.toggleAvailability(item.id, branchId, available, token)
+        updateItemInState(item.id, { is_available: available })
+      }
     } catch {
-      setCategories((prev) =>
-        prev.map((cat) => ({
-          ...cat,
-          items: cat.items.map((item) =>
-            item.id === itemId ? { ...item, is_featured: currentFeatured } : item
-          ),
-        }))
-      )
-      toast.error("Couldn't update featured status.")
+      toast.error("Some items couldn't be updated.")
     } finally {
-      setTogglingFeatured(null)
+      setBulkToggling(null)
     }
   }
 
-  async function handleSaveMeta() {
-    if (!metaEdit || !branchId || !token) return
-    setMetaEdit((s) => s && { ...s, saving: true })
-    const { item, dietaryFlags, itemBadges, spiceLevel } = metaEdit
+  async function handleDeleteItem(itemId: number, catId: number) {
+    if (!branchId || !token) return
+    if (!confirm("Delete this item?")) return
+    try {
+      await staffApi.deleteMenuItem(itemId, branchId, token)
+      setCategories((prev) =>
+        prev.map((cat) =>
+          cat.id === catId ? { ...cat, items: cat.items.filter((i) => i.id !== itemId) } : cat
+        )
+      )
+    } catch {
+      toast.error("Couldn't delete item.")
+    }
+  }
+
+  async function handleDeleteCategory(catId: number) {
+    if (!branchId || !token) return
+    if (!confirm("Delete this category?")) return
+    setCatMore(null)
+    try {
+      await staffApi.deleteCategory(catId, branchId, token)
+      setCategories((prev) => prev.filter((c) => c.id !== catId))
+    } catch (err: unknown) {
+      if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "CATEGORY_NOT_EMPTY") {
+        toast.error("Remove all items from this category before deleting it.")
+      } else {
+        toast.error("Couldn't delete category.")
+      }
+    }
+  }
+
+  async function handleRenameCategory(catId: number) {
+    if (!branchId || !token) return
+    const cat = categories.find((c) => c.id === catId)
+    if (!cat || !renameValue.trim()) return
+    try {
+      const updated = await staffApi.updateCategory(catId, branchId, {
+        name: renameValue.trim(),
+        position: cat.position,
+        is_active: cat.is_active,
+      }, token)
+      setCategories((prev) => prev.map((c) => c.id === catId ? { ...c, name: updated.name } : c))
+      setRenaming(null)
+    } catch {
+      toast.error("Couldn't rename category.")
+    }
+  }
+
+  async function handleMoveCategory(catId: number, direction: "up" | "down") {
+    if (!branchId || !token) return
+    const cat = categories.find((c) => c.id === catId)
+    if (!cat) return
+    setCatMore(null)
+    const newPos = direction === "up" ? cat.position - 1 : cat.position + 1
+    try {
+      await staffApi.updateCategory(catId, branchId, {
+        name: cat.name,
+        position: newPos,
+        is_active: cat.is_active,
+      }, token)
+      await loadMenu()
+    } catch {
+      toast.error("Couldn't reorder category.")
+    }
+  }
+
+  function openEditSheet(item: MenuItem) {
+    setEditItem(item)
+    setEditForm({
+      name: item.name,
+      description: item.description,
+      price: item.price,
+      position: item.position,
+      categoryId: item.category_id,
+      dietaryFlags: item.dietary_flags ?? [],
+      itemBadges: item.item_badges ?? [],
+      spiceLevel: item.spice_level ?? 0,
+      isFeatured: item.is_featured ?? false,
+      featuredSortOrder: item.featured_sort_order ?? 0,
+      saving: false,
+      errors: {},
+    })
+    setAddingMod(false)
+    setNewMod({ name: "", modifier_group: "", price_delta: "0", is_required: false })
+  }
+
+  async function handleSaveItem() {
+    if (!editForm || !editItem || !branchId || !token) return
+    const errors: EditItemForm["errors"] = {}
+    if (!editForm.name.trim()) errors.name = "Name is required"
+    const priceNum = parseFloat(editForm.price)
+    if (isNaN(priceNum) || priceNum < 0) errors.price = "Price must be ≥ 0"
+    if (Object.keys(errors).length) {
+      setEditForm((f) => f && { ...f, errors })
+      return
+    }
+    setEditForm((f) => f && { ...f, saving: true, errors: {} })
     try {
       const updated = await staffApi.updateMenuItem(
-        item.id,
+        editItem.id,
         branchId,
         {
-          name: item.name,
-          price: parseFloat(item.price),
-          description: item.description,
-          position: item.position,
-          dietary_flags: dietaryFlags,
-          item_badges: itemBadges,
-          spice_level: spiceLevel,
+          name: editForm.name.trim(),
+          price: priceNum,
+          description: editForm.description,
+          position: editForm.position,
+          dietary_flags: editForm.dietaryFlags,
+          item_badges: editForm.itemBadges,
+          spice_level: editForm.spiceLevel,
+          category_id: editForm.categoryId !== editItem.category_id ? editForm.categoryId : undefined,
         },
         token
       )
-      setCategories((prev) =>
-        prev.map((cat) => ({
-          ...cat,
-          items: cat.items.map((i) => (i.id === item.id ? { ...i, ...updated } : i)),
-        }))
-      )
-      toast.success("Metadata saved")
-      setMetaEdit(null)
+      // Also update featured separately if changed
+      if (editForm.isFeatured !== (editItem.is_featured ?? false) ||
+          editForm.featuredSortOrder !== (editItem.featured_sort_order ?? 0)) {
+        await staffApi.toggleFeatured(editItem.id, branchId, editForm.isFeatured, editForm.featuredSortOrder, token)
+      }
+      updateItemInState(editItem.id, { ...updated, is_featured: editForm.isFeatured, featured_sort_order: editForm.featuredSortOrder })
+      // If category changed, reload to move the item
+      if (editForm.categoryId !== editItem.category_id) {
+        await loadMenu()
+      }
+      toast.success("Item saved")
+      setEditItem(null)
+      setEditForm(null)
     } catch {
-      toast.error("Couldn't save metadata.")
+      toast.error("Couldn't save item.")
+      setEditForm((f) => f && { ...f, saving: false })
+    }
+  }
+
+  async function handleAddModifier() {
+    if (!editItem || !branchId || !token) return
+    if (!newMod.name.trim()) { toast.error("Modifier name required"); return }
+    setSavingMod(true)
+    try {
+      const created = await staffApi.addModifier(editItem.id, branchId, {
+        name: newMod.name.trim(),
+        price_delta: parseFloat(newMod.price_delta) || 0,
+        is_required: newMod.is_required,
+        modifier_group: newMod.modifier_group.trim(),
+      }, token)
+      updateItemInState(editItem.id, {
+        modifiers: [...(editItem.modifiers ?? []), created],
+      })
+      setEditItem((prev) => prev && { ...prev, modifiers: [...(prev.modifiers ?? []), created] })
+      setNewMod({ name: "", modifier_group: "", price_delta: "0", is_required: false })
+      setAddingMod(false)
+    } catch {
+      toast.error("Couldn't add modifier.")
     } finally {
-      setMetaEdit((s) => s && { ...s, saving: false })
+      setSavingMod(false)
+    }
+  }
+
+  async function handleDeleteModifier(modId: number) {
+    if (!editItem || !branchId || !token) return
+    try {
+      await staffApi.deleteModifier(modId, branchId, token)
+      const updatedMods = (editItem.modifiers ?? []).filter((m) => m.id !== modId)
+      updateItemInState(editItem.id, { modifiers: updatedMods })
+      setEditItem((prev) => prev && { ...prev, modifiers: updatedMods })
+    } catch {
+      toast.error("Couldn't delete modifier.")
+    }
+  }
+
+  async function handleCreateItem(catId: number) {
+    if (!branchId || !token) return
+    if (!newItemForm.name.trim() || !newItemForm.price.trim()) {
+      toast.error("Name and price are required")
+      return
+    }
+    const price = parseFloat(newItemForm.price)
+    if (isNaN(price) || price < 0) { toast.error("Invalid price"); return }
+    setAddingItem(true)
+    try {
+      const created = await staffApi.createMenuItem(branchId, catId, newItemForm.name.trim(), price, token, {
+        description: newItemForm.description,
+        is_available: true,
+      })
+      setCategories((prev) =>
+        prev.map((cat) => cat.id === catId ? { ...cat, items: [...cat.items, created] } : cat)
+      )
+      setNewItemForm({ name: "", price: "", description: "" })
+      setAddItemCat(null)
+    } catch {
+      toast.error("Couldn't create item.")
+    } finally {
+      setAddingItem(false)
+    }
+  }
+
+  async function handleCreateCategory() {
+    if (!branchId || !token || !newCatName.trim()) return
+    setCreatingCat(true)
+    try {
+      const nextPos = categories.length > 0 ? Math.max(...categories.map((c) => c.position)) + 1 : 0
+      const created = await staffApi.createCategory(branchId, newCatName.trim(), nextPos, token)
+      setCategories((prev) => [...prev, { ...created, items: [] }])
+      setExpanded((prev) => new Set([...prev, created.id]))
+      setNewCatName("")
+      setAddingCat(false)
+    } catch {
+      toast.error("Couldn't create category.")
+    } finally {
+      setCreatingCat(false)
     }
   }
 
@@ -276,173 +486,410 @@ function MenuTab() {
     )
   }
 
+  const btnIcon: React.CSSProperties = {
+    minHeight: 32, minWidth: 32,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    borderRadius: "var(--rad-md)",
+    border: "1px solid var(--line-2)",
+    background: "var(--bg-elev-2)",
+    color: "var(--ink-3)",
+    cursor: "pointer",
+  }
+
   return (
     <>
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {categories.map((cat) => (
-        <section key={cat.id}>
-          <p className="eyebrow" style={{ marginBottom: 10 }}>{cat.name}</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {cat.items.map((item) => (
-              <HospitalityCard
-                key={item.id}
-                elev={1}
-                style={{
-                  padding: "12px 16px",
-                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-                  opacity: item.is_available ? 1 : 0.55,
-                }}
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {categories.map((cat) => {
+        const isExpanded = expanded.has(cat.id)
+        const isRenaming = renaming === cat.id
+        const isBulking = bulkToggling === cat.id
+        const showMore = catMore === cat.id
+
+        return (
+          <div key={cat.id} style={{
+            borderRadius: "var(--rad-lg)",
+            border: "1px solid var(--line-1)",
+            background: "var(--bg-elev-1)",
+            overflow: "hidden",
+          }}>
+            {/* Category header */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "12px 14px",
+              borderBottom: isExpanded ? "1px solid var(--line-1)" : "none",
+            }}>
+              <button
+                className="press"
+                onClick={() => setExpanded((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(cat.id)) next.delete(cat.id)
+                  else next.add(cat.id)
+                  return next
+                })}
+                style={{ ...btnIcon, border: "none", background: "transparent", flexShrink: 0 }}
+                aria-label={isExpanded ? "Collapse" : "Expand"}
               >
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {item.name}
-                  </p>
-                  <p style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 1 }}>
-                    {formatCurrency(item.price)}
-                  </p>
+                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+
+              {isRenaming ? (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleRenameCategory(cat.id)
+                    if (e.key === "Escape") setRenaming(null)
+                  }}
+                  onBlur={() => handleRenameCategory(cat.id)}
+                  style={{
+                    flex: 1, fontSize: 13, fontWeight: 600,
+                    background: "var(--bg-elev-2)",
+                    border: "1px solid var(--accent)",
+                    borderRadius: "var(--rad-sm)",
+                    padding: "4px 8px", color: "var(--ink-1)",
+                  }}
+                />
+              ) : (
+                <p style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "var(--ink-1)" }}>
+                  {cat.name}
+                  <span style={{ fontWeight: 400, color: "var(--ink-3)", marginLeft: 6 }}>
+                    ({cat.items.length})
+                  </span>
+                  {!cat.is_active && (
+                    <span style={{ fontSize: 10, fontWeight: 600, color: "var(--warn)", marginLeft: 8, textTransform: "uppercase" }}>
+                      Inactive
+                    </span>
+                  )}
+                </p>
+              )}
+
+              {isBulking && <Loader2 size={14} className="animate-spin" style={{ color: "var(--ink-3)", flexShrink: 0 }} />}
+
+              {canManage && (
+                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <button
+                    className="press"
+                    onClick={() => { setAddItemCat(addItemCat === cat.id ? null : cat.id); setExpanded((prev) => new Set([...prev, cat.id])) }}
+                    style={{ ...btnIcon, padding: "0 10px", gap: 4, fontSize: 12 }}
+                    aria-label="Add item"
+                  >
+                    <Plus size={12} /> Add
+                  </button>
+                  <div style={{ position: "relative" }}>
+                    <button
+                      className="press"
+                      onClick={() => setCatMore(showMore ? null : cat.id)}
+                      style={btnIcon}
+                      aria-label="Category options"
+                    >
+                      <MoreVertical size={14} />
+                    </button>
+                    {showMore && (
+                      <div style={{
+                        position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 50,
+                        minWidth: 180, background: "var(--bg-elev-3)",
+                        border: "1px solid var(--line-2)", borderRadius: "var(--rad-md)",
+                        boxShadow: "var(--shadow-2)", padding: "4px 0",
+                      }}>
+                        {[
+                          { label: "Rename", action: () => { setRenaming(cat.id); setRenameValue(cat.name); setCatMore(null) } },
+                          { label: "Move up", action: () => handleMoveCategory(cat.id, "up") },
+                          { label: "Move down", action: () => handleMoveCategory(cat.id, "down") },
+                          { label: "Mark all available", action: () => handleBulkToggle(cat.id, true) },
+                          { label: "Mark all unavailable", action: () => handleBulkToggle(cat.id, false) },
+                          { label: "Delete category", action: () => handleDeleteCategory(cat.id), danger: true },
+                        ].map(({ label, action, danger }) => (
+                          <button
+                            key={label}
+                            className="press"
+                            onClick={action}
+                            style={{
+                              width: "100%", textAlign: "left",
+                              padding: "8px 14px", fontSize: 13,
+                              background: "transparent", border: "none", cursor: "pointer",
+                              color: danger ? "var(--err)" : "var(--ink-2)",
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                {role === 'owner' && (
-                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                    <button
-                      onClick={() => setMetaEdit({
-                        item,
-                        dietaryFlags: item.dietary_flags ?? [],
-                        itemBadges: item.item_badges ?? [],
-                        spiceLevel: item.spice_level ?? 0,
-                        saving: false,
-                      })}
-                      className="press"
-                      style={{
-                        minHeight: 36, minWidth: 36,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        borderRadius: "var(--rad-pill)",
-                        border: "1px solid var(--line-2)",
-                        background: "var(--bg-elev-2)",
-                        color: "var(--ink-3)",
-                      }}
-                      aria-label="Edit metadata"
-                    >
-                      <Settings2 size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleToggleFeatured(item.id, item.is_featured ?? false, item.featured_sort_order ?? 0)}
-                      disabled={togglingFeatured === item.id}
-                      className="press"
-                      style={{
-                        fontSize: 12, fontWeight: 600,
-                        padding: "6px 14px",
-                        borderRadius: "var(--rad-pill)",
-                        border: "1px solid",
-                        minHeight: 36,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        borderColor: item.is_featured ? "var(--accent)" : "var(--line-2)",
-                        background: item.is_featured ? "var(--accent-soft)" : "var(--bg-elev-2)",
-                        color: item.is_featured ? "var(--accent)" : "var(--ink-3)",
-                        transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)",
-                        cursor: togglingFeatured === item.id ? "not-allowed" : "pointer",
-                      }}
-                      aria-label={item.is_featured ? "Remove from featured" : "Add to featured"}
-                    >
-                      {togglingFeatured === item.id ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : item.is_featured ? (
-                        "Featured"
-                      ) : (
-                        "Feature"
+              )}
+            </div>
+
+            {/* Item rows */}
+            {isExpanded && (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {cat.items.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "10px 14px",
+                      borderBottom: idx < cat.items.length - 1 ? "1px solid var(--line-1)" : "none",
+                      opacity: item.is_available ? 1 : 0.6,
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 500, color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {item.name}
+                      </p>
+                      <p style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 1 }}>
+                        {formatCurrency(item.price)}
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
+                      {/* Availability toggle — all roles */}
+                      <button
+                        onClick={() => handleToggle(item.id, item.is_available)}
+                        disabled={toggling === item.id}
+                        className="press"
+                        style={{
+                          fontSize: 11, fontWeight: 600, padding: "4px 12px",
+                          borderRadius: "var(--rad-pill)", border: "none",
+                          minHeight: 30, display: "flex", alignItems: "center", justifyContent: "center",
+                          background: item.is_available ? "var(--ok)" : "var(--bg-elev-3)",
+                          color: item.is_available ? "white" : "var(--ink-3)",
+                          cursor: toggling === item.id ? "not-allowed" : "pointer",
+                        }}
+                        aria-label={item.is_available ? "Mark unavailable" : "Mark available"}
+                      >
+                        {toggling === item.id ? <Loader2 size={11} className="animate-spin" /> : item.is_available ? "On" : "Off"}
+                      </button>
+                      {canManage && (
+                        <>
+                          <button className="press" onClick={() => openEditSheet(item)} style={btnIcon} aria-label="Edit item">
+                            <Edit2 size={12} />
+                          </button>
+                          <button className="press" onClick={() => handleDeleteItem(item.id, cat.id)} style={{ ...btnIcon, color: "var(--err)" }} aria-label="Delete item">
+                            <Trash2 size={12} />
+                          </button>
+                        </>
                       )}
-                    </button>
-                    <button
-                      onClick={() => handleToggle(item.id, item.is_available)}
-                      disabled={toggling === item.id}
-                      className="press"
-                      style={{
-                        fontSize: 12, fontWeight: 600,
-                        padding: "6px 14px",
-                        borderRadius: "var(--rad-pill)",
-                        border: "none",
-                        minHeight: 36, minWidth: 72,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        background: item.is_available ? "var(--ok)" : "var(--bg-elev-3)",
-                        color: item.is_available ? "white" : "var(--ink-3)",
-                        transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)",
-                        cursor: toggling === item.id ? "not-allowed" : "pointer",
-                      }}
-                      aria-label={item.is_available ? "Mark unavailable" : "Mark available"}
-                    >
-                      {toggling === item.id ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : item.is_available ? (
-                        "Available"
-                      ) : (
-                        "Off"
-                      )}
-                    </button>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Inline add item form */}
+                {addItemCat === cat.id && canManage && (
+                  <div style={{ padding: "12px 14px", borderTop: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 8 }}>
+                    <Input
+                      placeholder="Item name *"
+                      value={newItemForm.name}
+                      onChange={(e) => setNewItemForm((f) => ({ ...f, name: e.target.value }))}
+                      style={{ fontSize: 13 }}
+                    />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Input
+                        placeholder="Price *"
+                        type="number"
+                        min={0}
+                        step={0.5}
+                        value={newItemForm.price}
+                        onChange={(e) => setNewItemForm((f) => ({ ...f, price: e.target.value }))}
+                        style={{ flex: 1, fontSize: 13 }}
+                      />
+                      <Input
+                        placeholder="Description"
+                        value={newItemForm.description}
+                        onChange={(e) => setNewItemForm((f) => ({ ...f, description: e.target.value }))}
+                        style={{ flex: 2, fontSize: 13 }}
+                      />
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Button
+                        onClick={() => handleCreateItem(cat.id)}
+                        disabled={addingItem}
+                        style={{ flex: 1 }}
+                      >
+                        {addingItem ? <Loader2 size={14} className="animate-spin" /> : "Add Item"}
+                      </Button>
+                      <Button variant="outline" onClick={() => setAddItemCat(null)} style={{ flex: 1 }}>
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
                 )}
-              </HospitalityCard>
-            ))}
+
+                {cat.items.length === 0 && addItemCat !== cat.id && (
+                  <p style={{ padding: "16px 14px", fontSize: 13, color: "var(--ink-3)", fontStyle: "italic" }}>
+                    No items yet.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
-        </section>
-      ))}
+        )
+      })}
+
+      {/* Add category */}
+      {canManage && (
+        <div>
+          {addingCat ? (
+            <div style={{ display: "flex", gap: 8 }}>
+              <Input
+                autoFocus
+                placeholder="Category name *"
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreateCategory(); if (e.key === "Escape") setAddingCat(false) }}
+                style={{ flex: 1, fontSize: 13 }}
+              />
+              <Button onClick={handleCreateCategory} disabled={creatingCat}>
+                {creatingCat ? <Loader2 size={14} className="animate-spin" /> : "Create"}
+              </Button>
+              <Button variant="outline" onClick={() => setAddingCat(false)}>Cancel</Button>
+            </div>
+          ) : (
+            <button
+              className="press"
+              onClick={() => setAddingCat(true)}
+              style={{
+                width: "100%", padding: "12px", borderRadius: "var(--rad-lg)",
+                border: "2px dashed var(--line-2)", background: "transparent",
+                fontSize: 13, color: "var(--ink-3)", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              }}
+            >
+              <Plus size={14} /> Add Category
+            </button>
+          )}
+        </div>
+      )}
     </div>
 
-    {/* Metadata edit sheet */}
-    {metaEdit && (
+    {/* Close dropdown on outside click */}
+    {catMore !== null && (
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 40 }}
+        onClick={() => setCatMore(null)}
+        aria-hidden
+      />
+    )}
+
+    {/* Edit item sheet */}
+    {editItem && editForm && (
       <BottomSheet
         open={true}
-        onClose={() => setMetaEdit(null)}
-        title={metaEdit.item.name}
+        onClose={() => { setEditItem(null); setEditForm(null) }}
+        title={`Edit: ${editItem.name}`}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 24, paddingBottom: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 20 }}>
+          {/* Name */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", display: "block", marginBottom: 6 }}>Name *</label>
+            <Input
+              value={editForm.name}
+              maxLength={80}
+              onChange={(e) => setEditForm((f) => f && { ...f, name: e.target.value, errors: { ...f.errors, name: undefined } })}
+              style={{ borderColor: editForm.errors.name ? "var(--err)" : undefined }}
+            />
+            {editForm.errors.name && <p style={{ fontSize: 11, color: "var(--err)", marginTop: 4 }}>{editForm.errors.name}</p>}
+          </div>
+
+          {/* Description */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", display: "block", marginBottom: 6 }}>Description</label>
+            <textarea
+              value={editForm.description}
+              rows={2}
+              onChange={(e) => setEditForm((f) => f && { ...f, description: e.target.value })}
+              style={{
+                width: "100%", fontSize: 14, padding: "8px 12px",
+                borderRadius: "var(--rad-md)", border: "1px solid var(--line-2)",
+                background: "var(--bg-elev-2)", color: "var(--ink-1)", resize: "none",
+              }}
+            />
+          </div>
+
+          {/* Price and Position */}
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 2 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", display: "block", marginBottom: 6 }}>Price (₹) *</label>
+              <Input
+                type="number"
+                min={0}
+                step={0.5}
+                value={editForm.price}
+                onChange={(e) => setEditForm((f) => f && { ...f, price: e.target.value, errors: { ...f.errors, price: undefined } })}
+                style={{ borderColor: editForm.errors.price ? "var(--err)" : undefined }}
+              />
+              {editForm.errors.price && <p style={{ fontSize: 11, color: "var(--err)", marginTop: 4 }}>{editForm.errors.price}</p>}
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", display: "block", marginBottom: 6 }}>Position</label>
+              <Input
+                type="number"
+                min={0}
+                value={editForm.position}
+                onChange={(e) => setEditForm((f) => f && { ...f, position: parseInt(e.target.value) || 0 })}
+              />
+            </div>
+          </div>
+
+          {/* Category */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", display: "block", marginBottom: 6 }}>Category</label>
+            <select
+              value={editForm.categoryId}
+              onChange={(e) => setEditForm((f) => f && { ...f, categoryId: parseInt(e.target.value) })}
+              style={{
+                width: "100%", fontSize: 14, padding: "8px 12px",
+                borderRadius: "var(--rad-md)", border: "1px solid var(--line-2)",
+                background: "var(--bg-elev-2)", color: "var(--ink-1)",
+              }}
+            >
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Dietary flags */}
           <div>
             <p className="eyebrow" style={{ marginBottom: 10 }}>Dietary</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {DIETARY_OPTIONS.map(({ flag, label }) => {
-                const checked = metaEdit.dietaryFlags.includes(flag)
-                return (
-                  <label key={flag} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => setMetaEdit((s) => s && {
-                        ...s,
-                        dietaryFlags: applyDietaryLogic(s.dietaryFlags, flag, e.target.checked),
-                      })}
-                      style={{ width: 18, height: 18, accentColor: "var(--accent)", cursor: "pointer" }}
-                    />
-                    <span style={{ fontSize: 14, color: "var(--ink-2)" }}>{label}</span>
-                  </label>
-                )
-              })}
+              {DIETARY_OPTIONS.map(({ flag, label }) => (
+                <label key={flag} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={editForm.dietaryFlags.includes(flag)}
+                    onChange={(e) => setEditForm((f) => f && {
+                      ...f,
+                      dietaryFlags: applyDietaryLogic(f.dietaryFlags, flag, e.target.checked),
+                    })}
+                    style={{ width: 18, height: 18, accentColor: "var(--accent)", cursor: "pointer" }}
+                  />
+                  <span style={{ fontSize: 14, color: "var(--ink-2)" }}>{label}</span>
+                </label>
+              ))}
             </div>
           </div>
 
-          {/* Item badges */}
+          {/* Badges */}
           <div>
             <p className="eyebrow" style={{ marginBottom: 10 }}>Badges</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {BADGE_OPTIONS.map(({ badge, label }) => {
-                const active = metaEdit.itemBadges.includes(badge)
+                const active = editForm.itemBadges.includes(badge)
                 return (
                   <button
                     key={badge}
-                    onClick={() => setMetaEdit((s) => s && {
-                      ...s,
-                      itemBadges: active
-                        ? s.itemBadges.filter((b) => b !== badge)
-                        : [...s.itemBadges, badge],
-                    })}
                     className="press"
+                    onClick={() => setEditForm((f) => f && {
+                      ...f,
+                      itemBadges: active ? f.itemBadges.filter((b) => b !== badge) : [...f.itemBadges, badge],
+                    })}
                     style={{
-                      fontSize: 13, fontWeight: 600,
-                      padding: "8px 16px",
-                      borderRadius: "var(--rad-pill)",
-                      border: "1px solid",
+                      fontSize: 13, fontWeight: 600, padding: "8px 16px",
+                      borderRadius: "var(--rad-pill)", border: "1px solid",
                       borderColor: active ? "var(--accent)" : "var(--line-2)",
                       background: active ? "var(--accent-soft)" : "var(--bg-elev-2)",
                       color: active ? "var(--accent)" : "var(--ink-3)",
-                      transition: "all var(--dur-fast) var(--ease)",
                       cursor: "pointer",
                     }}
                   >
@@ -453,26 +900,23 @@ function MenuTab() {
             </div>
           </div>
 
-          {/* Spice level */}
+          {/* Spice */}
           <div>
             <p className="eyebrow" style={{ marginBottom: 10 }}>Spice Level</p>
             <div style={{ display: "flex", gap: 8 }}>
               {SPICE_LABELS.map((label, level) => {
-                const active = metaEdit.spiceLevel === level
+                const active = editForm.spiceLevel === level
                 return (
                   <button
                     key={level}
-                    onClick={() => setMetaEdit((s) => s && { ...s, spiceLevel: level })}
                     className="press"
+                    onClick={() => setEditForm((f) => f && { ...f, spiceLevel: level })}
                     style={{
-                      flex: 1, fontSize: 12, fontWeight: 600,
-                      padding: "8px 4px",
-                      borderRadius: "var(--rad-md)",
-                      border: "1px solid",
+                      flex: 1, fontSize: 12, fontWeight: 600, padding: "8px 4px",
+                      borderRadius: "var(--rad-md)", border: "1px solid",
                       borderColor: active ? "var(--accent)" : "var(--line-2)",
                       background: active ? "var(--accent-soft)" : "var(--bg-elev-2)",
                       color: active ? "var(--accent)" : "var(--ink-3)",
-                      transition: "all var(--dur-fast) var(--ease)",
                       cursor: "pointer",
                     }}
                   >
@@ -480,23 +924,140 @@ function MenuTab() {
                   </button>
                 )
               })}
+            </div>
+          </div>
+
+          {/* Featured */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={editForm.isFeatured}
+                onChange={(e) => setEditForm((f) => f && { ...f, isFeatured: e.target.checked })}
+                style={{ width: 18, height: 18, accentColor: "var(--accent)" }}
+              />
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-2)" }}>Feature this item</span>
+            </label>
+            {editForm.isFeatured && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12, color: "var(--ink-3)" }}>Sort</span>
+                <Input
+                  type="number"
+                  min={0}
+                  value={editForm.featuredSortOrder}
+                  onChange={(e) => setEditForm((f) => f && { ...f, featuredSortOrder: parseInt(e.target.value) || 0 })}
+                  style={{ width: 70 }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Modifiers */}
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 10 }}>Modifiers</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {(editItem.modifiers ?? []).map((mod) => (
+                <div
+                  key={mod.id}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 12px",
+                    borderRadius: "var(--rad-md)",
+                    background: "var(--bg-elev-2)",
+                    border: "1px solid var(--line-1)",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, color: "var(--ink-1)" }}>{mod.name}</p>
+                    <p style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                      {mod.modifier_group && <span style={{ marginRight: 8 }}>{mod.modifier_group}</span>}
+                      {mod.price_delta >= 0 ? `+₹${mod.price_delta}` : `-₹${Math.abs(mod.price_delta)}`}
+                      {mod.is_required && <span style={{ marginLeft: 8, color: "var(--accent)" }}>Required</span>}
+                    </p>
+                  </div>
+                  <button
+                    className="press"
+                    onClick={() => handleDeleteModifier(mod.id)}
+                    style={{ ...btnIcon, color: "var(--err)" }}
+                    aria-label="Delete modifier"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+
+              {addingMod ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", background: "var(--bg-elev-2)", borderRadius: "var(--rad-md)", border: "1px solid var(--line-2)" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <Input
+                      placeholder="Name (e.g. Large)"
+                      value={newMod.name}
+                      onChange={(e) => setNewMod((m) => ({ ...m, name: e.target.value }))}
+                      style={{ fontSize: 13 }}
+                    />
+                    <Input
+                      placeholder="Group (e.g. size)"
+                      value={newMod.modifier_group}
+                      onChange={(e) => setNewMod((m) => ({ ...m, modifier_group: e.target.value }))}
+                      style={{ fontSize: 13 }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <Input
+                      type="number"
+                      placeholder="₹ delta"
+                      value={newMod.price_delta}
+                      onChange={(e) => setNewMod((m) => ({ ...m, price_delta: e.target.value }))}
+                      style={{ flex: 1, fontSize: 13 }}
+                    />
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink-2)", cursor: "pointer", flexShrink: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={newMod.is_required}
+                        onChange={(e) => setNewMod((m) => ({ ...m, is_required: e.target.checked }))}
+                        style={{ accentColor: "var(--accent)" }}
+                      />
+                      Required
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Button onClick={handleAddModifier} disabled={savingMod} style={{ flex: 1 }}>
+                      {savingMod ? <Loader2 size={14} className="animate-spin" /> : "Add"}
+                    </Button>
+                    <Button variant="outline" onClick={() => setAddingMod(false)} style={{ flex: 1 }}>Cancel</Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  className="press"
+                  onClick={() => setAddingMod(true)}
+                  style={{
+                    padding: "8px 12px", borderRadius: "var(--rad-md)",
+                    border: "1px dashed var(--line-2)", background: "transparent",
+                    fontSize: 13, color: "var(--ink-3)", cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: 6,
+                  }}
+                >
+                  <Plus size={12} /> Add modifier
+                </button>
+              )}
             </div>
           </div>
 
           {/* Save */}
           <button
-            onClick={handleSaveMeta}
-            disabled={metaEdit.saving}
+            onClick={handleSaveItem}
+            disabled={editForm.saving}
             className="press btn-primary"
             style={{
               width: "100%", height: 52, borderRadius: 14,
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 15, fontWeight: 700,
-              opacity: metaEdit.saving ? 0.6 : 1,
-              cursor: metaEdit.saving ? "not-allowed" : "pointer",
+              opacity: editForm.saving ? 0.6 : 1,
+              cursor: editForm.saving ? "not-allowed" : "pointer",
             }}
           >
-            {metaEdit.saving ? <Loader2 size={16} className="animate-spin" /> : "Save Metadata"}
+            {editForm.saving ? <Loader2 size={16} className="animate-spin" /> : "Save Changes"}
           </button>
         </div>
       </BottomSheet>

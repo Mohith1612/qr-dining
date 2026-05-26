@@ -454,11 +454,12 @@ type EventLog struct {
 }
 
 type ItemModifier struct {
-	ID         int64          `json:"id"`
-	ItemID     int64          `json:"item_id"`
-	Name       string         `json:"name"`
-	PriceDelta pgtype.Numeric `json:"price_delta"`
-	IsRequired bool           `json:"is_required"`
+	ID            int64          `json:"id"`
+	ItemID        int64          `json:"item_id"`
+	Name          string         `json:"name"`
+	PriceDelta    pgtype.Numeric `json:"price_delta"`
+	IsRequired    bool           `json:"is_required"`
+	ModifierGroup string         `json:"modifier_group"`
 }
 
 type MenuCategory struct {

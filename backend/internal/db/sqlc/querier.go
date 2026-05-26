@@ -17,7 +17,9 @@ type Querier interface {
 	AddCartItem(ctx context.Context, arg AddCartItemParams) (CartItem, error)
 	ClearCart(ctx context.Context, cartID int64) error
 	CloseSessionIfActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	CountItemsInCategory(ctx context.Context, categoryID int64) (int64, error)
 	CreateAssistanceRequest(ctx context.Context, arg CreateAssistanceRequestParams) (AssistanceRequest, error)
+	CreateItemModifier(ctx context.Context, arg CreateItemModifierParams) (ItemModifier, error)
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
 	CreateParticipant(ctx context.Context, arg CreateParticipantParams) (SessionParticipant, error)
@@ -26,6 +28,9 @@ type Querier interface {
 	CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff, error)
 	CreateTable(ctx context.Context, arg CreateTableParams) (Table, error)
 	DeactivateStaff(ctx context.Context, id int64) error
+	DeleteItemModifier(ctx context.Context, id int64) error
+	DeleteMenuCategory(ctx context.Context, arg DeleteMenuCategoryParams) error
+	DeleteMenuItem(ctx context.Context, arg DeleteMenuItemParams) error
 	GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error)
 	GetAssistanceRequestByID(ctx context.Context, id int64) (AssistanceRequest, error)
 	GetBranchByID(ctx context.Context, id int64) (Branch, error)
@@ -65,6 +70,8 @@ type Querier interface {
 	ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]ListActiveOrdersForBranchRow, error)
 	ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]Session, error)
 	ListActiveStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
+	ListAllMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
+	ListAllMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error)
 	ListAssistanceForSession(ctx context.Context, sessionID uuid.UUID) ([]AssistanceRequest, error)
 	ListCartItems(ctx context.Context, cartID int64) ([]ListCartItemsRow, error)
 	// Queries used by background worker routines.
@@ -92,6 +99,7 @@ type Querier interface {
 	UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistanceStatusParams) (AssistanceRequest, error)
 	UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error
 	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) (CartItem, error)
+	UpdateMenuCategory(ctx context.Context, arg UpdateMenuCategoryParams) (MenuCategory, error)
 	UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) (MenuItem, error)
 	UpdateMenuItemAvailability(ctx context.Context, arg UpdateMenuItemAvailabilityParams) error
 	UpdateMenuItemFeatured(ctx context.Context, arg UpdateMenuItemFeaturedParams) error

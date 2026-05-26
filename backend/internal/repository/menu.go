@@ -83,3 +83,39 @@ func (r *Repos) GetBranchByID(ctx context.Context, id int64) (sqlc.Branch, error
 	}
 	return b, err
 }
+
+func (r *Repos) ListAllMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]sqlc.MenuCategory, error) {
+	return r.q.ListAllMenuCategoriesForBranch(ctx, branchID)
+}
+
+func (r *Repos) ListAllMenuItemsForCategory(ctx context.Context, categoryID int64) ([]sqlc.MenuItem, error) {
+	return r.q.ListAllMenuItemsForCategory(ctx, categoryID)
+}
+
+func (r *Repos) DeleteMenuItem(ctx context.Context, itemID, branchID int64) error {
+	return r.q.DeleteMenuItem(ctx, sqlc.DeleteMenuItemParams{ID: itemID, BranchID: branchID})
+}
+
+func (r *Repos) CountItemsInCategory(ctx context.Context, categoryID int64) (int64, error) {
+	return r.q.CountItemsInCategory(ctx, categoryID)
+}
+
+func (r *Repos) DeleteMenuCategory(ctx context.Context, categoryID, branchID int64) error {
+	return r.q.DeleteMenuCategory(ctx, sqlc.DeleteMenuCategoryParams{ID: categoryID, BranchID: branchID})
+}
+
+func (r *Repos) UpdateMenuCategory(ctx context.Context, p sqlc.UpdateMenuCategoryParams) (sqlc.MenuCategory, error) {
+	cat, err := r.q.UpdateMenuCategory(ctx, p)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.MenuCategory{}, domain.ErrCategoryNotFound
+	}
+	return cat, err
+}
+
+func (r *Repos) CreateItemModifier(ctx context.Context, p sqlc.CreateItemModifierParams) (sqlc.ItemModifier, error) {
+	return r.q.CreateItemModifier(ctx, p)
+}
+
+func (r *Repos) DeleteItemModifier(ctx context.Context, modifierID int64) error {
+	return r.q.DeleteItemModifier(ctx, modifierID)
+}

@@ -22,10 +22,11 @@ func NewMenuService(repos *repository.Repos, cache *redisPkg.Cache) *MenuService
 }
 
 type MenuModifier struct {
-	ID         int64   `json:"id"`
-	Name       string  `json:"name"`
-	PriceDelta float64 `json:"price_delta"`
-	IsRequired bool    `json:"is_required"`
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	PriceDelta    float64 `json:"price_delta"`
+	IsRequired    bool    `json:"is_required"`
+	ModifierGroup string  `json:"modifier_group"`
 }
 
 type MenuItemWithModifiers struct {
@@ -157,6 +158,7 @@ type UpdateMenuItemParams struct {
 	DietaryFlags []string
 	ItemBadges   []string
 	SpiceLevel   int16
+	CategoryID   *int64 // nil = keep current category
 }
 
 // UpdateItem modifies a menu item and invalidates the branch menu cache.
@@ -168,6 +170,10 @@ func (s *MenuService) UpdateItem(ctx context.Context, p UpdateMenuItemParams, re
 	if err := price.Scan(fmt.Sprintf("%.2f", p.Price)); err != nil {
 		return sqlc.MenuItem{}, fmt.Errorf("invalid price: %w", err)
 	}
+	var catID pgtype.Int8
+	if p.CategoryID != nil {
+		catID = pgtype.Int8{Int64: *p.CategoryID, Valid: true}
+	}
 	item, err := s.repos.UpdateMenuItem(ctx, sqlc.UpdateMenuItemParams{
 		ID:           p.ID,
 		Name:         p.Name,
@@ -177,6 +183,7 @@ func (s *MenuService) UpdateItem(ctx context.Context, p UpdateMenuItemParams, re
 		DietaryFlags: p.DietaryFlags,
 		ItemBadges:   p.ItemBadges,
 		SpiceLevel:   p.SpiceLevel,
+		CategoryID:   catID,
 	})
 	if err != nil {
 		return sqlc.MenuItem{}, err
@@ -239,10 +246,11 @@ func (s *MenuService) buildMenu(ctx context.Context, branchID int64) (FullMenu, 
 					return FullMenu{}, fmt.Errorf("convert modifier price for id %d: %w", m.ID, err)
 				}
 				snapMods = append(snapMods, MenuModifier{
-					ID:         m.ID,
-					Name:       m.Name,
-					PriceDelta: delta.Float64,
-					IsRequired: m.IsRequired,
+					ID:            m.ID,
+					Name:          m.Name,
+					PriceDelta:    delta.Float64,
+					IsRequired:    m.IsRequired,
+					ModifierGroup: m.ModifierGroup,
 				})
 			}
 			categoryItems = append(categoryItems, MenuItemWithModifiers{
@@ -292,6 +300,170 @@ func (s *MenuService) ToggleFeatured(ctx context.Context, itemID, branchID int64
 		return err
 	}
 	if err := s.repos.UpdateMenuItemFeatured(ctx, itemID, featured, sortOrder); err != nil {
+		return err
+	}
+	s.InvalidateMenuCache(ctx, branchID)
+	return nil
+}
+
+// GetAdminMenu returns the full menu for a branch including unavailable items and inactive categories (not cached).
+func (s *MenuService) GetAdminMenu(ctx context.Context, branchID int64) (FullMenu, error) {
+	return s.buildAdminMenu(ctx, branchID)
+}
+
+func (s *MenuService) buildAdminMenu(ctx context.Context, branchID int64) (FullMenu, error) {
+	categories, err := s.repos.ListAllMenuCategoriesForBranch(ctx, branchID)
+	if err != nil {
+		return FullMenu{}, err
+	}
+
+	result := FullMenu{BranchID: branchID, Categories: make([]MenuCategoryWithItems, 0, len(categories))}
+
+	for _, cat := range categories {
+		items, err := s.repos.ListAllMenuItemsForCategory(ctx, cat.ID)
+		if err != nil {
+			return FullMenu{}, err
+		}
+
+		categoryItems := make([]MenuItemWithModifiers, 0, len(items))
+		for _, item := range items {
+			mods, err := s.repos.ListModifiersForItem(ctx, item.ID)
+			if err != nil {
+				return FullMenu{}, err
+			}
+			snapMods := make([]MenuModifier, 0, len(mods))
+			for _, m := range mods {
+				delta, err := m.PriceDelta.Float64Value()
+				if err != nil {
+					return FullMenu{}, fmt.Errorf("convert modifier price for id %d: %w", m.ID, err)
+				}
+				snapMods = append(snapMods, MenuModifier{
+					ID:            m.ID,
+					Name:          m.Name,
+					PriceDelta:    delta.Float64,
+					IsRequired:    m.IsRequired,
+					ModifierGroup: m.ModifierGroup,
+				})
+			}
+			categoryItems = append(categoryItems, MenuItemWithModifiers{
+				MenuItem:  item,
+				Modifiers: snapMods,
+			})
+		}
+		result.Categories = append(result.Categories, MenuCategoryWithItems{
+			MenuCategory: cat,
+			Items:        categoryItems,
+		})
+	}
+
+	result.Featured = []MenuItemWithModifiers{}
+	return result, nil
+}
+
+// DeleteMenuItem removes a menu item and invalidates the branch menu cache.
+func (s *MenuService) DeleteMenuItem(ctx context.Context, itemID, branchID int64, requiredRole sqlc.StaffRole) error {
+	if err := requireOwnerOrManager(requiredRole); err != nil {
+		return err
+	}
+	if err := s.repos.DeleteMenuItem(ctx, itemID, branchID); err != nil {
+		return err
+	}
+	s.InvalidateMenuCache(ctx, branchID)
+	return nil
+}
+
+// DeleteCategory removes a menu category if it has no items, invalidates cache.
+// Returns ErrCategoryNotEmpty if items still exist in the category.
+func (s *MenuService) DeleteCategory(ctx context.Context, categoryID, branchID int64, requiredRole sqlc.StaffRole) error {
+	if err := requireOwnerOrManager(requiredRole); err != nil {
+		return err
+	}
+	count, err := s.repos.CountItemsInCategory(ctx, categoryID)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return domain.ErrCategoryNotEmpty
+	}
+	if err := s.repos.DeleteMenuCategory(ctx, categoryID, branchID); err != nil {
+		return err
+	}
+	s.InvalidateMenuCache(ctx, branchID)
+	return nil
+}
+
+type UpdateMenuCategoryParams struct {
+	ID       int64
+	BranchID int64
+	Name     string
+	Position int16
+	IsActive bool
+}
+
+// UpdateCategory modifies a menu category and invalidates the branch menu cache.
+func (s *MenuService) UpdateCategory(ctx context.Context, p UpdateMenuCategoryParams, requiredRole sqlc.StaffRole) (sqlc.MenuCategory, error) {
+	if err := requireOwnerOrManager(requiredRole); err != nil {
+		return sqlc.MenuCategory{}, err
+	}
+	cat, err := s.repos.UpdateMenuCategory(ctx, sqlc.UpdateMenuCategoryParams{
+		ID:       p.ID,
+		BranchID: p.BranchID,
+		Name:     p.Name,
+		Position: p.Position,
+		IsActive: p.IsActive,
+	})
+	if err != nil {
+		return sqlc.MenuCategory{}, err
+	}
+	s.InvalidateMenuCache(ctx, p.BranchID)
+	return cat, nil
+}
+
+type CreateModifierParams struct {
+	ItemID        int64
+	BranchID      int64
+	Name          string
+	PriceDelta    float64
+	IsRequired    bool
+	ModifierGroup string
+}
+
+// AddModifier adds a modifier to a menu item and invalidates the branch menu cache.
+func (s *MenuService) AddModifier(ctx context.Context, p CreateModifierParams, requiredRole sqlc.StaffRole) (MenuModifier, error) {
+	if err := requireOwnerOrManager(requiredRole); err != nil {
+		return MenuModifier{}, err
+	}
+	var delta pgtype.Numeric
+	if err := delta.Scan(fmt.Sprintf("%.2f", p.PriceDelta)); err != nil {
+		return MenuModifier{}, fmt.Errorf("invalid price_delta: %w", err)
+	}
+	mod, err := s.repos.CreateItemModifier(ctx, sqlc.CreateItemModifierParams{
+		ItemID:        p.ItemID,
+		Name:          p.Name,
+		PriceDelta:    delta,
+		IsRequired:    p.IsRequired,
+		ModifierGroup: p.ModifierGroup,
+	})
+	if err != nil {
+		return MenuModifier{}, err
+	}
+	s.InvalidateMenuCache(ctx, p.BranchID)
+	deltaVal, _ := mod.PriceDelta.Float64Value()
+	return MenuModifier{
+		ID:            mod.ID,
+		Name:          mod.Name,
+		PriceDelta:    deltaVal.Float64,
+		IsRequired:    mod.IsRequired,
+		ModifierGroup: mod.ModifierGroup,
+	}, nil
+}
+
+// DeleteModifier removes a modifier and invalidates the branch menu cache.
+func (s *MenuService) DeleteModifier(ctx context.Context, modifierID, branchID int64, requiredRole sqlc.StaffRole) error {
+	if err := requireOwnerOrManager(requiredRole); err != nil {
+		return err
+	}
+	if err := s.repos.DeleteItemModifier(ctx, modifierID); err != nil {
 		return err
 	}
 	s.InvalidateMenuCache(ctx, branchID)
