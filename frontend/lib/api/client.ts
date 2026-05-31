@@ -12,6 +12,20 @@ export class ApiError extends Error {
   }
 }
 
+const ERROR_MESSAGES: Record<string, string> = {
+  SESSION_NOT_FOUND:         "This session has ended.",
+  TABLE_OCCUPIED:            "This table already has an active session.",
+  PARTICIPANT_UNAUTHORIZED:  "You're not part of this session.",
+  CART_EMPTY:                "Your cart is empty.",
+  ORDER_ALREADY_PLACED:      "This order was already placed.",
+  INSUFFICIENT_ROLE:         "You don't have permission to do this.",
+  INVALID_PHONE:             "Please enter a valid 10-digit mobile number.",
+}
+
+export function friendlyErrorMessage(code: string): string {
+  return ERROR_MESSAGES[code] ?? "Something went wrong. Please try again."
+}
+
 type RequestOptions = {
   participantId?: number
   staffToken?: string
