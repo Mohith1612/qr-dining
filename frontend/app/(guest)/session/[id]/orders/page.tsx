@@ -1,6 +1,8 @@
 "use client"
 
 import { useOrders } from "@/hooks/useOrders"
+import { useSession } from "@/hooks/useSession"
+import { OrderSkeleton } from "@/components/shared/LoadingSkeleton"
 import { StatusBadge } from "@/components/shared/StatusBadge"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { formatCurrency, relativeTime } from "@/lib/format"
@@ -68,7 +70,10 @@ function OrderCard({ order }: { order: Order }) {
 }
 
 export default function OrdersPage() {
+  const { session } = useSession()
   const { orders } = useOrders()
+
+  if (!session) return <OrderSkeleton />
 
   const active = orders.filter((o) => !["served", "cancelled"].includes(o.status))
   const completed = orders.filter((o) => ["served", "cancelled"].includes(o.status))
