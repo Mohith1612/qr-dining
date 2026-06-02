@@ -51,7 +51,7 @@ export function TopBar() {
             style={{ background: "none", border: "none", padding: 8, color: "var(--ink-2)", cursor: "pointer", display: "flex" }}
             aria-label="Search menu"
           >
-            <Search style={{ width: 18, height: 18 }} />
+            <Search style={{ width: 18, height: 18 }} aria-hidden />
           </button>
         )}
         <span style={{ fontSize: 12, fontWeight: 500 }}>{participants.length}</span>
