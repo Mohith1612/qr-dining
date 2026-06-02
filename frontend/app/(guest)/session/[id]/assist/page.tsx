@@ -1,7 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import { useSession } from "@/hooks/useSession"
 import { useAssistance } from "@/hooks/useAssistance"
+import { AssistSkeleton } from "@/components/shared/LoadingSkeleton"
 import { StatusBadge } from "@/components/shared/StatusBadge"
 import { relativeTime } from "@/lib/format"
 import { Bell, CreditCard, MessageSquare, CheckCircle, Loader2, ChevronRight } from "lucide-react"
@@ -65,8 +67,11 @@ function ActiveRequestCard({ request }: { request: AssistanceRequest }) {
 }
 
 export default function AssistPage() {
+  const { session } = useSession()
   const { active, requestAssistance } = useAssistance()
   const [requesting, setRequesting] = useState<AssistanceType | null>(null)
+
+  if (!session) return <AssistSkeleton />
 
   const activeTypes = new Set(active.map((r) => r.type))
 

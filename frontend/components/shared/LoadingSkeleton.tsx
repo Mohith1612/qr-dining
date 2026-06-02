@@ -56,6 +56,33 @@ export function CartSkeleton() {
   )
 }
 
+export function AssistSkeleton() {
+  return (
+    <div className="px-5 py-6 space-y-3">
+      <Skeleton className="h-3 w-24 mb-2" />
+      <Skeleton className="h-8 w-48 mb-4" />
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Skeleton key={i} className="h-20 w-full rounded-xl" />
+      ))}
+    </div>
+  )
+}
+
+export function KitchenSkeleton() {
+  return (
+    <div style={{ display: "flex", gap: 16, padding: "20px", overflowX: "auto" }}>
+      {Array.from({ length: 4 }).map((_, col) => (
+        <div key={col} style={{ minWidth: 260, flex: "0 0 260px" }}>
+          <Skeleton className="h-8 w-32 mb-3 rounded-lg" />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-28 w-full rounded-xl mb-3" />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function OrderSkeleton() {
   return (
     <div className="px-4 py-6 space-y-4">
