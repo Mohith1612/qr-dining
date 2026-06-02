@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono, Cormorant_Garamond } from "next/font/google"
 import "./globals.css"
 import "@/styles/themes.css"
@@ -26,6 +26,10 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
 }
 
+export const viewport: Viewport = {
+  themeColor: "#0E0C09",
+}
+
 export default function RootLayout({
   children,
 }: {
@@ -35,7 +39,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} ${cormorantGaramond.variable} antialiased`}>
         <Providers>
-          {children}
+          <main>{children}</main>
         </Providers>
       </body>
     </html>
