@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/shared/EmptyState"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { relativeTime } from "@/lib/format"
 import { UtensilsCrossed, Loader2 } from "lucide-react"
+import { KitchenSkeleton } from "@/components/shared/LoadingSkeleton"
 import { toast } from "sonner"
 import type { Order, OrderStatus } from "@/types/api"
 
@@ -171,13 +172,7 @@ export default function KitchenPage() {
   const pendingCount  = orders.filter((o) => o.status === "pending").length
   const cookingCount  = orders.filter((o) => o.status === "confirmed" || o.status === "preparing").length
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[40vh]" style={{ background: "var(--bg-base)" }}>
-        <Loader2 className="animate-spin" style={{ width: 24, height: 24, color: "var(--ink-3)" }} />
-      </div>
-    )
-  }
+  if (loading) return <KitchenSkeleton />
 
   return (
     <div className="screen-enter" style={{ position: "relative", background: "var(--bg-base)", color: "var(--ink-1)", minHeight: "100vh" }}>
