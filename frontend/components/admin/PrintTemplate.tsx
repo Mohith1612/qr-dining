@@ -1,8 +1,10 @@
 "use client"
 
-import { QRCodeSVG } from "qrcode.react"
+import dynamic from "next/dynamic"
 import { buildQRUrl } from "@/lib/qr"
 import type { Table } from "@/types/api"
+
+const QRCodeSVG = dynamic(() => import("qrcode.react").then((m) => m.QRCodeSVG), { ssr: false })
 
 interface Props {
   table: Table
