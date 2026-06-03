@@ -8,6 +8,7 @@ interface VignetteProps {
 export function Vignette({ hue = 30, size = 52, ring = false }: VignetteProps) {
   return (
     <div
+      aria-hidden="true"
       style={{
         width: size,
         height: size,
