@@ -5,6 +5,7 @@ import { useMenuStore } from "@/store/menu"
 import { useCart } from "@/hooks/useCart"
 import { useSession } from "@/hooks/useSession"
 import { menuApi } from "@/lib/api/menu"
+import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
 import { formatCurrency } from "@/lib/format"
 import { MenuSkeleton } from "@/components/shared/LoadingSkeleton"
 import { BottomSheet } from "@/components/shared/BottomSheet"
@@ -346,8 +347,8 @@ export default function MenuPage({ params }: Props) {
       await addItem(sheet.item.id, sheet.quantity, sheet.selectedModifiers, sheet.note || undefined)
       toast.success(`${sheet.item.name} added`)
       setSheet(null)
-    } catch {
-      toast.error("Couldn't add item. Please try again.")
+    } catch (err) {
+      toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't add item. Please try again.")
     } finally {
       setAdding(false)
     }

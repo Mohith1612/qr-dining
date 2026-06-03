@@ -4,6 +4,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 import { BottomSheet } from "./BottomSheet"
 import { customersApi } from "@/lib/api/customers"
+import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
 
 interface Props {
   sessionId: string
@@ -22,8 +23,8 @@ export function CustomerOptIn({ sessionId, participantId, onComplete }: Props) {
       await customersApi.link(sessionId, "+91" + phone, name, participantId)
       toast.success("We'll remember you next time!")
       onComplete()
-    } catch {
-      toast.error("Couldn't save. Please try again.")
+    } catch (err) {
+      toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't save. Please try again.")
     } finally {
       setSaving(false)
     }

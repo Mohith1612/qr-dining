@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/shared/EmptyState"
 import { Vignette } from "@/components/shared/Vignette"
 import { Trash2, ShoppingCart } from "lucide-react"
 import { toast } from "sonner"
+import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
 import type { CartItem } from "@/types/api"
 
 interface Props {
@@ -94,8 +95,8 @@ export default function CartPage({ params }: Props) {
   async function handleRemove(itemId: number) {
     try {
       await removeItem(itemId)
-    } catch {
-      toast.error("Couldn't remove item.")
+    } catch (err) {
+      toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't remove item.")
     }
   }
 
@@ -114,8 +115,8 @@ export default function CartPage({ params }: Props) {
       useCartStore.getState().clear()
       toast.success("Order placed!")
       router.push(`/session/${sessionId}/orders`)
-    } catch {
-      toast.error("Couldn't place order. Please try again.")
+    } catch (err) {
+      toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't place order. Please try again.")
       setPlacing(false)
     }
   }

@@ -7,6 +7,7 @@ import { paymentsApi } from "@/lib/api/payments"
 import { formatCurrency } from "@/lib/format"
 import { Banknote, CreditCard, Smartphone, CheckCircle, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
+import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
 import type { PaymentMethod } from "@/types/api"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { CustomerOptIn } from "@/components/shared/CustomerOptIn"
@@ -57,8 +58,8 @@ export default function PaymentPage() {
       await paymentsApi.initiate(session.id, total, method)
       setPaid(method)
       toast.success("Payment recorded — enjoy your meal!")
-    } catch {
-      toast.error("Couldn't process payment. Please try again.")
+    } catch (err) {
+      toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't process payment. Please try again.")
     } finally {
       setLoading(null)
     }

@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge"
 import { relativeTime } from "@/lib/format"
 import { Bell, CreditCard, MessageSquare, CheckCircle, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
+import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
 import type { AssistanceRequest, AssistanceType } from "@/types/api"
 
 const ASSIST_OPTIONS: {
@@ -81,8 +82,8 @@ export default function AssistPage() {
     try {
       await requestAssistance(type)
       toast.success("Request sent — we'll be right with you.")
-    } catch {
-      toast.error("Couldn't send request. Please try again.")
+    } catch (err) {
+      toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't send request. Please try again.")
     } finally {
       setRequesting(null)
     }
