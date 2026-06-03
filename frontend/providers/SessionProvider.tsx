@@ -61,6 +61,31 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
     />
   )
 
+  if (status === "failed") return (
+    <div style={{
+      minHeight: "100svh", display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      padding: 32, textAlign: "center", background: "var(--bg-base)",
+    }}>
+      <p style={{ fontSize: 20, fontWeight: 600, color: "var(--ink-1)", marginBottom: 8 }}>
+        Connection lost
+      </p>
+      <p style={{ fontSize: 14, color: "var(--ink-3)", marginBottom: 24 }}>
+        We couldn&apos;t reconnect to the server.
+      </p>
+      <button
+        onClick={() => window.location.reload()}
+        style={{
+          padding: "10px 24px", borderRadius: 999,
+          background: "var(--accent)", color: "var(--accent-ink)",
+          fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none",
+        }}
+      >
+        Refresh page
+      </button>
+    </div>
+  )
+
   return (
     <ErrorBoundary>
       <ReconnectingBanner />

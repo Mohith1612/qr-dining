@@ -1,6 +1,6 @@
 import { create } from "zustand"
 
-type WSStatus = "connected" | "reconnecting" | "disconnected"
+type WSStatus = "connected" | "reconnecting" | "disconnected" | "failed"
 
 interface WsState {
   status: WSStatus

@@ -11,7 +11,7 @@ const prefersReducedMotion =
 export function ReconnectingBanner() {
   const status = useWsStore((s) => s.status)
   const attempt = useWsStore((s) => s.attempt)
-  const visible = status !== "connected"
+  const visible = status === "reconnecting" || status === "disconnected"
 
   return (
     <AnimatePresence>

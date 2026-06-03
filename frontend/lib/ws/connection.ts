@@ -73,7 +73,7 @@ export class WSConnection {
 
   private scheduleReconnect(): void {
     if (this.attemptCount >= MAX_ATTEMPTS) {
-      useWsStore.getState().setStatus("disconnected")
+      useWsStore.getState().setStatus("failed")
       return
     }
 
