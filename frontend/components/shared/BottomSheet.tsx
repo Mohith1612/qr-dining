@@ -12,6 +12,8 @@ interface BottomSheetProps {
   className?: string
 }
 
+const FOCUSABLE_SELECTORS = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+
 export function BottomSheet({ open, onClose, title, children, className }: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null)
 
@@ -25,11 +27,33 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden"
-      sheetRef.current?.focus()
     } else {
       document.body.style.overflow = ""
     }
     return () => { document.body.style.overflow = "" }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const sheet = sheetRef.current
+    if (!sheet) return
+
+    const focusable = Array.from(sheet.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTORS))
+    focusable[0]?.focus()
+
+    const trapTab = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return
+      if (focusable.length === 0) { e.preventDefault(); return }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last?.focus() }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first?.focus() }
+      }
+    }
+    document.addEventListener("keydown", trapTab)
+    return () => document.removeEventListener("keydown", trapTab)
   }, [open])
 
   if (!open) return null
