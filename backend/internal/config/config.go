@@ -17,6 +17,16 @@ type Config struct {
 	Log    LogConfig
 	CORS   CORSConfig
 	Worker WorkerConfig
+	R2     R2Config
+}
+
+type R2Config struct {
+	AccountID       string
+	AccessKeyID     string
+	SecretAccessKey string
+	Bucket          string
+	PublicBase      string
+	Enabled         bool
 }
 
 type ServerConfig struct {
@@ -120,6 +130,23 @@ func Load() (*Config, error) {
 	// Workers
 	cfg.Worker.StaleSessionInterval = parseDuration("STALE_SESSION_INTERVAL", 5*time.Minute)
 	cfg.Worker.PresenceExpiryInterval = parseDuration("PRESENCE_EXPIRY_INTERVAL", 60*time.Second)
+
+	// R2 (optional — app runs without it; upload endpoints return 503 if not configured)
+	r2AccountID := getenv("R2_ACCOUNT_ID", "")
+	r2AccessKey := getenv("R2_ACCESS_KEY_ID", "")
+	r2SecretKey := getenv("R2_SECRET_ACCESS_KEY", "")
+	r2Bucket := getenv("R2_BUCKET", "")
+	r2PublicBase := getenv("R2_PUBLIC_BASE", "")
+	if r2AccountID != "" && r2AccessKey != "" && r2SecretKey != "" && r2Bucket != "" && r2PublicBase != "" {
+		cfg.R2 = R2Config{
+			AccountID:       r2AccountID,
+			AccessKeyID:     r2AccessKey,
+			SecretAccessKey: r2SecretKey,
+			Bucket:          r2Bucket,
+			PublicBase:      r2PublicBase,
+			Enabled:         true,
+		}
+	}
 
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("config validation: %w", err)
