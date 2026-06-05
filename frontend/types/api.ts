@@ -73,6 +73,7 @@ export interface MenuItem {
   dietary_flags?: DietaryFlag[]
   item_badges?: ItemBadge[]
   spice_level?: number
+  image_url?: string | null
 }
 
 export interface MenuCategory {
