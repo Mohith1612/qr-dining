@@ -77,11 +77,11 @@ export function StaffBar({ onSignOut }: StaffBarProps) {
 
       {/* Right: connection + time + sign out */}
       <div style={{ display: "inline-flex", alignItems: "center", gap: 18, color: "var(--ink-3)", fontSize: 12 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span className="hidden sm:inline-flex" style={{ alignItems: "center", gap: 6 }}>
           <span className="live-dot" />
           Connected
         </span>
-        <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--ink-2)" }}>
+        <span className="hidden sm:block" style={{ fontVariantNumeric: "tabular-nums", color: "var(--ink-2)" }}>
           {time.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
         </span>
         <button
