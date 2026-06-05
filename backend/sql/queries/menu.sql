@@ -46,7 +46,8 @@ RETURNING *;
 UPDATE menu_items
 SET name = $2, description = $3, price = $4, position = $5,
     dietary_flags = $6, item_badges = $7, spice_level = $8,
-    category_id = COALESCE(sqlc.narg('category_id'), category_id)
+    category_id = COALESCE(sqlc.narg('category_id'), category_id),
+    image_url = COALESCE(sqlc.narg('image_url'), image_url)
 WHERE id = $1
 RETURNING *;
 

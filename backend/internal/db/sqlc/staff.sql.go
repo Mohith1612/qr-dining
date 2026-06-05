@@ -71,7 +71,7 @@ func (q *Queries) GetBranchByID(ctx context.Context, id int64) (Branch, error) {
 }
 
 const getRestaurantByID = `-- name: GetRestaurantByID :one
-SELECT id, name, slug, settings_json, created_at FROM restaurants WHERE id = $1
+SELECT id, name, slug, settings_json, created_at, logo_url FROM restaurants WHERE id = $1
 `
 
 func (q *Queries) GetRestaurantByID(ctx context.Context, id int64) (Restaurant, error) {
@@ -83,6 +83,7 @@ func (q *Queries) GetRestaurantByID(ctx context.Context, id int64) (Restaurant, 
 		&i.Slug,
 		&i.SettingsJson,
 		&i.CreatedAt,
+		&i.LogoUrl,
 	)
 	return i, err
 }

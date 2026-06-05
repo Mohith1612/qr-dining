@@ -7,10 +7,12 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getRestaurantByBranchID = `-- name: GetRestaurantByBranchID :one
-SELECT r.id, r.name, r.slug, r.settings_json, r.created_at
+SELECT r.id, r.name, r.slug, r.settings_json, r.created_at, r.logo_url
 FROM restaurants r
 JOIN branches b ON b.restaurant_id = r.id
 WHERE b.id = $1
@@ -25,12 +27,13 @@ func (q *Queries) GetRestaurantByBranchID(ctx context.Context, id int64) (Restau
 		&i.Slug,
 		&i.SettingsJson,
 		&i.CreatedAt,
+		&i.LogoUrl,
 	)
 	return i, err
 }
 
 const getRestaurantBySlug = `-- name: GetRestaurantBySlug :one
-SELECT id, name, slug, settings_json, created_at FROM restaurants WHERE slug = $1
+SELECT id, name, slug, settings_json, created_at, logo_url FROM restaurants WHERE slug = $1
 `
 
 func (q *Queries) GetRestaurantBySlug(ctx context.Context, slug string) (Restaurant, error) {
@@ -42,6 +45,22 @@ func (q *Queries) GetRestaurantBySlug(ctx context.Context, slug string) (Restaur
 		&i.Slug,
 		&i.SettingsJson,
 		&i.CreatedAt,
+		&i.LogoUrl,
 	)
 	return i, err
+}
+
+const updateRestaurantLogoByBranchID = `-- name: UpdateRestaurantLogoByBranchID :exec
+UPDATE restaurants SET logo_url = $2
+WHERE id = (SELECT b.restaurant_id FROM branches b WHERE b.id = $1)
+`
+
+type UpdateRestaurantLogoByBranchIDParams struct {
+	ID      int64       `json:"id"`
+	LogoUrl pgtype.Text `json:"logo_url"`
+}
+
+func (q *Queries) UpdateRestaurantLogoByBranchID(ctx context.Context, arg UpdateRestaurantLogoByBranchIDParams) error {
+	_, err := q.db.Exec(ctx, updateRestaurantLogoByBranchID, arg.ID, arg.LogoUrl)
+	return err
 }

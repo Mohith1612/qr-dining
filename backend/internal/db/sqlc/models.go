@@ -496,6 +496,7 @@ type MenuItem struct {
 	DietaryFlags      []string       `json:"dietary_flags"`
 	ItemBadges        []string       `json:"item_badges"`
 	SpiceLevel        int16          `json:"spice_level"`
+	ImageUrl          pgtype.Text    `json:"image_url"`
 }
 
 type Order struct {
@@ -550,6 +551,7 @@ type Restaurant struct {
 	Slug         string          `json:"slug"`
 	SettingsJson json.RawMessage `json:"settings_json"`
 	CreatedAt    time.Time       `json:"created_at"`
+	LogoUrl      pgtype.Text     `json:"logo_url"`
 }
 
 type RestaurantSubscription struct {
