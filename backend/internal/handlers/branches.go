@@ -19,7 +19,8 @@ func NewBranchHandler(repos *repository.Repos) *BranchHandler {
 }
 
 type updateBranchRequest struct {
-	SessionTimeoutMinutes *int16 `json:"session_timeout_minutes"`
+	SessionTimeoutMinutes *int16  `json:"session_timeout_minutes"`
+	LogoURL               *string `json:"logo_url"`
 }
 
 // GET /branches/:id — staff-protected.
@@ -80,6 +81,13 @@ func (h *BranchHandler) UpdateBranch(c *gin.Context) {
 			return
 		}
 		if err := h.repos.UpdateBranchSessionTimeout(c.Request.Context(), branchID, t); err != nil {
+			respondInternalError(c)
+			return
+		}
+	}
+
+	if req.LogoURL != nil {
+		if err := h.repos.UpdateRestaurantLogoByBranchID(c.Request.Context(), branchID, *req.LogoURL); err != nil {
 			respondInternalError(c)
 			return
 		}

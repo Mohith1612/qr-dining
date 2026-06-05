@@ -107,6 +107,7 @@ type updateMenuItemRequest struct {
 	ItemBadges   []string `json:"item_badges"`
 	SpiceLevel   int16    `json:"spice_level"`
 	CategoryID   *int64   `json:"category_id"` // optional: move item to a different category
+	ImageURL     *string  `json:"image_url"`   // optional: set or update item image
 }
 
 func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
@@ -165,6 +166,7 @@ func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
 		ItemBadges:   req.ItemBadges,
 		SpiceLevel:   req.SpiceLevel,
 		CategoryID:   req.CategoryID,
+		ImageURL:     req.ImageURL,
 	}, sess.Role)
 	if err != nil {
 		menuAdminError(c, err)

@@ -158,7 +158,8 @@ type UpdateMenuItemParams struct {
 	DietaryFlags []string
 	ItemBadges   []string
 	SpiceLevel   int16
-	CategoryID   *int64 // nil = keep current category
+	CategoryID   *int64  // nil = keep current category
+	ImageURL     *string // nil = keep current image_url
 }
 
 // UpdateItem modifies a menu item and invalidates the branch menu cache.
@@ -174,6 +175,10 @@ func (s *MenuService) UpdateItem(ctx context.Context, p UpdateMenuItemParams, re
 	if p.CategoryID != nil {
 		catID = pgtype.Int8{Int64: *p.CategoryID, Valid: true}
 	}
+	var imageURL pgtype.Text
+	if p.ImageURL != nil {
+		imageURL = pgtype.Text{String: *p.ImageURL, Valid: true}
+	}
 	item, err := s.repos.UpdateMenuItem(ctx, sqlc.UpdateMenuItemParams{
 		ID:           p.ID,
 		Name:         p.Name,
@@ -184,6 +189,7 @@ func (s *MenuService) UpdateItem(ctx context.Context, p UpdateMenuItemParams, re
 		ItemBadges:   p.ItemBadges,
 		SpiceLevel:   p.SpiceLevel,
 		CategoryID:   catID,
+		ImageUrl:     imageURL,
 	})
 	if err != nil {
 		return sqlc.MenuItem{}, err
