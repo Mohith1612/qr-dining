@@ -13,6 +13,7 @@ import (
 	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
+	"github.com/Mohith1612/qr-dining/internal/storage"
 	ws "github.com/Mohith1612/qr-dining/internal/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -92,6 +93,7 @@ func New(
 	tableH := handlers.NewTableHandler(repos)
 	branchH := handlers.NewBranchHandler(repos)
 	customerH := handlers.NewCustomerHandler(customerSvc, repos)
+	uploadH := handlers.NewUploadHandler(storage.NewR2Client(cfg.R2), repos)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -189,6 +191,10 @@ func New(
 	staffAPI.DELETE("/menu/categories/:id", menuAdminH.DeleteMenuCategory)
 	staffAPI.PATCH("/menu/categories/:id", menuAdminH.UpdateMenuCategory)
 	staffAPI.DELETE("/menu/modifiers/:id", menuAdminH.DeleteItemModifier)
+
+	// Image upload presign — staff-protected.
+	staffAPI.POST("/upload/menu-item-image", uploadH.PresignMenuItemImage)
+	staffAPI.POST("/upload/restaurant-logo", uploadH.PresignRestaurantLogo)
 
 	// Table QR token refresh — table-scoped; branch ownership verified in handler.
 	staffAPI.PATCH("/tables/:id/qr-refresh", tableH.RefreshQR)
