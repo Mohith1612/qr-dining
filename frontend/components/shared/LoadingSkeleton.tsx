@@ -83,6 +83,31 @@ export function KitchenSkeleton() {
   )
 }
 
+export function StatsSkeleton() {
+  return (
+    <div className="px-5 py-6 space-y-5">
+      <div className="flex gap-4">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-20 flex-1 rounded-xl" />
+        ))}
+      </div>
+      <Skeleton className="h-48 w-full rounded-xl" />
+      <Skeleton className="h-32 w-full rounded-xl" />
+    </div>
+  )
+}
+
+export function TablesSkeleton() {
+  return (
+    <div className="px-5 py-6 space-y-3">
+      <Skeleton className="h-10 w-40 rounded-lg mb-4" />
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Skeleton key={i} className="h-16 w-full rounded-xl" />
+      ))}
+    </div>
+  )
+}
+
 export function OrderSkeleton() {
   return (
     <div className="px-4 py-6 space-y-4">

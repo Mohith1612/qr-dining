@@ -27,6 +27,7 @@ import { tablesApi } from "@/lib/api/tables"
 import { QRCard } from "@/components/admin/QRCard"
 import { PrintTemplate } from "@/components/admin/PrintTemplate"
 import { BottomSheet } from "@/components/shared/BottomSheet"
+import { StatsSkeleton, TablesSkeleton } from "@/components/shared/LoadingSkeleton"
 
 // ─── Sessions Tab ───────────────────────────────────────────────────────────
 
@@ -1251,13 +1252,7 @@ function StatsTab() {
     fetchAnalytics()
   }, [fetchAnalytics])
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="size-6 animate-spin" style={{ color: "var(--ink-3)" }} />
-      </div>
-    )
-  }
+  if (loading) return <StatsSkeleton />
 
   if (gated) {
     return (
@@ -1609,13 +1604,7 @@ function TablesTab() {
     setTimeout(() => window.print(), 100)
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="size-6 animate-spin" style={{ color: "var(--ink-3)" }} />
-      </div>
-    )
-  }
+  if (loading) return <TablesSkeleton />
 
   return (
     <div>
