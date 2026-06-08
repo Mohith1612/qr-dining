@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Vignette } from "@/components/shared/Vignette"
 import { formatCurrency } from "@/lib/format"
 import type { MenuItem } from "@/types/api"
@@ -7,6 +8,7 @@ function itemHue(id: number): number {
 }
 
 function FeaturedCard({ item, onSelect }: { item: MenuItem; onSelect: (i: MenuItem) => void }) {
+  const [imgError, setImgError] = useState(false)
   return (
     <button
       onClick={() => onSelect(item)}
@@ -29,7 +31,19 @@ function FeaturedCard({ item, onSelect }: { item: MenuItem; onSelect: (i: MenuIt
       }} />
       <div style={{ padding: "12px 12px 14px" }}>
         <div style={{ marginBottom: 12, display: "flex", justifyContent: "center" }}>
-          <Vignette hue={itemHue(item.id)} size={64} />
+          {item.image_url && !imgError ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.image_url}
+              alt=""
+              aria-hidden
+              loading="lazy"
+              onError={() => setImgError(true)}
+              style={{ width: 64, height: 64, borderRadius: 10, objectFit: "cover" }}
+            />
+          ) : (
+            <Vignette hue={itemHue(item.id)} size={64} />
+          )}
         </div>
         <div
           className="serif"

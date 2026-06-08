@@ -46,6 +46,7 @@ function itemHue(id: number): number {
 }
 
 function ItemRow({ item, qty, onTap }: ItemRowProps) {
+  const [imgError, setImgError] = useState(false)
   return (
     <button
       onClick={() => item.is_available && onTap(item)}
@@ -87,7 +88,24 @@ function ItemRow({ item, qty, onTap }: ItemRowProps) {
         )}
       </div>
       <div style={{ position: "relative", flexShrink: 0 }}>
-        <Vignette hue={itemHue(item.id)} size={66} ring={qty > 0} />
+        {item.image_url && !imgError ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.image_url}
+            alt=""
+            aria-hidden
+            loading="lazy"
+            onError={() => setImgError(true)}
+            style={{
+              width: 66, height: 66, borderRadius: 12,
+              objectFit: "cover", flexShrink: 0,
+              outline: qty > 0 ? "2px solid var(--accent)" : "none",
+              outlineOffset: 2,
+            }}
+          />
+        ) : (
+          <Vignette hue={itemHue(item.id)} size={66} ring={qty > 0} />
+        )}
         {qty > 0 && (
           <span style={{
             position: "absolute", bottom: -3, right: -3,
