@@ -333,7 +333,9 @@ export default function MenuPage({ params }: Props) {
     // so if scroll lands in a stable zone the callback never re-fires.
     setActiveCatId(catId)
 
-    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 56
+    const pillBar = document.getElementById("category-pill-bar")
+    const offset = (pillBar?.offsetHeight ?? 56) + 8
+    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - offset
 
     isScrollingRef.current = true
     clearTimeout(scrollTimeoutRef.current)
@@ -441,18 +443,21 @@ export default function MenuPage({ params }: Props) {
         onClear={clearFilters}
       />
 
-      {/* Category pills — sticky, hidden in search mode */}
-      {!isSearchMode && (
-        <div style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          background: "color-mix(in srgb, var(--bg-base) 92%, transparent)",
-          backdropFilter: "blur(12px)",
-          WebkitBackdropFilter: "blur(12px)",
-          borderBottom: "1px solid var(--line-1)",
-          padding: "10px 0 12px",
-        }}>
+      {/* Category pills — sticky, hidden in search mode or when only one category */}
+      {!isSearchMode && filteredCategories.length > 1 && (
+        <div
+          id="category-pill-bar"
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 10,
+            background: "color-mix(in srgb, var(--bg-base) 92%, transparent)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            borderBottom: "1px solid var(--line-1)",
+            padding: "10px 0 12px",
+          }}
+        >
           <div className="relative">
             <div className="hscroll flex gap-1.5 px-5">
               {categories.map((c) => {
@@ -460,6 +465,7 @@ export default function MenuPage({ params }: Props) {
                 return (
                   <button
                     key={c.id}
+                    id={`pill-${c.id}`}
                     ref={(el) => { if (active) activePillRef.current = el }}
                     onClick={() => scrollToCategory(c.id)}
                     aria-current={active ? "true" : undefined}
@@ -485,6 +491,7 @@ export default function MenuPage({ params }: Props) {
       )}
 
       {/* All category sections */}
+      {/* TODO: If item count > 80, consider react-window for virtualized list */}
       <div style={{ paddingBottom: itemCount > 0 ? 80 : 24 }}>
         {/* Results count when search or filter is active */}
         {isFiltered && filteredCategories.length > 0 && (
@@ -508,14 +515,21 @@ export default function MenuPage({ params }: Props) {
           filteredCategories.map((cat, idx) => (
             <section
               key={cat.id}
+              id={`category-${cat.id}`}
               ref={(el) => { sectionRefs.current[idx] = el }}
               style={{ paddingBottom: 32 }}
             >
-              <div style={{ padding: "20px 20px 0" }}>
-                <h2 className="eyebrow">
-                  {cat.name} · {cat.items.length} {cat.items.length === 1 ? "dish" : "dishes"}
+              {idx > 0 && (
+                <div style={{ margin: "0 20px", borderTop: "1px solid var(--line-2)" }} />
+              )}
+              <div style={{ padding: "32px 20px 0" }}>
+                <p className="eyebrow" style={{ color: "var(--ink-4)", margin: "0 0 4px" }}>
+                  {cat.items.length} {cat.items.length === 1 ? "dish" : "dishes"}
+                </p>
+                <h2 className="serif" style={{ fontSize: 22, fontWeight: 500, color: "var(--ink-1)", margin: "0 0 12px", letterSpacing: "-0.01em" }}>
+                  {cat.name}
                 </h2>
-                <hr className="rule" style={{ margin: "10px 0 0" }} />
+                <hr className="rule" style={{ margin: 0 }} />
               </div>
               <div style={{ padding: "0 20px" }}>
                 {cat.items.map((item, i, arr) => (
