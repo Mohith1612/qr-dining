@@ -262,9 +262,10 @@ export default function MenuPage({ params }: Props) {
 
   useEffect(() => {
     setPrefersReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches)
-    // Use Shell's main as the scroll container — avoids nested overflow-y-auto
-    const main = document.querySelector("main")
-    if (main) scrollContainerRef.current = main as HTMLDivElement
+    // Use Shell's scrollable main — the root layout also renders a <main>, so we
+    // must target the inner one by its overflow class, not just "main".
+    const main = document.querySelector("main.overflow-y-auto") as HTMLDivElement | null
+    if (main) scrollContainerRef.current = main
   }, [])
 
   useEffect(() => {
