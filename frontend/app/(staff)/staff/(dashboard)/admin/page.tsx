@@ -1710,15 +1710,22 @@ function TablesTab() {
 function SettingsTab() {
   const { branchId, token, role } = useStaffStore()
   const [timeoutMinutes, setTimeoutMinutes] = useState(120)
+  const [orderPrefix, setOrderPrefix] = useState("OR")
+  const [prefixInput, setPrefixInput] = useState("OR")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savingPrefix, setSavingPrefix] = useState(false)
   const canEdit = role === "owner" || role === "manager"
 
   useEffect(() => {
     if (!branchId || !token) { setLoading(false); return }
     staffApi
       .getBranch(branchId, token)
-      .then((b) => setTimeoutMinutes(b.session_timeout_minutes))
+      .then((b) => {
+        setTimeoutMinutes(b.session_timeout_minutes)
+        setOrderPrefix(b.order_prefix ?? "OR")
+        setPrefixInput(b.order_prefix ?? "OR")
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [branchId, token])
@@ -1736,37 +1743,88 @@ function SettingsTab() {
     }
   }
 
+  async function handleSavePrefix() {
+    if (!branchId || !token) return
+    const p = prefixInput.toUpperCase().trim()
+    if (!/^[A-Z]{2,4}$/.test(p)) {
+      toast.error("Prefix must be 2–4 uppercase letters")
+      return
+    }
+    setSavingPrefix(true)
+    try {
+      await staffApi.updateBranch(branchId, { order_prefix: p }, token)
+      setOrderPrefix(p)
+      toast.success("Order prefix updated")
+    } catch {
+      toast.error("Failed to update prefix")
+    } finally {
+      setSavingPrefix(false)
+    }
+  }
+
   if (loading) return null
 
   return (
-    <HospitalityCard elev={1} style={{ padding: "20px 20px" }}>
-      <p className="eyebrow" style={{ marginBottom: 6 }}>Session timeout</p>
-      <p className="text-sm" style={{ color: "var(--ink-3)", marginBottom: 14 }}>
-        Sessions are automatically closed after this many minutes of inactivity.
-      </p>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <Input
-          type="number"
-          min={15}
-          max={480}
-          step={15}
-          value={timeoutMinutes}
-          onChange={(e) => setTimeoutMinutes(parseInt(e.target.value) || 120)}
-          disabled={!canEdit}
-          style={{ width: 90 }}
-        />
-        <span className="text-sm" style={{ color: "var(--ink-2)" }}>minutes</span>
-        {canEdit && (
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            style={{ marginLeft: 8 }}
-          >
-            {saving ? <Loader2 className="size-4 animate-spin" /> : "Save"}
-          </Button>
-        )}
-      </div>
-    </HospitalityCard>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <HospitalityCard elev={1} style={{ padding: "20px 20px" }}>
+        <p className="eyebrow" style={{ marginBottom: 6 }}>Session timeout</p>
+        <p className="text-sm" style={{ color: "var(--ink-3)", marginBottom: 14 }}>
+          Sessions are automatically closed after this many minutes of inactivity.
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Input
+            type="number"
+            min={15}
+            max={480}
+            step={15}
+            value={timeoutMinutes}
+            onChange={(e) => setTimeoutMinutes(parseInt(e.target.value) || 120)}
+            disabled={!canEdit}
+            style={{ width: 90 }}
+          />
+          <span className="text-sm" style={{ color: "var(--ink-2)" }}>minutes</span>
+          {canEdit && (
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              style={{ marginLeft: 8 }}
+            >
+              {saving ? <Loader2 className="size-4 animate-spin" /> : "Save"}
+            </Button>
+          )}
+        </div>
+      </HospitalityCard>
+
+      <HospitalityCard elev={1} style={{ padding: "20px 20px" }}>
+        <p className="eyebrow" style={{ marginBottom: 6 }}>Order numbers</p>
+        <p className="text-sm" style={{ color: "var(--ink-3)", marginBottom: 14 }}>
+          A short prefix added to every order number. Example: prefix <span className="mono">TM</span> → <span className="mono">#TM1001</span>.
+          Counters reset daily. Changes take effect on the next order.
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Input
+            type="text"
+            maxLength={4}
+            value={prefixInput}
+            onChange={(e) => setPrefixInput(e.target.value.toUpperCase())}
+            disabled={!canEdit}
+            style={{ width: 72, fontFamily: "var(--font-mono, monospace)", letterSpacing: "0.08em", textTransform: "uppercase" }}
+            placeholder="OR"
+          />
+          {canEdit && (
+            <Button
+              onClick={handleSavePrefix}
+              disabled={savingPrefix}
+            >
+              {savingPrefix ? <Loader2 className="size-4 animate-spin" /> : "Save"}
+            </Button>
+          )}
+        </div>
+        <p className="text-sm mono" style={{ marginTop: 10, color: "var(--ink-3)" }}>
+          Preview: #{orderPrefix}1001, #{orderPrefix}1002, #{orderPrefix}1003&hellip;
+        </p>
+      </HospitalityCard>
+    </div>
   )
 }
 

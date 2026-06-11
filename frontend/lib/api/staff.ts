@@ -111,13 +111,13 @@ export const staffApi = {
 
   updateBranch: (
     branchId: number,
-    data: { session_timeout_minutes?: number },
+    data: { session_timeout_minutes?: number; order_prefix?: string },
     staffToken: string
   ) =>
     api.patch<void>(`/branches/${branchId}`, data, { staffToken }),
 
   getBranch: (branchId: number, staffToken: string) =>
-    api.get<{ id: number; session_timeout_minutes: number }>(`/branches/${branchId}`, { staffToken }),
+    api.get<{ id: number; session_timeout_minutes: number; order_prefix: string }>(`/branches/${branchId}`, { staffToken }),
 
   getAdminMenu: (branchId: number, staffToken: string) =>
     api.get<{ branch_id: number; categories: MenuCategory[] }>(`/branches/${branchId}/menu/full`, { staffToken }),
