@@ -16,6 +16,7 @@ interface TableInfo {
   branch_id: number
   label?: string
   session_id?: string
+  branch_theme?: string
 }
 
 export default function TableEntryPage({ params }: Props) {
@@ -29,7 +30,12 @@ export default function TableEntryPage({ params }: Props) {
 
   useEffect(() => {
     menuApi.resolveQrToken(token)
-      .then(setTableInfo)
+      .then(data => {
+        setTableInfo(data)
+        if (data.branch_theme) {
+          document.documentElement.dataset.theme = data.branch_theme
+        }
+      })
       .catch(() => setError("This QR code is invalid or has expired."))
       .finally(() => setResolving(false))
   }, [token])
