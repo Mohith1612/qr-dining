@@ -32,3 +32,12 @@ func (r *Repos) UpdateRestaurantLogoByBranchID(ctx context.Context, branchID int
 		LogoUrl: pgtype.Text{String: logoURL, Valid: true},
 	})
 }
+
+func (r *Repos) UpdateRestaurantThemeByBranchID(ctx context.Context, branchID int64, theme string) error {
+	return r.ExecRaw(ctx, `
+		UPDATE restaurants r
+		SET settings_json = settings_json || jsonb_build_object('theme', $1::text)
+		FROM branches b
+		WHERE b.id = $2 AND b.restaurant_id = r.id
+	`, theme, branchID)
+}

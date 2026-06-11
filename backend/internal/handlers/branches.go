@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -24,6 +25,12 @@ type updateBranchRequest struct {
 	SessionTimeoutMinutes *int16  `json:"session_timeout_minutes"`
 	LogoURL               *string `json:"logo_url"`
 	OrderPrefix           *string `json:"order_prefix"`
+	Theme                 *string `json:"theme"`
+}
+
+var validThemes = map[string]bool{
+	"dark-luxury":    true,
+	"modern-minimal": true,
 }
 
 // GET /branches/:id — staff-protected.
@@ -46,11 +53,22 @@ func (h *BranchHandler) GetBranch(c *gin.Context) {
 		return
 	}
 
+	theme := "dark-luxury"
+	if restaurant, err := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID); err == nil {
+		var settings map[string]any
+		if json.Unmarshal(restaurant.SettingsJson, &settings) == nil {
+			if t, ok := settings["theme"].(string); ok && validThemes[t] {
+				theme = t
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"id":                      branch.ID,
 		"name":                    branch.Name,
 		"session_timeout_minutes": branch.SessionTimeoutMinutes,
 		"order_prefix":            branch.OrderPrefix,
+		"theme":                   theme,
 	})
 }
 
@@ -105,6 +123,17 @@ func (h *BranchHandler) UpdateBranch(c *gin.Context) {
 			return
 		}
 		if err := h.repos.UpdateBranchOrderPrefix(c.Request.Context(), branchID, p); err != nil {
+			respondInternalError(c)
+			return
+		}
+	}
+
+	if req.Theme != nil {
+		if !validThemes[*req.Theme] {
+			respondValidationError(c, "theme must be one of: dark-luxury, modern-minimal")
+			return
+		}
+		if err := h.repos.UpdateRestaurantThemeByBranchID(c.Request.Context(), branchID, *req.Theme); err != nil {
 			respondInternalError(c)
 			return
 		}

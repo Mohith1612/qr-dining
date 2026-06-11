@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -71,10 +72,11 @@ func (s *MenuService) GetTableByQRToken(ctx context.Context, token string) (sqlc
 
 // TableQRResponse is returned by GetTableByQR and includes the active session ID when the table is occupied.
 type TableQRResponse struct {
-	ID         int64  `json:"id"`
-	BranchID   int64  `json:"branch_id"`
-	Identifier string `json:"identifier"`
-	SessionID  string `json:"session_id,omitempty"`
+	ID          int64  `json:"id"`
+	BranchID    int64  `json:"branch_id"`
+	Identifier  string `json:"identifier"`
+	SessionID   string `json:"session_id,omitempty"`
+	BranchTheme string `json:"branch_theme"`
 }
 
 // GetTableWithActiveSession resolves a QR token and includes the active session ID if the table is occupied.
@@ -84,12 +86,21 @@ func (s *MenuService) GetTableWithActiveSession(ctx context.Context, token strin
 		return TableQRResponse{}, err
 	}
 	resp := TableQRResponse{
-		ID:         table.ID,
-		BranchID:   table.BranchID,
-		Identifier: table.Identifier,
+		ID:          table.ID,
+		BranchID:    table.BranchID,
+		Identifier:  table.Identifier,
+		BranchTheme: "dark-luxury",
 	}
 	if session, err := s.repos.GetActiveSessionForTable(ctx, table.ID); err == nil {
 		resp.SessionID = session.ID.String()
+	}
+	if restaurant, err := s.repos.GetRestaurantByBranchID(ctx, table.BranchID); err == nil {
+		var settings map[string]any
+		if json.Unmarshal(restaurant.SettingsJson, &settings) == nil {
+			if t, ok := settings["theme"].(string); ok && t != "" {
+				resp.BranchTheme = t
+			}
+		}
 	}
 	return resp, nil
 }
