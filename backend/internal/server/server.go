@@ -82,7 +82,7 @@ func New(
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc)
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc)
-	paymentH := handlers.NewPaymentHandler(paymentSvc)
+	paymentH := handlers.NewPaymentHandler(paymentSvc, repos)
 	wsH := handlers.NewWSHandler(hub, repos)
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc)
 	menuAdminH := handlers.NewMenuAdminHandler(menuSvc)
@@ -94,6 +94,7 @@ func New(
 	branchH := handlers.NewBranchHandler(repos)
 	customerH := handlers.NewCustomerHandler(customerSvc, repos)
 	uploadH := handlers.NewUploadHandler(storage.NewR2Client(cfg.R2), repos)
+	billingH := handlers.NewBillingHandler(repos)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -128,6 +129,7 @@ func New(
 
 	// Payments
 	api.POST("/sessions/:id/payments", paymentH.InitiatePayment)
+	api.GET("/sessions/:id/bill", billingH.GetBill)
 	api.POST("/webhooks/payments/:provider", paymentH.Webhook)
 
 	// Customer opt-in (guest, no auth)

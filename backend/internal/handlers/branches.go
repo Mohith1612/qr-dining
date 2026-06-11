@@ -22,10 +22,13 @@ func NewBranchHandler(repos *repository.Repos) *BranchHandler {
 }
 
 type updateBranchRequest struct {
-	SessionTimeoutMinutes *int16  `json:"session_timeout_minutes"`
-	LogoURL               *string `json:"logo_url"`
-	OrderPrefix           *string `json:"order_prefix"`
-	Theme                 *string `json:"theme"`
+	SessionTimeoutMinutes *int16   `json:"session_timeout_minutes"`
+	LogoURL               *string  `json:"logo_url"`
+	OrderPrefix           *string  `json:"order_prefix"`
+	Theme                 *string  `json:"theme"`
+	TaxRate               *float64 `json:"tax_rate"`
+	ServiceChargeRate     *float64 `json:"service_charge_rate"`
+	IncludeTaxInPrice     *bool    `json:"include_tax_in_price"`
 }
 
 var validThemes = map[string]bool{
@@ -54,11 +57,22 @@ func (h *BranchHandler) GetBranch(c *gin.Context) {
 	}
 
 	theme := "dark-luxury"
+	var taxRate, serviceChargeRate float64
+	var includeTaxInPrice bool
 	if restaurant, err := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID); err == nil {
 		var settings map[string]any
 		if json.Unmarshal(restaurant.SettingsJson, &settings) == nil {
 			if t, ok := settings["theme"].(string); ok && validThemes[t] {
 				theme = t
+			}
+			if v, ok := settings["tax_rate"].(float64); ok {
+				taxRate = v
+			}
+			if v, ok := settings["service_charge_rate"].(float64); ok {
+				serviceChargeRate = v
+			}
+			if v, ok := settings["include_tax_in_price"].(bool); ok {
+				includeTaxInPrice = v
 			}
 		}
 	}
@@ -69,6 +83,9 @@ func (h *BranchHandler) GetBranch(c *gin.Context) {
 		"session_timeout_minutes": branch.SessionTimeoutMinutes,
 		"order_prefix":            branch.OrderPrefix,
 		"theme":                   theme,
+		"tax_rate":                taxRate,
+		"service_charge_rate":     serviceChargeRate,
+		"include_tax_in_price":    includeTaxInPrice,
 	})
 }
 
@@ -134,6 +151,46 @@ func (h *BranchHandler) UpdateBranch(c *gin.Context) {
 			return
 		}
 		if err := h.repos.UpdateRestaurantThemeByBranchID(c.Request.Context(), branchID, *req.Theme); err != nil {
+			respondInternalError(c)
+			return
+		}
+	}
+
+	if req.TaxRate != nil || req.ServiceChargeRate != nil || req.IncludeTaxInPrice != nil {
+		// Read current values first so we only update what was sent.
+		taxRate, serviceChargeRate, includeTaxInPrice := 0.0, 0.0, false
+		if restaurant, err := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID); err == nil {
+			var settings map[string]any
+			if json.Unmarshal(restaurant.SettingsJson, &settings) == nil {
+				if v, ok := settings["tax_rate"].(float64); ok {
+					taxRate = v
+				}
+				if v, ok := settings["service_charge_rate"].(float64); ok {
+					serviceChargeRate = v
+				}
+				if v, ok := settings["include_tax_in_price"].(bool); ok {
+					includeTaxInPrice = v
+				}
+			}
+		}
+		if req.TaxRate != nil {
+			if *req.TaxRate < 0 || *req.TaxRate > 0.5 {
+				respondValidationError(c, "tax_rate must be between 0.0 and 0.5")
+				return
+			}
+			taxRate = *req.TaxRate
+		}
+		if req.ServiceChargeRate != nil {
+			if *req.ServiceChargeRate < 0 || *req.ServiceChargeRate > 0.5 {
+				respondValidationError(c, "service_charge_rate must be between 0.0 and 0.5")
+				return
+			}
+			serviceChargeRate = *req.ServiceChargeRate
+		}
+		if req.IncludeTaxInPrice != nil {
+			includeTaxInPrice = *req.IncludeTaxInPrice
+		}
+		if err := h.repos.UpdateRestaurantBillingByBranchID(c.Request.Context(), branchID, taxRate, serviceChargeRate, includeTaxInPrice); err != nil {
 			respondInternalError(c)
 			return
 		}

@@ -4,17 +4,19 @@ import (
 	"net/http"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
+	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type PaymentHandler struct {
-	svc *services.PaymentService
+	svc   *services.PaymentService
+	repos *repository.Repos
 }
 
-func NewPaymentHandler(svc *services.PaymentService) *PaymentHandler {
-	return &PaymentHandler{svc: svc}
+func NewPaymentHandler(svc *services.PaymentService, repos *repository.Repos) *PaymentHandler {
+	return &PaymentHandler{svc: svc, repos: repos}
 }
 
 type initiatePaymentRequest struct {
@@ -44,11 +46,26 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		return
 	}
 
+	// Compute the authoritative bill server-side.
+	bill, billErr := ComputeBillForSession(c.Request.Context(), h.repos, sessionID)
+
+	amount := req.Amount
+	var subtotal, taxAmount, svcCharge *float64
+	if billErr == nil && bill != nil {
+		amount = bill.Total
+		subtotal = &bill.Subtotal
+		taxAmount = &bill.TaxAmount
+		svcCharge = &bill.ServiceCharge
+	}
+
 	payment, err := h.svc.InitiatePayment(c.Request.Context(), services.InitiatePaymentRequest{
 		SessionID: sessionID,
 		OrderID:   req.OrderID,
-		Amount:    req.Amount,
+		Amount:    amount,
 		Method:    method,
+		Subtotal:  subtotal,
+		TaxAmount: taxAmount,
+		SvcCharge: svcCharge,
 	})
 	if err != nil {
 		respondInternalError(c)

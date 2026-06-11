@@ -45,10 +45,13 @@ func NewPaymentService(
 }
 
 type InitiatePaymentRequest struct {
-	SessionID uuid.UUID
-	OrderID   *uuid.UUID // nil for session-level payments
-	Amount    float64
-	Method    sqlc.PaymentMethod
+	SessionID    uuid.UUID
+	OrderID      *uuid.UUID // nil for session-level payments
+	Amount       float64
+	Method       sqlc.PaymentMethod
+	Subtotal     *float64 // optional bill breakdown
+	TaxAmount    *float64
+	SvcCharge    *float64
 }
 
 func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymentRequest) (sqlc.Payment, error) {
@@ -70,6 +73,26 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 	})
 	if err != nil {
 		return sqlc.Payment{}, err
+	}
+
+	// Persist bill breakdown if provided.
+	if req.Subtotal != nil || req.TaxAmount != nil || req.SvcCharge != nil {
+		sub := 0.0
+		tax := 0.0
+		svc := 0.0
+		if req.Subtotal != nil {
+			sub = *req.Subtotal
+		}
+		if req.TaxAmount != nil {
+			tax = *req.TaxAmount
+		}
+		if req.SvcCharge != nil {
+			svc = *req.SvcCharge
+		}
+		_ = s.repos.ExecRaw(ctx,
+			`UPDATE payments SET subtotal=$2, tax_amount=$3, service_charge=$4 WHERE id=$1`,
+			payment.ID, fmt.Sprintf("%.2f", sub), fmt.Sprintf("%.2f", tax), fmt.Sprintf("%.2f", svc),
+		)
 	}
 
 	s.publisher.PaymentInitiated(ctx, req.SessionID, payment)

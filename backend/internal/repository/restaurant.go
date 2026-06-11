@@ -41,3 +41,17 @@ func (r *Repos) UpdateRestaurantThemeByBranchID(ctx context.Context, branchID in
 		WHERE b.id = $2 AND b.restaurant_id = r.id
 	`, theme, branchID)
 }
+
+func (r *Repos) UpdateRestaurantBillingByBranchID(ctx context.Context, branchID int64,
+	taxRate, serviceChargeRate float64, includeTaxInPrice bool) error {
+	return r.ExecRaw(ctx, `
+		UPDATE restaurants r
+		SET settings_json = settings_json || jsonb_build_object(
+			'tax_rate', $1::float8,
+			'service_charge_rate', $2::float8,
+			'include_tax_in_price', $3::bool
+		)
+		FROM branches b
+		WHERE b.id = $4 AND b.restaurant_id = r.id
+	`, taxRate, serviceChargeRate, includeTaxInPrice, branchID)
+}
