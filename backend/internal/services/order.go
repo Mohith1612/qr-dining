@@ -147,12 +147,30 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	var result PlaceOrderResult
 
 	txErr := s.repos.WithTx(ctx, func(tx *repository.Repos) error {
+		branch, err := tx.GetBranchByID(ctx, req.BranchID)
+		if err != nil {
+			return fmt.Errorf("get branch: %w", err)
+		}
+
+		loc, err := time.LoadLocation(branch.Timezone)
+		if err != nil || loc == nil {
+			loc = time.UTC
+		}
+		localDate := time.Now().In(loc).Format("2006-01-02")
+
+		seq, err := tx.NextOrderNumber(ctx, req.BranchID, localDate)
+		if err != nil {
+			return fmt.Errorf("next order number: %w", err)
+		}
+		orderNumber := fmt.Sprintf("%s%d", branch.OrderPrefix, seq)
+
 		order, err := tx.CreateOrder(ctx, repository.CreateOrderParams{
 			SessionID:             req.SessionID,
 			BranchID:              req.BranchID,
 			PlacedByParticipantID: req.PlacedByParticipantID,
 			IdempotencyKey:        req.IdempotencyKey,
 			TotalAmount:           totalAmount,
+			OrderNumber:           orderNumber,
 		})
 		if err != nil {
 			return fmt.Errorf("create order: %w", err)

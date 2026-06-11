@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
@@ -21,6 +23,7 @@ func NewBranchHandler(repos *repository.Repos) *BranchHandler {
 type updateBranchRequest struct {
 	SessionTimeoutMinutes *int16  `json:"session_timeout_minutes"`
 	LogoURL               *string `json:"logo_url"`
+	OrderPrefix           *string `json:"order_prefix"`
 }
 
 // GET /branches/:id — staff-protected.
@@ -47,6 +50,7 @@ func (h *BranchHandler) GetBranch(c *gin.Context) {
 		"id":                      branch.ID,
 		"name":                    branch.Name,
 		"session_timeout_minutes": branch.SessionTimeoutMinutes,
+		"order_prefix":            branch.OrderPrefix,
 	})
 }
 
@@ -88,6 +92,19 @@ func (h *BranchHandler) UpdateBranch(c *gin.Context) {
 
 	if req.LogoURL != nil {
 		if err := h.repos.UpdateRestaurantLogoByBranchID(c.Request.Context(), branchID, *req.LogoURL); err != nil {
+			respondInternalError(c)
+			return
+		}
+	}
+
+	if req.OrderPrefix != nil {
+		p := strings.ToUpper(strings.TrimSpace(*req.OrderPrefix))
+		matched, _ := regexp.MatchString(`^[A-Z]{2,4}$`, p)
+		if !matched {
+			respondValidationError(c, "order_prefix must be 2–4 uppercase letters")
+			return
+		}
+		if err := h.repos.UpdateBranchOrderPrefix(c.Request.Context(), branchID, p); err != nil {
 			respondInternalError(c)
 			return
 		}

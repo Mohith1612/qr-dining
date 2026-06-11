@@ -17,6 +17,7 @@ type CreateOrderParams struct {
 	PlacedByParticipantID int64
 	IdempotencyKey        string
 	TotalAmount           pgtype.Numeric
+	OrderNumber           string
 }
 
 func (r *Repos) CreateOrder(ctx context.Context, p CreateOrderParams) (sqlc.Order, error) {
@@ -26,6 +27,14 @@ func (r *Repos) CreateOrder(ctx context.Context, p CreateOrderParams) (sqlc.Orde
 		PlacedByParticipantID: pgtype.Int8{Int64: p.PlacedByParticipantID, Valid: true},
 		IdempotencyKey:        p.IdempotencyKey,
 		TotalAmount:           p.TotalAmount,
+		OrderNumber:           pgtype.Text{String: p.OrderNumber, Valid: p.OrderNumber != ""},
+	})
+}
+
+func (r *Repos) NextOrderNumber(ctx context.Context, branchID int64, date string) (int32, error) {
+	return r.q.NextOrderNumber(ctx, sqlc.NextOrderNumberParams{
+		BranchID: branchID,
+		Date:     date,
 	})
 }
 

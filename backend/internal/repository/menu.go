@@ -84,6 +84,13 @@ func (r *Repos) GetBranchByID(ctx context.Context, id int64) (sqlc.Branch, error
 	return b, err
 }
 
+func (r *Repos) UpdateBranchOrderPrefix(ctx context.Context, branchID int64, prefix string) error {
+	return r.q.UpdateBranchOrderPrefix(ctx, sqlc.UpdateBranchOrderPrefixParams{
+		ID:          branchID,
+		OrderPrefix: prefix,
+	})
+}
+
 func (r *Repos) ListAllMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]sqlc.MenuCategory, error) {
 	return r.q.ListAllMenuCategoriesForBranch(ctx, branchID)
 }
