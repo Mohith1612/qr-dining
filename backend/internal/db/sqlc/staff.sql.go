@@ -52,7 +52,7 @@ func (q *Queries) DeactivateStaff(ctx context.Context, id int64) error {
 }
 
 const getBranchByID = `-- name: GetBranchByID :one
-SELECT id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes FROM branches WHERE id = $1
+SELECT id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes, order_prefix FROM branches WHERE id = $1
 `
 
 func (q *Queries) GetBranchByID(ctx context.Context, id int64) (Branch, error) {
@@ -66,6 +66,7 @@ func (q *Queries) GetBranchByID(ctx context.Context, id int64) (Branch, error) {
 		&i.Timezone,
 		&i.CreatedAt,
 		&i.SessionTimeoutMinutes,
+		&i.OrderPrefix,
 	)
 	return i, err
 }
@@ -182,6 +183,20 @@ type UpdateBranchSessionTimeoutParams struct {
 
 func (q *Queries) UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error {
 	_, err := q.db.Exec(ctx, updateBranchSessionTimeout, arg.ID, arg.SessionTimeoutMinutes)
+	return err
+}
+
+const updateBranchOrderPrefix = `-- name: UpdateBranchOrderPrefix :exec
+UPDATE branches SET order_prefix = $2 WHERE id = $1
+`
+
+type UpdateBranchOrderPrefixParams struct {
+	ID          int64  `json:"id"`
+	OrderPrefix string `json:"order_prefix"`
+}
+
+func (q *Queries) UpdateBranchOrderPrefix(ctx context.Context, arg UpdateBranchOrderPrefixParams) error {
+	_, err := q.db.Exec(ctx, updateBranchOrderPrefix, arg.ID, arg.OrderPrefix)
 	return err
 }
 

@@ -97,11 +97,13 @@ type Querier interface {
 	ListUnprocessedWebhooks(ctx context.Context) ([]PaymentWebhookEvent, error)
 	MarkSessionWarned(ctx context.Context, id uuid.UUID) error
 	MarkWebhookProcessed(ctx context.Context, arg MarkWebhookProcessedParams) error
+	NextOrderNumber(ctx context.Context, arg NextOrderNumberParams) (int32, error)
 	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
 	SearchCustomersByPhone(ctx context.Context, arg SearchCustomersByPhoneParams) ([]Customer, error)
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
 	UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistanceStatusParams) (AssistanceRequest, error)
+	UpdateBranchOrderPrefix(ctx context.Context, arg UpdateBranchOrderPrefixParams) error
 	UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error
 	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) (CartItem, error)
 	UpdateMenuCategory(ctx context.Context, arg UpdateMenuCategoryParams) (MenuCategory, error)

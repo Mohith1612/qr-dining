@@ -425,6 +425,7 @@ type Branch struct {
 	Timezone              string    `json:"timezone"`
 	CreatedAt             time.Time `json:"created_at"`
 	SessionTimeoutMinutes int16     `json:"session_timeout_minutes"`
+	OrderPrefix           string    `json:"order_prefix"`
 }
 
 type Cart struct {
@@ -509,6 +510,13 @@ type Order struct {
 	TotalAmount           pgtype.Numeric `json:"total_amount"`
 	CreatedAt             time.Time      `json:"created_at"`
 	UpdatedAt             time.Time      `json:"updated_at"`
+	OrderNumber           pgtype.Text    `json:"order_number"`
+}
+
+type OrderSequence struct {
+	BranchID int64     `json:"branch_id"`
+	Date     time.Time `json:"date"`
+	LastSeq  int32     `json:"last_seq"`
 }
 
 type OrderItem struct {

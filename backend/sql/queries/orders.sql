@@ -1,7 +1,14 @@
 -- name: CreateOrder :one
-INSERT INTO orders (session_id, branch_id, placed_by_participant_id, idempotency_key, total_amount)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO orders (session_id, branch_id, placed_by_participant_id, idempotency_key, total_amount, order_number)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
+
+-- name: NextOrderNumber :one
+INSERT INTO order_sequences (branch_id, date, last_seq)
+VALUES ($1, $2, 1001)
+ON CONFLICT (branch_id, date)
+DO UPDATE SET last_seq = order_sequences.last_seq + 1
+RETURNING last_seq;
 
 -- name: GetOrderByID :one
 SELECT * FROM orders WHERE id = $1;

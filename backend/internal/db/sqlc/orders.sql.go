@@ -15,9 +15,9 @@ import (
 )
 
 const createOrder = `-- name: CreateOrder :one
-INSERT INTO orders (session_id, branch_id, placed_by_participant_id, idempotency_key, total_amount)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at
+INSERT INTO orders (session_id, branch_id, placed_by_participant_id, idempotency_key, total_amount, order_number)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number
 `
 
 type CreateOrderParams struct {
@@ -26,6 +26,7 @@ type CreateOrderParams struct {
 	PlacedByParticipantID pgtype.Int8    `json:"placed_by_participant_id"`
 	IdempotencyKey        string         `json:"idempotency_key"`
 	TotalAmount           pgtype.Numeric `json:"total_amount"`
+	OrderNumber           pgtype.Text    `json:"order_number"`
 }
 
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
@@ -35,6 +36,7 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.PlacedByParticipantID,
 		arg.IdempotencyKey,
 		arg.TotalAmount,
+		arg.OrderNumber,
 	)
 	var i Order
 	err := row.Scan(
@@ -47,8 +49,28 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.TotalAmount,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrderNumber,
 	)
 	return i, err
+}
+
+const nextOrderNumber = `-- name: NextOrderNumber :one
+INSERT INTO order_sequences (branch_id, date, last_seq)
+VALUES ($1, $2, 1001)
+ON CONFLICT (branch_id, date)
+DO UPDATE SET last_seq = order_sequences.last_seq + 1
+RETURNING last_seq`
+
+type NextOrderNumberParams struct {
+	BranchID int64  `json:"branch_id"`
+	Date     string `json:"date"`
+}
+
+func (q *Queries) NextOrderNumber(ctx context.Context, arg NextOrderNumberParams) (int32, error) {
+	row := q.db.QueryRow(ctx, nextOrderNumber, arg.BranchID, arg.Date)
+	var lastSeq int32
+	err := row.Scan(&lastSeq)
+	return lastSeq, err
 }
 
 const createOrderItem = `-- name: CreateOrderItem :one
@@ -89,7 +111,7 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 }
 
 const getOrderByID = `-- name: GetOrderByID :one
-SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at FROM orders WHERE id = $1
+SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number FROM orders WHERE id = $1
 `
 
 func (q *Queries) GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error) {
@@ -105,12 +127,13 @@ func (q *Queries) GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error)
 		&i.TotalAmount,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrderNumber,
 	)
 	return i, err
 }
 
 const getOrderByIdempotencyKey = `-- name: GetOrderByIdempotencyKey :one
-SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at FROM orders WHERE idempotency_key = $1
+SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number FROM orders WHERE idempotency_key = $1
 `
 
 func (q *Queries) GetOrderByIdempotencyKey(ctx context.Context, idempotencyKey string) (Order, error) {
@@ -126,13 +149,14 @@ func (q *Queries) GetOrderByIdempotencyKey(ctx context.Context, idempotencyKey s
 		&i.TotalAmount,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrderNumber,
 	)
 	return i, err
 }
 
 const listActiveOrdersForBranch = `-- name: ListActiveOrdersForBranch :many
 SELECT
-    o.id, o.session_id, o.branch_id, o.placed_by_participant_id, o.status, o.idempotency_key, o.total_amount, o.created_at, o.updated_at,
+    o.id, o.session_id, o.branch_id, o.placed_by_participant_id, o.status, o.idempotency_key, o.total_amount, o.created_at, o.updated_at, o.order_number,
     t.identifier AS table_identifier
 FROM orders o
 JOIN sessions s ON s.id = o.session_id
@@ -152,6 +176,7 @@ type ListActiveOrdersForBranchRow struct {
 	TotalAmount           pgtype.Numeric `json:"total_amount"`
 	CreatedAt             time.Time      `json:"created_at"`
 	UpdatedAt             time.Time      `json:"updated_at"`
+	OrderNumber           pgtype.Text    `json:"order_number"`
 	TableIdentifier       string         `json:"table_identifier"`
 }
 
@@ -174,6 +199,7 @@ func (q *Queries) ListActiveOrdersForBranch(ctx context.Context, branchID int64)
 			&i.TotalAmount,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OrderNumber,
 			&i.TableIdentifier,
 		); err != nil {
 			return nil, err
@@ -219,7 +245,7 @@ func (q *Queries) ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]Orde
 }
 
 const listOrdersForSession = `-- name: ListOrdersForSession :many
-SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at FROM orders
+SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number FROM orders
 WHERE session_id = $1
 ORDER BY created_at DESC
 `
@@ -243,6 +269,7 @@ func (q *Queries) ListOrdersForSession(ctx context.Context, sessionID uuid.UUID)
 			&i.TotalAmount,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OrderNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -258,7 +285,7 @@ const updateOrderStatus = `-- name: UpdateOrderStatus :one
 UPDATE orders
 SET status = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at
+RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number
 `
 
 type UpdateOrderStatusParams struct {
@@ -279,6 +306,7 @@ func (q *Queries) UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusPa
 		&i.TotalAmount,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OrderNumber,
 	)
 	return i, err
 }
