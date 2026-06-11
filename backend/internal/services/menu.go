@@ -114,13 +114,16 @@ func (s *MenuService) CreateCategory(ctx context.Context, branchID int64, name s
 }
 
 type CreateMenuItemParams struct {
-	CategoryID  int64
-	BranchID    int64
-	Name        string
-	Description string
-	Price       float64
-	IsAvailable bool
-	Position    int16
+	CategoryID   int64
+	BranchID     int64
+	Name         string
+	Description  string
+	Price        float64
+	IsAvailable  bool
+	Position     int16
+	DietaryFlags []string
+	ItemBadges   []string
+	SpiceLevel   int16
 }
 
 // CreateItem adds a menu item and invalidates the branch menu cache.
@@ -144,6 +147,25 @@ func (s *MenuService) CreateItem(ctx context.Context, p CreateMenuItemParams, re
 	if err != nil {
 		return sqlc.MenuItem{}, err
 	}
+
+	if len(p.DietaryFlags) > 0 || len(p.ItemBadges) > 0 || p.SpiceLevel != 0 {
+		item, err = s.UpdateItem(ctx, UpdateMenuItemParams{
+			ID:           item.ID,
+			BranchID:     p.BranchID,
+			Name:         p.Name,
+			Description:  p.Description,
+			Price:        p.Price,
+			Position:     p.Position,
+			DietaryFlags: p.DietaryFlags,
+			ItemBadges:   p.ItemBadges,
+			SpiceLevel:   p.SpiceLevel,
+		}, requiredRole)
+		if err != nil {
+			return sqlc.MenuItem{}, err
+		}
+		return item, nil
+	}
+
 	s.InvalidateMenuCache(ctx, p.BranchID)
 	return item, nil
 }
