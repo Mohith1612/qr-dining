@@ -68,7 +68,14 @@ export const staffApi = {
     name: string,
     price: number,
     staffToken: string,
-    opts?: { description?: string; position?: number; is_available?: boolean }
+    opts?: {
+      description?: string
+      position?: number
+      is_available?: boolean
+      dietary_flags?: DietaryFlag[]
+      item_badges?: ItemBadge[]
+      spice_level?: number
+    }
   ) =>
     api.post<MenuItem>(
       `/branches/${branchId}/menu/items`,
