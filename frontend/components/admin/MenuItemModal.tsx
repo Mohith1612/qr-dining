@@ -93,7 +93,7 @@ export function MenuItemModal({
   const [form, setForm] = useState<ModalForm>({
     name: item?.name ?? "",
     description: item?.description ?? "",
-    price: item?.price ?? "",
+    price: item?.price != null ? String(item.price) : "",
     position: item?.position ?? 0,
     categoryId: initialCategoryId,
     dietaryFlags: item?.dietary_flags ?? [],
