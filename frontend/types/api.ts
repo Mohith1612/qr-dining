@@ -203,3 +203,33 @@ export interface CustomerHistoryEntry {
   table_identifier: string
   total_spent: string
 }
+
+export interface BillItem {
+  name: string
+  quantity: number
+  unit_price: number
+  modifiers: string[]
+  line_total: number
+}
+
+export interface BillOrder {
+  order_id: string
+  order_number: string
+  placed_at: string
+  items: BillItem[]
+  order_total: number
+}
+
+export interface BillData {
+  session_id: string
+  orders: BillOrder[]
+  subtotal: number
+  tax_rate: number
+  tax_amount: number
+  service_charge_rate: number
+  service_charge: number
+  discount_amount: number
+  tip_amount: number
+  total: number
+  currency: string
+}

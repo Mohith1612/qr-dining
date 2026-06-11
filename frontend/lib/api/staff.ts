@@ -118,13 +118,28 @@ export const staffApi = {
 
   updateBranch: (
     branchId: number,
-    data: { session_timeout_minutes?: number; order_prefix?: string; theme?: string },
+    data: {
+      session_timeout_minutes?: number
+      order_prefix?: string
+      theme?: string
+      tax_rate?: number
+      service_charge_rate?: number
+      include_tax_in_price?: boolean
+    },
     staffToken: string
   ) =>
     api.patch<void>(`/branches/${branchId}`, data, { staffToken }),
 
   getBranch: (branchId: number, staffToken: string) =>
-    api.get<{ id: number; session_timeout_minutes: number; order_prefix: string; theme: string }>(`/branches/${branchId}`, { staffToken }),
+    api.get<{
+      id: number
+      session_timeout_minutes: number
+      order_prefix: string
+      theme: string
+      tax_rate: number
+      service_charge_rate: number
+      include_tax_in_price: boolean
+    }>(`/branches/${branchId}`, { staffToken }),
 
   getAdminMenu: (branchId: number, staffToken: string) =>
     api.get<{ branch_id: number; categories: MenuCategory[] }>(`/branches/${branchId}/menu/full`, { staffToken }),
