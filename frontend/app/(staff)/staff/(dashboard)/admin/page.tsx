@@ -19,14 +19,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { formatCurrency, relativeTime } from "@/lib/format"
-import { RefreshCw, Loader2, Users, BarChart2, CreditCard, Printer, MoreVertical, RotateCcw, QrCode, Settings2, ChevronDown, ChevronRight, Plus, Trash2, Edit2, ChevronUp } from "lucide-react"
+import { RefreshCw, Loader2, Users, BarChart2, CreditCard, Printer, MoreVertical, RotateCcw, QrCode, Settings2, ChevronDown, ChevronRight, Plus, Trash2, Edit2 } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
-import type { Session, MenuCategory, MenuItem, ItemModifier, StaffRole, Table, DietaryFlag, ItemBadge } from "@/types/api"
+import type { Session, MenuCategory, MenuItem, StaffRole, Table } from "@/types/api"
 import { tablesApi } from "@/lib/api/tables"
 import { QRCard } from "@/components/admin/QRCard"
 import { PrintTemplate } from "@/components/admin/PrintTemplate"
 import { BottomSheet } from "@/components/shared/BottomSheet"
+import { MenuItemModal } from "@/components/admin/MenuItemModal"
 import { StatsSkeleton, TablesSkeleton } from "@/components/shared/LoadingSkeleton"
 
 // ─── Sessions Tab ───────────────────────────────────────────────────────────
@@ -126,56 +127,6 @@ function SessionsTab() {
 
 // ─── Menu Tab ────────────────────────────────────────────────────────────────
 
-const DIETARY_OPTIONS: { flag: DietaryFlag; label: string }[] = [
-  { flag: "vegetarian", label: "Vegetarian" },
-  { flag: "vegan", label: "Vegan" },
-  { flag: "jain", label: "Jain" },
-  { flag: "egg", label: "Contains Egg" },
-  { flag: "non-veg", label: "Non-Vegetarian" },
-]
-
-const BADGE_OPTIONS: { badge: ItemBadge; label: string }[] = [
-  { badge: "chef-special", label: "Chef Special" },
-  { badge: "bestseller", label: "Bestseller" },
-  { badge: "seasonal", label: "Seasonal" },
-  { badge: "new", label: "New" },
-]
-
-const SPICE_LABELS = ["None", "Mild", "Medium", "Hot"]
-
-function applyDietaryLogic(flags: DietaryFlag[], toggled: DietaryFlag, checked: boolean): DietaryFlag[] {
-  let next: DietaryFlag[] = checked ? [...flags, toggled] : flags.filter((f) => f !== toggled)
-  if (checked) {
-    if (toggled === "jain") next = [...new Set([...next, "vegan" as DietaryFlag, "vegetarian" as DietaryFlag])]
-    if (toggled === "vegan") next = [...new Set([...next, "vegetarian" as DietaryFlag])]
-    if (toggled === "non-veg") next = next.filter((f) => !(["vegetarian", "vegan", "jain", "egg"] as DietaryFlag[]).includes(f))
-    if ((["vegetarian", "vegan", "jain"] as DietaryFlag[]).includes(toggled)) next = next.filter((f) => f !== "non-veg")
-  }
-  return next
-}
-
-interface EditItemForm {
-  name: string
-  description: string
-  price: string
-  position: number
-  categoryId: number
-  dietaryFlags: DietaryFlag[]
-  itemBadges: ItemBadge[]
-  spiceLevel: number
-  isFeatured: boolean
-  featuredSortOrder: number
-  saving: boolean
-  errors: { name?: string; price?: string }
-}
-
-interface NewModForm {
-  name: string
-  modifier_group: string
-  price_delta: string
-  is_required: boolean
-}
-
 function MenuTab() {
   const { branchId, token, role } = useStaffStore()
   const canManage = role === "owner" || role === "manager"
@@ -188,22 +139,18 @@ function MenuTab() {
   const [toggling, setToggling] = useState<number | null>(null)
   const [bulkToggling, setBulkToggling] = useState<number | null>(null) // category ID
 
-  // Edit item sheet
-  const [editItem, setEditItem] = useState<MenuItem | null>(null)
-  const [editForm, setEditForm] = useState<EditItemForm | null>(null)
-  const [addingMod, setAddingMod] = useState(false)
-  const [newMod, setNewMod] = useState<NewModForm>({ name: "", modifier_group: "", price_delta: "0", is_required: false })
-  const [savingMod, setSavingMod] = useState(false)
+  // Unified item modal
+  const [modalState, setModalState] = useState<{
+    open: boolean
+    mode: "create" | "edit"
+    item?: MenuItem
+    defaultCategoryId?: number
+  }>({ open: false, mode: "create" })
 
   // Category management
   const [catMore, setCatMore] = useState<number | null>(null) // category ID with open dropdown
   const [renaming, setRenaming] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState("")
-
-  // Add item inline form
-  const [addItemCat, setAddItemCat] = useState<number | null>(null)
-  const [newItemForm, setNewItemForm] = useState({ name: "", price: "", description: "" })
-  const [addingItem, setAddingItem] = useState(false)
 
   // Add category
   const [addingCat, setAddingCat] = useState(false)
@@ -334,132 +281,35 @@ function MenuTab() {
     }
   }
 
-  function openEditSheet(item: MenuItem) {
-    setEditItem(item)
-    setEditForm({
-      name: item.name,
-      description: item.description,
-      price: item.price,
-      position: item.position,
-      categoryId: item.category_id,
-      dietaryFlags: item.dietary_flags ?? [],
-      itemBadges: item.item_badges ?? [],
-      spiceLevel: item.spice_level ?? 0,
-      isFeatured: item.is_featured ?? false,
-      featuredSortOrder: item.featured_sort_order ?? 0,
-      saving: false,
-      errors: {},
-    })
-    setAddingMod(false)
-    setNewMod({ name: "", modifier_group: "", price_delta: "0", is_required: false })
+  function openCreateModal(categoryId: number) {
+    setModalState({ open: true, mode: "create", defaultCategoryId: categoryId })
   }
 
-  async function handleSaveItem() {
-    if (!editForm || !editItem || !branchId || !token) return
-    const errors: EditItemForm["errors"] = {}
-    if (!editForm.name.trim()) errors.name = "Name is required"
-    const priceNum = parseFloat(editForm.price)
-    if (isNaN(priceNum) || priceNum < 0) errors.price = "Price must be ≥ 0"
-    if (Object.keys(errors).length) {
-      setEditForm((f) => f && { ...f, errors })
-      return
-    }
-    setEditForm((f) => f && { ...f, saving: true, errors: {} })
-    try {
-      const updated = await staffApi.updateMenuItem(
-        editItem.id,
-        branchId,
-        {
-          name: editForm.name.trim(),
-          price: priceNum,
-          description: editForm.description,
-          position: editForm.position,
-          dietary_flags: editForm.dietaryFlags,
-          item_badges: editForm.itemBadges,
-          spice_level: editForm.spiceLevel,
-          category_id: editForm.categoryId !== editItem.category_id ? editForm.categoryId : undefined,
-        },
-        token
-      )
-      // Also update featured separately if changed
-      if (editForm.isFeatured !== (editItem.is_featured ?? false) ||
-          editForm.featuredSortOrder !== (editItem.featured_sort_order ?? 0)) {
-        await staffApi.toggleFeatured(editItem.id, branchId, editForm.isFeatured, editForm.featuredSortOrder, token)
-      }
-      updateItemInState(editItem.id, { ...updated, is_featured: editForm.isFeatured, featured_sort_order: editForm.featuredSortOrder })
-      // If category changed, reload to move the item
-      if (editForm.categoryId !== editItem.category_id) {
-        await loadMenu()
-      }
-      toast.success("Item saved")
-      setEditItem(null)
-      setEditForm(null)
-    } catch {
-      toast.error("Couldn't save item.")
-      setEditForm((f) => f && { ...f, saving: false })
-    }
+  function openEditModal(item: MenuItem) {
+    setModalState({ open: true, mode: "edit", item })
   }
 
-  async function handleAddModifier() {
-    if (!editItem || !branchId || !token) return
-    if (!newMod.name.trim()) { toast.error("Modifier name required"); return }
-    setSavingMod(true)
-    try {
-      const created = await staffApi.addModifier(editItem.id, branchId, {
-        name: newMod.name.trim(),
-        price_delta: parseFloat(newMod.price_delta) || 0,
-        is_required: newMod.is_required,
-        modifier_group: newMod.modifier_group.trim(),
-      }, token)
-      updateItemInState(editItem.id, {
-        modifiers: [...(editItem.modifiers ?? []), created],
-      })
-      setEditItem((prev) => prev && { ...prev, modifiers: [...(prev.modifiers ?? []), created] })
-      setNewMod({ name: "", modifier_group: "", price_delta: "0", is_required: false })
-      setAddingMod(false)
-    } catch {
-      toast.error("Couldn't add modifier.")
-    } finally {
-      setSavingMod(false)
-    }
-  }
-
-  async function handleDeleteModifier(modId: number) {
-    if (!editItem || !branchId || !token) return
-    try {
-      await staffApi.deleteModifier(modId, branchId, token)
-      const updatedMods = (editItem.modifiers ?? []).filter((m) => m.id !== modId)
-      updateItemInState(editItem.id, { modifiers: updatedMods })
-      setEditItem((prev) => prev && { ...prev, modifiers: updatedMods })
-    } catch {
-      toast.error("Couldn't delete modifier.")
-    }
-  }
-
-  async function handleCreateItem(catId: number) {
-    if (!branchId || !token) return
-    if (!newItemForm.name.trim() || !newItemForm.price.trim()) {
-      toast.error("Name and price are required")
-      return
-    }
-    const price = parseFloat(newItemForm.price)
-    if (isNaN(price) || price < 0) { toast.error("Invalid price"); return }
-    setAddingItem(true)
-    try {
-      const created = await staffApi.createMenuItem(branchId, catId, newItemForm.name.trim(), price, token, {
-        description: newItemForm.description,
-        is_available: true,
-      })
+  function handleModalSaved(savedItem: MenuItem) {
+    const prevCatId = modalState.item?.category_id
+    if (modalState.mode === "create") {
       setCategories((prev) =>
-        prev.map((cat) => cat.id === catId ? { ...cat, items: [...cat.items, created] } : cat)
+        prev.map((cat) =>
+          cat.id === savedItem.category_id ? { ...cat, items: [...cat.items, savedItem] } : cat
+        )
       )
-      setNewItemForm({ name: "", price: "", description: "" })
-      setAddItemCat(null)
-    } catch {
-      toast.error("Couldn't create item.")
-    } finally {
-      setAddingItem(false)
+    } else if (savedItem.category_id !== prevCatId) {
+      loadMenu()
+    } else {
+      updateItemInState(savedItem.id, savedItem)
     }
+    setModalState({ open: false, mode: "create" })
+  }
+
+  function handleModalDeleted(itemId: number) {
+    setCategories((prev) =>
+      prev.map((cat) => ({ ...cat, items: cat.items.filter((i) => i.id !== itemId) }))
+    )
+    setModalState({ open: false, mode: "create" })
   }
 
   async function handleCreateCategory() {
@@ -571,7 +421,7 @@ function MenuTab() {
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                   <button
                     className="press"
-                    onClick={() => { setAddItemCat(addItemCat === cat.id ? null : cat.id); setExpanded((prev) => new Set([...prev, cat.id])) }}
+                    onClick={() => { openCreateModal(cat.id); setExpanded((prev) => new Set([...prev, cat.id])) }}
                     style={{ ...btnIcon, padding: "0 10px", gap: 4, fontSize: 12 }}
                     aria-label="Add item"
                   >
@@ -663,7 +513,7 @@ function MenuTab() {
                       </button>
                       {canManage && (
                         <>
-                          <button className="press" onClick={() => openEditSheet(item)} style={btnIcon} aria-label="Edit item">
+                          <button className="press" onClick={() => openEditModal(item)} style={btnIcon} aria-label="Edit item">
                             <Edit2 size={12} />
                           </button>
                           <button className="press" onClick={() => handleDeleteItem(item.id, cat.id)} style={{ ...btnIcon, color: "var(--err)" }} aria-label="Delete item">
@@ -675,48 +525,7 @@ function MenuTab() {
                   </div>
                 ))}
 
-                {/* Inline add item form */}
-                {addItemCat === cat.id && canManage && (
-                  <div style={{ padding: "12px 14px", borderTop: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 8 }}>
-                    <Input
-                      placeholder="Item name *"
-                      value={newItemForm.name}
-                      onChange={(e) => setNewItemForm((f) => ({ ...f, name: e.target.value }))}
-                      style={{ fontSize: 13 }}
-                    />
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <Input
-                        placeholder="Price *"
-                        type="number"
-                        min={0}
-                        step={0.5}
-                        value={newItemForm.price}
-                        onChange={(e) => setNewItemForm((f) => ({ ...f, price: e.target.value }))}
-                        style={{ flex: 1, fontSize: 13 }}
-                      />
-                      <Input
-                        placeholder="Description"
-                        value={newItemForm.description}
-                        onChange={(e) => setNewItemForm((f) => ({ ...f, description: e.target.value }))}
-                        style={{ flex: 2, fontSize: 13 }}
-                      />
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <Button
-                        onClick={() => handleCreateItem(cat.id)}
-                        disabled={addingItem}
-                        style={{ flex: 1 }}
-                      >
-                        {addingItem ? <Loader2 size={14} className="animate-spin" /> : "Add Item"}
-                      </Button>
-                      <Button variant="outline" onClick={() => setAddItemCat(null)} style={{ flex: 1 }}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {cat.items.length === 0 && addItemCat !== cat.id && (
+                {cat.items.length === 0 && (
                   <p style={{ padding: "16px 14px", fontSize: 13, color: "var(--ink-3)", fontStyle: "italic" }}>
                     No items yet.
                   </p>
@@ -772,296 +581,19 @@ function MenuTab() {
       />
     )}
 
-    {/* Edit item sheet */}
-    {editItem && editForm && (
-      <BottomSheet
-        open={true}
-        onClose={() => { setEditItem(null); setEditForm(null) }}
-        title={`Edit: ${editItem.name}`}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 20 }}>
-          {/* Name */}
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", display: "block", marginBottom: 6 }}>Name *</label>
-            <Input
-              value={editForm.name}
-              maxLength={80}
-              onChange={(e) => setEditForm((f) => f && { ...f, name: e.target.value, errors: { ...f.errors, name: undefined } })}
-              style={{ borderColor: editForm.errors.name ? "var(--err)" : undefined }}
-            />
-            {editForm.errors.name && <p style={{ fontSize: 11, color: "var(--err)", marginTop: 4 }}>{editForm.errors.name}</p>}
-          </div>
-
-          {/* Description */}
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", display: "block", marginBottom: 6 }}>Description</label>
-            <textarea
-              value={editForm.description}
-              rows={2}
-              onChange={(e) => setEditForm((f) => f && { ...f, description: e.target.value })}
-              style={{
-                width: "100%", fontSize: 14, padding: "8px 12px",
-                borderRadius: "var(--rad-md)", border: "1px solid var(--line-2)",
-                background: "var(--bg-elev-2)", color: "var(--ink-1)", resize: "none",
-              }}
-            />
-          </div>
-
-          {/* Price and Position */}
-          <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ flex: 2 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", display: "block", marginBottom: 6 }}>Price (₹) *</label>
-              <Input
-                type="number"
-                min={0}
-                step={0.5}
-                value={editForm.price}
-                onChange={(e) => setEditForm((f) => f && { ...f, price: e.target.value, errors: { ...f.errors, price: undefined } })}
-                style={{ borderColor: editForm.errors.price ? "var(--err)" : undefined }}
-              />
-              {editForm.errors.price && <p style={{ fontSize: 11, color: "var(--err)", marginTop: 4 }}>{editForm.errors.price}</p>}
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", display: "block", marginBottom: 6 }}>Position</label>
-              <Input
-                type="number"
-                min={0}
-                value={editForm.position}
-                onChange={(e) => setEditForm((f) => f && { ...f, position: parseInt(e.target.value) || 0 })}
-              />
-            </div>
-          </div>
-
-          {/* Category */}
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", display: "block", marginBottom: 6 }}>Category</label>
-            <select
-              value={editForm.categoryId}
-              onChange={(e) => setEditForm((f) => f && { ...f, categoryId: parseInt(e.target.value) })}
-              style={{
-                width: "100%", fontSize: 14, padding: "8px 12px",
-                borderRadius: "var(--rad-md)", border: "1px solid var(--line-2)",
-                background: "var(--bg-elev-2)", color: "var(--ink-1)",
-              }}
-            >
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Dietary flags */}
-          <div>
-            <p className="eyebrow" style={{ marginBottom: 10 }}>Dietary</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {DIETARY_OPTIONS.map(({ flag, label }) => (
-                <label key={flag} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={editForm.dietaryFlags.includes(flag)}
-                    onChange={(e) => setEditForm((f) => f && {
-                      ...f,
-                      dietaryFlags: applyDietaryLogic(f.dietaryFlags, flag, e.target.checked),
-                    })}
-                    style={{ width: 18, height: 18, accentColor: "var(--accent)", cursor: "pointer" }}
-                  />
-                  <span style={{ fontSize: 14, color: "var(--ink-2)" }}>{label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Badges */}
-          <div>
-            <p className="eyebrow" style={{ marginBottom: 10 }}>Badges</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {BADGE_OPTIONS.map(({ badge, label }) => {
-                const active = editForm.itemBadges.includes(badge)
-                return (
-                  <button
-                    key={badge}
-                    className="press"
-                    onClick={() => setEditForm((f) => f && {
-                      ...f,
-                      itemBadges: active ? f.itemBadges.filter((b) => b !== badge) : [...f.itemBadges, badge],
-                    })}
-                    style={{
-                      fontSize: 13, fontWeight: 600, padding: "8px 16px",
-                      borderRadius: "var(--rad-pill)", border: "1px solid",
-                      borderColor: active ? "var(--accent)" : "var(--line-2)",
-                      background: active ? "var(--accent-soft)" : "var(--bg-elev-2)",
-                      color: active ? "var(--accent)" : "var(--ink-3)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Spice */}
-          <div>
-            <p className="eyebrow" style={{ marginBottom: 10 }}>Spice Level</p>
-            <div style={{ display: "flex", gap: 8 }}>
-              {SPICE_LABELS.map((label, level) => {
-                const active = editForm.spiceLevel === level
-                return (
-                  <button
-                    key={level}
-                    className="press"
-                    onClick={() => setEditForm((f) => f && { ...f, spiceLevel: level })}
-                    style={{
-                      flex: 1, fontSize: 12, fontWeight: 600, padding: "8px 4px",
-                      borderRadius: "var(--rad-md)", border: "1px solid",
-                      borderColor: active ? "var(--accent)" : "var(--line-2)",
-                      background: active ? "var(--accent-soft)" : "var(--bg-elev-2)",
-                      color: active ? "var(--accent)" : "var(--ink-3)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Featured */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={editForm.isFeatured}
-                onChange={(e) => setEditForm((f) => f && { ...f, isFeatured: e.target.checked })}
-                style={{ width: 18, height: 18, accentColor: "var(--accent)" }}
-              />
-              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-2)" }}>Feature this item</span>
-            </label>
-            {editForm.isFeatured && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 12, color: "var(--ink-3)" }}>Sort</span>
-                <Input
-                  type="number"
-                  min={0}
-                  value={editForm.featuredSortOrder}
-                  onChange={(e) => setEditForm((f) => f && { ...f, featuredSortOrder: parseInt(e.target.value) || 0 })}
-                  style={{ width: 70 }}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Modifiers */}
-          <div>
-            <p className="eyebrow" style={{ marginBottom: 10 }}>Modifiers</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {(editItem.modifiers ?? []).map((mod) => (
-                <div
-                  key={mod.id}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    padding: "8px 12px",
-                    borderRadius: "var(--rad-md)",
-                    background: "var(--bg-elev-2)",
-                    border: "1px solid var(--line-1)",
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 13, fontWeight: 500, color: "var(--ink-1)" }}>{mod.name}</p>
-                    <p style={{ fontSize: 11, color: "var(--ink-3)" }}>
-                      {mod.modifier_group && <span style={{ marginRight: 8 }}>{mod.modifier_group}</span>}
-                      {mod.price_delta >= 0 ? `+₹${mod.price_delta}` : `-₹${Math.abs(mod.price_delta)}`}
-                      {mod.is_required && <span style={{ marginLeft: 8, color: "var(--accent)" }}>Required</span>}
-                    </p>
-                  </div>
-                  <button
-                    className="press"
-                    onClick={() => handleDeleteModifier(mod.id)}
-                    style={{ ...btnIcon, color: "var(--err)" }}
-                    aria-label="Delete modifier"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
-
-              {addingMod ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", background: "var(--bg-elev-2)", borderRadius: "var(--rad-md)", border: "1px solid var(--line-2)" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <Input
-                      placeholder="Name (e.g. Large)"
-                      value={newMod.name}
-                      onChange={(e) => setNewMod((m) => ({ ...m, name: e.target.value }))}
-                      style={{ fontSize: 13 }}
-                    />
-                    <Input
-                      placeholder="Group (e.g. size)"
-                      value={newMod.modifier_group}
-                      onChange={(e) => setNewMod((m) => ({ ...m, modifier_group: e.target.value }))}
-                      style={{ fontSize: 13 }}
-                    />
-                  </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <Input
-                      type="number"
-                      placeholder="₹ delta"
-                      value={newMod.price_delta}
-                      onChange={(e) => setNewMod((m) => ({ ...m, price_delta: e.target.value }))}
-                      style={{ flex: 1, fontSize: 13 }}
-                    />
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink-2)", cursor: "pointer", flexShrink: 0 }}>
-                      <input
-                        type="checkbox"
-                        checked={newMod.is_required}
-                        onChange={(e) => setNewMod((m) => ({ ...m, is_required: e.target.checked }))}
-                        style={{ accentColor: "var(--accent)" }}
-                      />
-                      Required
-                    </label>
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Button onClick={handleAddModifier} disabled={savingMod} style={{ flex: 1 }}>
-                      {savingMod ? <Loader2 size={14} className="animate-spin" /> : "Add"}
-                    </Button>
-                    <Button variant="outline" onClick={() => setAddingMod(false)} style={{ flex: 1 }}>Cancel</Button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  className="press"
-                  onClick={() => setAddingMod(true)}
-                  style={{
-                    padding: "8px 12px", borderRadius: "var(--rad-md)",
-                    border: "1px dashed var(--line-2)", background: "transparent",
-                    fontSize: 13, color: "var(--ink-3)", cursor: "pointer",
-                    display: "flex", alignItems: "center", gap: 6,
-                  }}
-                >
-                  <Plus size={12} /> Add modifier
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Save */}
-          <button
-            onClick={handleSaveItem}
-            disabled={editForm.saving}
-            className="press btn-primary"
-            style={{
-              width: "100%", height: 52, borderRadius: 14,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 15, fontWeight: 700,
-              opacity: editForm.saving ? 0.6 : 1,
-              cursor: editForm.saving ? "not-allowed" : "pointer",
-            }}
-          >
-            {editForm.saving ? <Loader2 size={16} className="animate-spin" /> : "Save Changes"}
-          </button>
-        </div>
-      </BottomSheet>
+    {/* Item modal (create & edit) */}
+    {modalState.open && branchId && token && (
+      <MenuItemModal
+        mode={modalState.mode}
+        item={modalState.item}
+        categories={categories}
+        defaultCategoryId={modalState.defaultCategoryId}
+        branchId={branchId}
+        token={token}
+        onClose={() => setModalState({ open: false, mode: "create" })}
+        onSaved={handleModalSaved}
+        onDeleted={handleModalDeleted}
+      />
     )}
     </>
   )
