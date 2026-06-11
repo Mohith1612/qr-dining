@@ -14,8 +14,9 @@ function FeaturedCard({ item, onSelect }: { item: MenuItem; onSelect: (i: MenuIt
       onClick={() => onSelect(item)}
       className="press"
       style={{
-        width: 140,
+        width: "min(72vw, 280px)",
         flexShrink: 0,
+        scrollSnapAlign: "start",
         borderRadius: 14,
         background: "var(--bg-elev-2)",
         border: "1px solid var(--line-2)",
@@ -25,34 +26,50 @@ function FeaturedCard({ item, onSelect }: { item: MenuItem; onSelect: (i: MenuIt
         boxShadow: "var(--shadow-2)",
       }}
     >
-      <div style={{
-        height: 3,
-        background: "linear-gradient(90deg, var(--accent), var(--accent-soft) 70%, transparent)",
-      }} />
-      <div style={{ padding: "12px 12px 14px" }}>
-        <div style={{ marginBottom: 12, display: "flex", justifyContent: "center" }}>
-          {item.image_url && !imgError ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={item.image_url}
-              alt=""
-              aria-hidden
-              loading="lazy"
-              onError={() => setImgError(true)}
-              style={{ width: 64, height: 64, borderRadius: 10, objectFit: "cover" }}
-            />
-          ) : (
-            <Vignette hue={itemHue(item.id)} size={64} />
-          )}
+      {item.image_url && !imgError ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={item.image_url}
+          alt=""
+          aria-hidden
+          loading="lazy"
+          onError={() => setImgError(true)}
+          style={{
+            width: "100%",
+            height: 140,
+            objectFit: "cover",
+            objectPosition: "center top",
+            display: "block",
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            height: 140,
+            background: "var(--bg-elev-3)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Vignette hue={itemHue(item.id)} size={72} />
+        </div>
+      )}
+      <div style={{ padding: "14px 14px 16px" }}>
+        <div
+          className="eyebrow"
+          style={{ marginBottom: 6, color: "var(--ink-4)" }}
+        >
+          Chef&apos;s Selection
         </div>
         <div
           className="serif"
           style={{
-            fontSize: 16,
+            fontSize: 18,
             fontWeight: 500,
             color: "var(--ink-1)",
-            lineHeight: 1.2,
-            marginBottom: 4,
+            lineHeight: 1.25,
+            marginBottom: 6,
             display: "-webkit-box",
             WebkitLineClamp: 2,
             WebkitBoxOrient: "vertical",
@@ -61,7 +78,10 @@ function FeaturedCard({ item, onSelect }: { item: MenuItem; onSelect: (i: MenuIt
         >
           {item.name}
         </div>
-        <div className="serif" style={{ fontSize: 14, color: "var(--accent)", fontWeight: 500 }}>
+        <div
+          className="serif"
+          style={{ fontSize: 15, color: "var(--accent)", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}
+        >
           {formatCurrency(item.price)}
         </div>
       </div>
@@ -78,15 +98,35 @@ export function FeaturedCarousel({ items, onSelect }: Props) {
   if (items.length === 0) return null
 
   return (
-    <div style={{ paddingBottom: 8 }}>
-      <div style={{ padding: "0 20px 10px" }}>
-        <span className="eyebrow">From the kitchen</span>
+    <section aria-label="Featured dishes" style={{ paddingBottom: 8 }}>
+      <div
+        style={{
+          padding: "2px 20px 10px",
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+        }}
+      >
+        <span className="eyebrow" style={{ color: "var(--ink-3)" }}>Featured</span>
+        {items.length > 3 && (
+          <span style={{ fontSize: 12, color: "var(--ink-4)" }}>{items.length} dishes</span>
+        )}
       </div>
-      <div className="hscroll" style={{ paddingLeft: 20, paddingRight: 20, gap: 12, display: "flex" }}>
+      <div
+        className="hscroll presence"
+        style={{
+          display: "flex",
+          gap: 16,
+          paddingLeft: 20,
+          paddingRight: 20,
+          scrollSnapType: "x mandatory",
+          scrollPaddingLeft: 20,
+        }}
+      >
         {items.map((item) => (
           <FeaturedCard key={item.id} item={item} onSelect={onSelect} />
         ))}
       </div>
-    </div>
+    </section>
   )
 }
