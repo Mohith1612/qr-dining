@@ -27,7 +27,7 @@ function OrderCard({ order }: { order: Order }) {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
         <div>
           <p className="mono" style={{ fontSize: 12.5, color: "var(--ink-2)", marginBottom: 2 }}>
-            Order · #{order.id?.toString().slice(0, 8)}
+            {order.order_number ? `Order · #${order.order_number}` : `Order · #${order.id.slice(0, 6).toUpperCase()}`}
           </p>
           <p style={{ fontSize: 12, color: "var(--ink-3)" }}>{relativeTime(order.created_at)}</p>
         </div>
