@@ -1,16 +1,17 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useOrders } from "@/hooks/useOrders"
+import { useOrdersStore } from "@/store/orders"
 import { useSession } from "@/hooks/useSession"
 import { paymentsApi } from "@/lib/api/payments"
 import { formatCurrency } from "@/lib/format"
 import { Banknote, CreditCard, Smartphone, CheckCircle, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
-import type { PaymentMethod } from "@/types/api"
+import type { PaymentMethod, BillData } from "@/types/api"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { CustomerOptIn } from "@/components/shared/CustomerOptIn"
+import { BillBreakdown } from "@/components/shared/BillBreakdown"
 
 const PAYMENT_OPTIONS: {
   method: PaymentMethod
@@ -35,11 +36,28 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 export default function PaymentPage() {
-  const { orders } = useOrders()
+  const orders = useOrdersStore((s) => s.orders)
   const { session, participant } = useSession()
+  const [bill, setBill] = useState<BillData | null>(null)
+  const [billLoading, setBillLoading] = useState(true)
+  const [billError, setBillError] = useState<string | null>(null)
   const [loading, setLoading] = useState<PaymentMethod | null>(null)
   const [paid, setPaid] = useState<PaymentMethod | null>(null)
+  const [paidTotal, setPaidTotal] = useState(0)
   const [showOptIn, setShowOptIn] = useState(false)
+
+  // Fetch bill on mount and when orders change (new order placed triggers WS → store update).
+  useEffect(() => {
+    if (!session?.id) return
+    setBillLoading(true)
+    setBillError(null)
+    paymentsApi
+      .getBill(session.id, participant?.id)
+      .then(setBill)
+      .catch(() => setBillError("Could not load bill — please ask your waiter."))
+      .finally(() => setBillLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id, orders.length])
 
   useEffect(() => {
     if (!paid) return
@@ -47,15 +65,15 @@ export default function PaymentPage() {
     return () => clearTimeout(timer)
   }, [paid])
 
-  const total = orders
-    .filter((o) => o.status !== "cancelled")
-    .reduce((sum, o) => sum + parseFloat(o.total_amount), 0)
+  const total = bill?.total ?? 0
 
   async function handlePay(method: PaymentMethod) {
     if (!session || paid) return
     setLoading(method)
     try {
-      await paymentsApi.initiate(session.id, total, method)
+      // Send amount=0 as a hint; backend computes the authoritative total server-side.
+      await paymentsApi.initiate(session.id, total, method, undefined, participant?.id)
+      setPaidTotal(total)
       setPaid(method)
       toast.success("Payment recorded — enjoy your meal!")
     } catch (err) {
@@ -88,15 +106,15 @@ export default function PaymentPage() {
         </h2>
         <p style={{ margin: "10px 0 22px", color: "var(--ink-2)", fontSize: 14, lineHeight: 1.6, maxWidth: 300 }}>
           {paid === "cash"
-            ? `A host will be with you shortly to collect ${formatCurrency(total)}.`
+            ? `A host will be with you shortly to collect ${formatCurrency(paidTotal)}.`
             : paid === "card"
-            ? `Our team is bringing a card terminal for ${formatCurrency(total)}. Please remain seated.`
-            : `We're awaiting confirmation of your ${formatCurrency(total)} UPI transfer.`}
+            ? `Our team is bringing a card terminal for ${formatCurrency(paidTotal)}. Please remain seated.`
+            : `We're awaiting confirmation of your ${formatCurrency(paidTotal)} UPI transfer.`}
         </p>
 
         <HospitalityCard elev={1} style={{ padding: "12px 16px", marginBottom: 22, minWidth: 240, textAlign: "left" }}>
           <Row label="Method" value={METHOD_LABEL[paid]} />
-          <Row label="Amount" value={total > 0 ? formatCurrency(total) : "—"} />
+          <Row label="Amount" value={paidTotal > 0 ? formatCurrency(paidTotal) : "—"} />
           {session?.table_identifier && <Row label="Table" value={session.table_identifier} />}
         </HospitalityCard>
 
@@ -128,45 +146,41 @@ export default function PaymentPage() {
     <div className="scrollarea flex-1 overflow-y-auto screen-enter" style={{ background: "var(--bg-base)" }}>
       {/* Header */}
       <div className="page-glow" style={{ padding: "24px 20px 16px" }}>
-        <span className="eyebrow">Settle up</span>
+        <span className="eyebrow">Your bill</span>
         <h1 className="display-lg" style={{ margin: "6px 0 4px" }}>
-          Pay your bill
+          Itemized bill
         </h1>
-        <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 13 }}>Choose a method — we'll do the rest.</p>
+        <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 13 }}>
+          Review your order before settling up.
+        </p>
       </div>
 
-      {/* Amount card */}
-      <div style={{ padding: "0 20px 16px" }}>
-        <HospitalityCard elev={3} style={{ padding: "20px 22px", background: "linear-gradient(160deg, var(--bg-elev-3), var(--bg-elev-2))" }}>
-          <span className="eyebrow">Amount due</span>
-          <div className="serif" style={{ marginTop: 4, fontSize: 44, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.02em", lineHeight: 1.05 }}>
-            {total > 0 ? formatCurrency(total) : "—"}
-          </div>
-          <div style={{ marginTop: 8, color: "var(--ink-3)", fontSize: 12, display: "flex", justifyContent: "space-between" }}>
-            <span>Includes service &amp; taxes</span>
-            {session?.table_identifier && <span>Table {session.table_identifier}</span>}
-          </div>
+      {/* Bill breakdown */}
+      <div style={{ padding: "0 20px 8px" }}>
+        <HospitalityCard elev={1} style={{ padding: "16px 18px" }}>
+          <BillBreakdown bill={bill} loading={billLoading} error={billError} />
         </HospitalityCard>
       </div>
 
       {/* Payment methods */}
-      <div style={{ padding: "0 20px 28px" }}>
-        <span className="eyebrow" style={{ marginBottom: 10, display: "block" }}>Payment method</span>
+      <div style={{ padding: "12px 20px 28px" }}>
+        <span className="eyebrow" style={{ marginBottom: 10, display: "block" }}>Settle up</span>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {PAYMENT_OPTIONS.map(({ method, label, description, icon: Icon }) => {
             const isLoading = loading === method
+            const isDisabled = loading !== null || total === 0 || billLoading
             return (
               <button
                 key={method}
                 onClick={() => handlePay(method)}
-                disabled={loading !== null}
+                disabled={isDisabled}
                 className="press"
                 style={{
                   textAlign: "left", padding: "16px",
                   borderRadius: "var(--rad-lg)", background: "var(--bg-elev-1)",
                   border: "1px solid var(--line-1)", boxShadow: "var(--shadow-1)",
                   display: "flex", alignItems: "center", gap: 14,
-                  opacity: loading !== null && !isLoading ? 0.5 : 1,
+                  opacity: isDisabled && !isLoading ? 0.4 : 1,
                   transition: "opacity var(--dur-fast) var(--ease)",
                 }}
                 aria-label={`Pay with ${label}`}
@@ -190,6 +204,12 @@ export default function PaymentPage() {
             )
           })}
         </div>
+
+        {total === 0 && !billLoading && !billError && (
+          <p style={{ marginTop: 14, fontSize: 13, color: "var(--ink-3)", textAlign: "center", fontStyle: "italic" }}>
+            Place an order first to settle up.
+          </p>
+        )}
       </div>
     </div>
   )
