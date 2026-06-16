@@ -23,7 +23,9 @@ type ExpiredSession struct {
 
 // ExpiringSoonSession is the projection used by the expiry warner.
 type ExpiringSoonSession struct {
-	ID uuid.UUID
+	ID                    uuid.UUID
+	CreatedAt             time.Time
+	SessionTimeoutMinutes int16
 }
 
 // Querier abstracts the DB queries the worker needs.
@@ -162,6 +164,10 @@ func (w *Worker) cleanStaleSessions(ctx context.Context) {
 	w.metrics.WorkerRunsTotal.WithLabelValues("stale_session_cleaner", "ok").Inc()
 }
 
+type expiryPayload struct {
+	ExpiresAt string `json:"expires_at"`
+}
+
 func (w *Worker) warnExpiringSessions(ctx context.Context) {
 	sessions, err := w.queries.ListSessionsExpiringSoon(ctx)
 	if err != nil {
@@ -170,7 +176,9 @@ func (w *Worker) warnExpiringSessions(ctx context.Context) {
 	}
 	for i := range sessions {
 		s := &sessions[i]
-		w.publisher.SessionExpiringSoon(ctx, s.ID)
+		expiresAt := s.CreatedAt.Add(time.Duration(s.SessionTimeoutMinutes) * time.Minute)
+		payload := expiryPayload{ExpiresAt: expiresAt.UTC().Format(time.RFC3339)}
+		w.publisher.SessionExpiringSoon(ctx, s.ID, payload)
 		if err := w.queries.MarkSessionWarned(ctx, s.ID); err != nil {
 			w.logger.Error().Err(err).Str("session_id", s.ID.String()).Msg("mark session warned")
 		}

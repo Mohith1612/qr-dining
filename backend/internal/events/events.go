@@ -108,8 +108,8 @@ func (p *Publisher) SessionClosed(ctx context.Context, sessionID uuid.UUID, payl
 	p.publish(ctx, ws.EventSessionClosed, sessionID, payload)
 }
 
-func (p *Publisher) SessionExpiringSoon(ctx context.Context, sessionID uuid.UUID) {
-	p.publish(ctx, ws.EventSessionExpiringSoon, sessionID, nil)
+func (p *Publisher) SessionExpiringSoon(ctx context.Context, sessionID uuid.UUID, payload any) {
+	p.publish(ctx, ws.EventSessionExpiringSoon, sessionID, payload)
 }
 
 func (p *Publisher) PromoApplied(ctx context.Context, sessionID uuid.UUID, payload any) {

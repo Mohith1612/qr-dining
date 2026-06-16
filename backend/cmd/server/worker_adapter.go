@@ -39,7 +39,11 @@ func (w *workerQuerier) ListSessionsExpiringSoon(ctx context.Context) ([]worker.
 	}
 	result := make([]worker.ExpiringSoonSession, 0, len(rows))
 	for _, r := range rows {
-		result = append(result, worker.ExpiringSoonSession{ID: r.ID})
+		result = append(result, worker.ExpiringSoonSession{
+			ID:                    r.ID,
+			CreatedAt:             r.CreatedAt,
+			SessionTimeoutMinutes: r.SessionTimeoutMinutes,
+		})
 	}
 	return result, nil
 }
