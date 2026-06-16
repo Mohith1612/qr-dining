@@ -1,6 +1,6 @@
 -- name: CreateOrder :one
-INSERT INTO orders (session_id, branch_id, placed_by_participant_id, idempotency_key, total_amount, order_number)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO orders (session_id, branch_id, placed_by_participant_id, idempotency_key, total_amount, order_number, promo_id, discount_amount)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: NextOrderNumber :one

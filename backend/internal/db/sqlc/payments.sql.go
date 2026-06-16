@@ -16,7 +16,7 @@ import (
 const createPayment = `-- name: CreatePayment :one
 INSERT INTO payments (session_id, order_id, amount, method)
 VALUES ($1, $2, $3, $4)
-RETURNING id, session_id, order_id, amount, method, status, initiated_at, completed_at
+RETURNING id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount
 `
 
 type CreatePaymentParams struct {
@@ -43,12 +43,16 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (P
 		&i.Status,
 		&i.InitiatedAt,
 		&i.CompletedAt,
+		&i.Subtotal,
+		&i.TaxAmount,
+		&i.ServiceCharge,
+		&i.TipAmount,
 	)
 	return i, err
 }
 
 const getPaymentByID = `-- name: GetPaymentByID :one
-SELECT id, session_id, order_id, amount, method, status, initiated_at, completed_at FROM payments WHERE id = $1
+SELECT id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount FROM payments WHERE id = $1
 `
 
 func (q *Queries) GetPaymentByID(ctx context.Context, id int64) (Payment, error) {
@@ -63,6 +67,10 @@ func (q *Queries) GetPaymentByID(ctx context.Context, id int64) (Payment, error)
 		&i.Status,
 		&i.InitiatedAt,
 		&i.CompletedAt,
+		&i.Subtotal,
+		&i.TaxAmount,
+		&i.ServiceCharge,
+		&i.TipAmount,
 	)
 	return i, err
 }
@@ -105,7 +113,7 @@ func (q *Queries) InsertWebhookEvent(ctx context.Context, arg InsertWebhookEvent
 }
 
 const listPaymentsForSession = `-- name: ListPaymentsForSession :many
-SELECT id, session_id, order_id, amount, method, status, initiated_at, completed_at FROM payments WHERE session_id = $1 ORDER BY initiated_at DESC
+SELECT id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount FROM payments WHERE session_id = $1 ORDER BY initiated_at DESC
 `
 
 func (q *Queries) ListPaymentsForSession(ctx context.Context, sessionID uuid.UUID) ([]Payment, error) {
@@ -126,6 +134,10 @@ func (q *Queries) ListPaymentsForSession(ctx context.Context, sessionID uuid.UUI
 			&i.Status,
 			&i.InitiatedAt,
 			&i.CompletedAt,
+			&i.Subtotal,
+			&i.TaxAmount,
+			&i.ServiceCharge,
+			&i.TipAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -197,7 +209,7 @@ UPDATE payments
 SET status = $2,
     completed_at = CASE WHEN $2::payment_status = 'completed' THEN NOW() ELSE completed_at END
 WHERE id = $1
-RETURNING id, session_id, order_id, amount, method, status, initiated_at, completed_at
+RETURNING id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount
 `
 
 type UpdatePaymentStatusParams struct {
@@ -217,6 +229,10 @@ func (q *Queries) UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStat
 		&i.Status,
 		&i.InitiatedAt,
 		&i.CompletedAt,
+		&i.Subtotal,
+		&i.TaxAmount,
+		&i.ServiceCharge,
+		&i.TipAmount,
 	)
 	return i, err
 }

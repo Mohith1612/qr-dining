@@ -153,6 +153,7 @@ func ComputeBillForSession(ctx context.Context, repos *repository.Repos, session
 	// Build bill orders.
 	billOrders := make([]BillOrder, 0, len(activeOrders))
 	var subtotal float64
+	var totalDiscount float64
 
 	for _, owi := range activeOrders {
 		o := owi.order
@@ -206,9 +207,15 @@ func ComputeBillForSession(ctx context.Context, repos *repository.Repos, session
 			OrderTotal:  round2(orderTotal),
 		})
 		subtotal += orderTotal
+
+		// Accumulate per-order promo discounts.
+		if d, err := o.DiscountAmount.Float64Value(); err == nil && d.Valid {
+			totalDiscount += d.Float64
+		}
 	}
 
 	subtotal = round2(subtotal)
+	totalDiscount = round2(totalDiscount)
 
 	var taxAmount float64
 	if !includeTaxInPrice && taxRate > 0 {
@@ -216,7 +223,7 @@ func ComputeBillForSession(ctx context.Context, repos *repository.Repos, session
 	}
 	svcCharge := round2(subtotal * serviceChargeRate)
 
-	total := round2(subtotal + taxAmount + svcCharge)
+	total := round2(subtotal + taxAmount + svcCharge - totalDiscount)
 
 	return &BillResponse{
 		SessionID:         sessionID.String(),
@@ -226,7 +233,7 @@ func ComputeBillForSession(ctx context.Context, repos *repository.Repos, session
 		TaxAmount:         taxAmount,
 		ServiceChargeRate: serviceChargeRate,
 		ServiceCharge:     svcCharge,
-		DiscountAmount:    0,
+		DiscountAmount:    totalDiscount,
 		TipAmount:         0,
 		Total:             total,
 		Currency:          "INR",

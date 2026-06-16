@@ -172,20 +172,6 @@ func (q *Queries) ListStaffForBranch(ctx context.Context, branchID int64) ([]Sta
 	return items, nil
 }
 
-const updateBranchSessionTimeout = `-- name: UpdateBranchSessionTimeout :exec
-UPDATE branches SET session_timeout_minutes = $2 WHERE id = $1
-`
-
-type UpdateBranchSessionTimeoutParams struct {
-	ID                    int64 `json:"id"`
-	SessionTimeoutMinutes int16 `json:"session_timeout_minutes"`
-}
-
-func (q *Queries) UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error {
-	_, err := q.db.Exec(ctx, updateBranchSessionTimeout, arg.ID, arg.SessionTimeoutMinutes)
-	return err
-}
-
 const updateBranchOrderPrefix = `-- name: UpdateBranchOrderPrefix :exec
 UPDATE branches SET order_prefix = $2 WHERE id = $1
 `
@@ -197,6 +183,20 @@ type UpdateBranchOrderPrefixParams struct {
 
 func (q *Queries) UpdateBranchOrderPrefix(ctx context.Context, arg UpdateBranchOrderPrefixParams) error {
 	_, err := q.db.Exec(ctx, updateBranchOrderPrefix, arg.ID, arg.OrderPrefix)
+	return err
+}
+
+const updateBranchSessionTimeout = `-- name: UpdateBranchSessionTimeout :exec
+UPDATE branches SET session_timeout_minutes = $2 WHERE id = $1
+`
+
+type UpdateBranchSessionTimeoutParams struct {
+	ID                    int64 `json:"id"`
+	SessionTimeoutMinutes int16 `json:"session_timeout_minutes"`
+}
+
+func (q *Queries) UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error {
+	_, err := q.db.Exec(ctx, updateBranchSessionTimeout, arg.ID, arg.SessionTimeoutMinutes)
 	return err
 }
 

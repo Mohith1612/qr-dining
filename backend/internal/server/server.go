@@ -65,7 +65,8 @@ func New(
 	sessionSvc := services.NewSessionService(repos, publisher, metrics, presence)
 	participantSvc := services.NewParticipantService(repos, publisher, presence)
 	cartSvc := services.NewCartService(repos, publisher)
-	orderSvc := services.NewOrderService(repos, publisher, metrics)
+	promoSvc := services.NewPromoService(repos)
+	orderSvc := services.NewOrderService(repos, publisher, metrics, promoSvc)
 	assistanceSvc := services.NewAssistanceService(repos, publisher)
 	menuSvc := services.NewMenuService(repos, cache)
 	staffSvc := services.NewStaffService(repos, cache, logger)
@@ -95,6 +96,7 @@ func New(
 	customerH := handlers.NewCustomerHandler(customerSvc, repos)
 	uploadH := handlers.NewUploadHandler(storage.NewR2Client(cfg.R2), repos)
 	billingH := handlers.NewBillingHandler(repos)
+	promoH := handlers.NewPromoHandler(promoSvc, repos)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -134,6 +136,9 @@ func New(
 
 	// Customer opt-in (guest, no auth)
 	api.POST("/sessions/:id/customer", customerH.LinkCustomer)
+
+	// Promo validation — public, rate-limited.
+	api.POST("/sessions/:id/promos/validate", promoH.ValidatePromo)
 
 	// Menu & tables — public (branch tenant-guarded when BASE_DOMAIN is set)
 	branchPublicAPI := api.Group("/branches/:id")
@@ -183,6 +188,11 @@ func New(
 	branchStaffAPI.GET("", branchH.GetBranch)
 	branchStaffAPI.PATCH("", branchH.UpdateBranch)
 	branchStaffAPI.GET("/customers", customerH.SearchCustomers)
+
+	// Promo management — staff protected.
+	branchStaffAPI.GET("/promos", promoH.ListPromos)
+	branchStaffAPI.POST("/promos", promoH.CreatePromo)
+	branchStaffAPI.DELETE("/promos/:promo_id", promoH.DeactivatePromo)
 
 	// Menu item updates — item-scoped, no branch param on path.
 	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)

@@ -90,6 +90,14 @@ var (
 	ErrFeatureDisabled  = errors.New("feature disabled for this restaurant")
 )
 
+// Promos
+var (
+	ErrPromoNotFound    = errors.New("promo code not found or not active")
+	ErrMinOrderNotMet   = errors.New("order total does not meet promo minimum")
+	ErrPromoExhausted   = errors.New("promo has reached its maximum redemption limit")
+	ErrPromoAlreadyUsed = errors.New("promo already used by this customer")
+)
+
 // Generic
 var (
 	ErrInternalError = errors.New("internal server error")

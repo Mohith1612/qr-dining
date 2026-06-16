@@ -20,10 +20,11 @@ type OrderService struct {
 	repos     *repository.Repos
 	publisher *events.Publisher
 	metrics   *observability.Metrics
+	promoSvc  *PromoService
 }
 
-func NewOrderService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics) *OrderService {
-	return &OrderService{repos: repos, publisher: publisher, metrics: metrics}
+func NewOrderService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics, promoSvc *PromoService) *OrderService {
+	return &OrderService{repos: repos, publisher: publisher, metrics: metrics, promoSvc: promoSvc}
 }
 
 type OrderItem struct {
@@ -40,6 +41,8 @@ type PlaceOrderRequest struct {
 	PlacedByParticipantID int64
 	IdempotencyKey        string
 	Items                 []OrderItem
+	PromoCode             *string
+	PhoneE164             *string
 }
 
 type PlaceOrderResult struct {
@@ -108,9 +111,8 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 		Req       OrderItem
 	}
 	resolved := make([]resolvedItem, 0, len(req.Items))
-	var totalAmount pgtype.Numeric
 
-	// Accumulate as float, convert at end.
+	// Accumulate items total as float; promo discount applied inside TX.
 	var totalFloat float64
 
 	for _, item := range req.Items {
@@ -140,13 +142,39 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 		resolved = append(resolved, resolvedItem{MenuItem: mi, Modifiers: mods, Req: item})
 	}
 
-	if err := totalAmount.Scan(fmt.Sprintf("%.2f", totalFloat)); err != nil {
-		return PlaceOrderResult{}, fmt.Errorf("encode total amount: %w", err)
-	}
-
 	var result PlaceOrderResult
+	var appliedPromoID *int64
+	var discountAmount float64
 
 	txErr := s.repos.WithTx(ctx, func(tx *repository.Repos) error {
+		// Validate and apply promo inside transaction for atomicity.
+		finalTotal := totalFloat
+		if req.PromoCode != nil && s.promoSvc != nil {
+			promoResult, err := s.promoSvc.ValidatePromo(ctx, tx, ValidatePromoRequest{
+				BranchID:   req.BranchID,
+				Code:       *req.PromoCode,
+				OrderTotal: finalTotal,
+				PhoneE164:  req.PhoneE164,
+			})
+			if err != nil {
+				return err
+			}
+			discountAmount = promoResult.DiscountAmount
+			finalTotal -= discountAmount
+			promoIDVal := promoResult.PromoID
+			appliedPromoID = &promoIDVal
+		}
+
+		var totalAmount pgtype.Numeric
+		if err := totalAmount.Scan(fmt.Sprintf("%.2f", finalTotal)); err != nil {
+			return fmt.Errorf("encode total amount: %w", err)
+		}
+
+		var discountNumeric pgtype.Numeric
+		if err := discountNumeric.Scan(fmt.Sprintf("%.2f", discountAmount)); err != nil {
+			return fmt.Errorf("encode discount amount: %w", err)
+		}
+
 		branch, err := tx.GetBranchByID(ctx, req.BranchID)
 		if err != nil {
 			return fmt.Errorf("get branch: %w", err)
@@ -171,6 +199,8 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 			IdempotencyKey:        req.IdempotencyKey,
 			TotalAmount:           totalAmount,
 			OrderNumber:           orderNumber,
+			PromoID:               appliedPromoID,
+			DiscountAmount:        discountNumeric,
 		})
 		if err != nil {
 			return fmt.Errorf("create order: %w", err)
@@ -195,6 +225,13 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 			orderItems = append(orderItems, oi)
 		}
 
+		// Record promo redemption within the same transaction.
+		if appliedPromoID != nil {
+			if _, err := tx.CreatePromoRedemption(ctx, *appliedPromoID, order.ID, req.PhoneE164); err != nil {
+				return fmt.Errorf("create promo redemption: %w", err)
+			}
+		}
+
 		result = PlaceOrderResult{Order: order, OrderItems: orderItems}
 		return nil
 	})
@@ -204,6 +241,14 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 
 	s.publisher.OrderPlaced(ctx, req.SessionID, result.Order)
 	s.repos.LogEvent(ctx, req.SessionID, req.BranchID, "ORDER_PLACED", "participant", req.PlacedByParticipantID, result.Order)
+
+	if appliedPromoID != nil && req.PromoCode != nil {
+		s.publisher.PromoApplied(ctx, req.SessionID, map[string]any{
+			"order_id":        result.Order.ID,
+			"promo_code":      *req.PromoCode,
+			"discount_amount": discountAmount,
+		})
+	}
 
 	// Clear the participant's cart after a successful order — best-effort, never blocks the response.
 	if cart, err := s.repos.GetOrCreateCart(ctx, req.SessionID, req.PlacedByParticipantID); err == nil {

@@ -47,6 +47,10 @@ const (
 	CodeInvalidPhone             = "INVALID_PHONE"
 	CodeCustomerNotFound         = "CUSTOMER_NOT_FOUND"
 	CodeFeatureDisabled          = "FEATURE_DISABLED"
+	CodePromoNotFound            = "PROMO_NOT_FOUND"
+	CodeMinOrderNotMet           = "MIN_ORDER_NOT_MET"
+	CodePromoExhausted           = "PROMO_EXHAUSTED"
+	CodePromoAlreadyUsed         = "PROMO_ALREADY_USED"
 )
 
 // respondError writes a structured API error response.

@@ -30,6 +30,7 @@ const (
 	EventPaymentCompleted        EventType = "PAYMENT_COMPLETED"
 	EventSessionClosed           EventType = "SESSION_CLOSED"
 	EventSessionExpiringSoon     EventType = "SESSION_EXPIRING_SOON"
+	EventPromoApplied            EventType = "PROMO_APPLIED"
 	EventPing                    EventType = "PING"
 	EventPong                    EventType = "PONG"
 )

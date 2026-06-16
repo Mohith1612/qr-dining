@@ -276,6 +276,48 @@ func (ns NullPlanTier) Value() (driver.Value, error) {
 	return string(ns.PlanTier), nil
 }
 
+type PromoType string
+
+const (
+	PromoTypeFlatAmount PromoType = "flat_amount"
+	PromoTypePercentage PromoType = "percentage"
+)
+
+func (e *PromoType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PromoType(s)
+	case string:
+		*e = PromoType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PromoType: %T", src)
+	}
+	return nil
+}
+
+type NullPromoType struct {
+	PromoType PromoType `json:"promo_type"`
+	Valid     bool      `json:"valid"` // Valid is true if PromoType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPromoType) Scan(value interface{}) error {
+	if value == nil {
+		ns.PromoType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PromoType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPromoType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PromoType), nil
+}
+
 type SessionStatus string
 
 const (
@@ -511,12 +553,8 @@ type Order struct {
 	CreatedAt             time.Time      `json:"created_at"`
 	UpdatedAt             time.Time      `json:"updated_at"`
 	OrderNumber           pgtype.Text    `json:"order_number"`
-}
-
-type OrderSequence struct {
-	BranchID int64     `json:"branch_id"`
-	Date     time.Time `json:"date"`
-	LastSeq  int32     `json:"last_seq"`
+	PromoID               pgtype.Int8    `json:"promo_id"`
+	DiscountAmount        pgtype.Numeric `json:"discount_amount"`
 }
 
 type OrderItem struct {
@@ -529,15 +567,25 @@ type OrderItem struct {
 	Note                  string          `json:"note"`
 }
 
+type OrderSequence struct {
+	BranchID int64       `json:"branch_id"`
+	Date     pgtype.Date `json:"date"`
+	LastSeq  int32       `json:"last_seq"`
+}
+
 type Payment struct {
-	ID          int64              `json:"id"`
-	SessionID   uuid.UUID          `json:"session_id"`
-	OrderID     pgtype.UUID        `json:"order_id"`
-	Amount      pgtype.Numeric     `json:"amount"`
-	Method      PaymentMethod      `json:"method"`
-	Status      PaymentStatus      `json:"status"`
-	InitiatedAt time.Time          `json:"initiated_at"`
-	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+	ID            int64              `json:"id"`
+	SessionID     uuid.UUID          `json:"session_id"`
+	OrderID       pgtype.UUID        `json:"order_id"`
+	Amount        pgtype.Numeric     `json:"amount"`
+	Method        PaymentMethod      `json:"method"`
+	Status        PaymentStatus      `json:"status"`
+	InitiatedAt   time.Time          `json:"initiated_at"`
+	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
+	Subtotal      pgtype.Numeric     `json:"subtotal"`
+	TaxAmount     pgtype.Numeric     `json:"tax_amount"`
+	ServiceCharge pgtype.Numeric     `json:"service_charge"`
+	TipAmount     pgtype.Numeric     `json:"tip_amount"`
 }
 
 type PaymentWebhookEvent struct {
@@ -551,6 +599,33 @@ type PaymentWebhookEvent struct {
 	PaymentID       pgtype.Int8        `json:"payment_id"`
 	ErrorMessage    pgtype.Text        `json:"error_message"`
 	CreatedAt       time.Time          `json:"created_at"`
+}
+
+type Promo struct {
+	ID              int64          `json:"id"`
+	BranchID        int64          `json:"branch_id"`
+	Code            string         `json:"code"`
+	Type            PromoType      `json:"type"`
+	Value           pgtype.Numeric `json:"value"`
+	MinOrderAmount  pgtype.Numeric `json:"min_order_amount"`
+	MaxUses         pgtype.Int4    `json:"max_uses"`
+	UsesPerPhone    int32          `json:"uses_per_phone"`
+	ValidFrom       time.Time      `json:"valid_from"`
+	ValidUntil      time.Time      `json:"valid_until"`
+	TimeWindowStart pgtype.Time    `json:"time_window_start"`
+	TimeWindowEnd   pgtype.Time    `json:"time_window_end"`
+	IsActive        bool           `json:"is_active"`
+	Description     pgtype.Text    `json:"description"`
+	CreatedBy       pgtype.Int8    `json:"created_by"`
+	CreatedAt       time.Time      `json:"created_at"`
+}
+
+type PromoRedemption struct {
+	ID         int64       `json:"id"`
+	PromoID    int64       `json:"promo_id"`
+	OrderID    uuid.UUID   `json:"order_id"`
+	PhoneE164  pgtype.Text `json:"phone_e164"`
+	RedeemedAt time.Time   `json:"redeemed_at"`
 }
 
 type Restaurant struct {

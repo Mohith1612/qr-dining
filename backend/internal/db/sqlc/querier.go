@@ -18,15 +18,20 @@ type Querier interface {
 	ClearCart(ctx context.Context, cartID int64) error
 	CloseSessionIfActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	CountItemsInCategory(ctx context.Context, categoryID int64) (int64, error)
+	CountPromoRedemptions(ctx context.Context, promoID int64) (int64, error)
+	CountPromoRedemptionsByPhone(ctx context.Context, arg CountPromoRedemptionsByPhoneParams) (int64, error)
 	CreateAssistanceRequest(ctx context.Context, arg CreateAssistanceRequestParams) (AssistanceRequest, error)
 	CreateItemModifier(ctx context.Context, arg CreateItemModifierParams) (ItemModifier, error)
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
 	CreateParticipant(ctx context.Context, arg CreateParticipantParams) (SessionParticipant, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
+	CreatePromo(ctx context.Context, arg CreatePromoParams) (Promo, error)
+	CreatePromoRedemption(ctx context.Context, arg CreatePromoRedemptionParams) (PromoRedemption, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff, error)
 	CreateTable(ctx context.Context, arg CreateTableParams) (Table, error)
+	DeactivatePromo(ctx context.Context, arg DeactivatePromoParams) error
 	DeactivateStaff(ctx context.Context, id int64) error
 	DeleteCustomer(ctx context.Context, arg DeleteCustomerParams) error
 	DeleteItemModifier(ctx context.Context, id int64) error
@@ -53,6 +58,7 @@ type Querier interface {
 	GetParticipantByID(ctx context.Context, id int64) (SessionParticipant, error)
 	GetPaymentByID(ctx context.Context, id int64) (Payment, error)
 	GetPlanByTier(ctx context.Context, tier PlanTier) (SubscriptionPlan, error)
+	GetPromoByCode(ctx context.Context, arg GetPromoByCodeParams) (Promo, error)
 	GetRecentEventsByBranch(ctx context.Context, branchID pgtype.Int8) ([]EventLog, error)
 	GetRestaurantByBranchID(ctx context.Context, id int64) (Restaurant, error)
 	GetRestaurantByID(ctx context.Context, id int64) (Restaurant, error)
@@ -91,6 +97,7 @@ type Querier interface {
 	ListParticipantsBySession(ctx context.Context, sessionID uuid.UUID) ([]SessionParticipant, error)
 	ListPaymentsForSession(ctx context.Context, sessionID uuid.UUID) ([]Payment, error)
 	ListPlans(ctx context.Context) ([]SubscriptionPlan, error)
+	ListPromosForBranch(ctx context.Context, branchID int64) ([]Promo, error)
 	ListSessionsExpiringSoon(ctx context.Context) ([]ListSessionsExpiringSoonRow, error)
 	ListStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
 	ListTablesForBranch(ctx context.Context, branchID int64) ([]Table, error)

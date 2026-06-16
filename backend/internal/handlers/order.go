@@ -25,6 +25,8 @@ type placeOrderRequest struct {
 	PlacedByParticipantID int64                `json:"placed_by_participant_id" binding:"required"`
 	IdempotencyKey        string               `json:"idempotency_key" binding:"required"`
 	Items                 []services.OrderItem `json:"items" binding:"required,min=1"`
+	PromoCode             *string              `json:"promo_code"`
+	PhoneE164             *string              `json:"phone_e164"`
 }
 
 func (h *OrderHandler) PlaceOrder(c *gin.Context) {
@@ -46,6 +48,8 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		PlacedByParticipantID: req.PlacedByParticipantID,
 		IdempotencyKey:        req.IdempotencyKey,
 		Items:                 req.Items,
+		PromoCode:             req.PromoCode,
+		PhoneE164:             req.PhoneE164,
 	})
 	if err != nil {
 		switch {
@@ -59,6 +63,14 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 			respondError(c, http.StatusConflict, CodeSessionClosed, err.Error())
 		case errors.Is(err, domain.ErrMenuItemUnavailable):
 			respondError(c, http.StatusUnprocessableEntity, CodeMenuItemUnavailable, err.Error())
+		case errors.Is(err, domain.ErrPromoNotFound):
+			respondError(c, http.StatusNotFound, CodePromoNotFound, "This promo code isn't valid right now.")
+		case errors.Is(err, domain.ErrMinOrderNotMet):
+			respondError(c, http.StatusUnprocessableEntity, CodeMinOrderNotMet, err.Error())
+		case errors.Is(err, domain.ErrPromoExhausted):
+			respondError(c, http.StatusConflict, CodePromoExhausted, "This offer has been claimed by too many guests.")
+		case errors.Is(err, domain.ErrPromoAlreadyUsed):
+			respondError(c, http.StatusConflict, CodePromoAlreadyUsed, "You've already used this offer.")
 		default:
 			respondInternalError(c)
 		}

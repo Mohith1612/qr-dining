@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
@@ -18,23 +19,34 @@ type CreateOrderParams struct {
 	IdempotencyKey        string
 	TotalAmount           pgtype.Numeric
 	OrderNumber           string
+	PromoID               *int64
+	DiscountAmount        pgtype.Numeric
 }
 
 func (r *Repos) CreateOrder(ctx context.Context, p CreateOrderParams) (sqlc.Order, error) {
-	return r.q.CreateOrder(ctx, sqlc.CreateOrderParams{
+	params := sqlc.CreateOrderParams{
 		SessionID:             p.SessionID,
 		BranchID:              p.BranchID,
 		PlacedByParticipantID: pgtype.Int8{Int64: p.PlacedByParticipantID, Valid: true},
 		IdempotencyKey:        p.IdempotencyKey,
 		TotalAmount:           p.TotalAmount,
 		OrderNumber:           pgtype.Text{String: p.OrderNumber, Valid: p.OrderNumber != ""},
-	})
+		DiscountAmount:        p.DiscountAmount,
+	}
+	if p.PromoID != nil {
+		params.PromoID = pgtype.Int8{Int64: *p.PromoID, Valid: true}
+	}
+	return r.q.CreateOrder(ctx, params)
 }
 
-func (r *Repos) NextOrderNumber(ctx context.Context, branchID int64, date string) (int32, error) {
+func (r *Repos) NextOrderNumber(ctx context.Context, branchID int64, dateStr string) (int32, error) {
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return 0, err
+	}
 	return r.q.NextOrderNumber(ctx, sqlc.NextOrderNumberParams{
 		BranchID: branchID,
-		Date:     date,
+		Date:     pgtype.Date{Time: t, Valid: true},
 	})
 }
 

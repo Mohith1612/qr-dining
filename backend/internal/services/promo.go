@@ -1,0 +1,142 @@
+package services
+
+import (
+	"context"
+	"math"
+	"time"
+
+	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
+	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/repository"
+)
+
+type PromoService struct {
+	repos *repository.Repos
+}
+
+func NewPromoService(repos *repository.Repos) *PromoService {
+	return &PromoService{repos: repos}
+}
+
+type ValidatePromoRequest struct {
+	BranchID   int64
+	Code       string
+	OrderTotal float64
+	PhoneE164  *string
+}
+
+type ValidatePromoResult struct {
+	PromoID        int64
+	DiscountAmount float64
+	Description    string
+}
+
+// ValidatePromo checks a promo code for validity and returns the discount. No DB writes.
+// Accepts repos so it can be called with a TX-backed repos inside a transaction.
+func (s *PromoService) ValidatePromo(ctx context.Context, repos *repository.Repos, req ValidatePromoRequest) (ValidatePromoResult, error) {
+	promo, err := repos.GetPromoByCode(ctx, req.BranchID, req.Code)
+	if err != nil {
+		return ValidatePromoResult{}, err // ErrPromoNotFound propagated as-is
+	}
+
+	// Check minimum order amount.
+	minF, _ := promo.MinOrderAmount.Float64Value()
+	if minF.Valid && req.OrderTotal < minF.Float64 {
+		return ValidatePromoResult{}, domain.ErrMinOrderNotMet
+	}
+
+	// Check global redemption cap.
+	if promo.MaxUses.Valid {
+		count, err := repos.CountPromoRedemptions(ctx, promo.ID)
+		if err != nil {
+			return ValidatePromoResult{}, err
+		}
+		if count >= int64(promo.MaxUses.Int32) {
+			return ValidatePromoResult{}, domain.ErrPromoExhausted
+		}
+	}
+
+	// Check per-phone cap.
+	if req.PhoneE164 != nil && promo.UsesPerPhone > 0 {
+		count, err := repos.CountPromoRedemptionsByPhone(ctx, promo.ID, *req.PhoneE164)
+		if err != nil {
+			return ValidatePromoResult{}, err
+		}
+		if count >= int64(promo.UsesPerPhone) {
+			return ValidatePromoResult{}, domain.ErrPromoAlreadyUsed
+		}
+	}
+
+	discount := computeDiscount(promo, req.OrderTotal)
+	desc := ""
+	if promo.Description.Valid {
+		desc = promo.Description.String
+	}
+
+	return ValidatePromoResult{
+		PromoID:        promo.ID,
+		DiscountAmount: discount,
+		Description:    desc,
+	}, nil
+}
+
+func computeDiscount(promo sqlc.Promo, orderTotal float64) float64 {
+	v, _ := promo.Value.Float64Value()
+	value := v.Float64
+	switch promo.Type {
+	case sqlc.PromoTypeFlatAmount:
+		if value > orderTotal {
+			return round2(orderTotal)
+		}
+		return round2(value)
+	case sqlc.PromoTypePercentage:
+		return round2(orderTotal * value / 100)
+	}
+	return 0
+}
+
+func round2(v float64) float64 {
+	return math.Round(v*100) / 100
+}
+
+type CreatePromoRequest struct {
+	BranchID        int64
+	Code            string
+	Type            sqlc.PromoType
+	Value           float64
+	MinOrderAmount  float64
+	MaxUses         *int32
+	UsesPerPhone    int32
+	ValidFrom       time.Time
+	ValidUntil      time.Time
+	TimeWindowStart *time.Duration
+	TimeWindowEnd   *time.Duration
+	Description     *string
+	CreatedBy       *int64
+}
+
+func (s *PromoService) CreatePromo(ctx context.Context, req CreatePromoRequest) (sqlc.Promo, error) {
+	return s.repos.CreatePromo(ctx, repository.CreatePromoParams{
+		BranchID:        req.BranchID,
+		Code:            req.Code,
+		Type:            req.Type,
+		Value:           req.Value,
+		MinOrderAmount:  req.MinOrderAmount,
+		MaxUses:         req.MaxUses,
+		UsesPerPhone:    req.UsesPerPhone,
+		ValidFrom:       req.ValidFrom,
+		ValidUntil:      req.ValidUntil,
+		TimeWindowStart: req.TimeWindowStart,
+		TimeWindowEnd:   req.TimeWindowEnd,
+		Description:     req.Description,
+		CreatedBy:       req.CreatedBy,
+	})
+}
+
+func (s *PromoService) ListPromosForBranch(ctx context.Context, branchID int64) ([]sqlc.Promo, error) {
+	return s.repos.ListPromosForBranch(ctx, branchID)
+}
+
+func (s *PromoService) DeactivatePromo(ctx context.Context, promoID, branchID int64) error {
+	return s.repos.DeactivatePromo(ctx, promoID, branchID)
+}
