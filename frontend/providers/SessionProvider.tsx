@@ -7,6 +7,7 @@ import { sessionsApi } from "@/lib/api/sessions"
 import { useSessionStore } from "@/store/session"
 import { ReconnectingBanner } from "@/components/shared/ReconnectingBanner"
 import { SessionEndedScreen } from "@/components/shared/SessionEndedScreen"
+import { SessionTimeoutBanner } from "@/components/shared/SessionTimeoutBanner"
 import { ErrorBoundary } from "./ErrorBoundary"
 
 interface SessionProviderProps {
@@ -90,6 +91,7 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
     <ErrorBoundary>
       <ReconnectingBanner />
       {snapshotLoaded ? children : null}
+      <SessionTimeoutBanner />
     </ErrorBoundary>
   )
 }

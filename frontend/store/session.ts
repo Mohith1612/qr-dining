@@ -7,12 +7,14 @@ interface SessionState {
   participants: Participant[]
   isHost: boolean
   completedPayment: Payment | null
+  sessionExpiringAt: Date | null
 
   setSession: (session: Session, participant: Participant) => void
   setFromSnapshot: (session: Session, participants: Participant[]) => void
   addParticipant: (p: Participant) => void
   markClosed: () => void
   setCompletedPayment: (payment: Payment) => void
+  setSessionExpiringAt: (at: Date | null) => void
   clear: () => void
 }
 
@@ -22,6 +24,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   participants: [],
   isHost: false,
   completedPayment: null,
+  sessionExpiringAt: null,
 
   setSession(session, participant) {
     set({
@@ -47,17 +50,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set((s) => ({ participants: [...s.participants.filter((x) => x.id !== p.id), p] }))
   },
 
-  markClosed() {
-    set((s) => ({
-      session: s.session ? { ...s.session, status: "closed" } : null,
-    }))
-  },
-
   setCompletedPayment(payment) {
     set({ completedPayment: payment })
   },
 
+  setSessionExpiringAt(at) {
+    set({ sessionExpiringAt: at })
+  },
+
+  markClosed() {
+    set((s) => ({
+      session: s.session ? { ...s.session, status: "closed" } : null,
+      sessionExpiringAt: null,
+    }))
+  },
+
   clear() {
-    set({ session: null, participant: null, participants: [], isHost: false, completedPayment: null })
+    set({ session: null, participant: null, participants: [], isHost: false, completedPayment: null, sessionExpiringAt: null })
   },
 }))
