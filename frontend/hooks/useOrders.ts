@@ -21,7 +21,11 @@ export function useOrders() {
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   )
 
-  async function placeOrder(items: PlaceOrderItem[]): Promise<{ order_items: OrderItem[] } | null> {
+  async function placeOrder(
+    items: PlaceOrderItem[],
+    promoCode?: string,
+    phoneE164?: string
+  ): Promise<{ order_items: OrderItem[] } | null> {
     if (!session || !participant) return null
     const key = generateIdempotencyKey()
     const result = await ordersApi.place(
@@ -29,7 +33,9 @@ export function useOrders() {
       session.branch_id,
       participant.id,
       key,
-      items
+      items,
+      promoCode,
+      phoneE164
     )
     useOrdersStore.getState().addOrder(result.order)
     return result

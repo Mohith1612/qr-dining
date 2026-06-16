@@ -24,13 +24,17 @@ export const ordersApi = {
     branchId: number,
     participantId: number,
     idempotencyKey: string,
-    items: PlaceOrderItem[]
+    items: PlaceOrderItem[],
+    promoCode?: string,
+    phoneE164?: string
   ) =>
     api.post<BackendPlaceOrderResponse>(`/sessions/${sessionId}/orders`, {
       branch_id: branchId,
       placed_by_participant_id: participantId,
       idempotency_key: idempotencyKey,
       items,
+      ...(promoCode ? { promo_code: promoCode } : {}),
+      ...(phoneE164 ? { phone_e164: phoneE164 } : {}),
     }).then(r => ({ order: r.Order, order_items: r.OrderItems }) as PlaceOrderResponse),
 
   list: (sessionId: string) =>

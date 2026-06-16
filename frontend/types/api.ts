@@ -233,3 +233,27 @@ export interface BillData {
   total: number
   currency: string
 }
+
+export interface Promo {
+  id: number
+  branch_id: number
+  code: string
+  type: 'flat_amount' | 'percentage'
+  value: number
+  min_order_amount: number
+  max_uses: number | null
+  uses_per_phone: number
+  valid_from: string
+  valid_until: string
+  time_window_start: string | null
+  time_window_end: string | null
+  is_active: boolean
+  description: string | null
+  created_at: string
+}
+
+export interface ValidatePromoResponse {
+  promo_id: number
+  discount_amount: number
+  description: string
+}
