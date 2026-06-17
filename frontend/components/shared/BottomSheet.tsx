@@ -85,7 +85,7 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
           background: "var(--bg-elev-1)",
           border: "1px solid var(--line-2)",
           borderBottom: "none",
-          borderRadius: "22px 22px 0 0",
+          borderRadius: "var(--rad-xl) var(--rad-xl) 0 0",
           boxShadow: "var(--shadow-3)",
           maxHeight: "86svh",
           paddingBottom: "env(safe-area-inset-bottom)",

@@ -85,6 +85,7 @@ export function SearchBar({ onClose }: Props) {
       )}
       <button
         onClick={onClose}
+        aria-label="Close search"
         style={{
           background: "none",
           border: "none",
@@ -95,7 +96,7 @@ export function SearchBar({ onClose }: Props) {
           padding: "4px 0",
         }}
       >
-        Cancel
+        Done
       </button>
     </div>
   )
