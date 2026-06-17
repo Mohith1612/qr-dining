@@ -70,7 +70,7 @@ export function AssistSkeleton() {
 
 export function KitchenSkeleton() {
   return (
-    <div style={{ display: "flex", gap: 16, padding: "20px", overflowX: "auto" }}>
+    <div className="flex gap-4 px-5 py-5 overflow-x-auto">
       {Array.from({ length: 4 }).map((_, col) => (
         <div key={col} style={{ minWidth: 260, flex: "0 0 260px" }}>
           <Skeleton className="h-8 w-32 mb-3 rounded-lg" />
@@ -110,7 +110,7 @@ export function TablesSkeleton() {
 
 export function OrderSkeleton() {
   return (
-    <div className="px-4 py-6 space-y-4">
+    <div className="px-5 py-6 space-y-4">
       {Array.from({ length: 2 }).map((_, i) => (
         <div key={i} className="rounded-xl p-4 border border-[var(--line-2)] space-y-3">
           <div className="flex justify-between items-center">
