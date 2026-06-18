@@ -5,8 +5,6 @@ export type CardElev = 1 | 2 | 3
 
 interface HospitalityCardProps extends HTMLAttributes<HTMLDivElement> {
   elev?: CardElev
-  /** @deprecated use elev prop */
-  variant?: "default" | "elevated" | "interactive" | "inset"
   press?: boolean
   style?: CSSProperties
 }
@@ -27,21 +25,15 @@ const borderByElev: Record<CardElev, string> = {
   3: "1px solid var(--line-2)",
 }
 
-function variantToElev(variant?: string): CardElev {
-  if (variant === "elevated") return 2
-  return 1
-}
-
 export function HospitalityCard({
   elev,
-  variant,
   press,
   className,
   style,
   children,
   ...props
 }: HospitalityCardProps) {
-  const level: CardElev = elev ?? variantToElev(variant)
+  const level: CardElev = elev ?? 1
 
   return (
     <div
