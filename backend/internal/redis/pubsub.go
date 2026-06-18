@@ -12,7 +12,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const sessionChannelPrefix = "session:"
+const legacySessionChannelPrefix = "session:"
+const scopedSessionChannelPrefix = "org:"
 const sessionChannelSuffix = ":events"
 
 // PubSub wraps Redis pub/sub for session event fanout.
@@ -28,14 +29,14 @@ func NewPubSub(client *goredis.Client, logger zerolog.Logger, metrics *observabi
 	return &PubSub{client: client, logger: logger, metrics: metrics}
 }
 
-// Publish encodes the payload as JSON and publishes it to the session's channel.
-func (ps *PubSub) Publish(ctx context.Context, sessionID uuid.UUID, payload any) error {
+// Publish encodes the payload as JSON and publishes it to the scoped session channel.
+func (ps *PubSub) Publish(ctx context.Context, sessionID uuid.UUID, organizationID, branchID int64, payload any) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal event: %w", err)
 	}
 
-	channel := sessionChannel(sessionID)
+	channel := sessionChannel(sessionID, organizationID, branchID)
 	if err := ps.client.Publish(ctx, channel, data).Err(); err != nil {
 		ps.metrics.RedisPubSubErrors.WithLabelValues("publish").Inc()
 		return fmt.Errorf("publish to %s: %w", channel, err)
@@ -53,7 +54,7 @@ type Message struct {
 // decoded messages to the provided channel. Blocks until ctx is cancelled.
 // Intended to run as a dedicated goroutine started by the WebSocket Hub.
 func (ps *PubSub) Subscribe(ctx context.Context, out chan<- Message) error {
-	sub := ps.client.PSubscribe(ctx, sessionChannelPrefix+"*"+sessionChannelSuffix)
+	sub := ps.client.PSubscribe(ctx, legacySessionChannelPrefix+"*"+sessionChannelSuffix, scopedSessionChannelPrefix+"*"+sessionChannelSuffix)
 	defer func() {
 		sub.Close()
 		ps.metrics.RedisPubSubConnected.Set(0)
@@ -84,12 +85,24 @@ func (ps *PubSub) Subscribe(ctx context.Context, out chan<- Message) error {
 	}
 }
 
-func sessionChannel(id uuid.UUID) string {
-	return sessionChannelPrefix + id.String() + sessionChannelSuffix
+func sessionChannel(sessionID uuid.UUID, organizationID, branchID int64) string {
+	if organizationID > 0 && branchID > 0 {
+		return fmt.Sprintf("org:%d:branch:%d:session:%s%s", organizationID, branchID, sessionID.String(), sessionChannelSuffix)
+	}
+	return legacySessionChannelPrefix + sessionID.String() + sessionChannelSuffix
 }
 
 func parseSessionIDFromChannel(channel string) (uuid.UUID, error) {
-	s := strings.TrimPrefix(channel, sessionChannelPrefix)
+	if strings.HasPrefix(channel, legacySessionChannelPrefix) {
+		s := strings.TrimPrefix(channel, legacySessionChannelPrefix)
+		s = strings.TrimSuffix(s, sessionChannelSuffix)
+		return uuid.Parse(s)
+	}
+	parts := strings.Split(channel, ":")
+	if len(parts) >= 6 && parts[0] == "org" && parts[2] == "branch" && parts[4] == "session" {
+		return uuid.Parse(parts[5])
+	}
+	s := strings.TrimPrefix(channel, legacySessionChannelPrefix)
 	s = strings.TrimSuffix(s, sessionChannelSuffix)
 	return uuid.Parse(s)
 }

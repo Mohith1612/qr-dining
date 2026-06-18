@@ -23,8 +23,9 @@ export default function SessionLayout({ children, params }: Props) {
   useEffect(() => {
     const storedSession = sessionStorage.getItem("session_id")
     const storedParticipant = sessionStorage.getItem("participant_id")
+    const storedGuestToken = sessionStorage.getItem("guest_access_token")
 
-    if (!storedSession || storedSession !== id || !storedParticipant) {
+    if (!storedSession || storedSession !== id || !storedParticipant || !storedGuestToken) {
       router.replace(`/`)
       return
     }

@@ -5,8 +5,8 @@ import (
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/events"
-	"github.com/Mohith1612/qr-dining/internal/repository"
 	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
+	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/google/uuid"
 )
 
@@ -32,6 +32,12 @@ func (s *ParticipantService) ListBySession(ctx context.Context, sessionID uuid.U
 func (s *ParticipantService) UpdatePresence(ctx context.Context, sessionID uuid.UUID, participantID int64) error {
 	if err := s.repos.UpdateParticipantLastSeen(ctx, participantID); err != nil {
 		return err
+	}
+	sess, err := s.repos.GetSessionByID(ctx, sessionID)
+	if err == nil {
+		if org, err := s.repos.GetOrganizationByBranchID(ctx, sess.BranchID); err == nil {
+			return s.presence.HeartbeatScoped(ctx, org.ID, sess.BranchID, sessionID, participantID)
+		}
 	}
 	return s.presence.Heartbeat(ctx, sessionID, participantID)
 }

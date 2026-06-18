@@ -24,7 +24,24 @@ export class WSConnection {
 
   connect(): void {
     if (this.stopped) return
-    const url = `${env.wsUrl}/ws?session_id=${this.sessionId}&participant_id=${this.participantId}`
+    void this.openSocket()
+  }
+
+  private async openSocket(): Promise<void> {
+    const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
+    let url = `${env.wsUrl}/ws?session_id=${this.sessionId}&participant_id=${this.participantId}`
+
+    if (guestToken) {
+      try {
+        const { ticket } = await sessionsApi.wsTicket(this.sessionId, guestToken)
+        url = `${env.wsUrl}/ws?ticket=${encodeURIComponent(ticket)}`
+      } catch {
+        useWsStore.getState().setStatus("failed")
+        return
+      }
+    }
+
+    if (this.stopped) return
     this.ws = new WebSocket(url)
 
     this.ws.onopen = () => {
@@ -88,7 +105,8 @@ export class WSConnection {
     if (this.stopped) return
 
     try {
-      const snapshot = await sessionsApi.snapshot(this.sessionId)
+      const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
+      const snapshot = await sessionsApi.snapshot(this.sessionId, guestToken)
 
       if (snapshot.session.status !== "active") {
         // Session ended while disconnected — stop and let UI handle it

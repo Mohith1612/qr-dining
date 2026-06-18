@@ -26,7 +26,16 @@ func NewPresence(client *goredis.Client) *Presence {
 
 // Heartbeat records a participant as present and refreshes the TTL.
 func (p *Presence) Heartbeat(ctx context.Context, sessionID uuid.UUID, participantID int64) error {
-	key := presenceKey(sessionID)
+	key := presenceKey(0, 0, sessionID)
+	return p.heartbeat(ctx, key, participantID)
+}
+
+func (p *Presence) HeartbeatScoped(ctx context.Context, organizationID, branchID int64, sessionID uuid.UUID, participantID int64) error {
+	key := presenceKey(organizationID, branchID, sessionID)
+	return p.heartbeat(ctx, key, participantID)
+}
+
+func (p *Presence) heartbeat(ctx context.Context, key string, participantID int64) error {
 	field := strconv.FormatInt(participantID, 10)
 	now := time.Now().UTC().Format(time.RFC3339)
 
@@ -41,7 +50,7 @@ func (p *Presence) Heartbeat(ctx context.Context, sessionID uuid.UUID, participa
 
 // GetPresent returns a map of participantID → last_seen for a session.
 func (p *Presence) GetPresent(ctx context.Context, sessionID uuid.UUID) (map[int64]time.Time, error) {
-	raw, err := p.client.HGetAll(ctx, presenceKey(sessionID)).Result()
+	raw, err := p.client.HGetAll(ctx, presenceKey(0, 0, sessionID)).Result()
 	if err != nil {
 		return nil, fmt.Errorf("get presence: %w", err)
 	}
@@ -64,14 +73,21 @@ func (p *Presence) GetPresent(ctx context.Context, sessionID uuid.UUID) (map[int
 // Remove deletes a participant from the presence hash on disconnect.
 func (p *Presence) Remove(ctx context.Context, sessionID uuid.UUID, participantID int64) error {
 	field := strconv.FormatInt(participantID, 10)
-	return p.client.HDel(ctx, presenceKey(sessionID), field).Err()
+	return p.client.HDel(ctx, presenceKey(0, 0, sessionID), field).Err()
 }
 
 // Delete removes the entire presence hash for a session (called on session close/abandon).
 func (p *Presence) Delete(ctx context.Context, sessionID uuid.UUID) {
-	p.client.Del(ctx, presenceKey(sessionID))
+	p.client.Del(ctx, presenceKey(0, 0, sessionID))
 }
 
-func presenceKey(sessionID uuid.UUID) string {
+func (p *Presence) DeleteScoped(ctx context.Context, organizationID, branchID int64, sessionID uuid.UUID) {
+	p.client.Del(ctx, presenceKey(organizationID, branchID, sessionID), presenceKey(0, 0, sessionID))
+}
+
+func presenceKey(organizationID, branchID int64, sessionID uuid.UUID) string {
+	if organizationID > 0 && branchID > 0 {
+		return fmt.Sprintf("org:%d:branch:%d:session:%s:presence", organizationID, branchID, sessionID.String())
+	}
 	return "presence:" + sessionID.String()
 }

@@ -24,6 +24,10 @@ export type WSEventType =
   | "PONG"
 
 export interface WSEnvelope {
+  event_id?: string
+  sequence?: number
+  organization_id?: number
+  branch_id?: number
   event: WSEventType
   session_id: string
   payload: unknown

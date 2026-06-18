@@ -28,8 +28,8 @@ func (w *workerQuerier) ListExpiredSessions(ctx context.Context) ([]worker.Expir
 	return result, nil
 }
 
-func (w *workerQuerier) AbandonStaleSession(ctx context.Context, id uuid.UUID) error {
-	return w.repos.AbandonStaleSession(ctx, id)
+func (w *workerQuerier) AbandonStaleSession(ctx context.Context, id uuid.UUID, tableID int64) error {
+	return w.repos.AbandonStaleSession(ctx, id, tableID)
 }
 
 func (w *workerQuerier) ListSessionsExpiringSoon(ctx context.Context) ([]worker.ExpiringSoonSession, error) {

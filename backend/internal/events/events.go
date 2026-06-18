@@ -13,11 +13,20 @@ import (
 // All service code publishes events through this instead of calling pubsub directly.
 type Publisher struct {
 	pubsub *redis.PubSub
+	store  EventStore
 	logger zerolog.Logger
+}
+
+type EventStore interface {
+	AppendSessionEvent(ctx context.Context, sessionID uuid.UUID, event ws.EventType, payload any) (ws.Envelope, error)
 }
 
 func NewPublisher(pubsub *redis.PubSub, logger zerolog.Logger) *Publisher {
 	return &Publisher{pubsub: pubsub, logger: logger}
+}
+
+func (p *Publisher) SetEventStore(store EventStore) {
+	p.store = store
 }
 
 // NewNoopPublisher returns a Publisher that discards all events. For tests only.
@@ -31,13 +40,25 @@ func (p *Publisher) publish(ctx context.Context, event ws.EventType, sessionID u
 	if p.pubsub == nil {
 		return
 	}
-	env, err := ws.NewEnvelope(event, sessionID, payload)
-	if err != nil {
-		p.logger.Error().Err(err).Str("event", string(event)).Msg("failed to build event envelope")
-		return
+	var (
+		env ws.Envelope
+		err error
+	)
+	if p.store != nil {
+		env, err = p.store.AppendSessionEvent(ctx, sessionID, event, payload)
+		if err != nil {
+			p.logger.Error().Err(err).Str("event", string(event)).Str("session_id", sessionID.String()).Msg("failed to append session event")
+			return
+		}
+	} else {
+		env, err = ws.NewEnvelope(event, sessionID, payload)
+		if err != nil {
+			p.logger.Error().Err(err).Str("event", string(event)).Msg("failed to build event envelope")
+			return
+		}
 	}
 	p.logger.Debug().Str("event", string(event)).Str("session_id", sessionID.String()).Msg("publish event")
-	if err := p.pubsub.Publish(ctx, sessionID, env); err != nil {
+	if err := p.pubsub.Publish(ctx, env.SessionID, env.OrganizationID, env.BranchID, env); err != nil {
 		p.logger.Error().Err(err).Str("event", string(event)).Msg("failed to publish event")
 	}
 }

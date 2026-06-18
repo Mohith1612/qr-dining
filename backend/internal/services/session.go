@@ -42,15 +42,6 @@ type CreateSessionResult struct {
 //  4. Sets sessions.host_participant_id (DEFERRABLE FK committed at step 5).
 //  5. Marks the table as occupied.
 func (s *SessionService) CreateSession(ctx context.Context, tableID int64, displayName, deviceFingerprint string) (CreateSessionResult, error) {
-	// Verify table is free before starting the transaction.
-	_, err := s.repos.GetActiveSessionForTable(ctx, tableID)
-	if err == nil {
-		return CreateSessionResult{}, domain.ErrSessionAlreadyActive
-	}
-	if !errors.Is(err, domain.ErrSessionNotFound) {
-		return CreateSessionResult{}, err
-	}
-
 	table, err := s.repos.GetTableByID(ctx, tableID)
 	if err != nil {
 		return CreateSessionResult{}, err
@@ -66,6 +57,9 @@ func (s *SessionService) CreateSession(ctx context.Context, tableID int64, displ
 	err = s.repos.WithTx(ctx, func(tx *repository.Repos) error {
 		// Defer the FK check so we can insert session before participant.
 		if err := tx.ExecRaw(ctx, "SET CONSTRAINTS fk_sessions_host_participant DEFERRED"); err != nil {
+			return err
+		}
+		if err := tx.ExecRaw(ctx, "SELECT id FROM tables WHERE id = $1 FOR UPDATE", tableID); err != nil {
 			return err
 		}
 
@@ -140,21 +134,36 @@ func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, request
 		}
 	}
 
-	if _, err := s.repos.CloseSessionIfActive(ctx, id); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil // already closed — idempotent
+	closed := false
+	err = s.repos.WithTx(ctx, func(tx *repository.Repos) error {
+		if _, err := tx.CloseSessionIfActive(ctx, id); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil // already closed — idempotent
+			}
+			return err
 		}
+		if err := tx.UpdateTableStatus(ctx, sess.TableID, sqlc.TableStatusAvailable); err != nil {
+			return err
+		}
+		closed = true
+		return nil
+	})
+	if err != nil {
 		return err
 	}
-	if err := s.repos.UpdateTableStatus(ctx, sess.TableID, sqlc.TableStatusAvailable); err != nil {
-		return err
+	if !closed {
+		return nil
 	}
 
 	if s.metrics != nil && s.metrics.SessionDuration != nil {
 		s.metrics.SessionDuration.Observe(time.Since(sess.CreatedAt).Seconds())
 	}
 	if s.presence != nil {
-		s.presence.Delete(ctx, id)
+		if organization, err := s.repos.GetOrganizationByBranchID(ctx, sess.BranchID); err == nil {
+			s.presence.DeleteScoped(ctx, organization.ID, sess.BranchID, id)
+		} else {
+			s.presence.Delete(ctx, id)
+		}
 	}
 
 	actorID := int64(0)

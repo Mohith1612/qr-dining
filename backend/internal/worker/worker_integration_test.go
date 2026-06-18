@@ -54,7 +54,7 @@ func TestStaleSessionCleaner(t *testing.T) {
 	}
 
 	// AbandonStaleSession marks it abandoned.
-	if err := repos.AbandonStaleSession(ctx, staleID); err != nil {
+	if err := repos.AbandonStaleSession(ctx, staleID, f.TableID); err != nil {
 		t.Fatalf("AbandonStaleSession: %v", err)
 	}
 

@@ -25,7 +25,8 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
 
   useEffect(() => {
     let cancelled = false
-    sessionsApi.snapshot(sessionId).then((snap) => {
+    const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
+    sessionsApi.snapshot(sessionId, guestToken).then((snap) => {
       if (cancelled) return
       reconcileSnapshot(snap)
       // If participant wasn't set by setSession (e.g. after a hard navigation),

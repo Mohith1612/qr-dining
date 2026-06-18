@@ -71,6 +71,7 @@ func main() {
 
 	// 11. Initialize repository layer.
 	repos := repository.New(db, logger)
+	publisher.SetEventStore(repos)
 
 	// 12. Initialize HTTP server with all dependencies.
 	srv := server.New(cfg, db, redisClient, hub, metrics, logger, repos, publisher)

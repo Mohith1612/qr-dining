@@ -12,6 +12,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/observability"
+	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
@@ -23,12 +24,13 @@ type SessionHandler struct {
 	repos       *repository.Repos
 	metrics     *observability.Metrics
 	guestTokens *auth.GuestTokenService
+	tickets     *redisPkg.WSTicketStore
 	flags       config.FeatureFlags
 	audit       *audit.Writer
 }
 
-func NewSessionHandler(svc *services.SessionService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, auditWriter *audit.Writer) *SessionHandler {
-	return &SessionHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags, audit: auditWriter}
+func NewSessionHandler(svc *services.SessionService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, tickets *redisPkg.WSTicketStore, flags config.FeatureFlags, auditWriter *audit.Writer) *SessionHandler {
+	return &SessionHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, tickets: tickets, flags: flags, audit: auditWriter}
 }
 
 type createSessionRequest struct {
@@ -175,6 +177,63 @@ func (h *SessionHandler) Join(c *gin.Context) {
 		"session":            sess,
 		"participant":        participant,
 		"guest_access_token": token,
+	})
+}
+
+func (h *SessionHandler) IssueWSTicket(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondValidationError(c, "invalid session id")
+		return
+	}
+
+	token := guestTokenFromHeader(c)
+	if token == "" {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential required")
+		return
+	}
+	claims, err := h.guestTokens.Validate(token)
+	if err != nil {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "invalid guest credential")
+		return
+	}
+	if claims.SessionID != id {
+		respondError(c, http.StatusForbidden, CodeForbidden, "guest credential does not belong to this session")
+		return
+	}
+
+	sess, err := h.repos.GetSessionByID(c.Request.Context(), id)
+	if err != nil {
+		sessionError(c, err)
+		return
+	}
+	if sess.Status != sqlc.SessionStatusActive {
+		sessionError(c, domain.ErrSessionClosed)
+		return
+	}
+
+	participant, err := h.repos.GetSessionParticipantByID(c.Request.Context(), claims.ParticipantID)
+	if err != nil || participant.SessionID != id || participant.CredentialVersion != claims.CredentialVersion {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential is no longer valid")
+		return
+	}
+
+	wsTicket, err := h.tickets.Issue(c.Request.Context(), redisPkg.WSTicketClaims{
+		SessionID:         id,
+		OrganizationID:    claims.OrganizationID,
+		BranchID:          claims.BranchID,
+		ParticipantID:     claims.ParticipantID,
+		CredentialVersion: claims.CredentialVersion,
+		JTI:               claims.JTI,
+	})
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"ticket":     wsTicket,
+		"expires_in": 30,
 	})
 }
 

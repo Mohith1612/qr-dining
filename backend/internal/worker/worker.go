@@ -32,7 +32,7 @@ type ExpiringSoonSession struct {
 // Implemented by *sqlc.Queries after code generation; interface allows compilation before that.
 type Querier interface {
 	ListExpiredSessions(ctx context.Context) ([]ExpiredSession, error)
-	AbandonStaleSession(ctx context.Context, id uuid.UUID) error
+	AbandonStaleSession(ctx context.Context, id uuid.UUID, tableID int64) error
 	ListSessionsExpiringSoon(ctx context.Context) ([]ExpiringSoonSession, error)
 	MarkSessionWarned(ctx context.Context, id uuid.UUID) error
 }
@@ -149,7 +149,7 @@ func (w *Worker) cleanStaleSessions(ctx context.Context) {
 	abandoned := 0
 	for i := range sessions {
 		s := &sessions[i]
-		if err := w.queries.AbandonStaleSession(ctx, s.ID); err != nil {
+		if err := w.queries.AbandonStaleSession(ctx, s.ID, s.TableID); err != nil {
 			w.logger.Error().Err(err).Str("session_id", s.ID.String()).Msg("abandon stale session")
 			continue
 		}

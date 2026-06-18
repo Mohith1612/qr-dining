@@ -50,18 +50,19 @@ export default function TableEntryPage({ params }: Props) {
       let sessionId: string
       if (tableInfo.session_id) {
         // Table has an active session — join it
-        const participant = await sessionsApi.join(tableInfo.session_id, name.trim())
-        const session = await sessionsApi.get(tableInfo.session_id)
+        const { session, participant, guest_access_token: guestToken } = await sessionsApi.join(tableInfo.session_id, name.trim())
         useSessionStore.getState().setSession(session, participant)
         sessionStorage.setItem("session_id", session.id)
         sessionStorage.setItem("participant_id", String(participant.id))
+        sessionStorage.setItem("guest_access_token", guestToken)
         sessionId = session.id
       } else {
         // No active session — create one
-        const { session, participant } = await sessionsApi.create(tableInfo.table_id, name.trim())
+        const { session, participant, guest_access_token: guestToken } = await sessionsApi.create(tableInfo.table_id, name.trim())
         useSessionStore.getState().setSession(session, participant)
         sessionStorage.setItem("session_id", session.id)
         sessionStorage.setItem("participant_id", String(participant.id))
+        sessionStorage.setItem("guest_access_token", guestToken)
         sessionId = session.id
       }
       router.push(`/session/${sessionId}`)

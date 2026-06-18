@@ -35,8 +35,13 @@ ORDER BY created_at ASC
 	return items, rows.Err()
 }
 
-func (r *Repos) AbandonStaleSession(ctx context.Context, id uuid.UUID) error {
-	return r.q.AbandonStaleSession(ctx, id)
+func (r *Repos) AbandonStaleSession(ctx context.Context, id uuid.UUID, tableID int64) error {
+	return r.WithTx(ctx, func(tx *Repos) error {
+		if err := tx.q.AbandonStaleSession(ctx, id); err != nil {
+			return err
+		}
+		return tx.UpdateTableStatus(ctx, tableID, sqlc.TableStatusAvailable)
+	})
 }
 
 func (r *Repos) ListSessionsExpiringSoon(ctx context.Context) ([]sqlc.ListSessionsExpiringSoonRow, error) {

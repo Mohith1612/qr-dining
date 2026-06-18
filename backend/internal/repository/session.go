@@ -2,21 +2,28 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
+	ws "github.com/Mohith1612/qr-dining/internal/websocket"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func (r *Repos) CreateSession(ctx context.Context, branchID, tableID int64, token string) (sqlc.Session, error) {
-	return r.q.CreateSession(ctx, sqlc.CreateSessionParams{
+	sess, err := r.q.CreateSession(ctx, sqlc.CreateSessionParams{
 		BranchID:     branchID,
 		TableID:      tableID,
 		SessionToken: token,
 	})
+	if isDuplicateError(err) {
+		return sqlc.Session{}, domain.ErrSessionAlreadyActive
+	}
+	return sess, err
 }
 
 func (r *Repos) SetSessionHost(ctx context.Context, sessionID uuid.UUID, participantID int64) error {
@@ -70,4 +77,53 @@ func (r *Repos) AbandonSession(ctx context.Context, id uuid.UUID) error {
 
 func (r *Repos) ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]sqlc.Session, error) {
 	return r.q.ListActiveSessionsForBranch(ctx, branchID)
+}
+
+func (r *Repos) AppendSessionEvent(ctx context.Context, sessionID uuid.UUID, event ws.EventType, payload any) (ws.Envelope, error) {
+	env, err := ws.NewEnvelope(event, sessionID, payload)
+	if err != nil {
+		return ws.Envelope{}, err
+	}
+
+	raw := []byte("{}")
+	if env.Payload != nil {
+		raw = env.Payload
+	}
+
+	err = r.WithTx(ctx, func(tx *Repos) error {
+		if err := tx.ExecRaw(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, sessionID.String()); err != nil {
+			return err
+		}
+
+		row := tx.db.QueryRow(ctx, `
+WITH next_sequence AS (
+    SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence
+    FROM session_events
+    WHERE session_id = $1
+),
+session_scope AS (
+    SELECT s.branch_id, b.organization_id
+    FROM sessions s
+    JOIN branches b ON b.id = s.branch_id
+    WHERE s.id = $1
+)
+INSERT INTO session_events (id, sequence, organization_id, branch_id, session_id, event, payload)
+SELECT $2, next_sequence.sequence, session_scope.organization_id, session_scope.branch_id, $1, $3, $4::jsonb
+FROM next_sequence, session_scope
+RETURNING sequence, organization_id, branch_id, created_at
+`, sessionID, env.EventID, string(event), raw)
+		if err := row.Scan(&env.Sequence, &env.OrganizationID, &env.BranchID, &env.Timestamp); err != nil {
+			return fmt.Errorf("append session event: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return ws.Envelope{}, err
+	}
+
+	// Normalize through JSON so callers always publish a compact object payload.
+	if env.Payload == nil {
+		env.Payload = json.RawMessage("{}")
+	}
+	return env, nil
 }

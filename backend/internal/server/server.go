@@ -65,6 +65,7 @@ func New(
 	rateLimiter := redisPkg.NewRateLimiter(redis)
 	cache := redisPkg.NewCache(redis, metrics.CacheHitsTotal, metrics.CacheMissesTotal)
 	presence := redisPkg.NewPresence(redis)
+	wsTickets := redisPkg.NewWSTicketStore(redis)
 	guestTokens := auth.NewGuestTokenService(cfg.Auth.GuestTokenSecret, cfg.Auth.GuestTokenTTL)
 	authorizer := authz.NewAuthorizer()
 
@@ -88,7 +89,7 @@ func New(
 
 	// ── Handlers ─────────────────────────────────────────────────────────────
 	health := handlers.NewHealthHandler(db, redis)
-	sessionH := handlers.NewSessionHandler(sessionSvc, repos, metrics, guestTokens, cfg.FeatureFlags, auditWriter)
+	sessionH := handlers.NewSessionHandler(sessionSvc, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags, auditWriter)
 	cartH := handlers.NewCartHandler(cartSvc, repos, metrics, guestTokens, cfg.FeatureFlags)
 	orderH := handlers.NewOrderHandler(orderSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
@@ -96,7 +97,7 @@ func New(
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
 	platformH := handlers.NewPlatformHandler(repos, platformSvc, auditWriter)
 	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, auditWriter)
-	wsH := handlers.NewWSHandler(hub, repos, metrics, guestTokens, cfg.FeatureFlags)
+	wsH := handlers.NewWSHandler(hub, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags)
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc, repos, guestTokens, cfg.FeatureFlags)
 	menuAdminH := handlers.NewMenuAdminHandler(menuSvc, repos, authorizer, auditWriter)
 	eventLogH := handlers.NewEventLogHandler(repos)
@@ -130,6 +131,7 @@ func New(
 	api.GET("/sessions/:id", sessionH.Get)
 	api.DELETE("/sessions/:id", sessionH.Close)
 	api.POST("/sessions/:id/join", sessionH.Join)
+	api.POST("/sessions/:id/ws-ticket", sessionH.IssueWSTicket)
 
 	// Cart
 	api.GET("/sessions/:id/cart", cartH.GetCart)

@@ -29,13 +29,14 @@ export function friendlyErrorMessage(code: string): string {
 type RequestOptions = {
   participantId?: number
   staffToken?: string
+  guestToken?: string
   body?: unknown
   method?: string
 }
 
 async function request<T>(
   path: string,
-  { participantId, staffToken, body, method = "GET" }: RequestOptions = {}
+  { participantId, staffToken, guestToken, body, method = "GET" }: RequestOptions = {}
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -45,8 +46,8 @@ async function request<T>(
     headers["X-Participant-ID"] = String(participantId)
   }
 
-  if (staffToken) {
-    headers["Authorization"] = `Bearer ${staffToken}`
+  if (staffToken || guestToken) {
+    headers["Authorization"] = `Bearer ${staffToken ?? guestToken}`
   }
 
   // In local dev, pass tenant slug via header so the backend can identify the tenant
