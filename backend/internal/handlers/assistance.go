@@ -5,22 +5,28 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/observability"
+	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type AssistanceHandler struct {
-	svc     *services.AssistanceService
-	metrics *observability.Metrics
+	svc         *services.AssistanceService
+	repos       *repository.Repos
+	metrics     *observability.Metrics
+	guestTokens *auth.GuestTokenService
+	flags       config.FeatureFlags
 }
 
-func NewAssistanceHandler(svc *services.AssistanceService, metrics *observability.Metrics) *AssistanceHandler {
-	return &AssistanceHandler{svc: svc, metrics: metrics}
+func NewAssistanceHandler(svc *services.AssistanceService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *AssistanceHandler {
+	return &AssistanceHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags}
 }
 
 type requestAssistanceRequest struct {
@@ -41,7 +47,17 @@ func (h *AssistanceHandler) Request(c *gin.Context) {
 		respondValidationError(c, err.Error())
 		return
 	}
-	recordLegacyIdentityUsage(h.metrics, legacyMechanismBodyParticipantID, legacyEndpointAssistance)
+	if req.ParticipantID != 0 {
+		recordLegacyIdentityUsage(h.metrics, legacyMechanismBodyParticipantID, legacyEndpointAssistance)
+	}
+	participantID, ok := guestParticipantID(c, h.guestTokens, h.repos, sessionID, req.ParticipantID, h.flags.AuthGuestCredentialsRequired)
+	if !ok {
+		return
+	}
+	if participantID == 0 {
+		respondValidationError(c, "participant_id is required")
+		return
+	}
 
 	reqType := sqlc.AssistanceTypeWaiter
 	switch req.Type {
@@ -51,7 +67,7 @@ func (h *AssistanceHandler) Request(c *gin.Context) {
 		reqType = sqlc.AssistanceTypeOther
 	}
 
-	ar, err := h.svc.Request(c.Request.Context(), sessionID, req.TableID, req.ParticipantID, reqType)
+	ar, err := h.svc.Request(c.Request.Context(), sessionID, req.TableID, participantID, reqType)
 	if err != nil {
 		respondInternalError(c)
 		return

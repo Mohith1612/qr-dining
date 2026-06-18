@@ -115,10 +115,10 @@ func main() {
 	// ── Branch ────────────────────────────────────────────────────────────────
 	var branchID int64
 	err = pool.QueryRow(ctx,
-		`INSERT INTO branches (restaurant_id, name, address, timezone) VALUES ($1, $2, $3, $4)
+		`INSERT INTO branches (restaurant_id, name, address, timezone, branch_code) VALUES ($1, $2, $3, $4, $5)
 		 ON CONFLICT DO NOTHING
 		 RETURNING id`,
-		restaurantID, "Main Branch", "123 Main St", "Asia/Kolkata",
+		restaurantID, "Main Branch", "123 Main St", "Asia/Kolkata", "DEMO-MAIN",
 	).Scan(&branchID)
 	if err != nil {
 		// Try selecting existing.
@@ -161,10 +161,11 @@ func main() {
 
 	for i, role := range staffRoles {
 		staff, err := q.CreateStaff(ctx, sqlc.CreateStaffParams{
-			BranchID: branchID,
-			Name:     staffNames[i],
-			Role:     role,
-			PinHash:  hash,
+			BranchID:  branchID,
+			Name:      staffNames[i],
+			Role:      role,
+			PinHash:   hash,
+			StaffCode: fmt.Sprintf("STAFF%02d", i+1),
 		})
 		if err != nil {
 			fmt.Printf("staff %s may already exist: %v\n", role, err)

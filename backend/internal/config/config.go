@@ -16,6 +16,7 @@ type Config struct {
 	Redis        RedisConfig
 	Log          LogConfig
 	CORS         CORSConfig
+	Auth         AuthConfig
 	Worker       WorkerConfig
 	R2           R2Config
 	FeatureFlags FeatureFlags
@@ -60,6 +61,11 @@ type LogConfig struct {
 
 type CORSConfig struct {
 	AllowedOrigins []string
+}
+
+type AuthConfig struct {
+	GuestTokenSecret string
+	GuestTokenTTL    time.Duration
 }
 
 type WorkerConfig struct {
@@ -140,6 +146,10 @@ func Load() (*Config, error) {
 	// CORS
 	cfg.CORS.AllowedOrigins = splitComma("CORS_ALLOWED_ORIGINS", "")
 
+	// Auth
+	cfg.Auth.GuestTokenSecret = getenv("GUEST_TOKEN_SECRET", "dev-only-guest-token-secret")
+	cfg.Auth.GuestTokenTTL = parseDuration("GUEST_TOKEN_TTL", 2*time.Hour)
+
 	// Workers
 	cfg.Worker.StaleSessionInterval = parseDuration("STALE_SESSION_INTERVAL", 5*time.Minute)
 	cfg.Worker.PresenceExpiryInterval = parseDuration("PRESENCE_EXPIRY_INTERVAL", 60*time.Second)
@@ -180,6 +190,9 @@ func Load() (*Config, error) {
 	// Warn (non-fatal) when CORS origins are unconfigured in production.
 	if len(cfg.CORS.AllowedOrigins) == 0 && cfg.Server.GinMode == "release" {
 		fmt.Fprintf(os.Stderr, "warn: CORS_ALLOWED_ORIGINS is empty in release mode — all WebSocket origins will be accepted\n")
+	}
+	if cfg.Auth.GuestTokenSecret == "dev-only-guest-token-secret" && cfg.Server.GinMode == "release" {
+		fmt.Fprintf(os.Stderr, "warn: GUEST_TOKEN_SECRET is using the development default in release mode\n")
 	}
 
 	return cfg, nil

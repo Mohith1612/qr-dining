@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
@@ -16,15 +17,19 @@ import (
 type StaffHandler struct {
 	svc     *services.StaffService
 	metrics *observability.Metrics
+	flags   config.FeatureFlags
 }
 
-func NewStaffHandler(svc *services.StaffService, metrics *observability.Metrics) *StaffHandler {
-	return &StaffHandler{svc: svc, metrics: metrics}
+func NewStaffHandler(svc *services.StaffService, metrics *observability.Metrics, flags config.FeatureFlags) *StaffHandler {
+	return &StaffHandler{svc: svc, metrics: metrics, flags: flags}
 }
 
 type staffAuthRequest struct {
-	BranchID int64  `json:"branch_id" binding:"required"`
-	PIN      string `json:"pin" binding:"required,min=4,max=8"`
+	BranchID   int64  `json:"branch_id"`
+	BranchCode string `json:"branch_code"`
+	StaffCode  string `json:"staff_code"`
+	PIN        string `json:"pin" binding:"required,min=4,max=8"`
+	DeviceName string `json:"device_name"`
 }
 
 func (h *StaffHandler) Authenticate(c *gin.Context) {
@@ -33,9 +38,22 @@ func (h *StaffHandler) Authenticate(c *gin.Context) {
 		respondValidationError(c, err.Error())
 		return
 	}
-	recordLegacyIdentityUsage(h.metrics, legacyMechanismBranchPIN, legacyEndpointStaffAuth)
-
-	session, err := h.svc.Authenticate(c.Request.Context(), req.BranchID, req.PIN)
+	var session services.StaffSession
+	var err error
+	if req.BranchCode != "" || req.StaffCode != "" || h.flags.AuthStaffCodeRequired {
+		if req.BranchCode == "" || req.StaffCode == "" {
+			respondValidationError(c, "branch_code and staff_code are required")
+			return
+		}
+		session, err = h.svc.AuthenticateWithCode(c.Request.Context(), req.BranchCode, req.StaffCode, req.PIN, req.DeviceName)
+	} else {
+		if req.BranchID == 0 {
+			respondValidationError(c, "branch_id is required")
+			return
+		}
+		recordLegacyIdentityUsage(h.metrics, legacyMechanismBranchPIN, legacyEndpointStaffAuth)
+		session, err = h.svc.Authenticate(c.Request.Context(), req.BranchID, req.PIN)
+	}
 	if err != nil {
 		if errors.Is(err, domain.ErrParticipantUnauthorized) {
 			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "invalid credentials")
@@ -49,9 +67,10 @@ func (h *StaffHandler) Authenticate(c *gin.Context) {
 }
 
 type createStaffRequest struct {
-	Name string `json:"name" binding:"required,min=1,max=100"`
-	Role string `json:"role" binding:"required"`
-	PIN  string `json:"pin" binding:"required,min=4,max=8"`
+	Name      string `json:"name" binding:"required,min=1,max=100"`
+	Role      string `json:"role" binding:"required"`
+	StaffCode string `json:"staff_code"`
+	PIN       string `json:"pin" binding:"required,min=4,max=8"`
 }
 
 // CreateStaff creates a new staff member. Only owners may create staff.
@@ -79,17 +98,18 @@ func (h *StaffHandler) CreateStaff(c *gin.Context) {
 	}
 
 	role := sqlc.StaffRole(req.Role)
-	staff, err := h.svc.CreateStaff(c.Request.Context(), branchID, role, req.Name, req.PIN)
+	staff, err := h.svc.CreateStaff(c.Request.Context(), branchID, role, req.Name, req.StaffCode, req.PIN)
 	if err != nil {
 		respondInternalError(c)
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"id":        staff.ID,
-		"branch_id": staff.BranchID,
-		"name":      staff.Name,
-		"role":      staff.Role,
+		"id":         staff.ID,
+		"branch_id":  staff.BranchID,
+		"name":       staff.Name,
+		"role":       staff.Role,
+		"staff_code": staff.StaffCode,
 	})
 }
 

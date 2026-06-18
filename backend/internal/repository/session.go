@@ -34,6 +34,14 @@ func (r *Repos) GetSessionByID(ctx context.Context, id uuid.UUID) (sqlc.Session,
 	return s, err
 }
 
+func (r *Repos) GetSessionParticipantByID(ctx context.Context, id int64) (sqlc.SessionParticipant, error) {
+	p, err := r.q.GetSessionParticipantByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.SessionParticipant{}, domain.ErrParticipantNotFound
+	}
+	return p, err
+}
+
 func (r *Repos) GetSessionByToken(ctx context.Context, token string) (sqlc.Session, error) {
 	s, err := r.q.GetSessionByToken(ctx, token)
 	if errors.Is(err, pgx.ErrNoRows) {

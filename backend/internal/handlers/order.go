@@ -5,26 +5,32 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/observability"
+	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type OrderHandler struct {
-	svc     *services.OrderService
-	metrics *observability.Metrics
+	svc         *services.OrderService
+	repos       *repository.Repos
+	metrics     *observability.Metrics
+	guestTokens *auth.GuestTokenService
+	flags       config.FeatureFlags
 }
 
-func NewOrderHandler(svc *services.OrderService, metrics *observability.Metrics) *OrderHandler {
-	return &OrderHandler{svc: svc, metrics: metrics}
+func NewOrderHandler(svc *services.OrderService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *OrderHandler {
+	return &OrderHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags}
 }
 
 type placeOrderRequest struct {
-	BranchID              int64                `json:"branch_id" binding:"required"`
-	PlacedByParticipantID int64                `json:"placed_by_participant_id" binding:"required"`
+	BranchID              int64                `json:"branch_id"`
+	PlacedByParticipantID int64                `json:"placed_by_participant_id"`
 	IdempotencyKey        string               `json:"idempotency_key" binding:"required"`
 	Items                 []services.OrderItem `json:"items" binding:"required,min=1"`
 	PromoCode             *string              `json:"promo_code"`
@@ -43,12 +49,30 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		respondValidationError(c, err.Error())
 		return
 	}
-	recordLegacyIdentityUsage(h.metrics, legacyMechanismBodyPlacedByParticipantID, legacyEndpointOrder)
+	if req.PlacedByParticipantID != 0 {
+		recordLegacyIdentityUsage(h.metrics, legacyMechanismBodyPlacedByParticipantID, legacyEndpointOrder)
+	}
+	participantID, ok := guestParticipantID(c, h.guestTokens, h.repos, sessionID, req.PlacedByParticipantID, h.flags.AuthGuestCredentialsRequired)
+	if !ok {
+		return
+	}
+	if participantID == 0 {
+		respondValidationError(c, "placed_by_participant_id is required")
+		return
+	}
+	if req.BranchID == 0 {
+		sess, err := h.repos.GetSessionByID(c.Request.Context(), sessionID)
+		if err != nil {
+			sessionError(c, err)
+			return
+		}
+		req.BranchID = sess.BranchID
+	}
 
 	result, err := h.svc.PlaceOrder(c.Request.Context(), services.PlaceOrderRequest{
 		SessionID:             sessionID,
 		BranchID:              req.BranchID,
-		PlacedByParticipantID: req.PlacedByParticipantID,
+		PlacedByParticipantID: participantID,
 		IdempotencyKey:        req.IdempotencyKey,
 		Items:                 req.Items,
 		PromoCode:             req.PromoCode,
@@ -87,6 +111,9 @@ func (h *OrderHandler) ListOrders(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondValidationError(c, "invalid session id")
+		return
+	}
+	if !requireGuestSession(c, h.guestTokens, h.repos, sessionID, h.flags.AuthGuestCredentialsRequired) {
 		return
 	}
 

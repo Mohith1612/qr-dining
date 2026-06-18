@@ -36,8 +36,8 @@ func SeedFixtures(t testing.TB, pool *pgxpool.Pool) TestFixtures {
 	}
 
 	err = pool.QueryRow(ctx,
-		`INSERT INTO branches (restaurant_id, name, address, timezone) VALUES ($1, 'Test Branch', '1 Test St', 'UTC') RETURNING id`,
-		f.RestaurantID,
+		`INSERT INTO branches (restaurant_id, name, address, timezone, branch_code) VALUES ($1, 'Test Branch', '1 Test St', 'UTC', $2) RETURNING id`,
+		f.RestaurantID, "TEST-"+randomHex(4),
 	).Scan(&f.BranchID)
 	if err != nil {
 		t.Fatalf("seed branch: %v", err)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Mohith1612/qr-dining/internal/auth"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/events"
 	"github.com/Mohith1612/qr-dining/internal/handlers"
@@ -60,6 +61,7 @@ func New(
 	rateLimiter := redisPkg.NewRateLimiter(redis)
 	cache := redisPkg.NewCache(redis, metrics.CacheHitsTotal, metrics.CacheMissesTotal)
 	presence := redisPkg.NewPresence(redis)
+	guestTokens := auth.NewGuestTokenService(cfg.Auth.GuestTokenSecret, cfg.Auth.GuestTokenTTL)
 
 	// ── Services ─────────────────────────────────────────────────────────────
 	sessionSvc := services.NewSessionService(repos, publisher, metrics, presence)
@@ -77,15 +79,15 @@ func New(
 
 	// ── Handlers ─────────────────────────────────────────────────────────────
 	health := handlers.NewHealthHandler(db, redis)
-	sessionH := handlers.NewSessionHandler(sessionSvc, metrics)
-	cartH := handlers.NewCartHandler(cartSvc, metrics)
-	orderH := handlers.NewOrderHandler(orderSvc, metrics)
-	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, metrics)
+	sessionH := handlers.NewSessionHandler(sessionSvc, repos, metrics, guestTokens, cfg.FeatureFlags)
+	cartH := handlers.NewCartHandler(cartSvc, repos, metrics, guestTokens, cfg.FeatureFlags)
+	orderH := handlers.NewOrderHandler(orderSvc, repos, metrics, guestTokens, cfg.FeatureFlags)
+	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags)
 	menuH := handlers.NewMenuHandler(menuSvc)
-	staffH := handlers.NewStaffHandler(staffSvc, metrics)
-	paymentH := handlers.NewPaymentHandler(paymentSvc, repos)
-	wsH := handlers.NewWSHandler(hub, repos, metrics)
-	snapshotH := handlers.NewSnapshotHandler(sessionSvc)
+	staffH := handlers.NewStaffHandler(staffSvc, metrics, cfg.FeatureFlags)
+	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags)
+	wsH := handlers.NewWSHandler(hub, repos, metrics, guestTokens, cfg.FeatureFlags)
+	snapshotH := handlers.NewSnapshotHandler(sessionSvc, repos, guestTokens, cfg.FeatureFlags)
 	menuAdminH := handlers.NewMenuAdminHandler(menuSvc)
 	eventLogH := handlers.NewEventLogHandler(repos)
 	tenantH := handlers.NewTenantHandler(repos)
@@ -93,10 +95,10 @@ func New(
 	analyticsH := handlers.NewAnalyticsHandler(analyticsSvc)
 	tableH := handlers.NewTableHandler(repos)
 	branchH := handlers.NewBranchHandler(repos)
-	customerH := handlers.NewCustomerHandler(customerSvc, repos)
+	customerH := handlers.NewCustomerHandler(customerSvc, repos, guestTokens, cfg.FeatureFlags)
 	uploadH := handlers.NewUploadHandler(storage.NewR2Client(cfg.R2), repos)
-	billingH := handlers.NewBillingHandler(repos)
-	promoH := handlers.NewPromoHandler(promoSvc, repos)
+	billingH := handlers.NewBillingHandler(repos, guestTokens, cfg.FeatureFlags)
+	promoH := handlers.NewPromoHandler(promoSvc, repos, guestTokens, cfg.FeatureFlags)
 
 	_ = participantSvc // used by ws handler indirectly
 

@@ -7,19 +7,23 @@ package sqlc
 
 import (
 	"context"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 const createStaff = `-- name: CreateStaff :one
-INSERT INTO staff (branch_id, name, role, pin_hash)
-VALUES ($1, $2, $3, $4)
-RETURNING id, branch_id, name, role, pin_hash, created_at, is_active
+INSERT INTO staff (branch_id, name, role, pin_hash, staff_code)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, branch_id, name, role, pin_hash, created_at, is_active, staff_code, token_version, pin_version
 `
 
 type CreateStaffParams struct {
-	BranchID int64     `json:"branch_id"`
-	Name     string    `json:"name"`
-	Role     StaffRole `json:"role"`
-	PinHash  string    `json:"pin_hash"`
+	BranchID  int64     `json:"branch_id"`
+	Name      string    `json:"name"`
+	Role      StaffRole `json:"role"`
+	PinHash   string    `json:"pin_hash"`
+	StaffCode string    `json:"staff_code"`
 }
 
 func (q *Queries) CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff, error) {
@@ -28,6 +32,7 @@ func (q *Queries) CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff
 		arg.Name,
 		arg.Role,
 		arg.PinHash,
+		arg.StaffCode,
 	)
 	var i Staff
 	err := row.Scan(
@@ -38,12 +43,63 @@ func (q *Queries) CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff
 		&i.PinHash,
 		&i.CreatedAt,
 		&i.IsActive,
+		&i.StaffCode,
+		&i.TokenVersion,
+		&i.PinVersion,
+	)
+	return i, err
+}
+
+const createStaffSession = `-- name: CreateStaffSession :one
+INSERT INTO staff_sessions (
+  staff_id, branch_id, token_hash, device_name, token_version, pin_version, expires_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, staff_id, branch_id, token_hash, device_name, token_version, pin_version, created_at, last_seen_at, expires_at, revoked_at
+`
+
+type CreateStaffSessionParams struct {
+	StaffID      int64     `json:"staff_id"`
+	BranchID     int64     `json:"branch_id"`
+	TokenHash    string    `json:"token_hash"`
+	DeviceName   string    `json:"device_name"`
+	TokenVersion int32     `json:"token_version"`
+	PinVersion   int32     `json:"pin_version"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
+func (q *Queries) CreateStaffSession(ctx context.Context, arg CreateStaffSessionParams) (StaffSession, error) {
+	row := q.db.QueryRow(ctx, createStaffSession,
+		arg.StaffID,
+		arg.BranchID,
+		arg.TokenHash,
+		arg.DeviceName,
+		arg.TokenVersion,
+		arg.PinVersion,
+		arg.ExpiresAt,
+	)
+	var i StaffSession
+	err := row.Scan(
+		&i.ID,
+		&i.StaffID,
+		&i.BranchID,
+		&i.TokenHash,
+		&i.DeviceName,
+		&i.TokenVersion,
+		&i.PinVersion,
+		&i.CreatedAt,
+		&i.LastSeenAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
 	)
 	return i, err
 }
 
 const deactivateStaff = `-- name: DeactivateStaff :exec
-UPDATE staff SET is_active = FALSE WHERE id = $1
+UPDATE staff
+SET is_active = FALSE,
+    token_version = token_version + 1
+WHERE id = $1
 `
 
 func (q *Queries) DeactivateStaff(ctx context.Context, id int64) error {
@@ -51,8 +107,55 @@ func (q *Queries) DeactivateStaff(ctx context.Context, id int64) error {
 	return err
 }
 
+const getActiveStaffSessionByTokenHash = `-- name: GetActiveStaffSessionByTokenHash :one
+SELECT id, staff_id, branch_id, token_hash, device_name, token_version, pin_version, created_at, last_seen_at, expires_at, revoked_at FROM staff_sessions
+WHERE token_hash = $1
+  AND revoked_at IS NULL
+  AND expires_at > NOW()
+`
+
+func (q *Queries) GetActiveStaffSessionByTokenHash(ctx context.Context, tokenHash string) (StaffSession, error) {
+	row := q.db.QueryRow(ctx, getActiveStaffSessionByTokenHash, tokenHash)
+	var i StaffSession
+	err := row.Scan(
+		&i.ID,
+		&i.StaffID,
+		&i.BranchID,
+		&i.TokenHash,
+		&i.DeviceName,
+		&i.TokenVersion,
+		&i.PinVersion,
+		&i.CreatedAt,
+		&i.LastSeenAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const getBranchByCode = `-- name: GetBranchByCode :one
+SELECT id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes, order_prefix, branch_code FROM branches WHERE branch_code = $1
+`
+
+func (q *Queries) GetBranchByCode(ctx context.Context, branchCode string) (Branch, error) {
+	row := q.db.QueryRow(ctx, getBranchByCode, branchCode)
+	var i Branch
+	err := row.Scan(
+		&i.ID,
+		&i.RestaurantID,
+		&i.Name,
+		&i.Address,
+		&i.Timezone,
+		&i.CreatedAt,
+		&i.SessionTimeoutMinutes,
+		&i.OrderPrefix,
+		&i.BranchCode,
+	)
+	return i, err
+}
+
 const getBranchByID = `-- name: GetBranchByID :one
-SELECT id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes, order_prefix FROM branches WHERE id = $1
+SELECT id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes, order_prefix, branch_code FROM branches WHERE id = $1
 `
 
 func (q *Queries) GetBranchByID(ctx context.Context, id int64) (Branch, error) {
@@ -67,6 +170,7 @@ func (q *Queries) GetBranchByID(ctx context.Context, id int64) (Branch, error) {
 		&i.CreatedAt,
 		&i.SessionTimeoutMinutes,
 		&i.OrderPrefix,
+		&i.BranchCode,
 	)
 	return i, err
 }
@@ -89,8 +193,36 @@ func (q *Queries) GetRestaurantByID(ctx context.Context, id int64) (Restaurant, 
 	return i, err
 }
 
+const getStaffByBranchAndCode = `-- name: GetStaffByBranchAndCode :one
+SELECT id, branch_id, name, role, pin_hash, created_at, is_active, staff_code, token_version, pin_version FROM staff
+WHERE branch_id = $1 AND staff_code = $2 AND is_active = TRUE
+`
+
+type GetStaffByBranchAndCodeParams struct {
+	BranchID  int64  `json:"branch_id"`
+	StaffCode string `json:"staff_code"`
+}
+
+func (q *Queries) GetStaffByBranchAndCode(ctx context.Context, arg GetStaffByBranchAndCodeParams) (Staff, error) {
+	row := q.db.QueryRow(ctx, getStaffByBranchAndCode, arg.BranchID, arg.StaffCode)
+	var i Staff
+	err := row.Scan(
+		&i.ID,
+		&i.BranchID,
+		&i.Name,
+		&i.Role,
+		&i.PinHash,
+		&i.CreatedAt,
+		&i.IsActive,
+		&i.StaffCode,
+		&i.TokenVersion,
+		&i.PinVersion,
+	)
+	return i, err
+}
+
 const getStaffByID = `-- name: GetStaffByID :one
-SELECT id, branch_id, name, role, pin_hash, created_at, is_active FROM staff WHERE id = $1
+SELECT id, branch_id, name, role, pin_hash, created_at, is_active, staff_code, token_version, pin_version FROM staff WHERE id = $1
 `
 
 func (q *Queries) GetStaffByID(ctx context.Context, id int64) (Staff, error) {
@@ -104,12 +236,15 @@ func (q *Queries) GetStaffByID(ctx context.Context, id int64) (Staff, error) {
 		&i.PinHash,
 		&i.CreatedAt,
 		&i.IsActive,
+		&i.StaffCode,
+		&i.TokenVersion,
+		&i.PinVersion,
 	)
 	return i, err
 }
 
 const listActiveStaffForBranch = `-- name: ListActiveStaffForBranch :many
-SELECT id, branch_id, name, role, pin_hash, created_at, is_active FROM staff WHERE branch_id = $1 AND is_active = TRUE ORDER BY name ASC
+SELECT id, branch_id, name, role, pin_hash, created_at, is_active, staff_code, token_version, pin_version FROM staff WHERE branch_id = $1 AND is_active = TRUE ORDER BY name ASC
 `
 
 func (q *Queries) ListActiveStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error) {
@@ -129,6 +264,9 @@ func (q *Queries) ListActiveStaffForBranch(ctx context.Context, branchID int64) 
 			&i.PinHash,
 			&i.CreatedAt,
 			&i.IsActive,
+			&i.StaffCode,
+			&i.TokenVersion,
+			&i.PinVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -141,7 +279,7 @@ func (q *Queries) ListActiveStaffForBranch(ctx context.Context, branchID int64) 
 }
 
 const listStaffForBranch = `-- name: ListStaffForBranch :many
-SELECT id, branch_id, name, role, pin_hash, created_at, is_active FROM staff WHERE branch_id = $1 ORDER BY name ASC
+SELECT id, branch_id, name, role, pin_hash, created_at, is_active, staff_code, token_version, pin_version FROM staff WHERE branch_id = $1 ORDER BY name ASC
 `
 
 func (q *Queries) ListStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error) {
@@ -161,6 +299,9 @@ func (q *Queries) ListStaffForBranch(ctx context.Context, branchID int64) ([]Sta
 			&i.PinHash,
 			&i.CreatedAt,
 			&i.IsActive,
+			&i.StaffCode,
+			&i.TokenVersion,
+			&i.PinVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -170,6 +311,25 @@ func (q *Queries) ListStaffForBranch(ctx context.Context, branchID int64) ([]Sta
 		return nil, err
 	}
 	return items, nil
+}
+
+const revokeStaffSessionsForStaff = `-- name: RevokeStaffSessionsForStaff :exec
+UPDATE staff_sessions SET revoked_at = NOW()
+WHERE staff_id = $1 AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeStaffSessionsForStaff(ctx context.Context, staffID int64) error {
+	_, err := q.db.Exec(ctx, revokeStaffSessionsForStaff, staffID)
+	return err
+}
+
+const touchStaffSession = `-- name: TouchStaffSession :exec
+UPDATE staff_sessions SET last_seen_at = NOW() WHERE id = $1
+`
+
+func (q *Queries) TouchStaffSession(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, touchStaffSession, id)
+	return err
 }
 
 const updateBranchOrderPrefix = `-- name: UpdateBranchOrderPrefix :exec
@@ -201,7 +361,11 @@ func (q *Queries) UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBran
 }
 
 const updateStaffPIN = `-- name: UpdateStaffPIN :exec
-UPDATE staff SET pin_hash = $2 WHERE id = $1
+UPDATE staff
+SET pin_hash = $2,
+    pin_version = pin_version + 1,
+    token_version = token_version + 1
+WHERE id = $1
 `
 
 type UpdateStaffPINParams struct {

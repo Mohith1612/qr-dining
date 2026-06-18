@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/gin-gonic/gin"
@@ -15,11 +17,13 @@ import (
 )
 
 type BillingHandler struct {
-	repos *repository.Repos
+	repos       *repository.Repos
+	guestTokens *auth.GuestTokenService
+	flags       config.FeatureFlags
 }
 
-func NewBillingHandler(repos *repository.Repos) *BillingHandler {
-	return &BillingHandler{repos: repos}
+func NewBillingHandler(repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *BillingHandler {
+	return &BillingHandler{repos: repos, guestTokens: guestTokens, flags: flags}
 }
 
 type modifierSnapshot struct {
@@ -69,6 +73,9 @@ func (h *BillingHandler) GetBill(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondValidationError(c, "invalid session id")
+		return
+	}
+	if !requireGuestSession(c, h.guestTokens, h.repos, sessionID, h.flags.AuthGuestCredentialsRequired) {
 		return
 	}
 

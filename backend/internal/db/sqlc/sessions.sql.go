@@ -136,6 +136,26 @@ func (q *Queries) GetSessionByToken(ctx context.Context, sessionToken string) (S
 	return i, err
 }
 
+const getSessionParticipantByID = `-- name: GetSessionParticipantByID :one
+SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version FROM session_participants WHERE id = $1
+`
+
+func (q *Queries) GetSessionParticipantByID(ctx context.Context, id int64) (SessionParticipant, error) {
+	row := q.db.QueryRow(ctx, getSessionParticipantByID, id)
+	var i SessionParticipant
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.DisplayName,
+		&i.DeviceFingerprint,
+		&i.JoinedAt,
+		&i.LastSeenAt,
+		&i.IsHost,
+		&i.CredentialVersion,
+	)
+	return i, err
+}
+
 const listActiveSessionsForBranch = `-- name: ListActiveSessionsForBranch :many
 SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id FROM sessions
 WHERE branch_id = $1 AND status = 'active'

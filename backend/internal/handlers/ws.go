@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	ws "github.com/Mohith1612/qr-dining/internal/websocket"
@@ -12,13 +14,15 @@ import (
 )
 
 type WSHandler struct {
-	hub     *ws.Hub
-	repos   *repository.Repos
-	metrics *observability.Metrics
+	hub         *ws.Hub
+	repos       *repository.Repos
+	metrics     *observability.Metrics
+	guestTokens *auth.GuestTokenService
+	flags       config.FeatureFlags
 }
 
-func NewWSHandler(hub *ws.Hub, repos *repository.Repos, metrics *observability.Metrics) *WSHandler {
-	return &WSHandler{hub: hub, repos: repos, metrics: metrics}
+func NewWSHandler(hub *ws.Hub, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *WSHandler {
+	return &WSHandler{hub: hub, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags}
 }
 
 // Upgrade upgrades the HTTP connection to WebSocket.
@@ -33,11 +37,17 @@ func (h *WSHandler) Upgrade(c *gin.Context) {
 
 	participantIDStr := c.Query("participant_id")
 	participantID, err := strconv.ParseInt(participantIDStr, 10, 64)
-	if err != nil || participantID <= 0 {
+	if (err != nil || participantID <= 0) && guestTokenFromHeader(c) == "" {
 		respondValidationError(c, "invalid participant_id")
 		return
 	}
-	recordLegacyIdentityUsage(h.metrics, legacyMechanismWSQueryParticipantID, legacyEndpointWebSocket)
+	if participantID > 0 {
+		recordLegacyIdentityUsage(h.metrics, legacyMechanismWSQueryParticipantID, legacyEndpointWebSocket)
+	}
+	participantID, ok := guestParticipantID(c, h.guestTokens, h.repos, sessionID, participantID, h.flags.AuthGuestCredentialsRequired || h.flags.WSTicketAuthRequired)
+	if !ok {
+		return
+	}
 
 	// Validate session is active and participant belongs to it.
 	sess, err := h.repos.GetSessionByID(c.Request.Context(), sessionID)

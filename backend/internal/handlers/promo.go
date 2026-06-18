@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/repository"
@@ -16,12 +18,14 @@ import (
 )
 
 type PromoHandler struct {
-	svc   *services.PromoService
-	repos *repository.Repos
+	svc         *services.PromoService
+	repos       *repository.Repos
+	guestTokens *auth.GuestTokenService
+	flags       config.FeatureFlags
 }
 
-func NewPromoHandler(svc *services.PromoService, repos *repository.Repos) *PromoHandler {
-	return &PromoHandler{svc: svc, repos: repos}
+func NewPromoHandler(svc *services.PromoService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *PromoHandler {
+	return &PromoHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags}
 }
 
 // POST /sessions/:id/promos/validate — public, rate-limited.
@@ -29,6 +33,9 @@ func (h *PromoHandler) ValidatePromo(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondValidationError(c, "invalid session id")
+		return
+	}
+	if !requireGuestSession(c, h.guestTokens, h.repos, sessionID, h.flags.AuthGuestCredentialsRequired) {
 		return
 	}
 

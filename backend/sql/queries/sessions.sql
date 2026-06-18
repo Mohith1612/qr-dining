@@ -9,6 +9,9 @@ SELECT * FROM sessions WHERE session_token = $1 AND status = 'active';
 -- name: GetSessionByID :one
 SELECT * FROM sessions WHERE id = $1;
 
+-- name: GetSessionParticipantByID :one
+SELECT * FROM session_participants WHERE id = $1;
+
 -- name: SetSessionHost :exec
 UPDATE sessions SET host_participant_id = $2 WHERE id = $1;
 

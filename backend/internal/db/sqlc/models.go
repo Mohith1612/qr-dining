@@ -468,6 +468,7 @@ type Branch struct {
 	CreatedAt             time.Time `json:"created_at"`
 	SessionTimeoutMinutes int16     `json:"session_timeout_minutes"`
 	OrderPrefix           string    `json:"order_prefix"`
+	BranchCode            string    `json:"branch_code"`
 }
 
 type Cart struct {
@@ -670,16 +671,34 @@ type SessionParticipant struct {
 	JoinedAt          time.Time `json:"joined_at"`
 	LastSeenAt        time.Time `json:"last_seen_at"`
 	IsHost            bool      `json:"is_host"`
+	CredentialVersion int32     `json:"credential_version"`
 }
 
 type Staff struct {
-	ID        int64     `json:"id"`
-	BranchID  int64     `json:"branch_id"`
-	Name      string    `json:"name"`
-	Role      StaffRole `json:"role"`
-	PinHash   string    `json:"pin_hash"`
-	CreatedAt time.Time `json:"created_at"`
-	IsActive  bool      `json:"is_active"`
+	ID           int64     `json:"id"`
+	BranchID     int64     `json:"branch_id"`
+	Name         string    `json:"name"`
+	Role         StaffRole `json:"role"`
+	PinHash      string    `json:"pin_hash"`
+	CreatedAt    time.Time `json:"created_at"`
+	IsActive     bool      `json:"is_active"`
+	StaffCode    string    `json:"staff_code"`
+	TokenVersion int32     `json:"token_version"`
+	PinVersion   int32     `json:"pin_version"`
+}
+
+type StaffSession struct {
+	ID           uuid.UUID          `json:"id"`
+	StaffID      int64              `json:"staff_id"`
+	BranchID     int64              `json:"branch_id"`
+	TokenHash    string             `json:"token_hash"`
+	DeviceName   string             `json:"device_name"`
+	TokenVersion int32              `json:"token_version"`
+	PinVersion   int32              `json:"pin_version"`
+	CreatedAt    time.Time          `json:"created_at"`
+	LastSeenAt   time.Time          `json:"last_seen_at"`
+	ExpiresAt    time.Time          `json:"expires_at"`
+	RevokedAt    pgtype.Timestamptz `json:"revoked_at"`
 }
 
 type SubscriptionPlan struct {

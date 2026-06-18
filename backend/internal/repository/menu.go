@@ -84,6 +84,14 @@ func (r *Repos) GetBranchByID(ctx context.Context, id int64) (sqlc.Branch, error
 	return b, err
 }
 
+func (r *Repos) GetBranchByCode(ctx context.Context, branchCode string) (sqlc.Branch, error) {
+	b, err := r.q.GetBranchByCode(ctx, branchCode)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Branch{}, domain.ErrTenantNotFound
+	}
+	return b, err
+}
+
 func (r *Repos) UpdateBranchOrderPrefix(ctx context.Context, branchID int64, prefix string) error {
 	return r.q.UpdateBranchOrderPrefix(ctx, sqlc.UpdateBranchOrderPrefixParams{
 		ID:          branchID,

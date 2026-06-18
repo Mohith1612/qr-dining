@@ -3,6 +3,8 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
@@ -11,12 +13,14 @@ import (
 )
 
 type PaymentHandler struct {
-	svc   *services.PaymentService
-	repos *repository.Repos
+	svc         *services.PaymentService
+	repos       *repository.Repos
+	guestTokens *auth.GuestTokenService
+	flags       config.FeatureFlags
 }
 
-func NewPaymentHandler(svc *services.PaymentService, repos *repository.Repos) *PaymentHandler {
-	return &PaymentHandler{svc: svc, repos: repos}
+func NewPaymentHandler(svc *services.PaymentService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *PaymentHandler {
+	return &PaymentHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags}
 }
 
 type initiatePaymentRequest struct {
@@ -29,6 +33,9 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondValidationError(c, "invalid session id")
+		return
+	}
+	if !requireGuestSession(c, h.guestTokens, h.repos, sessionID, h.flags.AuthGuestCredentialsRequired) {
 		return
 	}
 

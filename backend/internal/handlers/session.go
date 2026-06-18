@@ -5,21 +5,28 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/config"
+	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/observability"
+	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type SessionHandler struct {
-	svc     *services.SessionService
-	metrics *observability.Metrics
+	svc         *services.SessionService
+	repos       *repository.Repos
+	metrics     *observability.Metrics
+	guestTokens *auth.GuestTokenService
+	flags       config.FeatureFlags
 }
 
-func NewSessionHandler(svc *services.SessionService, metrics *observability.Metrics) *SessionHandler {
-	return &SessionHandler{svc: svc, metrics: metrics}
+func NewSessionHandler(svc *services.SessionService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *SessionHandler {
+	return &SessionHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags}
 }
 
 type createSessionRequest struct {
@@ -41,9 +48,16 @@ func (h *SessionHandler) Create(c *gin.Context) {
 		return
 	}
 
+	token, err := h.issueGuestToken(c, result.Session, result.Participant)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
-		"session":     result.Session,
-		"participant": result.Participant,
+		"session":            result.Session,
+		"participant":        result.Participant,
+		"guest_access_token": token,
 	})
 }
 
@@ -51,6 +65,9 @@ func (h *SessionHandler) Get(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondValidationError(c, "invalid session id")
+		return
+	}
+	if !requireGuestSession(c, h.guestTokens, h.repos, id, h.flags.AuthGuestCredentialsRequired) {
 		return
 	}
 
@@ -74,12 +91,18 @@ func (h *SessionHandler) Close(c *gin.Context) {
 		return
 	}
 
-	participantID, err := participantIDFromHeader(c)
-	if err != nil {
+	participantID, hasLegacyParticipant := participantIDFromHeader(c)
+	if !hasLegacyParticipant && guestTokenFromHeader(c) == "" {
 		respondValidationError(c, "X-Participant-ID header required")
 		return
 	}
-	recordLegacyIdentityUsage(h.metrics, legacyMechanismHeaderParticipantID, legacyEndpointSession)
+	if hasLegacyParticipant {
+		recordLegacyIdentityUsage(h.metrics, legacyMechanismHeaderParticipantID, legacyEndpointSession)
+	}
+	participantID, ok := guestParticipantID(c, h.guestTokens, h.repos, id, participantID, h.flags.AuthGuestCredentialsRequired)
+	if !ok {
+		return
+	}
 
 	if err := h.svc.CloseSession(c.Request.Context(), id, &participantID); err != nil {
 		sessionError(c, err)
@@ -113,7 +136,22 @@ func (h *SessionHandler) Join(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, participant)
+	sess, err := h.svc.GetSession(c.Request.Context(), id)
+	if err != nil {
+		sessionError(c, err)
+		return
+	}
+	token, err := h.issueGuestToken(c, sess, participant)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"session":            sess,
+		"participant":        participant,
+		"guest_access_token": token,
+	})
 }
 
 func (h *SessionHandler) ListActiveForBranch(c *gin.Context) {
@@ -159,10 +197,31 @@ func sessionError(c *gin.Context, err error) {
 }
 
 // participantIDFromHeader reads X-Participant-ID from the request header.
-func participantIDFromHeader(c *gin.Context) (int64, error) {
+func participantIDFromHeader(c *gin.Context) (int64, bool) {
 	raw := c.GetHeader("X-Participant-ID")
 	if raw == "" {
-		return 0, errors.New("missing")
+		return 0, false
 	}
-	return strconv.ParseInt(raw, 10, 64)
+	id, err := strconv.ParseInt(raw, 10, 64)
+	return id, err == nil
+}
+
+func (h *SessionHandler) issueGuestToken(c *gin.Context, sess sqlc.Session, participant sqlc.SessionParticipant) (string, error) {
+	restaurant, err := h.repos.GetRestaurantByBranchID(c.Request.Context(), sess.BranchID)
+	if err != nil {
+		return "", err
+	}
+	role := "guest"
+	if participant.IsHost {
+		role = "host"
+	}
+	return h.guestTokens.Issue(auth.GuestClaims{
+		SessionID:         sess.ID,
+		BranchID:          sess.BranchID,
+		TableID:           sess.TableID,
+		OrganizationID:    restaurant.ID,
+		Role:              role,
+		ParticipantID:     participant.ID,
+		CredentialVersion: participant.CredentialVersion,
+	})
 }

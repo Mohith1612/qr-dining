@@ -30,6 +30,7 @@ type Querier interface {
 	CreatePromoRedemption(ctx context.Context, arg CreatePromoRedemptionParams) (PromoRedemption, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff, error)
+	CreateStaffSession(ctx context.Context, arg CreateStaffSessionParams) (StaffSession, error)
 	CreateTable(ctx context.Context, arg CreateTableParams) (Table, error)
 	DeactivatePromo(ctx context.Context, arg DeactivatePromoParams) error
 	DeactivateStaff(ctx context.Context, id int64) error
@@ -38,7 +39,9 @@ type Querier interface {
 	DeleteMenuCategory(ctx context.Context, arg DeleteMenuCategoryParams) error
 	DeleteMenuItem(ctx context.Context, arg DeleteMenuItemParams) error
 	GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error)
+	GetActiveStaffSessionByTokenHash(ctx context.Context, tokenHash string) (StaffSession, error)
 	GetAssistanceRequestByID(ctx context.Context, id int64) (AssistanceRequest, error)
+	GetBranchByCode(ctx context.Context, branchCode string) (Branch, error)
 	GetBranchByID(ctx context.Context, id int64) (Branch, error)
 	// Returns order count per hour-of-day (0–23) in the branch's configured timezone.
 	GetBusyHours(ctx context.Context, arg GetBusyHoursParams) ([]GetBusyHoursRow, error)
@@ -65,6 +68,8 @@ type Querier interface {
 	GetRestaurantBySlug(ctx context.Context, slug string) (Restaurant, error)
 	GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionByToken(ctx context.Context, sessionToken string) (Session, error)
+	GetSessionParticipantByID(ctx context.Context, id int64) (SessionParticipant, error)
+	GetStaffByBranchAndCode(ctx context.Context, arg GetStaffByBranchAndCodeParams) (Staff, error)
 	GetStaffByID(ctx context.Context, id int64) (Staff, error)
 	GetSubscriptionByRestaurant(ctx context.Context, restaurantID int64) (GetSubscriptionByRestaurantRow, error)
 	GetTableByID(ctx context.Context, id int64) (Table, error)
@@ -107,8 +112,10 @@ type Querier interface {
 	NextOrderNumber(ctx context.Context, arg NextOrderNumberParams) (int32, error)
 	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
+	RevokeStaffSessionsForStaff(ctx context.Context, staffID int64) error
 	SearchCustomersByPhone(ctx context.Context, arg SearchCustomersByPhoneParams) ([]Customer, error)
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
+	TouchStaffSession(ctx context.Context, id uuid.UUID) error
 	UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistanceStatusParams) (AssistanceRequest, error)
 	UpdateBranchOrderPrefix(ctx context.Context, arg UpdateBranchOrderPrefixParams) error
 	UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error

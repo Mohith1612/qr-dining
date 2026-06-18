@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/repository"
@@ -14,12 +16,14 @@ import (
 )
 
 type CustomerHandler struct {
-	svc   *services.CustomerService
-	repos *repository.Repos
+	svc         *services.CustomerService
+	repos       *repository.Repos
+	guestTokens *auth.GuestTokenService
+	flags       config.FeatureFlags
 }
 
-func NewCustomerHandler(svc *services.CustomerService, repos *repository.Repos) *CustomerHandler {
-	return &CustomerHandler{svc: svc, repos: repos}
+func NewCustomerHandler(svc *services.CustomerService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *CustomerHandler {
+	return &CustomerHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags}
 }
 
 type linkCustomerRequest struct {
@@ -32,6 +36,9 @@ func (h *CustomerHandler) LinkCustomer(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondValidationError(c, "invalid session id")
+		return
+	}
+	if !requireGuestSession(c, h.guestTokens, h.repos, sessionID, h.flags.AuthGuestCredentialsRequired) {
 		return
 	}
 

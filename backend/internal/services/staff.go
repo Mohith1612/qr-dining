@@ -2,14 +2,17 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
-	"github.com/Mohith1612/qr-dining/internal/repository"
 	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
+	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"golang.org/x/crypto/bcrypt"
@@ -38,37 +41,78 @@ func NewStaffService(repos *repository.Repos, cache *redisPkg.Cache, logger zero
 }
 
 type StaffSession struct {
-	Token    string        `json:"token"`
-	StaffID  int64         `json:"staff_id"`
-	BranchID int64         `json:"branch_id"`
-	Role     sqlc.StaffRole `json:"role"`
+	Token        string         `json:"token"`
+	SessionToken string         `json:"session_token"`
+	SessionID    uuid.UUID      `json:"session_id"`
+	StaffID      int64          `json:"staff_id"`
+	BranchID     int64          `json:"branch_id"`
+	Role         sqlc.StaffRole `json:"role"`
+	StaffCode    string         `json:"staff_code"`
+	TokenVersion int32          `json:"token_version"`
+	PinVersion   int32          `json:"pin_version"`
 }
 
 // Authenticate verifies a staff PIN against stored bcrypt hashes for the branch.
 // Returns a session token stored in Redis on success.
 func (s *StaffService) Authenticate(ctx context.Context, branchID int64, pin string) (StaffSession, error) {
-	staff, err := s.repos.ListStaffForBranch(ctx, branchID)
+	staff, err := s.repos.ListActiveStaffForBranch(ctx, branchID)
 	if err != nil {
 		return StaffSession{}, err
 	}
 
-	var matched *sqlc.Staff
+	matches := make([]sqlc.Staff, 0, 1)
 	for i := range staff {
 		if err := bcrypt.CompareHashAndPassword([]byte(staff[i].PinHash), []byte(pin)); err == nil {
-			matched = &staff[i]
-			break
+			matches = append(matches, staff[i])
 		}
 	}
-	if matched == nil {
+	if len(matches) != 1 {
 		return StaffSession{}, domain.ErrParticipantUnauthorized
 	}
+	return s.createSession(ctx, matches[0], "")
+}
 
+func (s *StaffService) AuthenticateWithCode(ctx context.Context, branchCode, staffCode, pin, deviceName string) (StaffSession, error) {
+	branch, err := s.repos.GetBranchByCode(ctx, normalizeCode(branchCode))
+	if err != nil {
+		return StaffSession{}, domain.ErrParticipantUnauthorized
+	}
+	staff, err := s.repos.GetStaffByBranchAndCode(ctx, branch.ID, normalizeCode(staffCode))
+	if err != nil {
+		return StaffSession{}, domain.ErrParticipantUnauthorized
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(staff.PinHash), []byte(pin)); err != nil {
+		return StaffSession{}, domain.ErrParticipantUnauthorized
+	}
+	return s.createSession(ctx, staff, deviceName)
+}
+
+func (s *StaffService) createSession(ctx context.Context, staff sqlc.Staff, deviceName string) (StaffSession, error) {
 	token := uuid.NewString()
+	expiresAt := time.Now().UTC().Add(staffTokenTTL)
+	dbSession, err := s.repos.CreateStaffSession(
+		ctx,
+		staff.ID,
+		staff.BranchID,
+		hashToken(token),
+		deviceName,
+		staff.TokenVersion,
+		staff.PinVersion,
+		expiresAt,
+	)
+	if err != nil {
+		return StaffSession{}, fmt.Errorf("create staff session: %w", err)
+	}
 	session := StaffSession{
-		Token:    token,
-		StaffID:  matched.ID,
-		BranchID: matched.BranchID,
-		Role:     matched.Role,
+		Token:        token,
+		SessionToken: token,
+		SessionID:    dbSession.ID,
+		StaffID:      staff.ID,
+		BranchID:     staff.BranchID,
+		Role:         staff.Role,
+		StaffCode:    staff.StaffCode,
+		TokenVersion: staff.TokenVersion,
+		PinVersion:   staff.PinVersion,
 	}
 
 	tokenKey := staffTokenPrefix + token
@@ -76,8 +120,8 @@ func (s *StaffService) Authenticate(ctx context.Context, branchID int64, pin str
 		return StaffSession{}, fmt.Errorf("store staff token: %w", err)
 	}
 	// Track this token key in a per-staff Set for O(1) batch invalidation on deactivation.
-	if err := s.cache.SAdd(ctx, staffTokenSetKey(matched.ID), tokenKey, staffTokenTTL+time.Minute); err != nil {
-		s.logger.Warn().Err(err).Int64("staff_id", matched.ID).Msg("failed to track staff token in set; deactivation will not invalidate this token")
+	if err := s.cache.SAdd(ctx, staffTokenSetKey(staff.ID), tokenKey, staffTokenTTL+time.Minute); err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", staff.ID).Msg("failed to track staff token in set; deactivation will not invalidate this token")
 	}
 	return session, nil
 }
@@ -92,21 +136,49 @@ func (s *StaffService) ValidateToken(ctx context.Context, token string) (StaffSe
 	if !hit {
 		return StaffSession{}, errors.New("invalid or expired staff token")
 	}
+	if err := s.validateSessionState(ctx, token, session); err != nil {
+		return StaffSession{}, err
+	}
 	return session, nil
+}
+
+func (s *StaffService) validateSessionState(ctx context.Context, token string, session StaffSession) error {
+	staff, err := s.repos.GetStaffByID(ctx, session.StaffID)
+	if err != nil {
+		return err
+	}
+	if !staff.IsActive || staff.TokenVersion != session.TokenVersion || staff.PinVersion != session.PinVersion {
+		return errors.New("invalid or expired staff token")
+	}
+	if session.SessionID != uuid.Nil {
+		dbSession, err := s.repos.GetActiveStaffSessionByTokenHash(ctx, hashToken(token))
+		if err != nil {
+			return err
+		}
+		if dbSession.ID != session.SessionID || dbSession.TokenVersion != session.TokenVersion || dbSession.PinVersion != session.PinVersion {
+			return errors.New("invalid or expired staff token")
+		}
+		_ = s.repos.TouchStaffSession(ctx, dbSession.ID)
+	}
+	return nil
 }
 
 // CreateStaff creates a new staff member with a bcrypt-hashed PIN.
 // Only owners may create staff (enforced in handler via middleware).
-func (s *StaffService) CreateStaff(ctx context.Context, branchID int64, role sqlc.StaffRole, name, pin string) (sqlc.Staff, error) {
+func (s *StaffService) CreateStaff(ctx context.Context, branchID int64, role sqlc.StaffRole, name, staffCode, pin string) (sqlc.Staff, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(pin), bcryptCost)
 	if err != nil {
 		return sqlc.Staff{}, fmt.Errorf("hash PIN: %w", err)
 	}
+	if staffCode == "" {
+		staffCode = defaultStaffCode(name)
+	}
 	return s.repos.CreateStaff(ctx, sqlc.CreateStaffParams{
-		BranchID: branchID,
-		Name:     name,
-		Role:     role,
-		PinHash:  string(hash),
+		BranchID:  branchID,
+		Name:      name,
+		Role:      role,
+		PinHash:   string(hash),
+		StaffCode: normalizeCode(staffCode),
 	})
 }
 
@@ -131,6 +203,9 @@ func (s *StaffService) Deactivate(ctx context.Context, staffID int64) error {
 	if err := s.repos.DeactivateStaff(ctx, staffID); err != nil {
 		return err
 	}
+	if err := s.repos.RevokeStaffSessionsForStaff(ctx, staffID); err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to revoke durable staff sessions")
+	}
 	// Invalidate all active tokens for this staff member.
 	// Redis is ephemeral so failures are non-fatal, but must be observable.
 	setKey := staffTokenSetKey(staffID)
@@ -144,6 +219,37 @@ func (s *StaffService) Deactivate(ctx context.Context, staffID int64) error {
 		}
 	}
 	return nil
+}
+
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func normalizeCode(code string) string {
+	return strings.ToUpper(strings.TrimSpace(code))
+}
+
+func defaultStaffCode(name string) string {
+	code := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r - ('a' - 'A')
+		case r >= 'A' && r <= 'Z':
+			return r
+		case r >= '0' && r <= '9':
+			return r
+		default:
+			return -1
+		}
+	}, name)
+	if code == "" {
+		return "STAFF"
+	}
+	if len(code) > 24 {
+		code = code[:24]
+	}
+	return code
 }
 
 // HashPIN hashes a PIN with bcrypt cost 12. Used by the seed script.
