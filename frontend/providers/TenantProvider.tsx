@@ -10,6 +10,7 @@ export type TenantSettings = {
 
 export type TenantContext = {
   restaurantId: number | null
+  organizationId: number | null
   name: string | null
   slug: string | null
   settings: TenantSettings
@@ -18,6 +19,7 @@ export type TenantContext = {
 
 const TenantCtx = createContext<TenantContext>({
   restaurantId: null,
+  organizationId: null,
   name: null,
   slug: null,
   settings: {},
@@ -46,6 +48,7 @@ function resolveTenantSlug(): string | null {
 export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [tenant, setTenant] = useState<TenantContext>({
     restaurantId: null,
+    organizationId: null,
     name: null,
     slug: null,
     settings: {},
@@ -67,6 +70,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       .then(data => {
         setTenant({
           restaurantId: data.id,
+          organizationId: data.organization_id ?? null,
           name: data.name,
           slug: data.slug,
           settings: data.settings ?? {},

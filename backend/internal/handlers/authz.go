@@ -11,21 +11,25 @@ import (
 )
 
 func staffActorForRequest(c *gin.Context, repos *repository.Repos, sess services.StaffSession) (authz.Actor, bool) {
-	restaurant, err := repos.GetRestaurantByBranchID(c.Request.Context(), sess.BranchID)
-	if err != nil {
-		respondInternalError(c)
-		return authz.Actor{}, false
+	organizationID := sess.OrganizationID
+	if organizationID == 0 {
+		organization, err := repos.GetOrganizationByBranchID(c.Request.Context(), sess.BranchID)
+		if err != nil {
+			respondInternalError(c)
+			return authz.Actor{}, false
+		}
+		organizationID = organization.ID
 	}
-	return authz.StaffActor(sess.StaffID, sess.Role, sess.BranchID, restaurant.ID, sess.SessionID.String()), true
+	return authz.StaffActor(sess.StaffID, sess.Role, sess.BranchID, organizationID, sess.SessionID.String()), true
 }
 
 func restaurantIDForBranch(c *gin.Context, repos *repository.Repos, branchID int64) (int64, bool) {
-	restaurant, err := repos.GetRestaurantByBranchID(c.Request.Context(), branchID)
+	organization, err := repos.GetOrganizationByBranchID(c.Request.Context(), branchID)
 	if err != nil {
 		respondInternalError(c)
 		return 0, false
 	}
-	return restaurant.ID, true
+	return organization.ID, true
 }
 
 func requireAuthorized(c *gin.Context, repos *repository.Repos, authorizer *authz.Authorizer, actor authz.Actor, action authz.Action, resource authz.Resource) bool {

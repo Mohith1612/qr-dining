@@ -12,6 +12,7 @@ import (
 
 const TenantRestaurantIDKey = "tenant_restaurant_id"
 const TenantRestaurantSlugKey = "tenant_restaurant_slug"
+const TenantOrganizationIDKey = "tenant_organization_id"
 
 // TenantMiddleware extracts the restaurant slug from the Host subdomain, resolves it to a
 // restaurant record, and injects the restaurant_id into the Gin context.
@@ -19,7 +20,7 @@ const TenantRestaurantSlugKey = "tenant_restaurant_slug"
 // When baseDomain is empty (local development), the middleware is a no-op — all requests
 // proceed without tenant enforcement. When baseDomain is set (e.g. "dining.example.com"),
 // a request to "olive.dining.example.com" resolves slug "olive".
-func TenantMiddleware(repos *repository.Repos, baseDomain string, logger zerolog.Logger) gin.HandlerFunc {
+func TenantMiddleware(repos *repository.Repos, baseDomain string, organizationsEnabled bool, logger zerolog.Logger) gin.HandlerFunc {
 	if baseDomain == "" {
 		// No-op in local dev — tenant enforcement disabled.
 		return func(c *gin.Context) { c.Next() }
@@ -52,12 +53,27 @@ func TenantMiddleware(repos *repository.Repos, baseDomain string, logger zerolog
 
 		c.Set(TenantRestaurantIDKey, restaurant.ID)
 		c.Set(TenantRestaurantSlugKey, restaurant.Slug)
+		organizationID := restaurant.OrganizationID
+		if organizationsEnabled {
+			organization, err := repos.GetOrganizationByRestaurantID(c.Request.Context(), restaurant.ID)
+			if err != nil {
+				logger.Error().Err(err).Int64("restaurant_id", restaurant.ID).Msg("tenant organization resolution failed")
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+					"code":    "INTERNAL_ERROR",
+					"message": "internal server error",
+				})
+				return
+			}
+			organizationID = organization.ID
+		}
+		c.Set(TenantOrganizationIDKey, organizationID)
 
 		// Enrich request-scoped logger with tenant context.
 		if log, exists := c.Get(LoggerKey); exists {
 			enriched := log.(zerolog.Logger).With().
 				Str("tenant_slug", restaurant.Slug).
 				Int64("restaurant_id", restaurant.ID).
+				Int64("organization_id", organizationID).
 				Logger()
 			c.Set(LoggerKey, enriched)
 		}
@@ -70,6 +86,17 @@ func TenantMiddleware(repos *repository.Repos, baseDomain string, logger zerolog
 // Returns (0, false) when tenant enforcement is disabled (local dev / no BASE_DOMAIN).
 func GetTenantRestaurantID(c *gin.Context) (int64, bool) {
 	v, exists := c.Get(TenantRestaurantIDKey)
+	if !exists {
+		return 0, false
+	}
+	id, ok := v.(int64)
+	return id, ok
+}
+
+// GetTenantOrganizationID returns the resolved organization_id from the Gin context.
+// Returns (0, false) when tenant enforcement is disabled or organization scope was not resolved.
+func GetTenantOrganizationID(c *gin.Context) (int64, bool) {
+	v, exists := c.Get(TenantOrganizationIDKey)
 	if !exists {
 		return 0, false
 	}

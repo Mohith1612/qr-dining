@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -16,9 +15,8 @@ import (
 // branch-scoped resources (e.g. `/branches/:id/...`).
 //
 // When tenant enforcement is disabled (BASE_DOMAIN unset), this middleware is a no-op.
-// When enforcement is active, it verifies that branch.restaurant_id matches the
-// tenant restaurant_id resolved by TenantMiddleware, returning 403 otherwise.
-func BranchTenantGuard(repos *repository.Repos) gin.HandlerFunc {
+// When enforcement is active, it verifies branch tenant ownership, returning 403 otherwise.
+func BranchTenantGuard(repos *repository.Repos, organizationsEnabled bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenantRestaurantID, hasTenant := GetTenantRestaurantID(c)
 		if !hasTenant {
@@ -34,7 +32,42 @@ func BranchTenantGuard(repos *repository.Repos) gin.HandlerFunc {
 			return
 		}
 
-		restaurant, err := repos.GetRestaurantByBranchID(context.Background(), branchID)
+		if organizationsEnabled {
+			tenantOrganizationID, ok := GetTenantOrganizationID(c)
+			if !ok {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+					"code":    "FORBIDDEN",
+					"message": "tenant organization not resolved",
+				})
+				return
+			}
+			organization, err := repos.GetOrganizationByBranchID(c.Request.Context(), branchID)
+			if err != nil {
+				if errors.Is(err, domain.ErrTenantNotFound) {
+					c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
+						"code":    "BRANCH_NOT_FOUND",
+						"message": "branch not found",
+					})
+					return
+				}
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+					"code":    "INTERNAL_ERROR",
+					"message": "internal server error",
+				})
+				return
+			}
+			if organization.ID != tenantOrganizationID {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+					"code":    "FORBIDDEN",
+					"message": "branch does not belong to this tenant",
+				})
+				return
+			}
+			c.Next()
+			return
+		}
+
+		restaurant, err := repos.GetRestaurantByBranchID(c.Request.Context(), branchID)
 		if err != nil {
 			if errors.Is(err, domain.ErrTenantNotFound) {
 				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{

@@ -38,13 +38,27 @@ func main() {
 
 	q := sqlc.New(pool)
 
-	// ── Restaurant ────────────────────────────────────────────────────────────
+	// ── Organization / Restaurant ─────────────────────────────────────────────
+	var organizationID int64
+	err = pool.QueryRow(ctx,
+		`INSERT INTO organizations (code, name, settings_json) VALUES ($1, $2, $3)
+		 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
+		 RETURNING id`,
+		"demo-restaurant", "Demo Restaurant", []byte(`{}`),
+	).Scan(&organizationID)
+	if err != nil {
+		fatal("insert organization", err)
+	}
+	fmt.Printf("organization id=%d\n", organizationID)
+
 	var restaurantID int64
 	err = pool.QueryRow(ctx,
-		`INSERT INTO restaurants (name, slug, settings_json) VALUES ($1, $2, $3)
-		 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+		`INSERT INTO restaurants (name, slug, settings_json, organization_id) VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (slug) DO UPDATE SET
+		   name = EXCLUDED.name,
+		   organization_id = EXCLUDED.organization_id
 		 RETURNING id`,
-		"Demo Restaurant", "demo-restaurant", []byte(`{}`),
+		"Demo Restaurant", "demo-restaurant", []byte(`{}`), organizationID,
 	).Scan(&restaurantID)
 	if err != nil {
 		fatal("insert restaurant", err)
@@ -115,10 +129,10 @@ func main() {
 	// ── Branch ────────────────────────────────────────────────────────────────
 	var branchID int64
 	err = pool.QueryRow(ctx,
-		`INSERT INTO branches (restaurant_id, name, address, timezone, branch_code) VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO branches (restaurant_id, organization_id, name, address, timezone, branch_code) VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT DO NOTHING
 		 RETURNING id`,
-		restaurantID, "Main Branch", "123 Main St", "Asia/Kolkata", "DEMO-MAIN",
+		restaurantID, organizationID, "Main Branch", "123 Main St", "Asia/Kolkata", "DEMO-MAIN",
 	).Scan(&branchID)
 	if err != nil {
 		// Try selecting existing.
@@ -172,6 +186,17 @@ func main() {
 			continue
 		}
 		fmt.Printf("staff id=%d name=%q role=%s (PIN: %s)\n", staff.ID, staff.Name, staff.Role, pin)
+		if role == sqlc.StaffRoleOwner {
+			_, err = pool.Exec(ctx,
+				`INSERT INTO organization_members (organization_id, staff_id, role, status)
+				 VALUES ($1, $2, 'owner', 'active')
+				 ON CONFLICT (organization_id, staff_id) DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status`,
+				organizationID, staff.ID,
+			)
+			if err != nil {
+				fmt.Printf("organization membership for owner may already exist: %v\n", err)
+			}
+		}
 	}
 
 	// ── Menu ──────────────────────────────────────────────────────────────────

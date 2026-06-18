@@ -12,7 +12,7 @@ import (
 )
 
 const getRestaurantByBranchID = `-- name: GetRestaurantByBranchID :one
-SELECT r.id, r.name, r.slug, r.settings_json, r.created_at, r.logo_url
+SELECT r.id, r.name, r.slug, r.settings_json, r.created_at, r.logo_url, r.organization_id
 FROM restaurants r
 JOIN branches b ON b.restaurant_id = r.id
 WHERE b.id = $1
@@ -28,12 +28,13 @@ func (q *Queries) GetRestaurantByBranchID(ctx context.Context, id int64) (Restau
 		&i.SettingsJson,
 		&i.CreatedAt,
 		&i.LogoUrl,
+		&i.OrganizationID,
 	)
 	return i, err
 }
 
 const getRestaurantBySlug = `-- name: GetRestaurantBySlug :one
-SELECT id, name, slug, settings_json, created_at, logo_url FROM restaurants WHERE slug = $1
+SELECT id, name, slug, settings_json, created_at, logo_url, organization_id FROM restaurants WHERE slug = $1
 `
 
 func (q *Queries) GetRestaurantBySlug(ctx context.Context, slug string) (Restaurant, error) {
@@ -46,6 +47,7 @@ func (q *Queries) GetRestaurantBySlug(ctx context.Context, slug string) (Restaur
 		&i.SettingsJson,
 		&i.CreatedAt,
 		&i.LogoUrl,
+		&i.OrganizationID,
 	)
 	return i, err
 }

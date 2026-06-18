@@ -22,6 +22,7 @@ type Querier interface {
 	CountPromoRedemptionsByPhone(ctx context.Context, arg CountPromoRedemptionsByPhoneParams) (int64, error)
 	CreateAssistanceRequest(ctx context.Context, arg CreateAssistanceRequestParams) (AssistanceRequest, error)
 	CreateItemModifier(ctx context.Context, arg CreateItemModifierParams) (ItemModifier, error)
+	CreateItemModifierScoped(ctx context.Context, arg CreateItemModifierScopedParams) (ItemModifier, error)
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
 	CreateParticipant(ctx context.Context, arg CreateParticipantParams) (SessionParticipant, error)
@@ -36,6 +37,7 @@ type Querier interface {
 	DeactivateStaff(ctx context.Context, id int64) error
 	DeleteCustomer(ctx context.Context, arg DeleteCustomerParams) error
 	DeleteItemModifier(ctx context.Context, id int64) error
+	DeleteItemModifierScoped(ctx context.Context, arg DeleteItemModifierScopedParams) error
 	DeleteMenuCategory(ctx context.Context, arg DeleteMenuCategoryParams) error
 	DeleteMenuItem(ctx context.Context, arg DeleteMenuItemParams) error
 	GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error)
@@ -48,23 +50,40 @@ type Querier interface {
 	GetCartByID(ctx context.Context, id int64) (Cart, error)
 	GetCartBySessionAndParticipant(ctx context.Context, arg GetCartBySessionAndParticipantParams) (Cart, error)
 	GetCartItem(ctx context.Context, id int64) (CartItem, error)
+	GetCustomerByID(ctx context.Context, id int64) (Customer, error)
 	GetCustomerByPhone(ctx context.Context, arg GetCustomerByPhoneParams) (Customer, error)
 	GetCustomerSessionHistory(ctx context.Context, customerID pgtype.Int8) ([]GetCustomerSessionHistoryRow, error)
+	GetCustomerSessionHistoryScoped(ctx context.Context, arg GetCustomerSessionHistoryScopedParams) ([]GetCustomerSessionHistoryScopedRow, error)
 	GetEventsBySession(ctx context.Context, sessionID pgtype.UUID) ([]EventLog, error)
+	GetMenuCategoryByID(ctx context.Context, id int64) (MenuCategory, error)
 	GetMenuItemByID(ctx context.Context, id int64) (MenuItem, error)
 	GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]MenuItem, error)
+	GetModifierWithItemBranch(ctx context.Context, id int64) (GetModifierWithItemBranchRow, error)
 	GetOrCreateCart(ctx context.Context, arg GetOrCreateCartParams) (Cart, error)
 	GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error)
 	GetOrderByIdempotencyKey(ctx context.Context, idempotencyKey string) (Order, error)
 	// Returns daily order count and revenue for a branch within a time window.
 	GetOrderVolume(ctx context.Context, arg GetOrderVolumeParams) ([]GetOrderVolumeRow, error)
+	// Returns order count per UTC hour-of-day (0-23) across an organization.
+	GetOrganizationBusyHours(ctx context.Context, arg GetOrganizationBusyHoursParams) ([]GetOrganizationBusyHoursRow, error)
+	GetOrganizationByBranchID(ctx context.Context, id int64) (Organization, error)
+	GetOrganizationByCode(ctx context.Context, code string) (Organization, error)
+	GetOrganizationByID(ctx context.Context, id int64) (Organization, error)
+	GetOrganizationByRestaurantID(ctx context.Context, id int64) (Organization, error)
+	GetOrganizationMembershipForStaff(ctx context.Context, arg GetOrganizationMembershipForStaffParams) (OrganizationMember, error)
+	// Returns daily UTC order count and revenue across an organization.
+	GetOrganizationOrderVolume(ctx context.Context, arg GetOrganizationOrderVolumeParams) ([]GetOrganizationOrderVolumeRow, error)
+	// Returns the most ordered menu items across an organization within a time window.
+	GetOrganizationTopOrderedItems(ctx context.Context, arg GetOrganizationTopOrderedItemsParams) ([]GetOrganizationTopOrderedItemsRow, error)
 	GetParticipantByID(ctx context.Context, id int64) (SessionParticipant, error)
 	GetPaymentByID(ctx context.Context, id int64) (Payment, error)
 	GetPlanByTier(ctx context.Context, tier PlanTier) (SubscriptionPlan, error)
 	GetPromoByCode(ctx context.Context, arg GetPromoByCodeParams) (Promo, error)
+	GetPromoByID(ctx context.Context, id int64) (Promo, error)
 	GetRecentEventsByBranch(ctx context.Context, branchID pgtype.Int8) ([]EventLog, error)
 	GetRestaurantByBranchID(ctx context.Context, id int64) (Restaurant, error)
 	GetRestaurantByID(ctx context.Context, id int64) (Restaurant, error)
+	GetRestaurantByOrganizationID(ctx context.Context, organizationID int64) (Restaurant, error)
 	GetRestaurantBySlug(ctx context.Context, slug string) (Restaurant, error)
 	GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionByToken(ctx context.Context, sessionToken string) (Session, error)
@@ -88,6 +107,7 @@ type Querier interface {
 	ListAllMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
 	ListAllMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error)
 	ListAssistanceForSession(ctx context.Context, sessionID uuid.UUID) ([]AssistanceRequest, error)
+	ListBranchesForOrganization(ctx context.Context, organizationID int64) ([]Branch, error)
 	ListCartItems(ctx context.Context, cartID int64) ([]ListCartItemsRow, error)
 	// Queries used by background worker routines.
 	// Finds sessions that have exceeded their branch-configured timeout.
@@ -117,14 +137,20 @@ type Querier interface {
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
 	TouchStaffSession(ctx context.Context, id uuid.UUID) error
 	UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistanceStatusParams) (AssistanceRequest, error)
+	UpdateAssistanceStatusScoped(ctx context.Context, arg UpdateAssistanceStatusScopedParams) (AssistanceRequest, error)
 	UpdateBranchOrderPrefix(ctx context.Context, arg UpdateBranchOrderPrefixParams) error
 	UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error
 	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) (CartItem, error)
 	UpdateMenuCategory(ctx context.Context, arg UpdateMenuCategoryParams) (MenuCategory, error)
 	UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) (MenuItem, error)
 	UpdateMenuItemAvailability(ctx context.Context, arg UpdateMenuItemAvailabilityParams) error
+	UpdateMenuItemAvailabilityScoped(ctx context.Context, arg UpdateMenuItemAvailabilityScopedParams) error
 	UpdateMenuItemFeatured(ctx context.Context, arg UpdateMenuItemFeaturedParams) error
+	UpdateMenuItemFeaturedScoped(ctx context.Context, arg UpdateMenuItemFeaturedScopedParams) error
+	UpdateMenuItemScoped(ctx context.Context, arg UpdateMenuItemScopedParams) (MenuItem, error)
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
+	UpdateOrderStatusScoped(ctx context.Context, arg UpdateOrderStatusScopedParams) (Order, error)
+	UpdateOrganizationSettings(ctx context.Context, arg UpdateOrganizationSettingsParams) (Organization, error)
 	UpdateParticipantLastSeen(ctx context.Context, id int64) error
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
 	UpdateRestaurantLogoByBranchID(ctx context.Context, arg UpdateRestaurantLogoByBranchIDParams) error

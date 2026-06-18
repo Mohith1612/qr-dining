@@ -38,9 +38,10 @@ func (h *TenantHandler) GetBySlug(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":       restaurant.ID,
-		"name":     restaurant.Name,
-		"slug":     restaurant.Slug,
-		"settings": restaurant.SettingsJson,
+		"id":              restaurant.ID,
+		"organization_id": restaurant.OrganizationID,
+		"name":            restaurant.Name,
+		"slug":            restaurant.Slug,
+		"settings":        restaurant.SettingsJson,
 	})
 }

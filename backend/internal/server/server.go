@@ -57,7 +57,7 @@ func New(
 	r.Use(middleware.Metrics(metrics))
 	r.Use(middleware.CORS(cfg.CORS.AllowedOrigins))
 	r.Use(middleware.MaxBodySize(1 << 20)) // 1 MB request body limit
-	r.Use(middleware.TenantMiddleware(repos, cfg.Server.BaseDomain, logger))
+	r.Use(middleware.TenantMiddleware(repos, cfg.Server.BaseDomain, cfg.FeatureFlags.TenancyOrganizationsEnabled, logger))
 
 	rateLimiter := redisPkg.NewRateLimiter(redis)
 	cache := redisPkg.NewCache(redis, metrics.CacheHitsTotal, metrics.CacheMissesTotal)
@@ -95,6 +95,7 @@ func New(
 	tenantH := handlers.NewTenantHandler(repos)
 	subH := handlers.NewSubscriptionHandler(repos, subSvc)
 	analyticsH := handlers.NewAnalyticsHandler(analyticsSvc)
+	orgH := handlers.NewOrganizationHandler(repos, analyticsSvc, cfg.FeatureFlags, authorizer)
 	tableH := handlers.NewTableHandler(repos)
 	branchH := handlers.NewBranchHandler(repos)
 	customerH := handlers.NewCustomerHandler(customerSvc, repos, guestTokens, cfg.FeatureFlags, authorizer)
@@ -146,7 +147,7 @@ func New(
 
 	// Menu & tables — public (branch tenant-guarded when BASE_DOMAIN is set)
 	branchPublicAPI := api.Group("/branches/:id")
-	branchPublicAPI.Use(middleware.BranchTenantGuard(repos))
+	branchPublicAPI.Use(middleware.BranchTenantGuard(repos, cfg.FeatureFlags.TenancyOrganizationsEnabled))
 	branchPublicAPI.GET("/menu", menuH.GetMenu)
 	api.GET("/tables/by-qr/:token", menuH.GetTableByQR)
 
@@ -175,7 +176,7 @@ func New(
 
 	// Staff dashboard — branch-scoped operational views (tenant-guarded).
 	branchStaffAPI := staffAPI.Group("/branches/:id")
-	branchStaffAPI.Use(middleware.BranchTenantGuard(repos))
+	branchStaffAPI.Use(middleware.BranchTenantGuard(repos, cfg.FeatureFlags.TenancyOrganizationsEnabled))
 	branchStaffAPI.GET("/orders/active", orderH.ListActiveForBranch)
 	branchStaffAPI.GET("/sessions/active", sessionH.ListActiveForBranch)
 	branchStaffAPI.GET("/assist/active", assistanceH.ListActiveForBranch)
@@ -192,6 +193,15 @@ func New(
 	branchStaffAPI.GET("", branchH.GetBranch)
 	branchStaffAPI.PATCH("", branchH.UpdateBranch)
 	branchStaffAPI.GET("/customers", customerH.SearchCustomers)
+
+	// Organization governance — staff authenticated, feature-flagged in handler.
+	orgAPI := staffAPI.Group("/orgs/:org_id")
+	orgAPI.GET("", orgH.GetOrganization)
+	orgAPI.PATCH("", orgH.UpdateOrganization)
+	orgAPI.GET("/branches", orgH.ListBranches)
+	orgAPI.GET("/analytics/top-items", orgH.GetTopItems)
+	orgAPI.GET("/analytics/busy-hours", orgH.GetBusyHours)
+	orgAPI.GET("/analytics/order-volume", orgH.GetOrderVolume)
 
 	// Promo management — staff protected.
 	branchStaffAPI.GET("/promos", promoH.ListPromos)

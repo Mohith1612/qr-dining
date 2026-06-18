@@ -185,6 +185,34 @@ func (q *Queries) GetPromoByCode(ctx context.Context, arg GetPromoByCodeParams) 
 	return i, err
 }
 
+const getPromoByID = `-- name: GetPromoByID :one
+SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at FROM promos WHERE id = $1
+`
+
+func (q *Queries) GetPromoByID(ctx context.Context, id int64) (Promo, error) {
+	row := q.db.QueryRow(ctx, getPromoByID, id)
+	var i Promo
+	err := row.Scan(
+		&i.ID,
+		&i.BranchID,
+		&i.Code,
+		&i.Type,
+		&i.Value,
+		&i.MinOrderAmount,
+		&i.MaxUses,
+		&i.UsesPerPhone,
+		&i.ValidFrom,
+		&i.ValidUntil,
+		&i.TimeWindowStart,
+		&i.TimeWindowEnd,
+		&i.IsActive,
+		&i.Description,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listPromosForBranch = `-- name: ListPromosForBranch :many
 SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at FROM promos WHERE branch_id = $1 ORDER BY created_at DESC
 `

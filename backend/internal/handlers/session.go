@@ -207,7 +207,7 @@ func participantIDFromHeader(c *gin.Context) (int64, bool) {
 }
 
 func (h *SessionHandler) issueGuestToken(c *gin.Context, sess sqlc.Session, participant sqlc.SessionParticipant) (string, error) {
-	restaurant, err := h.repos.GetRestaurantByBranchID(c.Request.Context(), sess.BranchID)
+	organization, err := h.repos.GetOrganizationByBranchID(c.Request.Context(), sess.BranchID)
 	if err != nil {
 		return "", err
 	}
@@ -219,7 +219,7 @@ func (h *SessionHandler) issueGuestToken(c *gin.Context, sess sqlc.Session, part
 		SessionID:         sess.ID,
 		BranchID:          sess.BranchID,
 		TableID:           sess.TableID,
-		OrganizationID:    restaurant.ID,
+		OrganizationID:    organization.ID,
 		Role:              role,
 		ParticipantID:     participant.ID,
 		CredentialVersion: participant.CredentialVersion,

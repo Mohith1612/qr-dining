@@ -27,6 +27,27 @@ func (q *Queries) DeleteCustomer(ctx context.Context, arg DeleteCustomerParams) 
 	return err
 }
 
+const getCustomerByID = `-- name: GetCustomerByID :one
+SELECT id, restaurant_id, phone_e164, display_name, opted_in, opted_in_at, last_seen_at, visit_count, created_at FROM customers WHERE id = $1
+`
+
+func (q *Queries) GetCustomerByID(ctx context.Context, id int64) (Customer, error) {
+	row := q.db.QueryRow(ctx, getCustomerByID, id)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.RestaurantID,
+		&i.PhoneE164,
+		&i.DisplayName,
+		&i.OptedIn,
+		&i.OptedInAt,
+		&i.LastSeenAt,
+		&i.VisitCount,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getCustomerByPhone = `-- name: GetCustomerByPhone :one
 SELECT id, restaurant_id, phone_e164, display_name, opted_in, opted_in_at, last_seen_at, visit_count, created_at FROM customers WHERE restaurant_id = $1 AND phone_e164 = $2
 `
@@ -86,6 +107,63 @@ func (q *Queries) GetCustomerSessionHistory(ctx context.Context, customerID pgty
 	items := []GetCustomerSessionHistoryRow{}
 	for rows.Next() {
 		var i GetCustomerSessionHistoryRow
+		if err := rows.Scan(
+			&i.SessionID,
+			&i.CreatedAt,
+			&i.ClosedAt,
+			&i.TableIdentifier,
+			&i.TotalSpent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCustomerSessionHistoryScoped = `-- name: GetCustomerSessionHistoryScoped :many
+SELECT
+    s.id AS session_id,
+    s.created_at,
+    s.closed_at,
+    t.identifier AS table_identifier,
+    COALESCE(SUM(o.total_amount), 0::numeric) AS total_spent
+FROM sessions s
+JOIN customers c ON c.id = s.customer_id
+JOIN tables t ON t.id = s.table_id
+LEFT JOIN orders o ON o.session_id = s.id AND o.status != 'cancelled'
+WHERE s.customer_id = $1
+  AND c.restaurant_id = $2
+GROUP BY s.id, s.created_at, s.closed_at, t.identifier
+ORDER BY s.created_at DESC
+LIMIT 20
+`
+
+type GetCustomerSessionHistoryScopedParams struct {
+	CustomerID   pgtype.Int8 `json:"customer_id"`
+	RestaurantID int64       `json:"restaurant_id"`
+}
+
+type GetCustomerSessionHistoryScopedRow struct {
+	SessionID       uuid.UUID          `json:"session_id"`
+	CreatedAt       time.Time          `json:"created_at"`
+	ClosedAt        pgtype.Timestamptz `json:"closed_at"`
+	TableIdentifier string             `json:"table_identifier"`
+	TotalSpent      interface{}        `json:"total_spent"`
+}
+
+func (q *Queries) GetCustomerSessionHistoryScoped(ctx context.Context, arg GetCustomerSessionHistoryScopedParams) ([]GetCustomerSessionHistoryScopedRow, error) {
+	rows, err := q.db.Query(ctx, getCustomerSessionHistoryScoped, arg.CustomerID, arg.RestaurantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetCustomerSessionHistoryScopedRow{}
+	for rows.Next() {
+		var i GetCustomerSessionHistoryScopedRow
 		if err := rows.Scan(
 			&i.SessionID,
 			&i.CreatedAt,

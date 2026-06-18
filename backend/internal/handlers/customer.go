@@ -139,7 +139,12 @@ func (h *CustomerHandler) GetCustomerHistory(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionCustomerHistory, authz.CustomerResource(customer.ID, customer.RestaurantID)) {
+	customerOrg, err := h.repos.GetOrganizationByRestaurantID(c.Request.Context(), customer.RestaurantID)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionCustomerHistory, authz.CustomerResource(customer.ID, customerOrg.ID)) {
 		return
 	}
 
@@ -189,7 +194,12 @@ func (h *CustomerHandler) DeleteCustomer(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionCustomerDelete, authz.CustomerResource(customer.ID, customer.RestaurantID)) {
+	customerOrg, err := h.repos.GetOrganizationByRestaurantID(c.Request.Context(), customer.RestaurantID)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionCustomerDelete, authz.CustomerResource(customer.ID, customerOrg.ID)) {
 		return
 	}
 

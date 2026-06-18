@@ -56,6 +56,44 @@ func (q *Queries) CreateItemModifier(ctx context.Context, arg CreateItemModifier
 	return i, err
 }
 
+const createItemModifierScoped = `-- name: CreateItemModifierScoped :one
+INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group)
+SELECT $1, $3, $4, $5, $6
+FROM menu_items
+WHERE id = $1 AND branch_id = $2
+RETURNING id, item_id, name, price_delta, is_required, modifier_group
+`
+
+type CreateItemModifierScopedParams struct {
+	ItemID        int64          `json:"item_id"`
+	BranchID      int64          `json:"branch_id"`
+	Name          string         `json:"name"`
+	PriceDelta    pgtype.Numeric `json:"price_delta"`
+	IsRequired    bool           `json:"is_required"`
+	ModifierGroup string         `json:"modifier_group"`
+}
+
+func (q *Queries) CreateItemModifierScoped(ctx context.Context, arg CreateItemModifierScopedParams) (ItemModifier, error) {
+	row := q.db.QueryRow(ctx, createItemModifierScoped,
+		arg.ItemID,
+		arg.BranchID,
+		arg.Name,
+		arg.PriceDelta,
+		arg.IsRequired,
+		arg.ModifierGroup,
+	)
+	var i ItemModifier
+	err := row.Scan(
+		&i.ID,
+		&i.ItemID,
+		&i.Name,
+		&i.PriceDelta,
+		&i.IsRequired,
+		&i.ModifierGroup,
+	)
+	return i, err
+}
+
 const createTable = `-- name: CreateTable :one
 INSERT INTO tables (branch_id, identifier, capacity, qr_code_token)
 VALUES ($1, $2, $3, $4)
@@ -98,6 +136,24 @@ func (q *Queries) DeleteItemModifier(ctx context.Context, id int64) error {
 	return err
 }
 
+const deleteItemModifierScoped = `-- name: DeleteItemModifierScoped :exec
+DELETE FROM item_modifiers
+USING menu_items
+WHERE item_modifiers.id = $1
+  AND item_modifiers.item_id = menu_items.id
+  AND menu_items.branch_id = $2
+`
+
+type DeleteItemModifierScopedParams struct {
+	ID       int64 `json:"id"`
+	BranchID int64 `json:"branch_id"`
+}
+
+func (q *Queries) DeleteItemModifierScoped(ctx context.Context, arg DeleteItemModifierScopedParams) error {
+	_, err := q.db.Exec(ctx, deleteItemModifierScoped, arg.ID, arg.BranchID)
+	return err
+}
+
 const deleteMenuCategory = `-- name: DeleteMenuCategory :exec
 DELETE FROM menu_categories WHERE id = $1 AND branch_id = $2
 `
@@ -124,6 +180,23 @@ type DeleteMenuItemParams struct {
 func (q *Queries) DeleteMenuItem(ctx context.Context, arg DeleteMenuItemParams) error {
 	_, err := q.db.Exec(ctx, deleteMenuItem, arg.ID, arg.BranchID)
 	return err
+}
+
+const getMenuCategoryByID = `-- name: GetMenuCategoryByID :one
+SELECT id, branch_id, name, position, is_active FROM menu_categories WHERE id = $1
+`
+
+func (q *Queries) GetMenuCategoryByID(ctx context.Context, id int64) (MenuCategory, error) {
+	row := q.db.QueryRow(ctx, getMenuCategoryByID, id)
+	var i MenuCategory
+	err := row.Scan(
+		&i.ID,
+		&i.BranchID,
+		&i.Name,
+		&i.Position,
+		&i.IsActive,
+	)
+	return i, err
 }
 
 const getMenuItemByID = `-- name: GetMenuItemByID :one
@@ -189,6 +262,38 @@ func (q *Queries) GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]Me
 		return nil, err
 	}
 	return items, nil
+}
+
+const getModifierWithItemBranch = `-- name: GetModifierWithItemBranch :one
+SELECT im.id, im.item_id, im.name, im.price_delta, im.is_required, im.modifier_group, mi.branch_id
+FROM item_modifiers im
+JOIN menu_items mi ON mi.id = im.item_id
+WHERE im.id = $1
+`
+
+type GetModifierWithItemBranchRow struct {
+	ID            int64          `json:"id"`
+	ItemID        int64          `json:"item_id"`
+	Name          string         `json:"name"`
+	PriceDelta    pgtype.Numeric `json:"price_delta"`
+	IsRequired    bool           `json:"is_required"`
+	ModifierGroup string         `json:"modifier_group"`
+	BranchID      int64          `json:"branch_id"`
+}
+
+func (q *Queries) GetModifierWithItemBranch(ctx context.Context, id int64) (GetModifierWithItemBranchRow, error) {
+	row := q.db.QueryRow(ctx, getModifierWithItemBranch, id)
+	var i GetModifierWithItemBranchRow
+	err := row.Scan(
+		&i.ID,
+		&i.ItemID,
+		&i.Name,
+		&i.PriceDelta,
+		&i.IsRequired,
+		&i.ModifierGroup,
+		&i.BranchID,
+	)
+	return i, err
 }
 
 const getTableByID = `-- name: GetTableByID :one
@@ -711,6 +816,21 @@ func (q *Queries) UpdateMenuItemAvailability(ctx context.Context, arg UpdateMenu
 	return err
 }
 
+const updateMenuItemAvailabilityScoped = `-- name: UpdateMenuItemAvailabilityScoped :exec
+UPDATE menu_items SET is_available = $3 WHERE id = $1 AND branch_id = $2
+`
+
+type UpdateMenuItemAvailabilityScopedParams struct {
+	ID          int64 `json:"id"`
+	BranchID    int64 `json:"branch_id"`
+	IsAvailable bool  `json:"is_available"`
+}
+
+func (q *Queries) UpdateMenuItemAvailabilityScoped(ctx context.Context, arg UpdateMenuItemAvailabilityScopedParams) error {
+	_, err := q.db.Exec(ctx, updateMenuItemAvailabilityScoped, arg.ID, arg.BranchID, arg.IsAvailable)
+	return err
+}
+
 const updateMenuItemFeatured = `-- name: UpdateMenuItemFeatured :exec
 UPDATE menu_items SET is_featured = $2, featured_sort_order = $3 WHERE id = $1
 `
@@ -724,6 +844,85 @@ type UpdateMenuItemFeaturedParams struct {
 func (q *Queries) UpdateMenuItemFeatured(ctx context.Context, arg UpdateMenuItemFeaturedParams) error {
 	_, err := q.db.Exec(ctx, updateMenuItemFeatured, arg.ID, arg.IsFeatured, arg.FeaturedSortOrder)
 	return err
+}
+
+const updateMenuItemFeaturedScoped = `-- name: UpdateMenuItemFeaturedScoped :exec
+UPDATE menu_items SET is_featured = $3, featured_sort_order = $4 WHERE id = $1 AND branch_id = $2
+`
+
+type UpdateMenuItemFeaturedScopedParams struct {
+	ID                int64 `json:"id"`
+	BranchID          int64 `json:"branch_id"`
+	IsFeatured        bool  `json:"is_featured"`
+	FeaturedSortOrder int16 `json:"featured_sort_order"`
+}
+
+func (q *Queries) UpdateMenuItemFeaturedScoped(ctx context.Context, arg UpdateMenuItemFeaturedScopedParams) error {
+	_, err := q.db.Exec(ctx, updateMenuItemFeaturedScoped,
+		arg.ID,
+		arg.BranchID,
+		arg.IsFeatured,
+		arg.FeaturedSortOrder,
+	)
+	return err
+}
+
+const updateMenuItemScoped = `-- name: UpdateMenuItemScoped :one
+UPDATE menu_items
+SET name = $3, description = $4, price = $5, position = $6,
+    dietary_flags = $7, item_badges = $8, spice_level = $9,
+    category_id = COALESCE($10, category_id),
+    image_url = COALESCE($11, image_url)
+WHERE id = $1 AND branch_id = $2
+RETURNING id, category_id, branch_id, name, description, price, is_available, position, is_featured, featured_sort_order, dietary_flags, item_badges, spice_level, image_url
+`
+
+type UpdateMenuItemScopedParams struct {
+	ID           int64          `json:"id"`
+	BranchID     int64          `json:"branch_id"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	Price        pgtype.Numeric `json:"price"`
+	Position     int16          `json:"position"`
+	DietaryFlags []string       `json:"dietary_flags"`
+	ItemBadges   []string       `json:"item_badges"`
+	SpiceLevel   int16          `json:"spice_level"`
+	CategoryID   pgtype.Int8    `json:"category_id"`
+	ImageUrl     pgtype.Text    `json:"image_url"`
+}
+
+func (q *Queries) UpdateMenuItemScoped(ctx context.Context, arg UpdateMenuItemScopedParams) (MenuItem, error) {
+	row := q.db.QueryRow(ctx, updateMenuItemScoped,
+		arg.ID,
+		arg.BranchID,
+		arg.Name,
+		arg.Description,
+		arg.Price,
+		arg.Position,
+		arg.DietaryFlags,
+		arg.ItemBadges,
+		arg.SpiceLevel,
+		arg.CategoryID,
+		arg.ImageUrl,
+	)
+	var i MenuItem
+	err := row.Scan(
+		&i.ID,
+		&i.CategoryID,
+		&i.BranchID,
+		&i.Name,
+		&i.Description,
+		&i.Price,
+		&i.IsAvailable,
+		&i.Position,
+		&i.IsFeatured,
+		&i.FeaturedSortOrder,
+		&i.DietaryFlags,
+		&i.ItemBadges,
+		&i.SpiceLevel,
+		&i.ImageUrl,
+	)
+	return i, err
 }
 
 const updateTableStatus = `-- name: UpdateTableStatus :exec

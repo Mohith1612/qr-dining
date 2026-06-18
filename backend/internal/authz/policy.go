@@ -79,7 +79,7 @@ func requiresSameBranch(action Action) bool {
 
 func requiresSameOrganization(action Action) bool {
 	switch action {
-	case ActionCustomerHistory, ActionCustomerDelete:
+	case ActionOrganizationRead, ActionOrganizationUpdate, ActionCustomerHistory, ActionCustomerDelete:
 		return true
 	default:
 		return false

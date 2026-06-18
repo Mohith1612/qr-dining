@@ -154,6 +154,7 @@ export interface Staff {
 export interface StaffSession {
   staff_id: number
   branch_id: number
+  organization_id: number
   role: StaffRole
   token: string
 }

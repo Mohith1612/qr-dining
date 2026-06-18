@@ -329,3 +329,36 @@ func (q *Queries) UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusPa
 	)
 	return i, err
 }
+
+const updateOrderStatusScoped = `-- name: UpdateOrderStatusScoped :one
+UPDATE orders
+SET status = $3, updated_at = NOW()
+WHERE id = $1 AND branch_id = $2
+RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount
+`
+
+type UpdateOrderStatusScopedParams struct {
+	ID       uuid.UUID   `json:"id"`
+	BranchID int64       `json:"branch_id"`
+	Status   OrderStatus `json:"status"`
+}
+
+func (q *Queries) UpdateOrderStatusScoped(ctx context.Context, arg UpdateOrderStatusScopedParams) (Order, error) {
+	row := q.db.QueryRow(ctx, updateOrderStatusScoped, arg.ID, arg.BranchID, arg.Status)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.BranchID,
+		&i.PlacedByParticipantID,
+		&i.Status,
+		&i.IdempotencyKey,
+		&i.TotalAmount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OrderNumber,
+		&i.PromoID,
+		&i.DiscountAmount,
+	)
+	return i, err
+}

@@ -79,7 +79,11 @@ func (h *BranchHandler) GetBranch(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":                      branch.ID,
+		"organization_id":         branch.OrganizationID,
 		"name":                    branch.Name,
+		"branch_code":             branch.BranchCode,
+		"status":                  branch.Status,
+		"support_metadata":        branch.SupportMetadataJson,
 		"session_timeout_minutes": branch.SessionTimeoutMinutes,
 		"order_prefix":            branch.OrderPrefix,
 		"theme":                   theme,

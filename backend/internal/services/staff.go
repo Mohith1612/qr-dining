@@ -41,15 +41,16 @@ func NewStaffService(repos *repository.Repos, cache *redisPkg.Cache, logger zero
 }
 
 type StaffSession struct {
-	Token        string         `json:"token"`
-	SessionToken string         `json:"session_token"`
-	SessionID    uuid.UUID      `json:"session_id"`
-	StaffID      int64          `json:"staff_id"`
-	BranchID     int64          `json:"branch_id"`
-	Role         sqlc.StaffRole `json:"role"`
-	StaffCode    string         `json:"staff_code"`
-	TokenVersion int32          `json:"token_version"`
-	PinVersion   int32          `json:"pin_version"`
+	Token          string         `json:"token"`
+	SessionToken   string         `json:"session_token"`
+	SessionID      uuid.UUID      `json:"session_id"`
+	StaffID        int64          `json:"staff_id"`
+	BranchID       int64          `json:"branch_id"`
+	OrganizationID int64          `json:"organization_id"`
+	Role           sqlc.StaffRole `json:"role"`
+	StaffCode      string         `json:"staff_code"`
+	TokenVersion   int32          `json:"token_version"`
+	PinVersion     int32          `json:"pin_version"`
 }
 
 // Authenticate verifies a staff PIN against stored bcrypt hashes for the branch.
@@ -90,6 +91,20 @@ func (s *StaffService) AuthenticateWithCode(ctx context.Context, branchCode, sta
 func (s *StaffService) createSession(ctx context.Context, staff sqlc.Staff, deviceName string) (StaffSession, error) {
 	token := uuid.NewString()
 	expiresAt := time.Now().UTC().Add(staffTokenTTL)
+	branch, err := s.repos.GetBranchByID(ctx, staff.BranchID)
+	if err != nil {
+		return StaffSession{}, fmt.Errorf("resolve staff branch: %w", err)
+	}
+	if branch.Status != "active" {
+		return StaffSession{}, domain.ErrParticipantUnauthorized
+	}
+	organization, err := s.repos.GetOrganizationByBranchID(ctx, staff.BranchID)
+	if err != nil {
+		return StaffSession{}, fmt.Errorf("resolve staff organization: %w", err)
+	}
+	if organization.Status != "active" {
+		return StaffSession{}, domain.ErrParticipantUnauthorized
+	}
 	dbSession, err := s.repos.CreateStaffSession(
 		ctx,
 		staff.ID,
@@ -104,15 +119,16 @@ func (s *StaffService) createSession(ctx context.Context, staff sqlc.Staff, devi
 		return StaffSession{}, fmt.Errorf("create staff session: %w", err)
 	}
 	session := StaffSession{
-		Token:        token,
-		SessionToken: token,
-		SessionID:    dbSession.ID,
-		StaffID:      staff.ID,
-		BranchID:     staff.BranchID,
-		Role:         staff.Role,
-		StaffCode:    staff.StaffCode,
-		TokenVersion: staff.TokenVersion,
-		PinVersion:   staff.PinVersion,
+		Token:          token,
+		SessionToken:   token,
+		SessionID:      dbSession.ID,
+		StaffID:        staff.ID,
+		BranchID:       staff.BranchID,
+		OrganizationID: organization.ID,
+		Role:           staff.Role,
+		StaffCode:      staff.StaffCode,
+		TokenVersion:   staff.TokenVersion,
+		PinVersion:     staff.PinVersion,
 	}
 
 	tokenKey := staffTokenPrefix + token

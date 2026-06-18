@@ -54,7 +54,7 @@ function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: (id: number
           </p>
         )}
         {item.note && (
-          <p style={{ fontSize: 12, fontStyle: "italic", color: "var(--ink-3)", marginTop: 2 }}>"{item.note}"</p>
+          <p style={{ fontSize: 12, fontStyle: "italic", color: "var(--ink-3)", marginTop: 2 }}>&quot;{item.note}&quot;</p>
         )}
       </div>
 

@@ -133,6 +133,10 @@ export const staffApi = {
   getBranch: (branchId: number, staffToken: string) =>
     api.get<{
       id: number
+      organization_id: number
+      branch_code: string
+      status: string
+      support_metadata: Record<string, unknown>
       session_timeout_minutes: number
       order_prefix: string
       theme: string

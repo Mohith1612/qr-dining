@@ -46,7 +46,7 @@ export function CustomerOptIn({ sessionId, participantId, onComplete }: Props) {
     <BottomSheet open onClose={onComplete} title="Come back anytime">
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <p style={{ color: "var(--ink-2)", fontSize: 14, lineHeight: 1.65, margin: 0 }}>
-          Share your number and we'll remember your preferences for next time.
+          Share your number and we&apos;ll remember your preferences for next time.
         </p>
 
         <div>

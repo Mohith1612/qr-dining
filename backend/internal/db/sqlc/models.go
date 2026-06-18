@@ -460,15 +460,18 @@ type AssistanceRequest struct {
 }
 
 type Branch struct {
-	ID                    int64     `json:"id"`
-	RestaurantID          int64     `json:"restaurant_id"`
-	Name                  string    `json:"name"`
-	Address               string    `json:"address"`
-	Timezone              string    `json:"timezone"`
-	CreatedAt             time.Time `json:"created_at"`
-	SessionTimeoutMinutes int16     `json:"session_timeout_minutes"`
-	OrderPrefix           string    `json:"order_prefix"`
-	BranchCode            string    `json:"branch_code"`
+	ID                    int64           `json:"id"`
+	RestaurantID          int64           `json:"restaurant_id"`
+	Name                  string          `json:"name"`
+	Address               string          `json:"address"`
+	Timezone              string          `json:"timezone"`
+	CreatedAt             time.Time       `json:"created_at"`
+	SessionTimeoutMinutes int16           `json:"session_timeout_minutes"`
+	OrderPrefix           string          `json:"order_prefix"`
+	BranchCode            string          `json:"branch_code"`
+	OrganizationID        int64           `json:"organization_id"`
+	Status                string          `json:"status"`
+	SupportMetadataJson   json.RawMessage `json:"support_metadata_json"`
 }
 
 type Cart struct {
@@ -574,6 +577,36 @@ type OrderSequence struct {
 	LastSeq  int32       `json:"last_seq"`
 }
 
+type Organization struct {
+	ID                  int64           `json:"id"`
+	Code                string          `json:"code"`
+	Name                string          `json:"name"`
+	LegalName           string          `json:"legal_name"`
+	Status              string          `json:"status"`
+	PrimaryContactEmail string          `json:"primary_contact_email"`
+	SettingsJson        json.RawMessage `json:"settings_json"`
+	CreatedAt           time.Time       `json:"created_at"`
+	UpdatedAt           time.Time       `json:"updated_at"`
+}
+
+type OrganizationBranchMembership struct {
+	ID             int64     `json:"id"`
+	OrganizationID int64     `json:"organization_id"`
+	BranchID       int64     `json:"branch_id"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type OrganizationMember struct {
+	ID               int64       `json:"id"`
+	OrganizationID   int64       `json:"organization_id"`
+	StaffID          int64       `json:"staff_id"`
+	Role             string      `json:"role"`
+	Status           string      `json:"status"`
+	InvitedByStaffID pgtype.Int8 `json:"invited_by_staff_id"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
+}
+
 type Payment struct {
 	ID            int64              `json:"id"`
 	SessionID     uuid.UUID          `json:"session_id"`
@@ -630,12 +663,13 @@ type PromoRedemption struct {
 }
 
 type Restaurant struct {
-	ID           int64           `json:"id"`
-	Name         string          `json:"name"`
-	Slug         string          `json:"slug"`
-	SettingsJson json.RawMessage `json:"settings_json"`
-	CreatedAt    time.Time       `json:"created_at"`
-	LogoUrl      pgtype.Text     `json:"logo_url"`
+	ID             int64           `json:"id"`
+	Name           string          `json:"name"`
+	Slug           string          `json:"slug"`
+	SettingsJson   json.RawMessage `json:"settings_json"`
+	CreatedAt      time.Time       `json:"created_at"`
+	LogoUrl        pgtype.Text     `json:"logo_url"`
+	OrganizationID int64           `json:"organization_id"`
 }
 
 type RestaurantSubscription struct {

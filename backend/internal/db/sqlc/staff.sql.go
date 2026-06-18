@@ -134,7 +134,7 @@ func (q *Queries) GetActiveStaffSessionByTokenHash(ctx context.Context, tokenHas
 }
 
 const getBranchByCode = `-- name: GetBranchByCode :one
-SELECT id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes, order_prefix, branch_code FROM branches WHERE branch_code = $1
+SELECT id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes, order_prefix, branch_code, organization_id, status, support_metadata_json FROM branches WHERE branch_code = $1
 `
 
 func (q *Queries) GetBranchByCode(ctx context.Context, branchCode string) (Branch, error) {
@@ -150,12 +150,15 @@ func (q *Queries) GetBranchByCode(ctx context.Context, branchCode string) (Branc
 		&i.SessionTimeoutMinutes,
 		&i.OrderPrefix,
 		&i.BranchCode,
+		&i.OrganizationID,
+		&i.Status,
+		&i.SupportMetadataJson,
 	)
 	return i, err
 }
 
 const getBranchByID = `-- name: GetBranchByID :one
-SELECT id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes, order_prefix, branch_code FROM branches WHERE id = $1
+SELECT id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes, order_prefix, branch_code, organization_id, status, support_metadata_json FROM branches WHERE id = $1
 `
 
 func (q *Queries) GetBranchByID(ctx context.Context, id int64) (Branch, error) {
@@ -171,12 +174,15 @@ func (q *Queries) GetBranchByID(ctx context.Context, id int64) (Branch, error) {
 		&i.SessionTimeoutMinutes,
 		&i.OrderPrefix,
 		&i.BranchCode,
+		&i.OrganizationID,
+		&i.Status,
+		&i.SupportMetadataJson,
 	)
 	return i, err
 }
 
 const getRestaurantByID = `-- name: GetRestaurantByID :one
-SELECT id, name, slug, settings_json, created_at, logo_url FROM restaurants WHERE id = $1
+SELECT id, name, slug, settings_json, created_at, logo_url, organization_id FROM restaurants WHERE id = $1
 `
 
 func (q *Queries) GetRestaurantByID(ctx context.Context, id int64) (Restaurant, error) {
@@ -189,6 +195,7 @@ func (q *Queries) GetRestaurantByID(ctx context.Context, id int64) (Restaurant, 
 		&i.SettingsJson,
 		&i.CreatedAt,
 		&i.LogoUrl,
+		&i.OrganizationID,
 	)
 	return i, err
 }

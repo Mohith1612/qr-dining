@@ -26,3 +26,7 @@ type Resource struct {
 func BranchResource(id int64, organizationID int64) Resource {
 	return Resource{Type: ResourceTypeBranch, ID: int64String(id), Scope: Scope{OrganizationID: organizationID, BranchID: id}}
 }
+
+func OrganizationResource(id int64) Resource {
+	return Resource{Type: ResourceTypeOrganization, ID: int64String(id), Scope: Scope{OrganizationID: id}}
+}

@@ -106,6 +106,151 @@ func (q *Queries) GetOrderVolume(ctx context.Context, arg GetOrderVolumeParams) 
 	return items, nil
 }
 
+const getOrganizationBusyHours = `-- name: GetOrganizationBusyHours :many
+SELECT
+    EXTRACT(HOUR FROM o.created_at AT TIME ZONE 'UTC')::SMALLINT AS hour,
+    COUNT(*)::BIGINT                                             AS order_count
+FROM orders o
+JOIN branches b ON o.branch_id = b.id
+WHERE b.organization_id = $1
+  AND o.created_at >= $2
+  AND o.created_at <  $3
+  AND o.status    <> 'cancelled'
+GROUP BY hour
+ORDER BY hour
+`
+
+type GetOrganizationBusyHoursParams struct {
+	OrganizationID int64     `json:"organization_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	CreatedAt_2    time.Time `json:"created_at_2"`
+}
+
+type GetOrganizationBusyHoursRow struct {
+	Hour       int16 `json:"hour"`
+	OrderCount int64 `json:"order_count"`
+}
+
+// Returns order count per UTC hour-of-day (0-23) across an organization.
+func (q *Queries) GetOrganizationBusyHours(ctx context.Context, arg GetOrganizationBusyHoursParams) ([]GetOrganizationBusyHoursRow, error) {
+	rows, err := q.db.Query(ctx, getOrganizationBusyHours, arg.OrganizationID, arg.CreatedAt, arg.CreatedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetOrganizationBusyHoursRow{}
+	for rows.Next() {
+		var i GetOrganizationBusyHoursRow
+		if err := rows.Scan(&i.Hour, &i.OrderCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getOrganizationOrderVolume = `-- name: GetOrganizationOrderVolume :many
+SELECT
+    DATE(o.created_at AT TIME ZONE 'UTC') AS day,
+    COUNT(*)::BIGINT                      AS order_count,
+    COALESCE(SUM(o.total_amount), 0)::TEXT AS revenue
+FROM orders o
+JOIN branches b ON o.branch_id = b.id
+WHERE b.organization_id = $1
+  AND o.created_at >= $2
+  AND o.created_at <  $3
+  AND o.status    <> 'cancelled'
+GROUP BY day
+ORDER BY day
+`
+
+type GetOrganizationOrderVolumeParams struct {
+	OrganizationID int64     `json:"organization_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	CreatedAt_2    time.Time `json:"created_at_2"`
+}
+
+type GetOrganizationOrderVolumeRow struct {
+	Day        pgtype.Date `json:"day"`
+	OrderCount int64       `json:"order_count"`
+	Revenue    string      `json:"revenue"`
+}
+
+// Returns daily UTC order count and revenue across an organization.
+func (q *Queries) GetOrganizationOrderVolume(ctx context.Context, arg GetOrganizationOrderVolumeParams) ([]GetOrganizationOrderVolumeRow, error) {
+	rows, err := q.db.Query(ctx, getOrganizationOrderVolume, arg.OrganizationID, arg.CreatedAt, arg.CreatedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetOrganizationOrderVolumeRow{}
+	for rows.Next() {
+		var i GetOrganizationOrderVolumeRow
+		if err := rows.Scan(&i.Day, &i.OrderCount, &i.Revenue); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getOrganizationTopOrderedItems = `-- name: GetOrganizationTopOrderedItems :many
+SELECT
+    mi.id                          AS menu_item_id,
+    mi.name                        AS menu_item_name,
+    SUM(oi.quantity)::BIGINT       AS total_quantity
+FROM order_items oi
+JOIN menu_items mi ON oi.menu_item_id = mi.id
+JOIN orders o      ON oi.order_id     = o.id
+JOIN branches b    ON o.branch_id     = b.id
+WHERE b.organization_id = $1
+  AND o.created_at >= $2
+  AND o.created_at <  $3
+  AND o.status    <> 'cancelled'
+GROUP BY mi.id, mi.name
+ORDER BY total_quantity DESC
+LIMIT 10
+`
+
+type GetOrganizationTopOrderedItemsParams struct {
+	OrganizationID int64     `json:"organization_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	CreatedAt_2    time.Time `json:"created_at_2"`
+}
+
+type GetOrganizationTopOrderedItemsRow struct {
+	MenuItemID    int64  `json:"menu_item_id"`
+	MenuItemName  string `json:"menu_item_name"`
+	TotalQuantity int64  `json:"total_quantity"`
+}
+
+// Returns the most ordered menu items across an organization within a time window.
+func (q *Queries) GetOrganizationTopOrderedItems(ctx context.Context, arg GetOrganizationTopOrderedItemsParams) ([]GetOrganizationTopOrderedItemsRow, error) {
+	rows, err := q.db.Query(ctx, getOrganizationTopOrderedItems, arg.OrganizationID, arg.CreatedAt, arg.CreatedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetOrganizationTopOrderedItemsRow{}
+	for rows.Next() {
+		var i GetOrganizationTopOrderedItemsRow
+		if err := rows.Scan(&i.MenuItemID, &i.MenuItemName, &i.TotalQuantity); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTopOrderedItems = `-- name: GetTopOrderedItems :many
 SELECT
     mi.id                          AS menu_item_id,

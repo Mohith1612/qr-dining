@@ -167,3 +167,36 @@ func (q *Queries) UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistan
 	)
 	return i, err
 }
+
+const updateAssistanceStatusScoped = `-- name: UpdateAssistanceStatusScoped :one
+UPDATE assistance_requests ar
+SET status = $3,
+    resolved_at = CASE WHEN $3::assistance_status = 'resolved' THEN NOW() ELSE ar.resolved_at END
+FROM sessions s
+WHERE ar.id = $1
+  AND ar.session_id = s.id
+  AND s.branch_id = $2
+RETURNING ar.id, ar.session_id, ar.table_id, ar.participant_id, ar.type, ar.status, ar.created_at, ar.resolved_at
+`
+
+type UpdateAssistanceStatusScopedParams struct {
+	ID       int64            `json:"id"`
+	BranchID int64            `json:"branch_id"`
+	Status   AssistanceStatus `json:"status"`
+}
+
+func (q *Queries) UpdateAssistanceStatusScoped(ctx context.Context, arg UpdateAssistanceStatusScopedParams) (AssistanceRequest, error) {
+	row := q.db.QueryRow(ctx, updateAssistanceStatusScoped, arg.ID, arg.BranchID, arg.Status)
+	var i AssistanceRequest
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.TableID,
+		&i.ParticipantID,
+		&i.Type,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ResolvedAt,
+	)
+	return i, err
+}

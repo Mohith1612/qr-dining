@@ -15,9 +15,9 @@ import (
 const analyticsCacheTTL = 5 * time.Minute
 
 type AnalyticsService struct {
-	repos   *repository.Repos
-	subSvc  *SubscriptionService
-	cache   *redisPkg.Cache
+	repos  *repository.Repos
+	subSvc *SubscriptionService
+	cache  *redisPkg.Cache
 }
 
 func NewAnalyticsService(repos *repository.Repos, subSvc *SubscriptionService, cache *redisPkg.Cache) *AnalyticsService {
@@ -53,6 +53,10 @@ func periodWindow(period string) (from, to time.Time) {
 
 func cacheKey(branchID int64, period, metric string) string {
 	return fmt.Sprintf("analytics:%d:%s:%s", branchID, period, metric)
+}
+
+func orgCacheKey(organizationID int64, period, metric string) string {
+	return fmt.Sprintf("analytics:org:%d:%s:%s", organizationID, period, metric)
 }
 
 func (s *AnalyticsService) GetTopItems(ctx context.Context, restaurantID, branchID int64, period string) ([]sqlc.GetTopOrderedItemsRow, error) {
@@ -119,6 +123,75 @@ func (s *AnalyticsService) GetOrderVolume(ctx context.Context, restaurantID, bra
 	}
 	if rows == nil {
 		rows = []sqlc.GetOrderVolumeRow{}
+	}
+	_ = s.cache.Set(ctx, key, rows, analyticsCacheTTL)
+	return rows, nil
+}
+
+func (s *AnalyticsService) GetOrganizationTopItems(ctx context.Context, restaurantID, organizationID int64, period string) ([]sqlc.GetOrganizationTopOrderedItemsRow, error) {
+	if err := s.checkAccess(ctx, restaurantID); err != nil {
+		return nil, err
+	}
+
+	key := orgCacheKey(organizationID, period, "top-items")
+	var cached []sqlc.GetOrganizationTopOrderedItemsRow
+	if hit, _ := s.cache.Get(ctx, key, &cached); hit {
+		return cached, nil
+	}
+
+	from, to := periodWindow(period)
+	rows, err := s.repos.GetOrganizationTopOrderedItems(ctx, organizationID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []sqlc.GetOrganizationTopOrderedItemsRow{}
+	}
+	_ = s.cache.Set(ctx, key, rows, analyticsCacheTTL)
+	return rows, nil
+}
+
+func (s *AnalyticsService) GetOrganizationBusyHours(ctx context.Context, restaurantID, organizationID int64, period string) ([]sqlc.GetOrganizationBusyHoursRow, error) {
+	if err := s.checkAccess(ctx, restaurantID); err != nil {
+		return nil, err
+	}
+
+	key := orgCacheKey(organizationID, period, "busy-hours")
+	var cached []sqlc.GetOrganizationBusyHoursRow
+	if hit, _ := s.cache.Get(ctx, key, &cached); hit {
+		return cached, nil
+	}
+
+	from, to := periodWindow(period)
+	rows, err := s.repos.GetOrganizationBusyHours(ctx, organizationID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []sqlc.GetOrganizationBusyHoursRow{}
+	}
+	_ = s.cache.Set(ctx, key, rows, analyticsCacheTTL)
+	return rows, nil
+}
+
+func (s *AnalyticsService) GetOrganizationOrderVolume(ctx context.Context, restaurantID, organizationID int64, period string) ([]sqlc.GetOrganizationOrderVolumeRow, error) {
+	if err := s.checkAccess(ctx, restaurantID); err != nil {
+		return nil, err
+	}
+
+	key := orgCacheKey(organizationID, period, "order-volume")
+	var cached []sqlc.GetOrganizationOrderVolumeRow
+	if hit, _ := s.cache.Get(ctx, key, &cached); hit {
+		return cached, nil
+	}
+
+	from, to := periodWindow(period)
+	rows, err := s.repos.GetOrganizationOrderVolume(ctx, organizationID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []sqlc.GetOrganizationOrderVolumeRow{}
 	}
 	_ = s.cache.Set(ctx, key, rows, analyticsCacheTTL)
 	return rows, nil
