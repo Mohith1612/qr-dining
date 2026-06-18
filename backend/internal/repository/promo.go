@@ -41,31 +41,19 @@ func (r *Repos) GetPromoByCode(ctx context.Context, branchID int64, code string)
 	return p, err
 }
 
+func (r *Repos) GetPromoByCodeForUpdate(ctx context.Context, branchID int64, code string) (sqlc.Promo, error) {
+	p, err := r.q.GetPromoByCodeForUpdate(ctx, sqlc.GetPromoByCodeForUpdateParams{
+		BranchID: branchID,
+		Lower:    code,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Promo{}, domain.ErrPromoNotFound
+	}
+	return p, err
+}
+
 func (r *Repos) GetPromoByID(ctx context.Context, promoID int64) (sqlc.Promo, error) {
-	row := r.db.QueryRow(ctx, `
-SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at
-FROM promos
-WHERE id = $1
-`, promoID)
-	var p sqlc.Promo
-	err := row.Scan(
-		&p.ID,
-		&p.BranchID,
-		&p.Code,
-		&p.Type,
-		&p.Value,
-		&p.MinOrderAmount,
-		&p.MaxUses,
-		&p.UsesPerPhone,
-		&p.ValidFrom,
-		&p.ValidUntil,
-		&p.TimeWindowStart,
-		&p.TimeWindowEnd,
-		&p.IsActive,
-		&p.Description,
-		&p.CreatedBy,
-		&p.CreatedAt,
-	)
+	p, err := r.q.GetPromoByID(ctx, promoID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return sqlc.Promo{}, domain.ErrPromoNotFound
 	}
@@ -92,6 +80,10 @@ func (r *Repos) CreatePromoRedemption(ctx context.Context, promoID int64, orderI
 		p.PhoneE164 = pgtype.Text{String: *phone, Valid: true}
 	}
 	return r.q.CreatePromoRedemption(ctx, p)
+}
+
+func (r *Repos) IncrementPromoRedemptionCount(ctx context.Context, promoID int64) error {
+	return r.q.IncrementPromoRedemptionCount(ctx, promoID)
 }
 
 func (r *Repos) CreatePromo(ctx context.Context, p CreatePromoParams) (sqlc.Promo, error) {

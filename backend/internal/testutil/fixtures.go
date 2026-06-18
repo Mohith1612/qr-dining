@@ -82,7 +82,7 @@ func SeedFixtures(t testing.TB, pool *pgxpool.Pool) TestFixtures {
 	}
 
 	err = pool.QueryRow(ctx,
-		`INSERT INTO item_modifiers (menu_item_id, name, price_delta) VALUES ($1, 'Extra', 1.50) RETURNING id`,
+		`INSERT INTO item_modifiers (item_id, name, price_delta) VALUES ($1, 'Extra', 1.50) RETURNING id`,
 		f.MenuItemID,
 	).Scan(&f.ModifierID)
 	if err != nil {

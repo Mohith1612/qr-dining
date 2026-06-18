@@ -24,7 +24,13 @@ const PAYMENT_OPTIONS: {
   { method: "digital", label: "UPI",        description: "GPay, PhonePe, or any UPI app",       icon: Smartphone },
 ]
 
-const METHOD_LABEL: Record<PaymentMethod, string> = { cash: "Cash", card: "Card", digital: "UPI" }
+const METHOD_LABEL: Record<PaymentMethod, string> = {
+  cash: "Cash",
+  card: "Card",
+  digital: "UPI",
+  card_manual: "Card",
+  upi: "UPI",
+}
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -72,10 +78,10 @@ export default function PaymentPage() {
     setLoading(method)
     try {
       // Send amount=0 as a hint; backend computes the authoritative total server-side.
-      await paymentsApi.initiate(session.id, total, method, undefined, participant?.id)
+      const payment = await paymentsApi.initiate(session.id, total, method, undefined, participant?.id)
       setPaidTotal(total)
       setPaid(method)
-      toast.success("Payment recorded — enjoy your meal!")
+      toast.success(payment.status === "completed" ? "Payment completed." : "Payment request sent.")
     } catch (err) {
       toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't process payment. Please try again.")
     } finally {

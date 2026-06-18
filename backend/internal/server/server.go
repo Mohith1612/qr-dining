@@ -96,7 +96,7 @@ func New(
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
 	platformH := handlers.NewPlatformHandler(repos, platformSvc, auditWriter)
-	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, auditWriter)
+	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter)
 	wsH := handlers.NewWSHandler(hub, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags)
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc, repos, guestTokens, cfg.FeatureFlags)
 	menuAdminH := handlers.NewMenuAdminHandler(menuSvc, repos, authorizer, auditWriter)
@@ -202,6 +202,7 @@ func New(
 	staffAPI.Use(middleware.StaffAuth(staffSvc, logger))
 
 	staffAPI.PATCH("/orders/:id/status", orderH.UpdateStatus)
+	staffAPI.PATCH("/payments/:id/settle", paymentH.Settle)
 	staffAPI.PATCH("/assist/:id/ack", assistanceH.Acknowledge)
 	staffAPI.PATCH("/assist/:id/resolve", assistanceH.Resolve)
 

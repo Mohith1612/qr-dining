@@ -64,6 +64,7 @@ func requiresSameBranch(action Action) bool {
 		ActionMenuModifierUpdate,
 		ActionPromoCreate,
 		ActionPromoDeactivate,
+		ActionPaymentSettleStaff,
 		ActionStaffCreate,
 		ActionStaffUpdateRole,
 		ActionStaffDeactivate,

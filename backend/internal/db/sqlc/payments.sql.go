@@ -13,17 +13,101 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createBillSnapshot = `-- name: CreateBillSnapshot :one
+INSERT INTO bill_snapshots (
+  session_id,
+  branch_id,
+  subtotal,
+  discount_amount,
+  tax_amount,
+  service_charge,
+  tip_amount,
+  total,
+  currency,
+  source_order_ids,
+  created_by_actor
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, session_id, branch_id, subtotal, discount_amount, tax_amount, service_charge, tip_amount, total, currency, source_order_ids, created_by_actor, created_at
+`
+
+type CreateBillSnapshotParams struct {
+	SessionID      uuid.UUID       `json:"session_id"`
+	BranchID       int64           `json:"branch_id"`
+	Subtotal       pgtype.Numeric  `json:"subtotal"`
+	DiscountAmount pgtype.Numeric  `json:"discount_amount"`
+	TaxAmount      pgtype.Numeric  `json:"tax_amount"`
+	ServiceCharge  pgtype.Numeric  `json:"service_charge"`
+	TipAmount      pgtype.Numeric  `json:"tip_amount"`
+	Total          pgtype.Numeric  `json:"total"`
+	Currency       string          `json:"currency"`
+	SourceOrderIds json.RawMessage `json:"source_order_ids"`
+	CreatedByActor string          `json:"created_by_actor"`
+}
+
+func (q *Queries) CreateBillSnapshot(ctx context.Context, arg CreateBillSnapshotParams) (BillSnapshot, error) {
+	row := q.db.QueryRow(ctx, createBillSnapshot,
+		arg.SessionID,
+		arg.BranchID,
+		arg.Subtotal,
+		arg.DiscountAmount,
+		arg.TaxAmount,
+		arg.ServiceCharge,
+		arg.TipAmount,
+		arg.Total,
+		arg.Currency,
+		arg.SourceOrderIds,
+		arg.CreatedByActor,
+	)
+	var i BillSnapshot
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.BranchID,
+		&i.Subtotal,
+		&i.DiscountAmount,
+		&i.TaxAmount,
+		&i.ServiceCharge,
+		&i.TipAmount,
+		&i.Total,
+		&i.Currency,
+		&i.SourceOrderIds,
+		&i.CreatedByActor,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createPayment = `-- name: CreatePayment :one
-INSERT INTO payments (session_id, order_id, amount, method)
-VALUES ($1, $2, $3, $4)
-RETURNING id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount
+INSERT INTO payments (
+  session_id,
+  order_id,
+  amount,
+  method,
+  status,
+  bill_snapshot_id,
+  branch_id,
+  currency,
+  provider,
+  provider_payment_ref,
+  provider_order_ref
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount, bill_snapshot_id, branch_id, currency, provider, provider_payment_ref, provider_order_ref, settled_by_staff_id, settled_at
 `
 
 type CreatePaymentParams struct {
-	SessionID uuid.UUID      `json:"session_id"`
-	OrderID   pgtype.UUID    `json:"order_id"`
-	Amount    pgtype.Numeric `json:"amount"`
-	Method    PaymentMethod  `json:"method"`
+	SessionID          uuid.UUID      `json:"session_id"`
+	OrderID            pgtype.UUID    `json:"order_id"`
+	Amount             pgtype.Numeric `json:"amount"`
+	Method             PaymentMethod  `json:"method"`
+	Status             PaymentStatus  `json:"status"`
+	BillSnapshotID     pgtype.Int8    `json:"bill_snapshot_id"`
+	BranchID           int64          `json:"branch_id"`
+	Currency           string         `json:"currency"`
+	Provider           pgtype.Text    `json:"provider"`
+	ProviderPaymentRef pgtype.Text    `json:"provider_payment_ref"`
+	ProviderOrderRef   pgtype.Text    `json:"provider_order_ref"`
 }
 
 func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error) {
@@ -32,6 +116,13 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (P
 		arg.OrderID,
 		arg.Amount,
 		arg.Method,
+		arg.Status,
+		arg.BillSnapshotID,
+		arg.BranchID,
+		arg.Currency,
+		arg.Provider,
+		arg.ProviderPaymentRef,
+		arg.ProviderOrderRef,
 	)
 	var i Payment
 	err := row.Scan(
@@ -47,12 +138,45 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (P
 		&i.TaxAmount,
 		&i.ServiceCharge,
 		&i.TipAmount,
+		&i.BillSnapshotID,
+		&i.BranchID,
+		&i.Currency,
+		&i.Provider,
+		&i.ProviderPaymentRef,
+		&i.ProviderOrderRef,
+		&i.SettledByStaffID,
+		&i.SettledAt,
+	)
+	return i, err
+}
+
+const getBillSnapshotByID = `-- name: GetBillSnapshotByID :one
+SELECT id, session_id, branch_id, subtotal, discount_amount, tax_amount, service_charge, tip_amount, total, currency, source_order_ids, created_by_actor, created_at FROM bill_snapshots WHERE id = $1
+`
+
+func (q *Queries) GetBillSnapshotByID(ctx context.Context, id int64) (BillSnapshot, error) {
+	row := q.db.QueryRow(ctx, getBillSnapshotByID, id)
+	var i BillSnapshot
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.BranchID,
+		&i.Subtotal,
+		&i.DiscountAmount,
+		&i.TaxAmount,
+		&i.ServiceCharge,
+		&i.TipAmount,
+		&i.Total,
+		&i.Currency,
+		&i.SourceOrderIds,
+		&i.CreatedByActor,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getPaymentByID = `-- name: GetPaymentByID :one
-SELECT id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount FROM payments WHERE id = $1
+SELECT id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount, bill_snapshot_id, branch_id, currency, provider, provider_payment_ref, provider_order_ref, settled_by_staff_id, settled_at FROM payments WHERE id = $1
 `
 
 func (q *Queries) GetPaymentByID(ctx context.Context, id int64) (Payment, error) {
@@ -71,15 +195,61 @@ func (q *Queries) GetPaymentByID(ctx context.Context, id int64) (Payment, error)
 		&i.TaxAmount,
 		&i.ServiceCharge,
 		&i.TipAmount,
+		&i.BillSnapshotID,
+		&i.BranchID,
+		&i.Currency,
+		&i.Provider,
+		&i.ProviderPaymentRef,
+		&i.ProviderOrderRef,
+		&i.SettledByStaffID,
+		&i.SettledAt,
+	)
+	return i, err
+}
+
+const getPaymentByProviderRef = `-- name: GetPaymentByProviderRef :one
+SELECT id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount, bill_snapshot_id, branch_id, currency, provider, provider_payment_ref, provider_order_ref, settled_by_staff_id, settled_at FROM payments
+WHERE provider = $1 AND provider_payment_ref = $2
+`
+
+type GetPaymentByProviderRefParams struct {
+	Provider           pgtype.Text `json:"provider"`
+	ProviderPaymentRef pgtype.Text `json:"provider_payment_ref"`
+}
+
+func (q *Queries) GetPaymentByProviderRef(ctx context.Context, arg GetPaymentByProviderRefParams) (Payment, error) {
+	row := q.db.QueryRow(ctx, getPaymentByProviderRef, arg.Provider, arg.ProviderPaymentRef)
+	var i Payment
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.OrderID,
+		&i.Amount,
+		&i.Method,
+		&i.Status,
+		&i.InitiatedAt,
+		&i.CompletedAt,
+		&i.Subtotal,
+		&i.TaxAmount,
+		&i.ServiceCharge,
+		&i.TipAmount,
+		&i.BillSnapshotID,
+		&i.BranchID,
+		&i.Currency,
+		&i.Provider,
+		&i.ProviderPaymentRef,
+		&i.ProviderOrderRef,
+		&i.SettledByStaffID,
+		&i.SettledAt,
 	)
 	return i, err
 }
 
 const insertWebhookEvent = `-- name: InsertWebhookEvent :one
-INSERT INTO payment_webhook_events (external_event_id, provider, event_type, payload)
-VALUES ($1, $2, $3, $4)
+INSERT INTO payment_webhook_events (external_event_id, provider, event_type, payload, raw_payload, headers)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (external_event_id) DO NOTHING
-RETURNING id, external_event_id, provider, event_type, payload, processed, processed_at, payment_id, error_message, created_at
+RETURNING id, external_event_id, provider, event_type, payload, processed, processed_at, payment_id, error_message, created_at, raw_payload, headers
 `
 
 type InsertWebhookEventParams struct {
@@ -87,6 +257,8 @@ type InsertWebhookEventParams struct {
 	Provider        string          `json:"provider"`
 	EventType       string          `json:"event_type"`
 	Payload         json.RawMessage `json:"payload"`
+	RawPayload      pgtype.Text     `json:"raw_payload"`
+	Headers         json.RawMessage `json:"headers"`
 }
 
 func (q *Queries) InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) (PaymentWebhookEvent, error) {
@@ -95,6 +267,8 @@ func (q *Queries) InsertWebhookEvent(ctx context.Context, arg InsertWebhookEvent
 		arg.Provider,
 		arg.EventType,
 		arg.Payload,
+		arg.RawPayload,
+		arg.Headers,
 	)
 	var i PaymentWebhookEvent
 	err := row.Scan(
@@ -108,12 +282,14 @@ func (q *Queries) InsertWebhookEvent(ctx context.Context, arg InsertWebhookEvent
 		&i.PaymentID,
 		&i.ErrorMessage,
 		&i.CreatedAt,
+		&i.RawPayload,
+		&i.Headers,
 	)
 	return i, err
 }
 
 const listPaymentsForSession = `-- name: ListPaymentsForSession :many
-SELECT id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount FROM payments WHERE session_id = $1 ORDER BY initiated_at DESC
+SELECT id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount, bill_snapshot_id, branch_id, currency, provider, provider_payment_ref, provider_order_ref, settled_by_staff_id, settled_at FROM payments WHERE session_id = $1 ORDER BY initiated_at DESC
 `
 
 func (q *Queries) ListPaymentsForSession(ctx context.Context, sessionID uuid.UUID) ([]Payment, error) {
@@ -138,6 +314,14 @@ func (q *Queries) ListPaymentsForSession(ctx context.Context, sessionID uuid.UUI
 			&i.TaxAmount,
 			&i.ServiceCharge,
 			&i.TipAmount,
+			&i.BillSnapshotID,
+			&i.BranchID,
+			&i.Currency,
+			&i.Provider,
+			&i.ProviderPaymentRef,
+			&i.ProviderOrderRef,
+			&i.SettledByStaffID,
+			&i.SettledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -150,7 +334,7 @@ func (q *Queries) ListPaymentsForSession(ctx context.Context, sessionID uuid.UUI
 }
 
 const listUnprocessedWebhooks = `-- name: ListUnprocessedWebhooks :many
-SELECT id, external_event_id, provider, event_type, payload, processed, processed_at, payment_id, error_message, created_at FROM payment_webhook_events
+SELECT id, external_event_id, provider, event_type, payload, processed, processed_at, payment_id, error_message, created_at, raw_payload, headers FROM payment_webhook_events
 WHERE processed = FALSE
 ORDER BY created_at ASC
 LIMIT 50
@@ -176,6 +360,8 @@ func (q *Queries) ListUnprocessedWebhooks(ctx context.Context) ([]PaymentWebhook
 			&i.PaymentID,
 			&i.ErrorMessage,
 			&i.CreatedAt,
+			&i.RawPayload,
+			&i.Headers,
 		); err != nil {
 			return nil, err
 		}
@@ -204,12 +390,72 @@ func (q *Queries) MarkWebhookProcessed(ctx context.Context, arg MarkWebhookProce
 	return err
 }
 
+const settlePaymentByStaff = `-- name: SettlePaymentByStaff :one
+UPDATE payments
+SET status = 'completed',
+    settled_by_staff_id = $2,
+    settled_at = NOW(),
+    completed_at = NOW()
+WHERE id = $1
+  AND branch_id = $3
+  AND status = 'requires_staff_confirmation'
+RETURNING id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount, bill_snapshot_id, branch_id, currency, provider, provider_payment_ref, provider_order_ref, settled_by_staff_id, settled_at
+`
+
+type SettlePaymentByStaffParams struct {
+	ID               int64       `json:"id"`
+	SettledByStaffID pgtype.Int8 `json:"settled_by_staff_id"`
+	BranchID         int64       `json:"branch_id"`
+}
+
+func (q *Queries) SettlePaymentByStaff(ctx context.Context, arg SettlePaymentByStaffParams) (Payment, error) {
+	row := q.db.QueryRow(ctx, settlePaymentByStaff, arg.ID, arg.SettledByStaffID, arg.BranchID)
+	var i Payment
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.OrderID,
+		&i.Amount,
+		&i.Method,
+		&i.Status,
+		&i.InitiatedAt,
+		&i.CompletedAt,
+		&i.Subtotal,
+		&i.TaxAmount,
+		&i.ServiceCharge,
+		&i.TipAmount,
+		&i.BillSnapshotID,
+		&i.BranchID,
+		&i.Currency,
+		&i.Provider,
+		&i.ProviderPaymentRef,
+		&i.ProviderOrderRef,
+		&i.SettledByStaffID,
+		&i.SettledAt,
+	)
+	return i, err
+}
+
+const sumCompletedPaymentsForSession = `-- name: SumCompletedPaymentsForSession :one
+SELECT COALESCE(SUM(amount), 0)::numeric
+FROM payments
+WHERE session_id = $1
+  AND status = 'completed'
+`
+
+func (q *Queries) SumCompletedPaymentsForSession(ctx context.Context, sessionID uuid.UUID) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, sumCompletedPaymentsForSession, sessionID)
+	var column_1 pgtype.Numeric
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const updatePaymentStatus = `-- name: UpdatePaymentStatus :one
 UPDATE payments
 SET status = $2,
     completed_at = CASE WHEN $2::payment_status = 'completed' THEN NOW() ELSE completed_at END
 WHERE id = $1
-RETURNING id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount
+RETURNING id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount, bill_snapshot_id, branch_id, currency, provider, provider_payment_ref, provider_order_ref, settled_by_staff_id, settled_at
 `
 
 type UpdatePaymentStatusParams struct {
@@ -233,6 +479,56 @@ func (q *Queries) UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStat
 		&i.TaxAmount,
 		&i.ServiceCharge,
 		&i.TipAmount,
+		&i.BillSnapshotID,
+		&i.BranchID,
+		&i.Currency,
+		&i.Provider,
+		&i.ProviderPaymentRef,
+		&i.ProviderOrderRef,
+		&i.SettledByStaffID,
+		&i.SettledAt,
+	)
+	return i, err
+}
+
+const updatePaymentStatusExpected = `-- name: UpdatePaymentStatusExpected :one
+UPDATE payments
+SET status = $3,
+    completed_at = CASE WHEN $3::payment_status = 'completed' THEN NOW() ELSE completed_at END
+WHERE id = $1 AND status = $2
+RETURNING id, session_id, order_id, amount, method, status, initiated_at, completed_at, subtotal, tax_amount, service_charge, tip_amount, bill_snapshot_id, branch_id, currency, provider, provider_payment_ref, provider_order_ref, settled_by_staff_id, settled_at
+`
+
+type UpdatePaymentStatusExpectedParams struct {
+	ID       int64         `json:"id"`
+	Status   PaymentStatus `json:"status"`
+	Status_2 PaymentStatus `json:"status_2"`
+}
+
+func (q *Queries) UpdatePaymentStatusExpected(ctx context.Context, arg UpdatePaymentStatusExpectedParams) (Payment, error) {
+	row := q.db.QueryRow(ctx, updatePaymentStatusExpected, arg.ID, arg.Status, arg.Status_2)
+	var i Payment
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.OrderID,
+		&i.Amount,
+		&i.Method,
+		&i.Status,
+		&i.InitiatedAt,
+		&i.CompletedAt,
+		&i.Subtotal,
+		&i.TaxAmount,
+		&i.ServiceCharge,
+		&i.TipAmount,
+		&i.BillSnapshotID,
+		&i.BranchID,
+		&i.Currency,
+		&i.Provider,
+		&i.ProviderPaymentRef,
+		&i.ProviderOrderRef,
+		&i.SettledByStaffID,
+		&i.SettledAt,
 	)
 	return i, err
 }

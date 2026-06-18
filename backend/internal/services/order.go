@@ -2,9 +2,12 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
@@ -53,9 +56,62 @@ type PlaceOrderResult struct {
 // PlaceOrder creates a new order with idempotency protection.
 // If the idempotency key already exists, the existing order is returned without error.
 func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (PlaceOrderResult, error) {
-	// Idempotency check before starting the transaction.
-	existing, err := s.repos.GetOrderByIdempotencyKey(ctx, req.IdempotencyKey)
-	if err == nil {
+	// Validate session is still active.
+	sess, err := s.repos.GetSessionByID(ctx, req.SessionID)
+	if err != nil {
+		return PlaceOrderResult{}, err
+	}
+	if sess.Status != sqlc.SessionStatusActive {
+		return PlaceOrderResult{}, domain.ErrSessionClosed
+	}
+	if req.BranchID != 0 && req.BranchID != sess.BranchID {
+		return PlaceOrderResult{}, domain.ErrTenantMismatch
+	}
+	req.BranchID = sess.BranchID
+
+	participant, err := s.repos.GetParticipantByID(ctx, req.PlacedByParticipantID)
+	if err != nil {
+		return PlaceOrderResult{}, err
+	}
+	if participant.SessionID != req.SessionID {
+		return PlaceOrderResult{}, domain.ErrParticipantNotInSession
+	}
+	if req.PhoneE164 != nil {
+		normalized := NormalizePromoPhone(*req.PhoneE164)
+		req.PhoneE164 = &normalized
+	}
+
+	idemScope := repository.IdempotencyScope{
+		ScopeType: "session",
+		ScopeID:   req.SessionID.String(),
+		ActorType: "participant",
+		ActorID:   strconv.FormatInt(req.PlacedByParticipantID, 10),
+		Key:       req.IdempotencyKey,
+	}
+	requestHash := hashOrderRequest(req)
+	_, inserted, err := s.repos.CreateIdempotencyKey(ctx, idemScope, requestHash, time.Now().Add(24*time.Hour))
+	if err != nil {
+		return PlaceOrderResult{}, err
+	}
+	if !inserted {
+		existingKey, err := s.repos.GetIdempotencyKey(ctx, idemScope)
+		if err != nil {
+			return PlaceOrderResult{}, err
+		}
+		if existingKey.RequestHash != requestHash {
+			return PlaceOrderResult{}, domain.ErrIdempotencyConflict
+		}
+		if existingKey.Status != "completed" || !existingKey.ResponseResourceID.Valid {
+			return PlaceOrderResult{}, domain.ErrIdempotencyInProgress
+		}
+		orderID, err := uuid.Parse(existingKey.ResponseResourceID.String)
+		if err != nil {
+			return PlaceOrderResult{}, fmt.Errorf("parse idempotent order id: %w", err)
+		}
+		existing, err := s.repos.GetOrderByID(ctx, orderID)
+		if err != nil {
+			return PlaceOrderResult{}, err
+		}
 		if s.metrics != nil && s.metrics.IdempotencyReplaysTotal != nil {
 			s.metrics.IdempotencyReplaysTotal.WithLabelValues("order").Inc()
 		}
@@ -64,18 +120,6 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 			return PlaceOrderResult{}, fmt.Errorf("fetch order items on replay: %w", err)
 		}
 		return PlaceOrderResult{Order: existing, OrderItems: items}, nil
-	}
-	if !errors.Is(err, domain.ErrOrderNotFound) {
-		return PlaceOrderResult{}, err
-	}
-
-	// Validate session is still active.
-	sess, err := s.repos.GetSessionByID(ctx, req.SessionID)
-	if err != nil {
-		return PlaceOrderResult{}, err
-	}
-	if sess.Status != sqlc.SessionStatusActive {
-		return PlaceOrderResult{}, domain.ErrSessionClosed
 	}
 
 	// Batch-fetch all menu items and modifiers in two queries instead of 2N.
@@ -124,6 +168,9 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 		}
 		if !mi.IsAvailable {
 			return PlaceOrderResult{}, domain.ErrMenuItemUnavailable
+		}
+		if mi.BranchID != req.BranchID {
+			return PlaceOrderResult{}, domain.ErrMenuItemNotFound
 		}
 
 		priceF, err := mi.Price.Float64Value()
@@ -186,13 +233,15 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 		if err != nil || loc == nil {
 			loc = time.UTC
 		}
-		localDate := time.Now().In(loc).Format("2006-01-02")
+		businessDate := time.Now().In(loc)
+		localDate := businessDate.Format("2006-01-02")
 
 		seq, err := tx.NextOrderNumber(ctx, req.BranchID, localDate)
 		if err != nil {
 			return fmt.Errorf("next order number: %w", err)
 		}
 		orderNumber := fmt.Sprintf("%s%d", branch.OrderPrefix, seq)
+		operationalID := fmt.Sprintf("%s-%s-%s", branch.BranchCode, businessDate.Format("20060102"), orderNumber)
 
 		order, err := tx.CreateOrder(ctx, repository.CreateOrderParams{
 			SessionID:             req.SessionID,
@@ -201,6 +250,9 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 			IdempotencyKey:        req.IdempotencyKey,
 			TotalAmount:           totalAmount,
 			OrderNumber:           orderNumber,
+			OrderBusinessDate:     businessDate,
+			OrderNumberDisplay:    orderNumber,
+			OrderOperationalID:    operationalID,
 			PromoID:               appliedPromoID,
 			DiscountAmount:        discountNumeric,
 		})
@@ -232,12 +284,19 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 			if _, err := tx.CreatePromoRedemption(ctx, *appliedPromoID, order.ID, req.PhoneE164); err != nil {
 				return fmt.Errorf("create promo redemption: %w", err)
 			}
+			if err := tx.IncrementPromoRedemptionCount(ctx, *appliedPromoID); err != nil {
+				return fmt.Errorf("increment promo redemption count: %w", err)
+			}
 		}
 
 		result = PlaceOrderResult{Order: order, OrderItems: orderItems}
+		if err := tx.CompleteIdempotencyKey(ctx, idemScope, "order", order.ID.String()); err != nil {
+			return fmt.Errorf("complete idempotency key: %w", err)
+		}
 		return nil
 	})
 	if txErr != nil {
+		_ = s.repos.FailIdempotencyKey(ctx, idemScope)
 		return PlaceOrderResult{}, txErr
 	}
 
@@ -260,6 +319,42 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	return result, nil
 }
 
+func hashOrderRequest(req PlaceOrderRequest) string {
+	type hashItem struct {
+		MenuItemID  int64   `json:"menu_item_id"`
+		Quantity    int16   `json:"quantity"`
+		ModifierIDs []int64 `json:"modifier_ids"`
+		Note        string  `json:"note"`
+	}
+	items := make([]hashItem, 0, len(req.Items))
+	for _, item := range req.Items {
+		modIDs := append([]int64(nil), item.ModifierIDs...)
+		sort.Slice(modIDs, func(i, j int) bool { return modIDs[i] < modIDs[j] })
+		items = append(items, hashItem{
+			MenuItemID:  item.MenuItemID,
+			Quantity:    item.Quantity,
+			ModifierIDs: modIDs,
+			Note:        item.Note,
+		})
+	}
+	payload := struct {
+		SessionID     string     `json:"session_id"`
+		ParticipantID int64      `json:"participant_id"`
+		Items         []hashItem `json:"items"`
+		PromoCode     *string    `json:"promo_code,omitempty"`
+		PhoneE164     *string    `json:"phone_e164,omitempty"`
+	}{
+		SessionID:     req.SessionID.String(),
+		ParticipantID: req.PlacedByParticipantID,
+		Items:         items,
+		PromoCode:     req.PromoCode,
+		PhoneE164:     req.PhoneE164,
+	}
+	b, _ := json.Marshal(payload)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
 // UpdateOrderStatus applies a state machine-validated status transition.
 func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, branchID int64, newStatus domain.OrderStatus, staffID int64) (sqlc.Order, error) {
 	order, err := s.repos.GetOrderByID(ctx, orderID)
@@ -273,7 +368,7 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID,
 	}
 
 	start := time.Now()
-	updated, err := s.repos.UpdateOrderStatusScoped(ctx, orderID, branchID, sqlc.OrderStatus(newStatus))
+	updated, err := s.repos.UpdateOrderStatusExpected(ctx, orderID, branchID, order.Status, sqlc.OrderStatus(newStatus))
 	if err != nil {
 		return sqlc.Order{}, err
 	}
@@ -283,7 +378,7 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID,
 
 	s.publishOrderStatusEvent(ctx, order.SessionID, newStatus, updated)
 	s.repos.LogEvent(ctx, order.SessionID, order.BranchID, "ORDER_STATUS_CHANGED", "staff", staffID,
-		map[string]any{"order_id": orderID, "new_status": newStatus})
+		map[string]any{"order_id": orderID, "old_status": current, "new_status": newStatus})
 	return updated, nil
 }
 

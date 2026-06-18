@@ -53,6 +53,10 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		respondValidationError(c, err.Error())
 		return
 	}
+	if req.BranchID != 0 || req.PlacedByParticipantID != 0 {
+		respondValidationError(c, "branch_id and placed_by_participant_id are server-derived")
+		return
+	}
 	if req.PlacedByParticipantID != 0 {
 		recordLegacyIdentityUsage(h.metrics, legacyMechanismBodyPlacedByParticipantID, legacyEndpointOrder)
 	}
@@ -64,18 +68,15 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		respondValidationError(c, "placed_by_participant_id is required")
 		return
 	}
-	if req.BranchID == 0 {
-		sess, err := h.repos.GetSessionByID(c.Request.Context(), sessionID)
-		if err != nil {
-			sessionError(c, err)
-			return
-		}
-		req.BranchID = sess.BranchID
+	sess, err := h.repos.GetSessionByID(c.Request.Context(), sessionID)
+	if err != nil {
+		sessionError(c, err)
+		return
 	}
 
 	result, err := h.svc.PlaceOrder(c.Request.Context(), services.PlaceOrderRequest{
 		SessionID:             sessionID,
-		BranchID:              req.BranchID,
+		BranchID:              sess.BranchID,
 		PlacedByParticipantID: participantID,
 		IdempotencyKey:        req.IdempotencyKey,
 		Items:                 req.Items,
@@ -102,6 +103,10 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 			respondError(c, http.StatusConflict, CodePromoExhausted, "This offer has been claimed by too many guests.")
 		case errors.Is(err, domain.ErrPromoAlreadyUsed):
 			respondError(c, http.StatusConflict, CodePromoAlreadyUsed, "You've already used this offer.")
+		case errors.Is(err, domain.ErrIdempotencyConflict):
+			respondError(c, http.StatusConflict, "IDEMPOTENCY_CONFLICT", err.Error())
+		case errors.Is(err, domain.ErrParticipantNotInSession):
+			respondError(c, http.StatusForbidden, CodeForbidden, err.Error())
 		default:
 			respondInternalError(c)
 		}

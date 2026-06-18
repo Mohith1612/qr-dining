@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
@@ -34,9 +35,13 @@ type ValidatePromoResult struct {
 // ValidatePromo checks a promo code for validity and returns the discount. No DB writes.
 // Accepts repos so it can be called with a TX-backed repos inside a transaction.
 func (s *PromoService) ValidatePromo(ctx context.Context, repos *repository.Repos, req ValidatePromoRequest) (ValidatePromoResult, error) {
-	promo, err := repos.GetPromoByCode(ctx, req.BranchID, req.Code)
+	promo, err := repos.GetPromoByCodeForUpdate(ctx, req.BranchID, req.Code)
 	if err != nil {
 		return ValidatePromoResult{}, err // ErrPromoNotFound propagated as-is
+	}
+	if req.PhoneE164 != nil {
+		normalized := promoNormalizePhone(*req.PhoneE164)
+		req.PhoneE164 = &normalized
 	}
 
 	// Check minimum order amount.
@@ -47,11 +52,7 @@ func (s *PromoService) ValidatePromo(ctx context.Context, repos *repository.Repo
 
 	// Check global redemption cap.
 	if promo.MaxUses.Valid {
-		count, err := repos.CountPromoRedemptions(ctx, promo.ID)
-		if err != nil {
-			return ValidatePromoResult{}, err
-		}
-		if count >= int64(promo.MaxUses.Int32) {
+		if promo.RedeemedCount >= promo.MaxUses.Int32 {
 			return ValidatePromoResult{}, domain.ErrPromoExhausted
 		}
 	}
@@ -78,6 +79,28 @@ func (s *PromoService) ValidatePromo(ctx context.Context, repos *repository.Repo
 		DiscountAmount: discount,
 		Description:    desc,
 	}, nil
+}
+
+func NormalizePromoPhone(phone string) string {
+	return promoNormalizePhone(phone)
+}
+
+func promoNormalizePhone(phone string) string {
+	phone = strings.TrimSpace(phone)
+	if phone == "" {
+		return phone
+	}
+	var b strings.Builder
+	for i, r := range phone {
+		if r == '+' && i == 0 {
+			b.WriteRune(r)
+			continue
+		}
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func computeDiscount(promo sqlc.Promo, orderTotal float64) float64 {

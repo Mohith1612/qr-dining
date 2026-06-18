@@ -48,7 +48,7 @@ INSERT INTO promos (
   time_window_start, time_window_end, description, created_by
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at
+RETURNING id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at, redeemed_count
 `
 
 type CreatePromoParams struct {
@@ -101,6 +101,7 @@ func (q *Queries) CreatePromo(ctx context.Context, arg CreatePromoParams) (Promo
 		&i.Description,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.RedeemedCount,
 	)
 	return i, err
 }
@@ -144,7 +145,7 @@ func (q *Queries) DeactivatePromo(ctx context.Context, arg DeactivatePromoParams
 }
 
 const getPromoByCode = `-- name: GetPromoByCode :one
-SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at FROM promos
+SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at, redeemed_count FROM promos
 WHERE branch_id = $1
   AND LOWER(code) = LOWER($2)
   AND is_active = TRUE
@@ -181,12 +182,57 @@ func (q *Queries) GetPromoByCode(ctx context.Context, arg GetPromoByCodeParams) 
 		&i.Description,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.RedeemedCount,
+	)
+	return i, err
+}
+
+const getPromoByCodeForUpdate = `-- name: GetPromoByCodeForUpdate :one
+SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at, redeemed_count FROM promos
+WHERE branch_id = $1
+  AND LOWER(code) = LOWER($2)
+  AND is_active = TRUE
+  AND valid_from <= now()
+  AND valid_until >= now()
+  AND (
+    time_window_start IS NULL
+    OR (time_window_start <= LOCALTIME AND LOCALTIME <= time_window_end)
+  )
+FOR UPDATE
+`
+
+type GetPromoByCodeForUpdateParams struct {
+	BranchID int64  `json:"branch_id"`
+	Lower    string `json:"lower"`
+}
+
+func (q *Queries) GetPromoByCodeForUpdate(ctx context.Context, arg GetPromoByCodeForUpdateParams) (Promo, error) {
+	row := q.db.QueryRow(ctx, getPromoByCodeForUpdate, arg.BranchID, arg.Lower)
+	var i Promo
+	err := row.Scan(
+		&i.ID,
+		&i.BranchID,
+		&i.Code,
+		&i.Type,
+		&i.Value,
+		&i.MinOrderAmount,
+		&i.MaxUses,
+		&i.UsesPerPhone,
+		&i.ValidFrom,
+		&i.ValidUntil,
+		&i.TimeWindowStart,
+		&i.TimeWindowEnd,
+		&i.IsActive,
+		&i.Description,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.RedeemedCount,
 	)
 	return i, err
 }
 
 const getPromoByID = `-- name: GetPromoByID :one
-SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at FROM promos WHERE id = $1
+SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at, redeemed_count FROM promos WHERE id = $1
 `
 
 func (q *Queries) GetPromoByID(ctx context.Context, id int64) (Promo, error) {
@@ -209,12 +255,24 @@ func (q *Queries) GetPromoByID(ctx context.Context, id int64) (Promo, error) {
 		&i.Description,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.RedeemedCount,
 	)
 	return i, err
 }
 
+const incrementPromoRedemptionCount = `-- name: IncrementPromoRedemptionCount :exec
+UPDATE promos
+SET redeemed_count = redeemed_count + 1
+WHERE id = $1
+`
+
+func (q *Queries) IncrementPromoRedemptionCount(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, incrementPromoRedemptionCount, id)
+	return err
+}
+
 const listPromosForBranch = `-- name: ListPromosForBranch :many
-SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at FROM promos WHERE branch_id = $1 ORDER BY created_at DESC
+SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at, redeemed_count FROM promos WHERE branch_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListPromosForBranch(ctx context.Context, branchID int64) ([]Promo, error) {
@@ -243,6 +301,7 @@ func (q *Queries) ListPromosForBranch(ctx context.Context, branchID int64) ([]Pr
 			&i.Description,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.RedeemedCount,
 		); err != nil {
 			return nil, err
 		}

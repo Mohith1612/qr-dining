@@ -10,6 +10,19 @@ WHERE branch_id = $1
     OR (time_window_start <= LOCALTIME AND LOCALTIME <= time_window_end)
   );
 
+-- name: GetPromoByCodeForUpdate :one
+SELECT * FROM promos
+WHERE branch_id = $1
+  AND LOWER(code) = LOWER($2)
+  AND is_active = TRUE
+  AND valid_from <= now()
+  AND valid_until >= now()
+  AND (
+    time_window_start IS NULL
+    OR (time_window_start <= LOCALTIME AND LOCALTIME <= time_window_end)
+  )
+FOR UPDATE;
+
 -- name: GetPromoByID :one
 SELECT * FROM promos WHERE id = $1;
 
@@ -23,6 +36,11 @@ WHERE promo_id = $1 AND phone_e164 = $2;
 -- name: CreatePromoRedemption :one
 INSERT INTO promo_redemptions (promo_id, order_id, phone_e164)
 VALUES ($1, $2, $3) RETURNING *;
+
+-- name: IncrementPromoRedemptionCount :exec
+UPDATE promos
+SET redeemed_count = redeemed_count + 1
+WHERE id = $1;
 
 -- name: CreatePromo :one
 INSERT INTO promos (

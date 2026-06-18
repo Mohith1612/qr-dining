@@ -1,6 +1,18 @@
 -- name: CreateOrder :one
-INSERT INTO orders (session_id, branch_id, placed_by_participant_id, idempotency_key, total_amount, order_number, promo_id, discount_amount)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO orders (
+  session_id,
+  branch_id,
+  placed_by_participant_id,
+  idempotency_key,
+  total_amount,
+  order_number,
+  promo_id,
+  discount_amount,
+  order_business_date,
+  order_number_display,
+  order_operational_id
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING *;
 
 -- name: NextOrderNumber :one
@@ -16,6 +28,12 @@ SELECT * FROM orders WHERE id = $1;
 -- name: GetOrderByIdempotencyKey :one
 SELECT * FROM orders WHERE idempotency_key = $1;
 
+-- name: GetOrderByScopedIdempotencyKey :one
+SELECT * FROM orders
+WHERE session_id = $1
+  AND placed_by_participant_id = $2
+  AND idempotency_key = $3;
+
 -- name: UpdateOrderStatus :one
 UPDATE orders
 SET status = $2, updated_at = NOW()
@@ -26,6 +44,12 @@ RETURNING *;
 UPDATE orders
 SET status = $3, updated_at = NOW()
 WHERE id = $1 AND branch_id = $2
+RETURNING *;
+
+-- name: UpdateOrderStatusExpected :one
+UPDATE orders
+SET status = $4, updated_at = NOW()
+WHERE id = $1 AND branch_id = $2 AND status = $3
 RETURNING *;
 
 -- name: ListOrdersForSession :many

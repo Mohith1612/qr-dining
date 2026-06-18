@@ -275,13 +275,23 @@ components:
           type: string
         method:
           type: string
-          enum: [cash, card, digital]
+          enum: [cash, card, digital, card_manual, upi]
         status:
           type: string
-          enum: [pending, completed, failed, refunded]
-        created_at:
+          enum: [pending, requested, provider_pending, requires_staff_confirmation, completed, failed, cancelled, refunded, partially_refunded]
+        initiated_at:
           type: string
           format: date-time
+        bill_snapshot_id:
+          type: integer
+          nullable: true
+        branch_id:
+          type: integer
+        currency:
+          type: string
+        provider_payment_ref:
+          type: string
+          nullable: true
 
     Staff:
       type: object
@@ -1054,7 +1064,10 @@ paths:
                   minimum: 0.01
                 method:
                   type: string
-                  enum: [cash, card, digital]
+                  enum: [cash, card, digital, card_manual, upi]
+                provider_payment_ref:
+                  type: string
+                  description: Provider payment reference for externally created provider payments
       responses:
         "201":
           description: Payment initiated
@@ -1076,9 +1089,21 @@ paths:
 
   /webhooks/payments/{provider}:
     post:
-      summary: Receive payment provider webhook (idempotent)
+      summary: Receive signed generic payment provider webhook (idempotent)
       tags: [Payments]
       parameters:
+        - name: X-Payment-Timestamp
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Unix timestamp used in the HMAC payload
+        - name: X-Payment-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Hex HMAC SHA-256 of `timestamp.raw_body`
         - name: provider
           in: path
           required: true
@@ -1110,6 +1135,32 @@ paths:
                   status:
                     type: string
                     example: ok
+
+  /payments/{id}/settle:
+    patch:
+      summary: Staff-settle a manual payment
+      tags: [Payments]
+      security:
+        - StaffAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Payment settled by authorized staff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Payment is not awaiting staff confirmation or the bill snapshot is stale
 
   # ── Menu ──────────────────────────────────────────────────────────────────
   /branches/{id}/menu:

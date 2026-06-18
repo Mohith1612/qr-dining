@@ -38,10 +38,15 @@ const (
 type PaymentStatus string
 
 const (
-	PaymentStatusPending   PaymentStatus = "pending"
-	PaymentStatusCompleted PaymentStatus = "completed"
-	PaymentStatusFailed    PaymentStatus = "failed"
-	PaymentStatusRefunded  PaymentStatus = "refunded"
+	PaymentStatusPending                   PaymentStatus = "pending"
+	PaymentStatusRequested                 PaymentStatus = "requested"
+	PaymentStatusProviderPending           PaymentStatus = "provider_pending"
+	PaymentStatusRequiresStaffConfirmation PaymentStatus = "requires_staff_confirmation"
+	PaymentStatusCompleted                 PaymentStatus = "completed"
+	PaymentStatusFailed                    PaymentStatus = "failed"
+	PaymentStatusCancelled                 PaymentStatus = "cancelled"
+	PaymentStatusRefunded                  PaymentStatus = "refunded"
+	PaymentStatusPartiallyRefunded         PaymentStatus = "partially_refunded"
 )
 
 var orderTransitions = map[OrderStatus][]OrderStatus{
@@ -66,10 +71,15 @@ var assistanceTransitions = map[AssistanceStatus][]AssistanceStatus{
 }
 
 var paymentTransitions = map[PaymentStatus][]PaymentStatus{
-	PaymentStatusPending:   {PaymentStatusCompleted, PaymentStatusFailed},
-	PaymentStatusCompleted: {PaymentStatusRefunded},
-	PaymentStatusFailed:    {PaymentStatusPending},
-	PaymentStatusRefunded:  {},
+	PaymentStatusPending:                   {PaymentStatusCompleted, PaymentStatusFailed, PaymentStatusProviderPending, PaymentStatusRequiresStaffConfirmation},
+	PaymentStatusRequested:                 {PaymentStatusProviderPending, PaymentStatusRequiresStaffConfirmation, PaymentStatusCancelled, PaymentStatusFailed},
+	PaymentStatusProviderPending:           {PaymentStatusCompleted, PaymentStatusFailed, PaymentStatusCancelled},
+	PaymentStatusRequiresStaffConfirmation: {PaymentStatusCompleted, PaymentStatusFailed, PaymentStatusCancelled},
+	PaymentStatusCompleted:                 {PaymentStatusRefunded, PaymentStatusPartiallyRefunded},
+	PaymentStatusPartiallyRefunded:         {PaymentStatusRefunded},
+	PaymentStatusFailed:                    {PaymentStatusPending, PaymentStatusRequested},
+	PaymentStatusCancelled:                 {},
+	PaymentStatusRefunded:                  {},
 }
 
 func ValidateOrderTransition(from, to OrderStatus) error {

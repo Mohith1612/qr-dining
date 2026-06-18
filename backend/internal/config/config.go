@@ -17,6 +17,7 @@ type Config struct {
 	Log          LogConfig
 	CORS         CORSConfig
 	Auth         AuthConfig
+	Payment      PaymentConfig
 	Worker       WorkerConfig
 	R2           R2Config
 	FeatureFlags FeatureFlags
@@ -66,6 +67,11 @@ type CORSConfig struct {
 type AuthConfig struct {
 	GuestTokenSecret string
 	GuestTokenTTL    time.Duration
+}
+
+type PaymentConfig struct {
+	WebhookSecrets            map[string]string
+	WebhookTimestampTolerance time.Duration
 }
 
 type WorkerConfig struct {
@@ -152,6 +158,9 @@ func Load() (*Config, error) {
 	cfg.Auth.GuestTokenSecret = getenv("GUEST_TOKEN_SECRET", "dev-only-guest-token-secret")
 	cfg.Auth.GuestTokenTTL = parseDuration("GUEST_TOKEN_TTL", 2*time.Hour)
 
+	cfg.Payment.WebhookSecrets = loadPaymentWebhookSecrets()
+	cfg.Payment.WebhookTimestampTolerance = parseDuration("PAYMENT_WEBHOOK_TIMESTAMP_TOLERANCE", 5*time.Minute)
+
 	// Workers
 	cfg.Worker.StaleSessionInterval = parseDuration("STALE_SESSION_INTERVAL", 5*time.Minute)
 	cfg.Worker.PresenceExpiryInterval = parseDuration("PRESENCE_EXPIRY_INTERVAL", 60*time.Second)
@@ -230,6 +239,20 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func loadPaymentWebhookSecrets() map[string]string {
+	const prefix = "PAYMENT_WEBHOOK_SECRET_"
+	secrets := make(map[string]string)
+	for _, entry := range os.Environ() {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok || value == "" || !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		provider := strings.ToLower(strings.TrimPrefix(key, prefix))
+		secrets[provider] = value
+	}
+	return secrets
 }
 
 func parseInt(key string, fallback int) (int, error) {

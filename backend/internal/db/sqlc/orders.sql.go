@@ -15,9 +15,21 @@ import (
 )
 
 const createOrder = `-- name: CreateOrder :one
-INSERT INTO orders (session_id, branch_id, placed_by_participant_id, idempotency_key, total_amount, order_number, promo_id, discount_amount)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount
+INSERT INTO orders (
+  session_id,
+  branch_id,
+  placed_by_participant_id,
+  idempotency_key,
+  total_amount,
+  order_number,
+  promo_id,
+  discount_amount,
+  order_business_date,
+  order_number_display,
+  order_operational_id
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount, order_business_date, order_number_display, order_operational_id
 `
 
 type CreateOrderParams struct {
@@ -29,6 +41,9 @@ type CreateOrderParams struct {
 	OrderNumber           pgtype.Text    `json:"order_number"`
 	PromoID               pgtype.Int8    `json:"promo_id"`
 	DiscountAmount        pgtype.Numeric `json:"discount_amount"`
+	OrderBusinessDate     pgtype.Date    `json:"order_business_date"`
+	OrderNumberDisplay    string         `json:"order_number_display"`
+	OrderOperationalID    string         `json:"order_operational_id"`
 }
 
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
@@ -41,6 +56,9 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.OrderNumber,
 		arg.PromoID,
 		arg.DiscountAmount,
+		arg.OrderBusinessDate,
+		arg.OrderNumberDisplay,
+		arg.OrderOperationalID,
 	)
 	var i Order
 	err := row.Scan(
@@ -56,6 +74,9 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.OrderNumber,
 		&i.PromoID,
 		&i.DiscountAmount,
+		&i.OrderBusinessDate,
+		&i.OrderNumberDisplay,
+		&i.OrderOperationalID,
 	)
 	return i, err
 }
@@ -98,7 +119,7 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 }
 
 const getOrderByID = `-- name: GetOrderByID :one
-SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount FROM orders WHERE id = $1
+SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount, order_business_date, order_number_display, order_operational_id FROM orders WHERE id = $1
 `
 
 func (q *Queries) GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error) {
@@ -117,12 +138,15 @@ func (q *Queries) GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error)
 		&i.OrderNumber,
 		&i.PromoID,
 		&i.DiscountAmount,
+		&i.OrderBusinessDate,
+		&i.OrderNumberDisplay,
+		&i.OrderOperationalID,
 	)
 	return i, err
 }
 
 const getOrderByIdempotencyKey = `-- name: GetOrderByIdempotencyKey :one
-SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount FROM orders WHERE idempotency_key = $1
+SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount, order_business_date, order_number_display, order_operational_id FROM orders WHERE idempotency_key = $1
 `
 
 func (q *Queries) GetOrderByIdempotencyKey(ctx context.Context, idempotencyKey string) (Order, error) {
@@ -141,13 +165,52 @@ func (q *Queries) GetOrderByIdempotencyKey(ctx context.Context, idempotencyKey s
 		&i.OrderNumber,
 		&i.PromoID,
 		&i.DiscountAmount,
+		&i.OrderBusinessDate,
+		&i.OrderNumberDisplay,
+		&i.OrderOperationalID,
+	)
+	return i, err
+}
+
+const getOrderByScopedIdempotencyKey = `-- name: GetOrderByScopedIdempotencyKey :one
+SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount, order_business_date, order_number_display, order_operational_id FROM orders
+WHERE session_id = $1
+  AND placed_by_participant_id = $2
+  AND idempotency_key = $3
+`
+
+type GetOrderByScopedIdempotencyKeyParams struct {
+	SessionID             uuid.UUID   `json:"session_id"`
+	PlacedByParticipantID pgtype.Int8 `json:"placed_by_participant_id"`
+	IdempotencyKey        string      `json:"idempotency_key"`
+}
+
+func (q *Queries) GetOrderByScopedIdempotencyKey(ctx context.Context, arg GetOrderByScopedIdempotencyKeyParams) (Order, error) {
+	row := q.db.QueryRow(ctx, getOrderByScopedIdempotencyKey, arg.SessionID, arg.PlacedByParticipantID, arg.IdempotencyKey)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.BranchID,
+		&i.PlacedByParticipantID,
+		&i.Status,
+		&i.IdempotencyKey,
+		&i.TotalAmount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OrderNumber,
+		&i.PromoID,
+		&i.DiscountAmount,
+		&i.OrderBusinessDate,
+		&i.OrderNumberDisplay,
+		&i.OrderOperationalID,
 	)
 	return i, err
 }
 
 const listActiveOrdersForBranch = `-- name: ListActiveOrdersForBranch :many
 SELECT
-    o.id, o.session_id, o.branch_id, o.placed_by_participant_id, o.status, o.idempotency_key, o.total_amount, o.created_at, o.updated_at, o.order_number, o.promo_id, o.discount_amount,
+    o.id, o.session_id, o.branch_id, o.placed_by_participant_id, o.status, o.idempotency_key, o.total_amount, o.created_at, o.updated_at, o.order_number, o.promo_id, o.discount_amount, o.order_business_date, o.order_number_display, o.order_operational_id,
     t.identifier AS table_identifier
 FROM orders o
 JOIN sessions s ON s.id = o.session_id
@@ -170,6 +233,9 @@ type ListActiveOrdersForBranchRow struct {
 	OrderNumber           pgtype.Text    `json:"order_number"`
 	PromoID               pgtype.Int8    `json:"promo_id"`
 	DiscountAmount        pgtype.Numeric `json:"discount_amount"`
+	OrderBusinessDate     pgtype.Date    `json:"order_business_date"`
+	OrderNumberDisplay    string         `json:"order_number_display"`
+	OrderOperationalID    string         `json:"order_operational_id"`
 	TableIdentifier       string         `json:"table_identifier"`
 }
 
@@ -195,6 +261,9 @@ func (q *Queries) ListActiveOrdersForBranch(ctx context.Context, branchID int64)
 			&i.OrderNumber,
 			&i.PromoID,
 			&i.DiscountAmount,
+			&i.OrderBusinessDate,
+			&i.OrderNumberDisplay,
+			&i.OrderOperationalID,
 			&i.TableIdentifier,
 		); err != nil {
 			return nil, err
@@ -240,7 +309,7 @@ func (q *Queries) ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]Orde
 }
 
 const listOrdersForSession = `-- name: ListOrdersForSession :many
-SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount FROM orders
+SELECT id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount, order_business_date, order_number_display, order_operational_id FROM orders
 WHERE session_id = $1
 ORDER BY created_at DESC
 `
@@ -267,6 +336,9 @@ func (q *Queries) ListOrdersForSession(ctx context.Context, sessionID uuid.UUID)
 			&i.OrderNumber,
 			&i.PromoID,
 			&i.DiscountAmount,
+			&i.OrderBusinessDate,
+			&i.OrderNumberDisplay,
+			&i.OrderOperationalID,
 		); err != nil {
 			return nil, err
 		}
@@ -302,7 +374,7 @@ const updateOrderStatus = `-- name: UpdateOrderStatus :one
 UPDATE orders
 SET status = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount
+RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount, order_business_date, order_number_display, order_operational_id
 `
 
 type UpdateOrderStatusParams struct {
@@ -326,6 +398,51 @@ func (q *Queries) UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusPa
 		&i.OrderNumber,
 		&i.PromoID,
 		&i.DiscountAmount,
+		&i.OrderBusinessDate,
+		&i.OrderNumberDisplay,
+		&i.OrderOperationalID,
+	)
+	return i, err
+}
+
+const updateOrderStatusExpected = `-- name: UpdateOrderStatusExpected :one
+UPDATE orders
+SET status = $4, updated_at = NOW()
+WHERE id = $1 AND branch_id = $2 AND status = $3
+RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount, order_business_date, order_number_display, order_operational_id
+`
+
+type UpdateOrderStatusExpectedParams struct {
+	ID       uuid.UUID   `json:"id"`
+	BranchID int64       `json:"branch_id"`
+	Status   OrderStatus `json:"status"`
+	Status_2 OrderStatus `json:"status_2"`
+}
+
+func (q *Queries) UpdateOrderStatusExpected(ctx context.Context, arg UpdateOrderStatusExpectedParams) (Order, error) {
+	row := q.db.QueryRow(ctx, updateOrderStatusExpected,
+		arg.ID,
+		arg.BranchID,
+		arg.Status,
+		arg.Status_2,
+	)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.BranchID,
+		&i.PlacedByParticipantID,
+		&i.Status,
+		&i.IdempotencyKey,
+		&i.TotalAmount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OrderNumber,
+		&i.PromoID,
+		&i.DiscountAmount,
+		&i.OrderBusinessDate,
+		&i.OrderNumberDisplay,
+		&i.OrderOperationalID,
 	)
 	return i, err
 }
@@ -334,7 +451,7 @@ const updateOrderStatusScoped = `-- name: UpdateOrderStatusScoped :one
 UPDATE orders
 SET status = $3, updated_at = NOW()
 WHERE id = $1 AND branch_id = $2
-RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount
+RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount, order_business_date, order_number_display, order_operational_id
 `
 
 type UpdateOrderStatusScopedParams struct {
@@ -359,6 +476,9 @@ func (q *Queries) UpdateOrderStatusScoped(ctx context.Context, arg UpdateOrderSt
 		&i.OrderNumber,
 		&i.PromoID,
 		&i.DiscountAmount,
+		&i.OrderBusinessDate,
+		&i.OrderNumberDisplay,
+		&i.OrderOperationalID,
 	)
 	return i, err
 }

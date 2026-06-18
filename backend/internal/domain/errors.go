@@ -21,6 +21,8 @@ var (
 var (
 	ErrOrderNotFound          = errors.New("order not found")
 	ErrDuplicateOrder         = errors.New("order with this idempotency key already exists")
+	ErrIdempotencyConflict    = errors.New("idempotency key already used with different request")
+	ErrIdempotencyInProgress  = errors.New("idempotency key is currently being processed")
 	ErrInvalidOrderTransition = errors.New("invalid order status transition")
 	ErrOrderNotEditable       = errors.New("order cannot be modified in current status")
 )
@@ -35,28 +37,31 @@ var (
 
 // Assistance
 var (
-	ErrAssistanceNotFound      = errors.New("assistance request not found")
-	ErrAssistanceAlreadyResolved = errors.New("assistance request already resolved")
+	ErrAssistanceNotFound          = errors.New("assistance request not found")
+	ErrAssistanceAlreadyResolved   = errors.New("assistance request already resolved")
 	ErrInvalidAssistanceTransition = errors.New("invalid assistance status transition")
 )
 
 // Payments
 var (
-	ErrPaymentNotFound          = errors.New("payment not found")
-	ErrPaymentAlreadyProcessed  = errors.New("payment already processed")
-	ErrInvalidPaymentTransition = errors.New("invalid payment status transition")
+	ErrPaymentNotFound           = errors.New("payment not found")
+	ErrPaymentAlreadyProcessed   = errors.New("payment already processed")
+	ErrInvalidPaymentTransition  = errors.New("invalid payment status transition")
+	ErrPaymentVerificationFailed = errors.New("payment verification failed")
+	ErrBillSnapshotStale         = errors.New("bill snapshot no longer covers all orders")
 )
 
 // Webhooks
 var (
-	ErrDuplicateWebhookEvent = errors.New("webhook event already processed")
+	ErrDuplicateWebhookEvent   = errors.New("webhook event already processed")
+	ErrInvalidWebhookSignature = errors.New("invalid webhook signature")
 )
 
 // Tables
 var (
-	ErrTableNotFound              = errors.New("table not found")
-	ErrTableOccupied              = errors.New("table already has an active session")
-	ErrDuplicateTableIdentifier   = errors.New("table identifier already exists for this branch")
+	ErrTableNotFound            = errors.New("table not found")
+	ErrTableOccupied            = errors.New("table already has an active session")
+	ErrDuplicateTableIdentifier = errors.New("table identifier already exists for this branch")
 )
 
 // Menu categories
@@ -79,7 +84,7 @@ var (
 
 // Subscriptions / Plans
 var (
-	ErrPlanNotFound = errors.New("subscription plan not found")
+	ErrPlanNotFound   = errors.New("subscription plan not found")
 	ErrAnalyticsGated = errors.New("analytics not available on current plan")
 )
 

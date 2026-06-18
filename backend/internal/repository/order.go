@@ -19,6 +19,9 @@ type CreateOrderParams struct {
 	IdempotencyKey        string
 	TotalAmount           pgtype.Numeric
 	OrderNumber           string
+	OrderBusinessDate     time.Time
+	OrderNumberDisplay    string
+	OrderOperationalID    string
 	PromoID               *int64
 	DiscountAmount        pgtype.Numeric
 }
@@ -31,6 +34,9 @@ func (r *Repos) CreateOrder(ctx context.Context, p CreateOrderParams) (sqlc.Orde
 		IdempotencyKey:        p.IdempotencyKey,
 		TotalAmount:           p.TotalAmount,
 		OrderNumber:           pgtype.Text{String: p.OrderNumber, Valid: p.OrderNumber != ""},
+		OrderBusinessDate:     pgtype.Date{Time: p.OrderBusinessDate, Valid: true},
+		OrderNumberDisplay:    p.OrderNumberDisplay,
+		OrderOperationalID:    p.OrderOperationalID,
 		DiscountAmount:        p.DiscountAmount,
 	}
 	if p.PromoID != nil {
@@ -70,6 +76,18 @@ func (r *Repos) GetOrderByIdempotencyKey(ctx context.Context, key string) (sqlc.
 	return o, err
 }
 
+func (r *Repos) GetOrderByScopedIdempotencyKey(ctx context.Context, sessionID uuid.UUID, participantID int64, key string) (sqlc.Order, error) {
+	o, err := r.q.GetOrderByScopedIdempotencyKey(ctx, sqlc.GetOrderByScopedIdempotencyKeyParams{
+		SessionID:             sessionID,
+		PlacedByParticipantID: pgtype.Int8{Int64: participantID, Valid: true},
+		IdempotencyKey:        key,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Order{}, domain.ErrOrderNotFound
+	}
+	return o, err
+}
+
 func (r *Repos) ListOrdersForSession(ctx context.Context, sessionID uuid.UUID) ([]sqlc.Order, error) {
 	return r.q.ListOrdersForSession(ctx, sessionID)
 }
@@ -90,29 +108,22 @@ func (r *Repos) UpdateOrderStatus(ctx context.Context, id uuid.UUID, status sqlc
 }
 
 func (r *Repos) UpdateOrderStatusScoped(ctx context.Context, id uuid.UUID, branchID int64, status sqlc.OrderStatus) (sqlc.Order, error) {
-	row := r.db.QueryRow(ctx, `
-UPDATE orders
-SET status = $3, updated_at = NOW()
-WHERE id = $1 AND branch_id = $2
-RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount
-`, id, branchID, status)
-	var o sqlc.Order
-	err := row.Scan(
-		&o.ID,
-		&o.SessionID,
-		&o.BranchID,
-		&o.PlacedByParticipantID,
-		&o.Status,
-		&o.IdempotencyKey,
-		&o.TotalAmount,
-		&o.CreatedAt,
-		&o.UpdatedAt,
-		&o.OrderNumber,
-		&o.PromoID,
-		&o.DiscountAmount,
-	)
+	o, err := r.q.UpdateOrderStatusScoped(ctx, sqlc.UpdateOrderStatusScopedParams{ID: id, BranchID: branchID, Status: status})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return sqlc.Order{}, domain.ErrOrderNotFound
+	}
+	return o, err
+}
+
+func (r *Repos) UpdateOrderStatusExpected(ctx context.Context, id uuid.UUID, branchID int64, current, next sqlc.OrderStatus) (sqlc.Order, error) {
+	o, err := r.q.UpdateOrderStatusExpected(ctx, sqlc.UpdateOrderStatusExpectedParams{
+		ID:       id,
+		BranchID: branchID,
+		Status:   current,
+		Status_2: next,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Order{}, domain.ErrInvalidOrderTransition
 	}
 	return o, err
 }

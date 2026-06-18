@@ -131,8 +131,17 @@ export interface AssistanceRequest {
   created_at: string
 }
 
-export type PaymentMethod = "cash" | "card" | "digital"
-export type PaymentStatus = "pending" | "completed" | "failed" | "refunded"
+export type PaymentMethod = "cash" | "card" | "digital" | "card_manual" | "upi"
+export type PaymentStatus =
+  | "pending"
+  | "requested"
+  | "provider_pending"
+  | "requires_staff_confirmation"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "refunded"
+  | "partially_refunded"
 
 export interface Payment {
   id: number
@@ -141,7 +150,15 @@ export interface Payment {
   amount: string
   method: PaymentMethod
   status: PaymentStatus
-  created_at: string
+  initiated_at?: string
+  created_at?: string
+  bill_snapshot_id?: number | null
+  branch_id?: number
+  currency?: string
+  provider?: string | null
+  provider_payment_ref?: string | null
+  settled_by_staff_id?: number | null
+  settled_at?: string | null
 }
 
 export type StaffRole = "owner" | "manager" | "kitchen" | "waiter"

@@ -328,9 +328,11 @@ func (ns NullOrderStatus) Value() (driver.Value, error) {
 type PaymentMethod string
 
 const (
-	PaymentMethodCash    PaymentMethod = "cash"
-	PaymentMethodCard    PaymentMethod = "card"
-	PaymentMethodDigital PaymentMethod = "digital"
+	PaymentMethodCash       PaymentMethod = "cash"
+	PaymentMethodCard       PaymentMethod = "card"
+	PaymentMethodDigital    PaymentMethod = "digital"
+	PaymentMethodCardManual PaymentMethod = "card_manual"
+	PaymentMethodUpi        PaymentMethod = "upi"
 )
 
 func (e *PaymentMethod) Scan(src interface{}) error {
@@ -371,10 +373,15 @@ func (ns NullPaymentMethod) Value() (driver.Value, error) {
 type PaymentStatus string
 
 const (
-	PaymentStatusPending   PaymentStatus = "pending"
-	PaymentStatusCompleted PaymentStatus = "completed"
-	PaymentStatusFailed    PaymentStatus = "failed"
-	PaymentStatusRefunded  PaymentStatus = "refunded"
+	PaymentStatusPending                   PaymentStatus = "pending"
+	PaymentStatusCompleted                 PaymentStatus = "completed"
+	PaymentStatusFailed                    PaymentStatus = "failed"
+	PaymentStatusRefunded                  PaymentStatus = "refunded"
+	PaymentStatusRequested                 PaymentStatus = "requested"
+	PaymentStatusProviderPending           PaymentStatus = "provider_pending"
+	PaymentStatusRequiresStaffConfirmation PaymentStatus = "requires_staff_confirmation"
+	PaymentStatusCancelled                 PaymentStatus = "cancelled"
+	PaymentStatusPartiallyRefunded         PaymentStatus = "partially_refunded"
 )
 
 func (e *PaymentStatus) Scan(src interface{}) error {
@@ -668,6 +675,22 @@ type AuditLog struct {
 	CreatedAt      time.Time       `json:"created_at"`
 }
 
+type BillSnapshot struct {
+	ID             int64           `json:"id"`
+	SessionID      uuid.UUID       `json:"session_id"`
+	BranchID       int64           `json:"branch_id"`
+	Subtotal       pgtype.Numeric  `json:"subtotal"`
+	DiscountAmount pgtype.Numeric  `json:"discount_amount"`
+	TaxAmount      pgtype.Numeric  `json:"tax_amount"`
+	ServiceCharge  pgtype.Numeric  `json:"service_charge"`
+	TipAmount      pgtype.Numeric  `json:"tip_amount"`
+	Total          pgtype.Numeric  `json:"total"`
+	Currency       string          `json:"currency"`
+	SourceOrderIds json.RawMessage `json:"source_order_ids"`
+	CreatedByActor string          `json:"created_by_actor"`
+	CreatedAt      time.Time       `json:"created_at"`
+}
+
 type Branch struct {
 	ID                    int64           `json:"id"`
 	RestaurantID          int64           `json:"restaurant_id"`
@@ -721,6 +744,21 @@ type EventLog struct {
 	CreatedAt time.Time       `json:"created_at"`
 }
 
+type IdempotencyKey struct {
+	ID                   int64       `json:"id"`
+	ScopeType            string      `json:"scope_type"`
+	ScopeID              string      `json:"scope_id"`
+	ActorType            string      `json:"actor_type"`
+	ActorID              string      `json:"actor_id"`
+	Key                  string      `json:"key"`
+	RequestHash          string      `json:"request_hash"`
+	ResponseResourceType pgtype.Text `json:"response_resource_type"`
+	ResponseResourceID   pgtype.Text `json:"response_resource_id"`
+	Status               string      `json:"status"`
+	CreatedAt            time.Time   `json:"created_at"`
+	ExpiresAt            time.Time   `json:"expires_at"`
+}
+
 type ItemModifier struct {
 	ID            int64          `json:"id"`
 	ItemID        int64          `json:"item_id"`
@@ -768,6 +806,9 @@ type Order struct {
 	OrderNumber           pgtype.Text    `json:"order_number"`
 	PromoID               pgtype.Int8    `json:"promo_id"`
 	DiscountAmount        pgtype.Numeric `json:"discount_amount"`
+	OrderBusinessDate     pgtype.Date    `json:"order_business_date"`
+	OrderNumberDisplay    string         `json:"order_number_display"`
+	OrderOperationalID    string         `json:"order_operational_id"`
 }
 
 type OrderItem struct {
@@ -817,18 +858,26 @@ type OrganizationMember struct {
 }
 
 type Payment struct {
-	ID            int64              `json:"id"`
-	SessionID     uuid.UUID          `json:"session_id"`
-	OrderID       pgtype.UUID        `json:"order_id"`
-	Amount        pgtype.Numeric     `json:"amount"`
-	Method        PaymentMethod      `json:"method"`
-	Status        PaymentStatus      `json:"status"`
-	InitiatedAt   time.Time          `json:"initiated_at"`
-	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
-	Subtotal      pgtype.Numeric     `json:"subtotal"`
-	TaxAmount     pgtype.Numeric     `json:"tax_amount"`
-	ServiceCharge pgtype.Numeric     `json:"service_charge"`
-	TipAmount     pgtype.Numeric     `json:"tip_amount"`
+	ID                 int64              `json:"id"`
+	SessionID          uuid.UUID          `json:"session_id"`
+	OrderID            pgtype.UUID        `json:"order_id"`
+	Amount             pgtype.Numeric     `json:"amount"`
+	Method             PaymentMethod      `json:"method"`
+	Status             PaymentStatus      `json:"status"`
+	InitiatedAt        time.Time          `json:"initiated_at"`
+	CompletedAt        pgtype.Timestamptz `json:"completed_at"`
+	Subtotal           pgtype.Numeric     `json:"subtotal"`
+	TaxAmount          pgtype.Numeric     `json:"tax_amount"`
+	ServiceCharge      pgtype.Numeric     `json:"service_charge"`
+	TipAmount          pgtype.Numeric     `json:"tip_amount"`
+	BillSnapshotID     pgtype.Int8        `json:"bill_snapshot_id"`
+	BranchID           int64              `json:"branch_id"`
+	Currency           string             `json:"currency"`
+	Provider           pgtype.Text        `json:"provider"`
+	ProviderPaymentRef pgtype.Text        `json:"provider_payment_ref"`
+	ProviderOrderRef   pgtype.Text        `json:"provider_order_ref"`
+	SettledByStaffID   pgtype.Int8        `json:"settled_by_staff_id"`
+	SettledAt          pgtype.Timestamptz `json:"settled_at"`
 }
 
 type PaymentWebhookEvent struct {
@@ -842,6 +891,8 @@ type PaymentWebhookEvent struct {
 	PaymentID       pgtype.Int8        `json:"payment_id"`
 	ErrorMessage    pgtype.Text        `json:"error_message"`
 	CreatedAt       time.Time          `json:"created_at"`
+	RawPayload      pgtype.Text        `json:"raw_payload"`
+	Headers         json.RawMessage    `json:"headers"`
 }
 
 type PlatformAuditLog struct {
@@ -915,6 +966,7 @@ type Promo struct {
 	Description     pgtype.Text    `json:"description"`
 	CreatedBy       pgtype.Int8    `json:"created_by"`
 	CreatedAt       time.Time      `json:"created_at"`
+	RedeemedCount   int32          `json:"redeemed_count"`
 }
 
 type PromoRedemption struct {
@@ -958,6 +1010,17 @@ type Session struct {
 	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
 	WarnedAt          pgtype.Timestamptz `json:"warned_at"`
 	CustomerID        pgtype.Int8        `json:"customer_id"`
+}
+
+type SessionEvent struct {
+	ID             uuid.UUID       `json:"id"`
+	Sequence       int64           `json:"sequence"`
+	OrganizationID int64           `json:"organization_id"`
+	BranchID       int64           `json:"branch_id"`
+	SessionID      uuid.UUID       `json:"session_id"`
+	Event          string          `json:"event"`
+	Payload        json.RawMessage `json:"payload"`
+	CreatedAt      time.Time       `json:"created_at"`
 }
 
 type SessionParticipant struct {
