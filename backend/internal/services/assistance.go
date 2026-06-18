@@ -34,7 +34,7 @@ func (s *AssistanceService) Request(ctx context.Context, sessionID uuid.UUID, ta
 	return ar, nil
 }
 
-func (s *AssistanceService) Acknowledge(ctx context.Context, id, staffID int64) (sqlc.AssistanceRequest, error) {
+func (s *AssistanceService) Acknowledge(ctx context.Context, id, branchID, staffID int64) (sqlc.AssistanceRequest, error) {
 	ar, err := s.repos.GetAssistanceRequestByID(ctx, id)
 	if err != nil {
 		return sqlc.AssistanceRequest{}, err
@@ -48,7 +48,7 @@ func (s *AssistanceService) Acknowledge(ctx context.Context, id, staffID int64) 
 
 	sess, _ := s.repos.GetSessionByID(ctx, ar.SessionID)
 
-	updated, err := s.repos.UpdateAssistanceStatus(ctx, id, sqlc.AssistanceStatusAcknowledged)
+	updated, err := s.repos.UpdateAssistanceStatusScoped(ctx, id, branchID, sqlc.AssistanceStatusAcknowledged)
 	if err != nil {
 		return sqlc.AssistanceRequest{}, err
 	}
@@ -57,7 +57,7 @@ func (s *AssistanceService) Acknowledge(ctx context.Context, id, staffID int64) 
 	return updated, nil
 }
 
-func (s *AssistanceService) Resolve(ctx context.Context, id, staffID int64) (sqlc.AssistanceRequest, error) {
+func (s *AssistanceService) Resolve(ctx context.Context, id, branchID, staffID int64) (sqlc.AssistanceRequest, error) {
 	ar, err := s.repos.GetAssistanceRequestByID(ctx, id)
 	if err != nil {
 		return sqlc.AssistanceRequest{}, err
@@ -71,7 +71,7 @@ func (s *AssistanceService) Resolve(ctx context.Context, id, staffID int64) (sql
 
 	sess, _ := s.repos.GetSessionByID(ctx, ar.SessionID)
 
-	updated, err := s.repos.UpdateAssistanceStatus(ctx, id, sqlc.AssistanceStatusResolved)
+	updated, err := s.repos.UpdateAssistanceStatusScoped(ctx, id, branchID, sqlc.AssistanceStatusResolved)
 	if err != nil {
 		return sqlc.AssistanceRequest{}, err
 	}

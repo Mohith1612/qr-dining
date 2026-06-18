@@ -8,8 +8,8 @@ import (
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
-	"github.com/Mohith1612/qr-dining/internal/repository"
 	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
+	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -42,8 +42,8 @@ type MenuCategoryWithItems struct {
 
 type FullMenu struct {
 	BranchID   int64                   `json:"branch_id"`
-	Featured   []MenuItemWithModifiers  `json:"featured"`
-	Categories []MenuCategoryWithItems  `json:"categories"`
+	Featured   []MenuItemWithModifiers `json:"featured"`
+	Categories []MenuCategoryWithItems `json:"categories"`
 }
 
 const menuCacheTTL = 5 * time.Minute
@@ -68,6 +68,10 @@ func (s *MenuService) GetFullMenu(ctx context.Context, branchID int64) (FullMenu
 
 func (s *MenuService) GetTableByQRToken(ctx context.Context, token string) (sqlc.Table, error) {
 	return s.repos.GetTableByQRToken(ctx, token)
+}
+
+func (s *MenuService) GetMenuItem(ctx context.Context, itemID int64) (sqlc.MenuItem, error) {
+	return s.repos.GetMenuItemByID(ctx, itemID)
 }
 
 // TableQRResponse is returned by GetTableByQR and includes the active session ID when the table is occupied.
@@ -212,7 +216,7 @@ func (s *MenuService) UpdateItem(ctx context.Context, p UpdateMenuItemParams, re
 	if p.ImageURL != nil {
 		imageURL = pgtype.Text{String: *p.ImageURL, Valid: true}
 	}
-	item, err := s.repos.UpdateMenuItem(ctx, sqlc.UpdateMenuItemParams{
+	item, err := s.repos.UpdateMenuItemScoped(ctx, sqlc.UpdateMenuItemParams{
 		ID:           p.ID,
 		Name:         p.Name,
 		Description:  p.Description,
@@ -223,7 +227,7 @@ func (s *MenuService) UpdateItem(ctx context.Context, p UpdateMenuItemParams, re
 		SpiceLevel:   p.SpiceLevel,
 		CategoryID:   catID,
 		ImageUrl:     imageURL,
-	})
+	}, p.BranchID)
 	if err != nil {
 		return sqlc.MenuItem{}, err
 	}
@@ -236,7 +240,7 @@ func (s *MenuService) ToggleAvailability(ctx context.Context, itemID, branchID i
 	if err := requireOwnerOrManager(requiredRole); err != nil {
 		return err
 	}
-	if err := s.repos.UpdateMenuItemAvailability(ctx, itemID, available); err != nil {
+	if err := s.repos.UpdateMenuItemAvailabilityScoped(ctx, itemID, branchID, available); err != nil {
 		return err
 	}
 	s.InvalidateMenuCache(ctx, branchID)
@@ -338,7 +342,7 @@ func (s *MenuService) ToggleFeatured(ctx context.Context, itemID, branchID int64
 	if err := requireOwnerOrManager(requiredRole); err != nil {
 		return err
 	}
-	if err := s.repos.UpdateMenuItemFeatured(ctx, itemID, featured, sortOrder); err != nil {
+	if err := s.repos.UpdateMenuItemFeaturedScoped(ctx, itemID, branchID, featured, sortOrder); err != nil {
 		return err
 	}
 	s.InvalidateMenuCache(ctx, branchID)
@@ -476,13 +480,13 @@ func (s *MenuService) AddModifier(ctx context.Context, p CreateModifierParams, r
 	if err := delta.Scan(fmt.Sprintf("%.2f", p.PriceDelta)); err != nil {
 		return MenuModifier{}, fmt.Errorf("invalid price_delta: %w", err)
 	}
-	mod, err := s.repos.CreateItemModifier(ctx, sqlc.CreateItemModifierParams{
+	mod, err := s.repos.CreateItemModifierScoped(ctx, sqlc.CreateItemModifierParams{
 		ItemID:        p.ItemID,
 		Name:          p.Name,
 		PriceDelta:    delta,
 		IsRequired:    p.IsRequired,
 		ModifierGroup: p.ModifierGroup,
-	})
+	}, p.BranchID)
 	if err != nil {
 		return MenuModifier{}, err
 	}
@@ -502,7 +506,7 @@ func (s *MenuService) DeleteModifier(ctx context.Context, modifierID, branchID i
 	if err := requireOwnerOrManager(requiredRole); err != nil {
 		return err
 	}
-	if err := s.repos.DeleteItemModifier(ctx, modifierID); err != nil {
+	if err := s.repos.DeleteItemModifierScoped(ctx, modifierID, branchID); err != nil {
 		return err
 	}
 	s.InvalidateMenuCache(ctx, branchID)

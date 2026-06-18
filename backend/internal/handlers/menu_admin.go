@@ -5,18 +5,22 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
+	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
 type MenuAdminHandler struct {
-	svc *services.MenuService
+	svc   *services.MenuService
+	repos *repository.Repos
+	authz *authz.Authorizer
 }
 
-func NewMenuAdminHandler(svc *services.MenuService) *MenuAdminHandler {
-	return &MenuAdminHandler{svc: svc}
+func NewMenuAdminHandler(svc *services.MenuService, repos *repository.Repos, authorizer *authz.Authorizer) *MenuAdminHandler {
+	return &MenuAdminHandler{svc: svc, repos: repos, authz: authorizer}
 }
 
 type createCategoryRequest struct {
@@ -127,7 +131,7 @@ type updateMenuItemRequest struct {
 	Description  string   `json:"description"`
 	Price        float64  `json:"price" binding:"required,min=0"`
 	Position     int16    `json:"position"`
-	BranchID     int64    `json:"branch_id" binding:"required"`
+	BranchID     int64    `json:"branch_id"`
 	DietaryFlags []string `json:"dietary_flags"`
 	ItemBadges   []string `json:"item_badges"`
 	SpiceLevel   int16    `json:"spice_level"`
@@ -149,8 +153,24 @@ func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
-	if !ok || sess.BranchID != req.BranchID {
-		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	target, err := h.svc.GetMenuItem(c.Request.Context(), itemID)
+	if err != nil {
+		menuAdminError(c, err)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuItemUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
@@ -182,7 +202,7 @@ func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
 
 	item, err := h.svc.UpdateItem(c.Request.Context(), services.UpdateMenuItemParams{
 		ID:           itemID,
-		BranchID:     req.BranchID,
+		BranchID:     target.BranchID,
 		Name:         req.Name,
 		Description:  req.Description,
 		Price:        req.Price,
@@ -203,7 +223,7 @@ func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
 
 type toggleAvailabilityRequest struct {
 	Available bool  `json:"available"`
-	BranchID  int64 `json:"branch_id" binding:"required"`
+	BranchID  int64 `json:"branch_id"`
 }
 
 func (h *MenuAdminHandler) ToggleAvailability(c *gin.Context) {
@@ -220,12 +240,28 @@ func (h *MenuAdminHandler) ToggleAvailability(c *gin.Context) {
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
-	if !ok || sess.BranchID != req.BranchID {
-		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	target, err := h.svc.GetMenuItem(c.Request.Context(), itemID)
+	if err != nil {
+		menuAdminError(c, err)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuItemToggleAvailable, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
-	if err := h.svc.ToggleAvailability(c.Request.Context(), itemID, req.BranchID, req.Available, sess.Role); err != nil {
+	if err := h.svc.ToggleAvailability(c.Request.Context(), itemID, target.BranchID, req.Available, sess.Role); err != nil {
 		menuAdminError(c, err)
 		return
 	}
@@ -236,7 +272,7 @@ func (h *MenuAdminHandler) ToggleAvailability(c *gin.Context) {
 type toggleFeaturedRequest struct {
 	Featured          bool  `json:"is_featured"`
 	FeaturedSortOrder int16 `json:"featured_sort_order"`
-	BranchID          int64 `json:"branch_id" binding:"required"`
+	BranchID          int64 `json:"branch_id"`
 }
 
 func (h *MenuAdminHandler) ToggleFeatured(c *gin.Context) {
@@ -253,12 +289,28 @@ func (h *MenuAdminHandler) ToggleFeatured(c *gin.Context) {
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
-	if !ok || sess.BranchID != req.BranchID {
-		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	target, err := h.svc.GetMenuItem(c.Request.Context(), itemID)
+	if err != nil {
+		menuAdminError(c, err)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuItemToggleAvailable, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
-	if err := h.svc.ToggleFeatured(c.Request.Context(), itemID, req.BranchID, req.Featured, req.FeaturedSortOrder, sess.Role); err != nil {
+	if err := h.svc.ToggleFeatured(c.Request.Context(), itemID, target.BranchID, req.Featured, req.FeaturedSortOrder, sess.Role); err != nil {
 		menuAdminError(c, err)
 		return
 	}
@@ -269,6 +321,8 @@ func (h *MenuAdminHandler) ToggleFeatured(c *gin.Context) {
 func menuAdminError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrMenuItemNotFound):
+		respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
+	case errors.Is(err, domain.ErrModifierNotFound):
 		respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
 	case errors.Is(err, domain.ErrCategoryNotFound):
 		respondError(c, http.StatusNotFound, CodeCategoryNotFound, err.Error())
@@ -310,19 +364,29 @@ func (h *MenuAdminHandler) DeleteMenuItem(c *gin.Context) {
 		return
 	}
 
-	branchID, err := strconv.ParseInt(c.Query("branch_id"), 10, 64)
-	if err != nil {
-		respondValidationError(c, "branch_id query param required")
-		return
-	}
-
 	sess, ok := middleware.GetStaffSession(c)
-	if !ok || sess.BranchID != branchID {
-		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	target, err := h.svc.GetMenuItem(c.Request.Context(), itemID)
+	if err != nil {
+		menuAdminError(c, err)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuItemUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
-	if err := h.svc.DeleteMenuItem(c.Request.Context(), itemID, branchID, sess.Role); err != nil {
+	if err := h.svc.DeleteMenuItem(c.Request.Context(), itemID, target.BranchID, sess.Role); err != nil {
 		menuAdminError(c, err)
 		return
 	}
@@ -337,19 +401,29 @@ func (h *MenuAdminHandler) DeleteMenuCategory(c *gin.Context) {
 		return
 	}
 
-	branchID, err := strconv.ParseInt(c.Query("branch_id"), 10, 64)
-	if err != nil {
-		respondValidationError(c, "branch_id query param required")
-		return
-	}
-
 	sess, ok := middleware.GetStaffSession(c)
-	if !ok || sess.BranchID != branchID {
-		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	target, err := h.repos.GetMenuCategoryByID(c.Request.Context(), categoryID)
+	if err != nil {
+		menuAdminError(c, err)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuCategoryUpdate, authz.MenuCategoryResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
-	if err := h.svc.DeleteCategory(c.Request.Context(), categoryID, branchID, sess.Role); err != nil {
+	if err := h.svc.DeleteCategory(c.Request.Context(), categoryID, target.BranchID, sess.Role); err != nil {
 		menuAdminError(c, err)
 		return
 	}
@@ -361,7 +435,7 @@ type updateMenuCategoryRequest struct {
 	Name     string `json:"name" binding:"required,min=1,max=100"`
 	Position int16  `json:"position"`
 	IsActive bool   `json:"is_active"`
-	BranchID int64  `json:"branch_id" binding:"required"`
+	BranchID int64  `json:"branch_id"`
 }
 
 func (h *MenuAdminHandler) UpdateMenuCategory(c *gin.Context) {
@@ -378,14 +452,30 @@ func (h *MenuAdminHandler) UpdateMenuCategory(c *gin.Context) {
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
-	if !ok || sess.BranchID != req.BranchID {
-		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	target, err := h.repos.GetMenuCategoryByID(c.Request.Context(), categoryID)
+	if err != nil {
+		menuAdminError(c, err)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuCategoryUpdate, authz.MenuCategoryResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
 	cat, err := h.svc.UpdateCategory(c.Request.Context(), services.UpdateMenuCategoryParams{
 		ID:       categoryID,
-		BranchID: req.BranchID,
+		BranchID: target.BranchID,
 		Name:     req.Name,
 		Position: req.Position,
 		IsActive: req.IsActive,
@@ -403,7 +493,7 @@ type addModifierRequest struct {
 	PriceDelta    float64 `json:"price_delta"`
 	IsRequired    bool    `json:"is_required"`
 	ModifierGroup string  `json:"modifier_group"`
-	BranchID      int64   `json:"branch_id" binding:"required"`
+	BranchID      int64   `json:"branch_id"`
 }
 
 func (h *MenuAdminHandler) AddItemModifier(c *gin.Context) {
@@ -420,14 +510,30 @@ func (h *MenuAdminHandler) AddItemModifier(c *gin.Context) {
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
-	if !ok || sess.BranchID != req.BranchID {
-		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	target, err := h.svc.GetMenuItem(c.Request.Context(), itemID)
+	if err != nil {
+		menuAdminError(c, err)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuModifierUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
 	mod, err := h.svc.AddModifier(c.Request.Context(), services.CreateModifierParams{
 		ItemID:        itemID,
-		BranchID:      req.BranchID,
+		BranchID:      target.BranchID,
 		Name:          req.Name,
 		PriceDelta:    req.PriceDelta,
 		IsRequired:    req.IsRequired,
@@ -448,19 +554,29 @@ func (h *MenuAdminHandler) DeleteItemModifier(c *gin.Context) {
 		return
 	}
 
-	branchID, err := strconv.ParseInt(c.Query("branch_id"), 10, 64)
-	if err != nil {
-		respondValidationError(c, "branch_id query param required")
-		return
-	}
-
 	sess, ok := middleware.GetStaffSession(c)
-	if !ok || sess.BranchID != branchID {
-		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	target, err := h.repos.GetModifierWithItemBranch(c.Request.Context(), modifierID)
+	if err != nil {
+		menuAdminError(c, err)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuModifierUpdate, authz.MenuModifierResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
-	if err := h.svc.DeleteModifier(c.Request.Context(), modifierID, branchID, sess.Role); err != nil {
+	if err := h.svc.DeleteModifier(c.Request.Context(), modifierID, target.BranchID, sess.Role); err != nil {
 		menuAdminError(c, err)
 		return
 	}

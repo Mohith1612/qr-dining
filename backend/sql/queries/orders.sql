@@ -22,6 +22,12 @@ SET status = $2, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 
+-- name: UpdateOrderStatusScoped :one
+UPDATE orders
+SET status = $3, updated_at = NOW()
+WHERE id = $1 AND branch_id = $2
+RETURNING *;
+
 -- name: ListOrdersForSession :many
 SELECT * FROM orders
 WHERE session_id = $1

@@ -261,7 +261,7 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 }
 
 // UpdateOrderStatus applies a state machine-validated status transition.
-func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, newStatus domain.OrderStatus, staffID int64) (sqlc.Order, error) {
+func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID, branchID int64, newStatus domain.OrderStatus, staffID int64) (sqlc.Order, error) {
 	order, err := s.repos.GetOrderByID(ctx, orderID)
 	if err != nil {
 		return sqlc.Order{}, err
@@ -273,7 +273,7 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID,
 	}
 
 	start := time.Now()
-	updated, err := s.repos.UpdateOrderStatus(ctx, orderID, sqlc.OrderStatus(newStatus))
+	updated, err := s.repos.UpdateOrderStatusScoped(ctx, orderID, branchID, sqlc.OrderStatus(newStatus))
 	if err != nil {
 		return sqlc.Order{}, err
 	}

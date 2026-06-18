@@ -89,6 +89,34 @@ func (r *Repos) UpdateOrderStatus(ctx context.Context, id uuid.UUID, status sqlc
 	return o, err
 }
 
+func (r *Repos) UpdateOrderStatusScoped(ctx context.Context, id uuid.UUID, branchID int64, status sqlc.OrderStatus) (sqlc.Order, error) {
+	row := r.db.QueryRow(ctx, `
+UPDATE orders
+SET status = $3, updated_at = NOW()
+WHERE id = $1 AND branch_id = $2
+RETURNING id, session_id, branch_id, placed_by_participant_id, status, idempotency_key, total_amount, created_at, updated_at, order_number, promo_id, discount_amount
+`, id, branchID, status)
+	var o sqlc.Order
+	err := row.Scan(
+		&o.ID,
+		&o.SessionID,
+		&o.BranchID,
+		&o.PlacedByParticipantID,
+		&o.Status,
+		&o.IdempotencyKey,
+		&o.TotalAmount,
+		&o.CreatedAt,
+		&o.UpdatedAt,
+		&o.OrderNumber,
+		&o.PromoID,
+		&o.DiscountAmount,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Order{}, domain.ErrOrderNotFound
+	}
+	return o, err
+}
+
 func (r *Repos) ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]sqlc.ListActiveOrdersForBranchRow, error) {
 	return r.q.ListActiveOrdersForBranch(ctx, branchID)
 }

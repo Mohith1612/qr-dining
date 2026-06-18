@@ -41,6 +41,37 @@ func (r *Repos) GetPromoByCode(ctx context.Context, branchID int64, code string)
 	return p, err
 }
 
+func (r *Repos) GetPromoByID(ctx context.Context, promoID int64) (sqlc.Promo, error) {
+	row := r.db.QueryRow(ctx, `
+SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at
+FROM promos
+WHERE id = $1
+`, promoID)
+	var p sqlc.Promo
+	err := row.Scan(
+		&p.ID,
+		&p.BranchID,
+		&p.Code,
+		&p.Type,
+		&p.Value,
+		&p.MinOrderAmount,
+		&p.MaxUses,
+		&p.UsesPerPhone,
+		&p.ValidFrom,
+		&p.ValidUntil,
+		&p.TimeWindowStart,
+		&p.TimeWindowEnd,
+		&p.IsActive,
+		&p.Description,
+		&p.CreatedBy,
+		&p.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Promo{}, domain.ErrPromoNotFound
+	}
+	return p, err
+}
+
 func (r *Repos) CountPromoRedemptions(ctx context.Context, promoID int64) (int64, error) {
 	return r.q.CountPromoRedemptions(ctx, promoID)
 }

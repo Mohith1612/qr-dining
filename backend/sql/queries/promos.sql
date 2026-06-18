@@ -10,6 +10,9 @@ WHERE branch_id = $1
     OR (time_window_start <= LOCALTIME AND LOCALTIME <= time_window_end)
   );
 
+-- name: GetPromoByID :one
+SELECT * FROM promos WHERE id = $1;
+
 -- name: CountPromoRedemptions :one
 SELECT COUNT(*) FROM promo_redemptions WHERE promo_id = $1;
 

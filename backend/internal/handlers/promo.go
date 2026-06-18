@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
@@ -22,10 +24,11 @@ type PromoHandler struct {
 	repos       *repository.Repos
 	guestTokens *auth.GuestTokenService
 	flags       config.FeatureFlags
+	authz       *authz.Authorizer
 }
 
-func NewPromoHandler(svc *services.PromoService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *PromoHandler {
-	return &PromoHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags}
+func NewPromoHandler(svc *services.PromoService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer) *PromoHandler {
+	return &PromoHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags, authz: authorizer}
 }
 
 // POST /sessions/:id/promos/validate — public, rate-limited.
@@ -92,6 +95,22 @@ func (h *PromoHandler) ListPromos(c *gin.Context) {
 		respondValidationError(c, "invalid branch id")
 		return
 	}
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, branchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionBranchRead, authz.BranchResource(branchID, orgID)) {
+		return
+	}
 
 	promos, err := h.svc.ListPromosForBranch(c.Request.Context(), branchID)
 	if err != nil {
@@ -120,6 +139,22 @@ func (h *PromoHandler) CreatePromo(c *gin.Context) {
 	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		respondValidationError(c, "invalid branch id")
+		return
+	}
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, branchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionPromoCreate, authz.PromoResource(0, branchID, orgID)) {
 		return
 	}
 
@@ -160,6 +195,7 @@ func (h *PromoHandler) CreatePromo(c *gin.Context) {
 		ValidFrom:      validFrom,
 		ValidUntil:     validUntil,
 		Description:    req.Description,
+		CreatedBy:      &staffSession.StaffID,
 	}
 
 	if req.TimeWindowStart != nil && req.TimeWindowEnd != nil {
@@ -195,6 +231,35 @@ func (h *PromoHandler) DeactivatePromo(c *gin.Context) {
 	promoID, err := strconv.ParseInt(c.Param("promo_id"), 10, 64)
 	if err != nil {
 		respondValidationError(c, "invalid promo id")
+		return
+	}
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	promo, err := h.repos.GetPromoByID(c.Request.Context(), promoID)
+	if err != nil {
+		if errors.Is(err, domain.ErrPromoNotFound) {
+			respondError(c, http.StatusNotFound, CodePromoNotFound, err.Error())
+		} else {
+			respondInternalError(c)
+		}
+		return
+	}
+	if promo.BranchID != branchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, promo.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionPromoDeactivate, authz.PromoResource(promo.ID, promo.BranchID, orgID)) {
 		return
 	}
 

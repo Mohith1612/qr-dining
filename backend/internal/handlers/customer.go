@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
@@ -20,10 +21,11 @@ type CustomerHandler struct {
 	repos       *repository.Repos
 	guestTokens *auth.GuestTokenService
 	flags       config.FeatureFlags
+	authz       *authz.Authorizer
 }
 
-func NewCustomerHandler(svc *services.CustomerService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *CustomerHandler {
-	return &CustomerHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags}
+func NewCustomerHandler(svc *services.CustomerService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer) *CustomerHandler {
+	return &CustomerHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags, authz: authorizer}
 }
 
 type linkCustomerRequest struct {
@@ -124,6 +126,22 @@ func (h *CustomerHandler) GetCustomerHistory(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
+	customer, err := h.repos.GetCustomerByID(c.Request.Context(), customerID)
+	if err != nil {
+		if errors.Is(err, domain.ErrCustomerNotFound) {
+			respondError(c, http.StatusNotFound, CodeCustomerNotFound, err.Error())
+		} else {
+			respondInternalError(c)
+		}
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionCustomerHistory, authz.CustomerResource(customer.ID, customer.RestaurantID)) {
+		return
+	}
 
 	history, err := h.svc.GetCustomerHistory(c.Request.Context(), customerID, restaurant.ID)
 	if err != nil {
@@ -156,6 +174,22 @@ func (h *CustomerHandler) DeleteCustomer(c *gin.Context) {
 	restaurant, err := h.repos.GetRestaurantByBranchID(c.Request.Context(), staffSession.BranchID)
 	if err != nil {
 		respondInternalError(c)
+		return
+	}
+	customer, err := h.repos.GetCustomerByID(c.Request.Context(), customerID)
+	if err != nil {
+		if errors.Is(err, domain.ErrCustomerNotFound) {
+			respondError(c, http.StatusNotFound, CodeCustomerNotFound, err.Error())
+		} else {
+			respondInternalError(c)
+		}
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionCustomerDelete, authz.CustomerResource(customer.ID, customer.RestaurantID)) {
 		return
 	}
 

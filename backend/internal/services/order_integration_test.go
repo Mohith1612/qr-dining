@@ -135,7 +135,7 @@ func TestUpdateOrderStatus_InvalidTransition(t *testing.T) {
 	}
 
 	// pending → served is an invalid transition.
-	_, err = orderSvc.UpdateOrderStatus(ctx, result.Order.ID, domain.OrderStatusServed, 1)
+	_, err = orderSvc.UpdateOrderStatus(ctx, result.Order.ID, f.BranchID, domain.OrderStatusServed, 1)
 	if err == nil {
 		t.Fatal("expected ErrInvalidOrderTransition, got nil")
 	}

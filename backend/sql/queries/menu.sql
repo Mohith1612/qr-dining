@@ -51,8 +51,20 @@ SET name = $2, description = $3, price = $4, position = $5,
 WHERE id = $1
 RETURNING *;
 
+-- name: UpdateMenuItemScoped :one
+UPDATE menu_items
+SET name = $3, description = $4, price = $5, position = $6,
+    dietary_flags = $7, item_badges = $8, spice_level = $9,
+    category_id = COALESCE(sqlc.narg('category_id'), category_id),
+    image_url = COALESCE(sqlc.narg('image_url'), image_url)
+WHERE id = $1 AND branch_id = $2
+RETURNING *;
+
 -- name: UpdateMenuItemAvailability :exec
 UPDATE menu_items SET is_available = $2 WHERE id = $1;
+
+-- name: UpdateMenuItemAvailabilityScoped :exec
+UPDATE menu_items SET is_available = $3 WHERE id = $1 AND branch_id = $2;
 
 -- name: CreateTable :one
 INSERT INTO tables (branch_id, identifier, capacity, qr_code_token)
@@ -71,6 +83,9 @@ ORDER BY featured_sort_order ASC, id ASC;
 
 -- name: UpdateMenuItemFeatured :exec
 UPDATE menu_items SET is_featured = $2, featured_sort_order = $3 WHERE id = $1;
+
+-- name: UpdateMenuItemFeaturedScoped :exec
+UPDATE menu_items SET is_featured = $3, featured_sort_order = $4 WHERE id = $1 AND branch_id = $2;
 
 -- name: ListAllMenuCategoriesForBranch :many
 SELECT * FROM menu_categories
@@ -104,3 +119,26 @@ RETURNING *;
 
 -- name: DeleteItemModifier :exec
 DELETE FROM item_modifiers WHERE id = $1;
+
+-- name: DeleteItemModifierScoped :exec
+DELETE FROM item_modifiers
+USING menu_items
+WHERE item_modifiers.id = $1
+  AND item_modifiers.item_id = menu_items.id
+  AND menu_items.branch_id = $2;
+
+-- name: GetMenuCategoryByID :one
+SELECT * FROM menu_categories WHERE id = $1;
+
+-- name: GetModifierWithItemBranch :one
+SELECT im.*, mi.branch_id
+FROM item_modifiers im
+JOIN menu_items mi ON mi.id = im.item_id
+WHERE im.id = $1;
+
+-- name: CreateItemModifierScoped :one
+INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group)
+SELECT $1, $3, $4, $5, $6
+FROM menu_items
+WHERE id = $1 AND branch_id = $2
+RETURNING *;

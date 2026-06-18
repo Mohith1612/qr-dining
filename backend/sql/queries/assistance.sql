@@ -13,6 +13,16 @@ SET status = $2,
 WHERE id = $1
 RETURNING *;
 
+-- name: UpdateAssistanceStatusScoped :one
+UPDATE assistance_requests ar
+SET status = $3,
+    resolved_at = CASE WHEN $3::assistance_status = 'resolved' THEN NOW() ELSE ar.resolved_at END
+FROM sessions s
+WHERE ar.id = $1
+  AND ar.session_id = s.id
+  AND s.branch_id = $2
+RETURNING ar.*;
+
 -- name: ListActiveAssistanceForBranch :many
 SELECT ar.*
 FROM assistance_requests ar

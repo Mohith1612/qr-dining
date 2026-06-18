@@ -198,6 +198,24 @@ func (s *StaffService) RotatePIN(ctx context.Context, staffID int64, currentPIN,
 	return s.repos.UpdateStaffPIN(ctx, staffID, string(newHash))
 }
 
+func (s *StaffService) RotatePINScoped(ctx context.Context, staffID, branchID int64, currentPIN, newPIN string) error {
+	staff, err := s.repos.GetStaffByID(ctx, staffID)
+	if err != nil {
+		return err
+	}
+	if staff.BranchID != branchID {
+		return domain.ErrUnauthorized
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(staff.PinHash), []byte(currentPIN)); err != nil {
+		return domain.ErrUnauthorized
+	}
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPIN), bcryptCost)
+	if err != nil {
+		return fmt.Errorf("hash new PIN: %w", err)
+	}
+	return s.repos.UpdateStaffPINScoped(ctx, staffID, branchID, string(newHash))
+}
+
 // Deactivate marks a staff member inactive and invalidates all their active Redis tokens.
 func (s *StaffService) Deactivate(ctx context.Context, staffID int64) error {
 	if err := s.repos.DeactivateStaff(ctx, staffID); err != nil {
@@ -208,6 +226,26 @@ func (s *StaffService) Deactivate(ctx context.Context, staffID int64) error {
 	}
 	// Invalidate all active tokens for this staff member.
 	// Redis is ephemeral so failures are non-fatal, but must be observable.
+	setKey := staffTokenSetKey(staffID)
+	tokenKeys, err := s.cache.SMembers(ctx, setKey)
+	if err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to fetch token set for deactivated staff; tokens may persist until TTL")
+	} else if len(tokenKeys) > 0 {
+		keysToDelete := append(tokenKeys, setKey)
+		if err := s.cache.DeleteMany(ctx, keysToDelete...); err != nil {
+			s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to batch-delete tokens for deactivated staff; tokens may persist until TTL")
+		}
+	}
+	return nil
+}
+
+func (s *StaffService) DeactivateScoped(ctx context.Context, staffID, branchID int64) error {
+	if err := s.repos.DeactivateStaffScoped(ctx, staffID, branchID); err != nil {
+		return err
+	}
+	if err := s.repos.RevokeStaffSessionsForStaff(ctx, staffID); err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to revoke durable staff sessions")
+	}
 	setKey := staffTokenSetKey(staffID)
 	tokenKeys, err := s.cache.SMembers(ctx, setKey)
 	if err != nil {

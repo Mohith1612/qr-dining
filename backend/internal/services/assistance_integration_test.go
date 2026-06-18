@@ -38,7 +38,7 @@ func TestAssistanceLifecycle(t *testing.T) {
 	}
 
 	const staffID int64 = 1
-	acked, err := assistanceSvc.Acknowledge(ctx, ar.ID, staffID)
+	acked, err := assistanceSvc.Acknowledge(ctx, ar.ID, f.BranchID, staffID)
 	if err != nil {
 		t.Fatalf("Acknowledge: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestAssistanceLifecycle(t *testing.T) {
 		t.Errorf("after ack: got %q, want acknowledged", acked.Status)
 	}
 
-	resolved, err := assistanceSvc.Resolve(ctx, ar.ID, staffID)
+	resolved, err := assistanceSvc.Resolve(ctx, ar.ID, f.BranchID, staffID)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestAssistance_InvalidTransition(t *testing.T) {
 	}
 
 	// pending → resolved skipping acknowledged is invalid.
-	_, err = assistanceSvc.Resolve(ctx, ar.ID, 1)
+	_, err = assistanceSvc.Resolve(ctx, ar.ID, f.BranchID, 1)
 	if err == nil {
 		t.Fatal("expected ErrInvalidAssistanceTransition, got nil")
 	}

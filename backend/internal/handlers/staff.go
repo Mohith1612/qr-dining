@@ -5,23 +5,27 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/observability"
+	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
 type StaffHandler struct {
 	svc     *services.StaffService
+	repos   *repository.Repos
 	metrics *observability.Metrics
 	flags   config.FeatureFlags
+	authz   *authz.Authorizer
 }
 
-func NewStaffHandler(svc *services.StaffService, metrics *observability.Metrics, flags config.FeatureFlags) *StaffHandler {
-	return &StaffHandler{svc: svc, metrics: metrics, flags: flags}
+func NewStaffHandler(svc *services.StaffService, repos *repository.Repos, metrics *observability.Metrics, flags config.FeatureFlags, authorizer *authz.Authorizer) *StaffHandler {
+	return &StaffHandler{svc: svc, repos: repos, metrics: metrics, flags: flags, authz: authorizer}
 }
 
 type staffAuthRequest struct {
@@ -127,12 +131,29 @@ func (h *StaffHandler) RotatePIN(c *gin.Context) {
 	}
 
 	sess, ok := middleware.GetStaffSession(c)
-	if !ok || sess.StaffID != staffID {
-		// Staff may only rotate their own PIN; owners can rotate any.
-		if !ok || sess.Role != sqlc.StaffRoleOwner {
-			respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
-			return
-		}
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	target, err := h.repos.GetStaffByID(c.Request.Context(), staffID)
+	if err != nil {
+		respondError(c, http.StatusNotFound, CodeUnauthorized, "staff not found")
+		return
+	}
+	if sess.StaffID != staffID && sess.Role != sqlc.StaffRoleOwner {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionStaffPinUpdate, authz.StaffResource(target.ID, target.BranchID, orgID)) {
+		return
 	}
 
 	var req rotatePINRequest
@@ -141,7 +162,7 @@ func (h *StaffHandler) RotatePIN(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.RotatePIN(c.Request.Context(), staffID, req.CurrentPIN, req.NewPIN); err != nil {
+	if err := h.svc.RotatePINScoped(c.Request.Context(), staffID, target.BranchID, req.CurrentPIN, req.NewPIN); err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
 			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "current PIN is incorrect")
 			return
@@ -167,8 +188,24 @@ func (h *StaffHandler) DeactivateStaff(c *gin.Context) {
 		respondError(c, http.StatusForbidden, CodeForbidden, "only owners can deactivate staff")
 		return
 	}
+	target, err := h.repos.GetStaffByID(c.Request.Context(), staffID)
+	if err != nil {
+		respondError(c, http.StatusNotFound, CodeUnauthorized, "staff not found")
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionStaffDeactivate, authz.StaffResource(target.ID, target.BranchID, orgID)) {
+		return
+	}
 
-	if err := h.svc.Deactivate(c.Request.Context(), staffID); err != nil {
+	if err := h.svc.DeactivateScoped(c.Request.Context(), staffID, target.BranchID); err != nil {
 		respondInternalError(c)
 		return
 	}

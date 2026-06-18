@@ -57,11 +57,67 @@ func (r *Repos) UpdateMenuItem(ctx context.Context, p sqlc.UpdateMenuItemParams)
 	return item, err
 }
 
+func (r *Repos) UpdateMenuItemScoped(ctx context.Context, p sqlc.UpdateMenuItemParams, branchID int64) (sqlc.MenuItem, error) {
+	row := r.db.QueryRow(ctx, `
+UPDATE menu_items
+SET name = $3, description = $4, price = $5, position = $6,
+    dietary_flags = $7, item_badges = $8, spice_level = $9,
+    category_id = COALESCE($10, category_id),
+    image_url = COALESCE($11, image_url)
+WHERE id = $1 AND branch_id = $2
+RETURNING id, category_id, branch_id, name, description, price, is_available, position, is_featured, featured_sort_order, dietary_flags, item_badges, spice_level, image_url
+`,
+		p.ID,
+		branchID,
+		p.Name,
+		p.Description,
+		p.Price,
+		p.Position,
+		p.DietaryFlags,
+		p.ItemBadges,
+		p.SpiceLevel,
+		p.CategoryID,
+		p.ImageUrl,
+	)
+	var item sqlc.MenuItem
+	err := row.Scan(
+		&item.ID,
+		&item.CategoryID,
+		&item.BranchID,
+		&item.Name,
+		&item.Description,
+		&item.Price,
+		&item.IsAvailable,
+		&item.Position,
+		&item.IsFeatured,
+		&item.FeaturedSortOrder,
+		&item.DietaryFlags,
+		&item.ItemBadges,
+		&item.SpiceLevel,
+		&item.ImageUrl,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.MenuItem{}, domain.ErrMenuItemNotFound
+	}
+	return item, err
+}
+
 func (r *Repos) UpdateMenuItemAvailability(ctx context.Context, itemID int64, available bool) error {
 	return r.q.UpdateMenuItemAvailability(ctx, sqlc.UpdateMenuItemAvailabilityParams{
 		ID:          itemID,
 		IsAvailable: available,
 	})
+}
+
+func (r *Repos) UpdateMenuItemAvailabilityScoped(ctx context.Context, itemID, branchID int64, available bool) error {
+	tag, err := r.db.Exec(ctx, `UPDATE menu_items SET is_available = $3 WHERE id = $1 AND branch_id = $2`, itemID, branchID, available)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrMenuItemNotFound
+	}
+	return nil
 }
 
 func (r *Repos) ListFeaturedMenuItems(ctx context.Context, branchID int64) ([]sqlc.MenuItem, error) {
@@ -74,6 +130,17 @@ func (r *Repos) UpdateMenuItemFeatured(ctx context.Context, itemID int64, featur
 		IsFeatured:        featured,
 		FeaturedSortOrder: sortOrder,
 	})
+}
+
+func (r *Repos) UpdateMenuItemFeaturedScoped(ctx context.Context, itemID, branchID int64, featured bool, sortOrder int16) error {
+	tag, err := r.db.Exec(ctx, `UPDATE menu_items SET is_featured = $3, featured_sort_order = $4 WHERE id = $1 AND branch_id = $2`, itemID, branchID, featured, sortOrder)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrMenuItemNotFound
+	}
+	return nil
 }
 
 func (r *Repos) GetBranchByID(ctx context.Context, id int64) (sqlc.Branch, error) {
@@ -127,10 +194,73 @@ func (r *Repos) UpdateMenuCategory(ctx context.Context, p sqlc.UpdateMenuCategor
 	return cat, err
 }
 
+func (r *Repos) GetMenuCategoryByID(ctx context.Context, id int64) (sqlc.MenuCategory, error) {
+	row := r.db.QueryRow(ctx, `SELECT id, branch_id, name, position, is_active FROM menu_categories WHERE id = $1`, id)
+	var cat sqlc.MenuCategory
+	err := row.Scan(&cat.ID, &cat.BranchID, &cat.Name, &cat.Position, &cat.IsActive)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.MenuCategory{}, domain.ErrCategoryNotFound
+	}
+	return cat, err
+}
+
 func (r *Repos) CreateItemModifier(ctx context.Context, p sqlc.CreateItemModifierParams) (sqlc.ItemModifier, error) {
 	return r.q.CreateItemModifier(ctx, p)
 }
 
+func (r *Repos) CreateItemModifierScoped(ctx context.Context, p sqlc.CreateItemModifierParams, branchID int64) (sqlc.ItemModifier, error) {
+	row := r.db.QueryRow(ctx, `
+INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group)
+SELECT $1, $3, $4, $5, $6
+FROM menu_items
+WHERE id = $1 AND branch_id = $2
+RETURNING id, item_id, name, price_delta, is_required, modifier_group
+`, p.ItemID, branchID, p.Name, p.PriceDelta, p.IsRequired, p.ModifierGroup)
+	var mod sqlc.ItemModifier
+	err := row.Scan(&mod.ID, &mod.ItemID, &mod.Name, &mod.PriceDelta, &mod.IsRequired, &mod.ModifierGroup)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.ItemModifier{}, domain.ErrMenuItemNotFound
+	}
+	return mod, err
+}
+
 func (r *Repos) DeleteItemModifier(ctx context.Context, modifierID int64) error {
 	return r.q.DeleteItemModifier(ctx, modifierID)
+}
+
+type ModifierWithItemBranch struct {
+	sqlc.ItemModifier
+	BranchID int64
+}
+
+func (r *Repos) GetModifierWithItemBranch(ctx context.Context, modifierID int64) (ModifierWithItemBranch, error) {
+	row := r.db.QueryRow(ctx, `
+SELECT im.id, im.item_id, im.name, im.price_delta, im.is_required, im.modifier_group, mi.branch_id
+FROM item_modifiers im
+JOIN menu_items mi ON mi.id = im.item_id
+WHERE im.id = $1
+`, modifierID)
+	var mod ModifierWithItemBranch
+	err := row.Scan(&mod.ID, &mod.ItemID, &mod.Name, &mod.PriceDelta, &mod.IsRequired, &mod.ModifierGroup, &mod.BranchID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ModifierWithItemBranch{}, domain.ErrModifierNotFound
+	}
+	return mod, err
+}
+
+func (r *Repos) DeleteItemModifierScoped(ctx context.Context, modifierID, branchID int64) error {
+	tag, err := r.db.Exec(ctx, `
+DELETE FROM item_modifiers
+USING menu_items
+WHERE item_modifiers.id = $1
+  AND item_modifiers.item_id = menu_items.id
+  AND menu_items.branch_id = $2
+`, modifierID, branchID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrModifierNotFound
+	}
+	return nil
 }

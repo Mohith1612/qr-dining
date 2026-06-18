@@ -46,8 +46,41 @@ func (r *Repos) UpdateStaffPIN(ctx context.Context, staffID int64, pinHash strin
 	return r.q.UpdateStaffPIN(ctx, sqlc.UpdateStaffPINParams{ID: staffID, PinHash: pinHash})
 }
 
+func (r *Repos) UpdateStaffPINScoped(ctx context.Context, staffID, branchID int64, pinHash string) error {
+	tag, err := r.db.Exec(ctx, `
+UPDATE staff
+SET pin_hash = $3,
+    pin_version = pin_version + 1,
+    token_version = token_version + 1
+WHERE id = $1 AND branch_id = $2
+`, staffID, branchID, pinHash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrUnauthorized
+	}
+	return nil
+}
+
 func (r *Repos) DeactivateStaff(ctx context.Context, staffID int64) error {
 	return r.q.DeactivateStaff(ctx, staffID)
+}
+
+func (r *Repos) DeactivateStaffScoped(ctx context.Context, staffID, branchID int64) error {
+	tag, err := r.db.Exec(ctx, `
+UPDATE staff
+SET is_active = FALSE,
+    token_version = token_version + 1
+WHERE id = $1 AND branch_id = $2
+`, staffID, branchID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrUnauthorized
+	}
+	return nil
 }
 
 func (r *Repos) CreateStaffSession(ctx context.Context, staffID, branchID int64, tokenHash, deviceName string, tokenVersion, pinVersion int32, expiresAt time.Time) (sqlc.StaffSession, error) {

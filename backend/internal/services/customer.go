@@ -97,7 +97,7 @@ func (s *CustomerService) SearchCustomers(ctx context.Context, restaurantID int6
 }
 
 func (s *CustomerService) GetCustomerHistory(ctx context.Context, customerID, restaurantID int64) ([]CustomerHistoryEntry, error) {
-	rows, err := s.repos.GetCustomerSessionHistory(ctx, customerID)
+	rows, err := s.repos.GetCustomerSessionHistoryScoped(ctx, customerID, restaurantID)
 	if err != nil {
 		return nil, err
 	}

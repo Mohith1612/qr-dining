@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
@@ -23,10 +24,11 @@ type AssistanceHandler struct {
 	metrics     *observability.Metrics
 	guestTokens *auth.GuestTokenService
 	flags       config.FeatureFlags
+	authz       *authz.Authorizer
 }
 
-func NewAssistanceHandler(svc *services.AssistanceService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *AssistanceHandler {
-	return &AssistanceHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags}
+func NewAssistanceHandler(svc *services.AssistanceService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer) *AssistanceHandler {
+	return &AssistanceHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags, authz: authorizer}
 }
 
 type requestAssistanceRequest struct {
@@ -87,7 +89,28 @@ func (h *AssistanceHandler) Acknowledge(c *gin.Context) {
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
 		return
 	}
-	ar, err := h.svc.Acknowledge(c.Request.Context(), id, staffSession.StaffID)
+	target, err := h.repos.GetAssistanceRequestByID(c.Request.Context(), id)
+	if err != nil {
+		assistanceError(c, err)
+		return
+	}
+	session, err := h.repos.GetSessionByID(c.Request.Context(), target.SessionID)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, session.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionAssistanceAck, authz.AssistanceResource(target.ID, session.BranchID, target.SessionID, orgID)) {
+		return
+	}
+	ar, err := h.svc.Acknowledge(c.Request.Context(), id, session.BranchID, staffSession.StaffID)
 	if err != nil {
 		assistanceError(c, err)
 		return
@@ -107,7 +130,28 @@ func (h *AssistanceHandler) Resolve(c *gin.Context) {
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
 		return
 	}
-	ar, err := h.svc.Resolve(c.Request.Context(), id, staffSession.StaffID)
+	target, err := h.repos.GetAssistanceRequestByID(c.Request.Context(), id)
+	if err != nil {
+		assistanceError(c, err)
+		return
+	}
+	session, err := h.repos.GetSessionByID(c.Request.Context(), target.SessionID)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, session.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionAssistanceResolve, authz.AssistanceResource(target.ID, session.BranchID, target.SessionID, orgID)) {
+		return
+	}
+	ar, err := h.svc.Resolve(c.Request.Context(), id, session.BranchID, staffSession.StaffID)
 	if err != nil {
 		assistanceError(c, err)
 		return

@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
@@ -22,10 +23,11 @@ type OrderHandler struct {
 	metrics     *observability.Metrics
 	guestTokens *auth.GuestTokenService
 	flags       config.FeatureFlags
+	authz       *authz.Authorizer
 }
 
-func NewOrderHandler(svc *services.OrderService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *OrderHandler {
-	return &OrderHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags}
+func NewOrderHandler(svc *services.OrderService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer) *OrderHandler {
+	return &OrderHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags, authz: authorizer}
 }
 
 type placeOrderRequest struct {
@@ -148,7 +150,27 @@ func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
 		return
 	}
-	order, err := h.svc.UpdateOrderStatus(c.Request.Context(), orderID, newStatus, staffSession.StaffID)
+	target, err := h.svc.GetOrder(c.Request.Context(), orderID)
+	if err != nil {
+		if errors.Is(err, domain.ErrOrderNotFound) {
+			respondError(c, http.StatusNotFound, CodeOrderNotFound, err.Error())
+		} else {
+			respondInternalError(c)
+		}
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionOrderStatusUpdate, authz.OrderResource(target.ID, target.BranchID, target.SessionID, orgID)) {
+		return
+	}
+	order, err := h.svc.UpdateOrderStatus(c.Request.Context(), orderID, target.BranchID, newStatus, staffSession.StaffID)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrOrderNotFound):
