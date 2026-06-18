@@ -31,7 +31,7 @@ SIZE=$(du -sh "$FILENAME" | cut -f1)
 echo "Backup complete: $FILENAME ($SIZE)"
 
 # Optional: clean up backups older than RETENTION_DAYS (default 7).
-RETENTION_DAYS="${RETENTION_DAYS:-7}"
+RETENTION_DAYS="${RETENTION_DAYS:-30}"
 if command -v find &>/dev/null; then
   DELETED=$(find "$BACKUP_DIR" -name "backup_*.dump" -mtime +"$RETENTION_DAYS" -print -delete | wc -l)
   if [ "$DELETED" -gt 0 ]; then
