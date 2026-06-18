@@ -34,7 +34,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
         display: "inline-flex",
         alignItems: "center",
         gap: 5,
-        fontSize: 10.5,
+        fontSize: 11,
         fontWeight: 500,
         textTransform: "uppercase",
         letterSpacing: "0.03em",

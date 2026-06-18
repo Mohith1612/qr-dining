@@ -69,7 +69,7 @@ export function StaffBar({ onSignOut }: StaffBarProps) {
         <span style={{
           marginLeft: 4, padding: "4px 10px", borderRadius: 999,
           background: roleColor.bg, color: roleColor.fg,
-          fontSize: 10.5, letterSpacing: "0.10em", textTransform: "uppercase", fontWeight: 600,
+          fontSize: 11, letterSpacing: "0.10em", textTransform: "uppercase", fontWeight: 600,
         }}>
           {roleLabel}
         </span>
