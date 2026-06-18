@@ -4,6 +4,7 @@ package services_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
@@ -77,6 +78,61 @@ func TestCreateSession_AlreadyActive(t *testing.T) {
 	}
 	if !isErr(err, domain.ErrSessionAlreadyActive) {
 		t.Errorf("expected ErrSessionAlreadyActive, got %v", err)
+	}
+}
+
+func TestCreateSession_ConcurrentSingleActiveSession(t *testing.T) {
+	pool := testutil.OpenTestDB(t)
+	f := testutil.SeedFixtures(t, pool)
+	repos := testutil.NewTestRepos(pool)
+	pub := events.NewNoopPublisher()
+	svc := newTestSessionService(repos, pub)
+	t.Cleanup(func() {
+		testutil.TruncateTables(t, pool, "sessions", "session_participants")
+	})
+
+	ctx := context.Background()
+	const attempts = 12
+	var wg sync.WaitGroup
+	errs := make(chan error, attempts)
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := svc.CreateSession(ctx, f.TableID, "Guest", "fp")
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	successes := 0
+	for err := range errs {
+		if err == nil {
+			successes++
+			continue
+		}
+		if !isErr(err, domain.ErrSessionAlreadyActive) {
+			t.Fatalf("unexpected CreateSession error: %v", err)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful sessions: got %d, want 1", successes)
+	}
+
+	var activeCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM sessions WHERE table_id = $1 AND status = 'active'`, f.TableID).Scan(&activeCount); err != nil {
+		t.Fatalf("query active sessions: %v", err)
+	}
+	if activeCount != 1 {
+		t.Fatalf("active sessions: got %d, want 1", activeCount)
+	}
+	var tableStatus string
+	if err := pool.QueryRow(ctx, `SELECT status FROM tables WHERE id = $1`, f.TableID).Scan(&tableStatus); err != nil {
+		t.Fatalf("query table: %v", err)
+	}
+	if tableStatus != "occupied" {
+		t.Fatalf("table status: got %q, want occupied", tableStatus)
 	}
 }
 

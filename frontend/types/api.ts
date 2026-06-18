@@ -1,3 +1,5 @@
+import type { WSEnvelope } from "./ws"
+
 // TypeScript types generated from openapi.yaml — do not diverge from backend contract
 
 export interface APIError {
@@ -165,6 +167,7 @@ export interface SessionSnapshot {
   participants: Participant[]
   orders: Order[]
   assistance: AssistanceRequest[]
+  missed_events?: WSEnvelope[]
   snapshot_at: string
 }
 

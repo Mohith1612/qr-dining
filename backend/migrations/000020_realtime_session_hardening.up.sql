@@ -1,5 +1,39 @@
 -- Phase 6: realtime and session lifecycle hardening.
 
+WITH ranked AS (
+    SELECT id,
+           ROW_NUMBER() OVER (
+               PARTITION BY table_id
+               ORDER BY (host_participant_id IS NOT NULL) DESC, created_at DESC, id DESC
+           ) AS rn
+    FROM sessions
+    WHERE status = 'active'
+),
+abandoned AS (
+    UPDATE sessions s
+    SET status = 'abandoned', closed_at = NOW()
+    FROM ranked r
+    WHERE s.id = r.id AND r.rn > 1
+    RETURNING s.id
+)
+SELECT COUNT(*) FROM abandoned;
+
+UPDATE tables t
+SET status = 'available'
+WHERE t.status = 'occupied'
+  AND NOT EXISTS (
+      SELECT 1 FROM sessions s
+      WHERE s.table_id = t.id AND s.status = 'active'
+  );
+
+UPDATE tables t
+SET status = 'occupied'
+WHERE EXISTS (
+    SELECT 1 FROM sessions s
+    WHERE s.table_id = t.id AND s.status = 'active'
+)
+  AND t.status = 'available';
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_one_active_per_table
     ON sessions(table_id)
     WHERE status = 'active';

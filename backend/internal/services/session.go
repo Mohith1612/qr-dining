@@ -13,6 +13,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/observability"
 	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
 	"github.com/Mohith1612/qr-dining/internal/repository"
+	ws "github.com/Mohith1612/qr-dining/internal/websocket"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"
@@ -203,12 +204,13 @@ type SessionSnapshot struct {
 	Participants    []sqlc.SessionParticipant `json:"participants"`
 	Orders          []sqlc.Order              `json:"orders"`
 	Assistance      []sqlc.AssistanceRequest  `json:"assistance"`
+	MissedEvents    []ws.Envelope             `json:"missed_events,omitempty"`
 	SnapshotAt      time.Time                 `json:"snapshot_at"`
 }
 
 // GetSnapshot assembles the full current state of a session in parallel.
 // Used by clients to reconcile state after a WebSocket reconnect.
-func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID) (SessionSnapshot, error) {
+func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID, lastSequence int64) (SessionSnapshot, error) {
 	sess, err := s.repos.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return SessionSnapshot{}, err
@@ -219,6 +221,7 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID) (
 		orders          []sqlc.Order
 		assistance      []sqlc.AssistanceRequest
 		tableIdentifier string
+		missedEvents    []ws.Envelope
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -244,6 +247,13 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID) (
 		}
 		return nil // non-fatal: fall back to numeric table_id on frontend
 	})
+	if lastSequence > 0 {
+		g.Go(func() error {
+			var err error
+			missedEvents, err = s.repos.ListSessionEventsAfter(gctx, sessionID, lastSequence)
+			return err
+		})
+	}
 
 	if err := g.Wait(); err != nil {
 		return SessionSnapshot{}, err
@@ -255,6 +265,7 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID) (
 		Participants:    participants,
 		Orders:          orders,
 		Assistance:      assistance,
+		MissedEvents:    missedEvents,
 		SnapshotAt:      time.Now().UTC(),
 	}, nil
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/Mohith1612/qr-dining/internal/auth"
 	"github.com/Mohith1612/qr-dining/internal/config"
@@ -35,7 +36,16 @@ func (h *SnapshotHandler) GetSnapshot(c *gin.Context) {
 		return
 	}
 
-	snapshot, err := h.svc.GetSnapshot(c.Request.Context(), sessionID)
+	var lastSequence int64
+	if raw := c.Query("last_sequence"); raw != "" {
+		lastSequence, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || lastSequence < 0 {
+			respondValidationError(c, "invalid last_sequence")
+			return
+		}
+	}
+
+	snapshot, err := h.svc.GetSnapshot(c.Request.Context(), sessionID, lastSequence)
 	if err != nil {
 		sessionError(c, err)
 		return

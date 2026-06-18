@@ -31,7 +31,10 @@ export const sessionsApi = {
   wsTicket: (id: string, guestToken: string) =>
     api.post<WSTicketResponse>(`/sessions/${id}/ws-ticket`, {}, { guestToken }),
 
-  snapshot: (id: string, guestToken?: string) => api.get<SessionSnapshot>(`/sessions/${id}/snapshot`, { guestToken }),
+  snapshot: (id: string, guestToken?: string, lastSequence?: number) => {
+    const query = lastSequence && lastSequence > 0 ? `?last_sequence=${lastSequence}` : ""
+    return api.get<SessionSnapshot>(`/sessions/${id}/snapshot${query}`, { guestToken })
+  },
 
   close: (id: string, participantId: number) =>
     api.delete<void>(`/sessions/${id}`, { participantId }),

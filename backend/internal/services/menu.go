@@ -47,10 +47,11 @@ type FullMenu struct {
 }
 
 const menuCacheTTL = 5 * time.Minute
+const menuCacheVersion = 1
 
 // GetFullMenu returns the complete menu for a branch, served from Redis cache when available.
 func (s *MenuService) GetFullMenu(ctx context.Context, branchID int64) (FullMenu, error) {
-	cacheKey := fmt.Sprintf("menu:%d", branchID)
+	cacheKey := s.menuCacheKey(ctx, branchID)
 
 	var menu FullMenu
 	if hit, _ := s.cache.Get(ctx, cacheKey, &menu); hit {
@@ -112,7 +113,18 @@ func (s *MenuService) GetTableWithActiveSession(ctx context.Context, token strin
 // InvalidateMenuCache evicts the cached menu for a branch so the next request rebuilds from DB.
 // Call this whenever menu items, categories, or modifiers change.
 func (s *MenuService) InvalidateMenuCache(ctx context.Context, branchID int64) {
-	_ = s.cache.Invalidate(ctx, fmt.Sprintf("menu:%d", branchID))
+	_ = s.cache.DeleteMany(ctx, s.menuCacheKey(ctx, branchID), legacyMenuCacheKey(branchID))
+}
+
+func (s *MenuService) menuCacheKey(ctx context.Context, branchID int64) string {
+	if org, err := s.repos.GetOrganizationByBranchID(ctx, branchID); err == nil {
+		return fmt.Sprintf("org:%d:branch:%d:menu:v%d", org.ID, branchID, menuCacheVersion)
+	}
+	return legacyMenuCacheKey(branchID)
+}
+
+func legacyMenuCacheKey(branchID int64) string {
+	return fmt.Sprintf("menu:%d", branchID)
 }
 
 // CreateCategory creates a new menu category and invalidates the branch menu cache.

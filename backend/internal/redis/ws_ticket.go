@@ -30,10 +30,15 @@ type WSTicketClaims struct {
 
 type WSTicketStore struct {
 	client *goredis.Client
+	ttl    time.Duration
 }
 
 func NewWSTicketStore(client *goredis.Client) *WSTicketStore {
-	return &WSTicketStore{client: client}
+	return &WSTicketStore{client: client, ttl: wsTicketTTL}
+}
+
+func NewWSTicketStoreWithTTL(client *goredis.Client, ttl time.Duration) *WSTicketStore {
+	return &WSTicketStore{client: client, ttl: ttl}
 }
 
 func (s *WSTicketStore) Issue(ctx context.Context, claims WSTicketClaims) (string, error) {
@@ -43,13 +48,13 @@ func (s *WSTicketStore) Issue(ctx context.Context, claims WSTicketClaims) (strin
 	}
 	now := time.Now().UTC()
 	claims.IssuedAtUnix = now.Unix()
-	claims.ExpiresAtUnix = now.Add(wsTicketTTL).Unix()
+	claims.ExpiresAtUnix = now.Add(s.ttl).Unix()
 
 	data, err := json.Marshal(claims)
 	if err != nil {
 		return "", fmt.Errorf("marshal websocket ticket: %w", err)
 	}
-	if err := s.client.Set(ctx, wsTicketKey(token), data, wsTicketTTL).Err(); err != nil {
+	if err := s.client.Set(ctx, wsTicketKey(token), data, s.ttl).Err(); err != nil {
 		return "", fmt.Errorf("store websocket ticket: %w", err)
 	}
 	return token, nil

@@ -69,8 +69,10 @@ type AuthConfig struct {
 }
 
 type WorkerConfig struct {
-	StaleSessionInterval   time.Duration
-	PresenceExpiryInterval time.Duration
+	StaleSessionInterval     time.Duration
+	PresenceExpiryInterval   time.Duration
+	SessionReconcileInterval time.Duration
+	Region                   string
 }
 
 type FeatureFlags struct {
@@ -153,6 +155,8 @@ func Load() (*Config, error) {
 	// Workers
 	cfg.Worker.StaleSessionInterval = parseDuration("STALE_SESSION_INTERVAL", 5*time.Minute)
 	cfg.Worker.PresenceExpiryInterval = parseDuration("PRESENCE_EXPIRY_INTERVAL", 60*time.Second)
+	cfg.Worker.SessionReconcileInterval = parseDuration("SESSION_RECONCILE_INTERVAL", 5*time.Minute)
+	cfg.Worker.Region = getenv("WORKER_REGION", "default")
 
 	// Rollout flags. Phase 0 only parses these flags; later phases decide where
 	// each flag gates strict enforcement.

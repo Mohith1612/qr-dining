@@ -14,6 +14,7 @@ export class WSConnection {
   private ws: WebSocket | null = null
   private pingTimer: ReturnType<typeof setInterval> | null = null
   private attemptCount = 0
+  private lastSequence = 0
   private stopped = false
 
   constructor(
@@ -54,10 +55,7 @@ export class WSConnection {
       try {
         const envelope = JSON.parse(e.data as string) as WSEnvelope
         if (envelope.event === "PONG") return
-        const handler = this.handlers[envelope.event]
-        if (handler) {
-          handler(envelope.payload, envelope)
-        }
+        this.handleEnvelope(envelope)
       } catch {}
     }
 
@@ -106,7 +104,7 @@ export class WSConnection {
 
     try {
       const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
-      const snapshot = await sessionsApi.snapshot(this.sessionId, guestToken)
+      const snapshot = await sessionsApi.snapshot(this.sessionId, guestToken, this.lastSequence)
 
       if (snapshot.session.status !== "active") {
         // Session ended while disconnected — stop and let UI handle it
@@ -120,6 +118,9 @@ export class WSConnection {
         return
       }
 
+      for (const event of snapshot.missed_events ?? []) {
+        this.handleEnvelope(event)
+      }
       reconcileSnapshot(snapshot)
     } catch {
       // Snapshot fetch failed; retry with backoff
@@ -135,5 +136,15 @@ export class WSConnection {
     this.stopPing()
     this.ws?.close()
     useWsStore.getState().setStatus("disconnected")
+  }
+
+  private handleEnvelope(envelope: WSEnvelope): void {
+    if (typeof envelope.sequence === "number" && envelope.sequence > this.lastSequence) {
+      this.lastSequence = envelope.sequence
+    }
+    const handler = this.handlers[envelope.event]
+    if (handler) {
+      handler(envelope.payload, envelope)
+    }
   }
 }

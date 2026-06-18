@@ -7,8 +7,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	dbPkg "github.com/Mohith1612/qr-dining/internal/db"
+	dbsqlc "github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/events"
 	"github.com/Mohith1612/qr-dining/internal/observability"
 	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
@@ -72,6 +74,7 @@ func main() {
 	// 11. Initialize repository layer.
 	repos := repository.New(db, logger)
 	publisher.SetEventStore(repos)
+	auditWriter := audit.NewWriter(dbsqlc.New(db), cfg.FeatureFlags.AuditLogV2Enabled, logger, metrics.AuditWriteFailuresTotal)
 
 	// 12. Initialize HTTP server with all dependencies.
 	srv := server.New(cfg, db, redisClient, hub, metrics, logger, repos, publisher)
@@ -82,10 +85,11 @@ func main() {
 
 	// 14. Start background workers.
 	wq := &workerQuerier{repos: repos}
-	w := worker.New(db, wq, redisClient, publisher, presence, metrics, logger)
+	w := worker.New(db, wq, redisClient, publisher, presence, metrics, auditWriter, cfg.Worker.Region, logger)
 	go w.RunStaleSessionCleaner(ctx, cfg.Worker.StaleSessionInterval)
 	go w.RunSessionExpiryWarner(ctx, 5*time.Minute)
 	go w.RunPresenceExpiry(ctx, cfg.Worker.PresenceExpiryInterval)
+	go w.RunSessionTableReconciler(ctx, cfg.Worker.SessionReconcileInterval)
 
 	// 14b. Poll DB pool stats every 30s and export to Prometheus.
 	go func() {

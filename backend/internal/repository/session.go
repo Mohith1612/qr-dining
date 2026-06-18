@@ -127,3 +127,38 @@ RETURNING sequence, organization_id, branch_id, created_at
 	}
 	return env, nil
 }
+
+func (r *Repos) ListSessionEventsAfter(ctx context.Context, sessionID uuid.UUID, lastSequence int64) ([]ws.Envelope, error) {
+	rows, err := r.db.Query(ctx, `
+SELECT id, sequence, organization_id, branch_id, session_id, event, payload, created_at
+FROM session_events
+WHERE session_id = $1 AND sequence > $2
+ORDER BY sequence ASC
+LIMIT 500
+`, sessionID, lastSequence)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	events := []ws.Envelope{}
+	for rows.Next() {
+		var env ws.Envelope
+		var event string
+		if err := rows.Scan(
+			&env.EventID,
+			&env.Sequence,
+			&env.OrganizationID,
+			&env.BranchID,
+			&env.SessionID,
+			&event,
+			&env.Payload,
+			&env.Timestamp,
+		); err != nil {
+			return nil, err
+		}
+		env.Event = ws.EventType(event)
+		events = append(events, env)
+	}
+	return events, rows.Err()
+}
