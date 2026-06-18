@@ -7,17 +7,19 @@ import (
 
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
+	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type SessionHandler struct {
-	svc *services.SessionService
+	svc     *services.SessionService
+	metrics *observability.Metrics
 }
 
-func NewSessionHandler(svc *services.SessionService) *SessionHandler {
-	return &SessionHandler{svc: svc}
+func NewSessionHandler(svc *services.SessionService, metrics *observability.Metrics) *SessionHandler {
+	return &SessionHandler{svc: svc, metrics: metrics}
 }
 
 type createSessionRequest struct {
@@ -77,6 +79,7 @@ func (h *SessionHandler) Close(c *gin.Context) {
 		respondValidationError(c, "X-Participant-ID header required")
 		return
 	}
+	recordLegacyIdentityUsage(h.metrics, legacyMechanismHeaderParticipantID, legacyEndpointSession)
 
 	if err := h.svc.CloseSession(c.Request.Context(), id, &participantID); err != nil {
 		sessionError(c, err)

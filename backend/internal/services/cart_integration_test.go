@@ -17,7 +17,7 @@ func TestCart_AddAndRemoveItem(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	sessionSvc := services.NewSessionService(repos, pub)
+	sessionSvc := newTestSessionService(repos, pub)
 	cartSvc := services.NewCartService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants", "carts", "cart_items")
@@ -70,7 +70,7 @@ func TestCart_ModifierSnapshot(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	sessionSvc := services.NewSessionService(repos, pub)
+	sessionSvc := newTestSessionService(repos, pub)
 	cartSvc := services.NewCartService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants", "carts", "cart_items")

@@ -9,7 +9,6 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
-	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/Mohith1612/qr-dining/internal/testutil"
 )
 
@@ -18,8 +17,8 @@ func TestAssistanceLifecycle(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	sessionSvc := services.NewSessionService(repos, pub)
-	assistanceSvc := services.NewAssistanceService(repos, pub)
+	sessionSvc := newTestSessionService(repos, pub)
+	assistanceSvc := newTestAssistanceService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants", "assistance_requests")
 	})
@@ -64,8 +63,8 @@ func TestAssistance_InvalidTransition(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	sessionSvc := services.NewSessionService(repos, pub)
-	assistanceSvc := services.NewAssistanceService(repos, pub)
+	sessionSvc := newTestSessionService(repos, pub)
+	assistanceSvc := newTestAssistanceService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants", "assistance_requests")
 	})

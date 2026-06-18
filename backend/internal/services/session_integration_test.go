@@ -9,7 +9,6 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
-	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/Mohith1612/qr-dining/internal/testutil"
 )
 
@@ -18,7 +17,7 @@ func TestCreateSession_HappyPath(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	svc := services.NewSessionService(repos, pub)
+	svc := newTestSessionService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants")
 	})
@@ -62,7 +61,7 @@ func TestCreateSession_AlreadyActive(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	svc := services.NewSessionService(repos, pub)
+	svc := newTestSessionService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants")
 	})
@@ -86,7 +85,7 @@ func TestCloseSession_OnlyHost(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	svc := services.NewSessionService(repos, pub)
+	svc := newTestSessionService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants")
 	})
@@ -99,7 +98,7 @@ func TestCloseSession_OnlyHost(t *testing.T) {
 
 	// Non-host participant ID (host ID + 9999 is definitely not the host).
 	nonHostID := result.Participant.ID + 9999
-	if err := svc.CloseSession(ctx, result.Session.ID, nonHostID); err == nil {
+	if err := svc.CloseSession(ctx, result.Session.ID, &nonHostID); err == nil {
 		t.Fatal("expected ErrNotSessionHost, got nil")
 	}
 }
@@ -109,7 +108,7 @@ func TestJoinSession(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	svc := services.NewSessionService(repos, pub)
+	svc := newTestSessionService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants")
 	})
@@ -148,7 +147,7 @@ func TestCloseSession_ReleasesTable(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	svc := services.NewSessionService(repos, pub)
+	svc := newTestSessionService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants")
 	})
@@ -159,7 +158,7 @@ func TestCloseSession_ReleasesTable(t *testing.T) {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
-	if err := svc.CloseSession(ctx, result.Session.ID, result.Participant.ID); err != nil {
+	if err := svc.CloseSession(ctx, result.Session.ID, &result.Participant.ID); err != nil {
 		t.Fatalf("CloseSession: %v", err)
 	}
 

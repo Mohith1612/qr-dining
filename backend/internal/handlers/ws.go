@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	ws "github.com/Mohith1612/qr-dining/internal/websocket"
 	"github.com/gin-gonic/gin"
@@ -11,12 +12,13 @@ import (
 )
 
 type WSHandler struct {
-	hub   *ws.Hub
-	repos *repository.Repos
+	hub     *ws.Hub
+	repos   *repository.Repos
+	metrics *observability.Metrics
 }
 
-func NewWSHandler(hub *ws.Hub, repos *repository.Repos) *WSHandler {
-	return &WSHandler{hub: hub, repos: repos}
+func NewWSHandler(hub *ws.Hub, repos *repository.Repos, metrics *observability.Metrics) *WSHandler {
+	return &WSHandler{hub: hub, repos: repos, metrics: metrics}
 }
 
 // Upgrade upgrades the HTTP connection to WebSocket.
@@ -35,6 +37,7 @@ func (h *WSHandler) Upgrade(c *gin.Context) {
 		respondValidationError(c, "invalid participant_id")
 		return
 	}
+	recordLegacyIdentityUsage(h.metrics, legacyMechanismWSQueryParticipantID, legacyEndpointWebSocket)
 
 	// Validate session is active and participant belongs to it.
 	sess, err := h.repos.GetSessionByID(c.Request.Context(), sessionID)

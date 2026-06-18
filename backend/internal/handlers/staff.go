@@ -8,16 +8,18 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
+	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
 type StaffHandler struct {
-	svc *services.StaffService
+	svc     *services.StaffService
+	metrics *observability.Metrics
 }
 
-func NewStaffHandler(svc *services.StaffService) *StaffHandler {
-	return &StaffHandler{svc: svc}
+func NewStaffHandler(svc *services.StaffService, metrics *observability.Metrics) *StaffHandler {
+	return &StaffHandler{svc: svc, metrics: metrics}
 }
 
 type staffAuthRequest struct {
@@ -31,6 +33,7 @@ func (h *StaffHandler) Authenticate(c *gin.Context) {
 		respondValidationError(c, err.Error())
 		return
 	}
+	recordLegacyIdentityUsage(h.metrics, legacyMechanismBranchPIN, legacyEndpointStaffAuth)
 
 	session, err := h.svc.Authenticate(c.Request.Context(), req.BranchID, req.PIN)
 	if err != nil {

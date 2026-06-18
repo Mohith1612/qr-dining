@@ -11,13 +11,14 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig
-	DB     DBConfig
-	Redis  RedisConfig
-	Log    LogConfig
-	CORS   CORSConfig
-	Worker WorkerConfig
-	R2     R2Config
+	Server       ServerConfig
+	DB           DBConfig
+	Redis        RedisConfig
+	Log          LogConfig
+	CORS         CORSConfig
+	Worker       WorkerConfig
+	R2           R2Config
+	FeatureFlags FeatureFlags
 }
 
 type R2Config struct {
@@ -62,8 +63,20 @@ type CORSConfig struct {
 }
 
 type WorkerConfig struct {
-	StaleSessionInterval  time.Duration
+	StaleSessionInterval   time.Duration
 	PresenceExpiryInterval time.Duration
+}
+
+type FeatureFlags struct {
+	AuthGuestCredentialsRequired   bool
+	AuthStaffCodeRequired          bool
+	AuthStaffSessionDBRequired     bool
+	AuthzCentralPolicyEnforce      bool
+	TenancyOrganizationsEnabled    bool
+	AuditLogV2Enabled              bool
+	WSTicketAuthRequired           bool
+	PaymentStaffSettlementRequired bool
+	StrictBranchScopedMutations    bool
 }
 
 func Load() (*Config, error) {
@@ -130,6 +143,18 @@ func Load() (*Config, error) {
 	// Workers
 	cfg.Worker.StaleSessionInterval = parseDuration("STALE_SESSION_INTERVAL", 5*time.Minute)
 	cfg.Worker.PresenceExpiryInterval = parseDuration("PRESENCE_EXPIRY_INTERVAL", 60*time.Second)
+
+	// Rollout flags. Phase 0 only parses these flags; later phases decide where
+	// each flag gates strict enforcement.
+	cfg.FeatureFlags.AuthGuestCredentialsRequired = parseBool("AUTH_GUEST_CREDENTIALS_REQUIRED", false)
+	cfg.FeatureFlags.AuthStaffCodeRequired = parseBool("AUTH_STAFF_CODE_REQUIRED", false)
+	cfg.FeatureFlags.AuthStaffSessionDBRequired = parseBool("AUTH_STAFF_SESSION_DB_REQUIRED", false)
+	cfg.FeatureFlags.AuthzCentralPolicyEnforce = parseBool("AUTHZ_CENTRAL_POLICY_ENFORCE", false)
+	cfg.FeatureFlags.TenancyOrganizationsEnabled = parseBool("TENANCY_ORGANIZATIONS_ENABLED", false)
+	cfg.FeatureFlags.AuditLogV2Enabled = parseBool("AUDIT_LOG_V2_ENABLED", false)
+	cfg.FeatureFlags.WSTicketAuthRequired = parseBool("WS_TICKET_AUTH_REQUIRED", false)
+	cfg.FeatureFlags.PaymentStaffSettlementRequired = parseBool("PAYMENT_STAFF_SETTLEMENT_REQUIRED", false)
+	cfg.FeatureFlags.StrictBranchScopedMutations = parseBool("STRICT_BRANCH_SCOPED_MUTATIONS", false)
 
 	// R2 (optional — app runs without it; upload endpoints return 503 if not configured)
 	r2AccountID := getenv("R2_ACCOUNT_ID", "")
@@ -213,6 +238,19 @@ func parseDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func parseBool(key string, fallback bool) bool {
+	s := getenv(key, "")
+	if s == "" {
+		return fallback
+	}
+	v, err := strconv.ParseBool(s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warn: invalid %s=%q: %v — using default %t\n", key, s, err, fallback)
+		return fallback
+	}
+	return v
 }
 
 func splitComma(key, fallback string) []string {

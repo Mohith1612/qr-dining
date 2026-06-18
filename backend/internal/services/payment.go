@@ -45,13 +45,13 @@ func NewPaymentService(
 }
 
 type InitiatePaymentRequest struct {
-	SessionID    uuid.UUID
-	OrderID      *uuid.UUID // nil for session-level payments
-	Amount       float64
-	Method       sqlc.PaymentMethod
-	Subtotal     *float64 // optional bill breakdown
-	TaxAmount    *float64
-	SvcCharge    *float64
+	SessionID uuid.UUID
+	OrderID   *uuid.UUID // nil for session-level payments
+	Amount    float64
+	Method    sqlc.PaymentMethod
+	Subtotal  *float64 // optional bill breakdown
+	TaxAmount *float64
+	SvcCharge *float64
 }
 
 func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymentRequest) (sqlc.Payment, error) {
@@ -115,7 +115,9 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, req ProcessWebhookR
 	}
 	if !inserted {
 		// Already processed — idempotent replay, nothing to do.
-		s.metrics.IdempotencyReplaysTotal.WithLabelValues("webhook").Inc()
+		if s.metrics != nil && s.metrics.IdempotencyReplaysTotal != nil {
+			s.metrics.IdempotencyReplaysTotal.WithLabelValues("webhook").Inc()
+		}
 		return nil
 	}
 

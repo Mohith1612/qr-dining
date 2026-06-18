@@ -8,17 +8,19 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
+	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type AssistanceHandler struct {
-	svc *services.AssistanceService
+	svc     *services.AssistanceService
+	metrics *observability.Metrics
 }
 
-func NewAssistanceHandler(svc *services.AssistanceService) *AssistanceHandler {
-	return &AssistanceHandler{svc: svc}
+func NewAssistanceHandler(svc *services.AssistanceService, metrics *observability.Metrics) *AssistanceHandler {
+	return &AssistanceHandler{svc: svc, metrics: metrics}
 }
 
 type requestAssistanceRequest struct {
@@ -39,6 +41,7 @@ func (h *AssistanceHandler) Request(c *gin.Context) {
 		respondValidationError(c, err.Error())
 		return
 	}
+	recordLegacyIdentityUsage(h.metrics, legacyMechanismBodyParticipantID, legacyEndpointAssistance)
 
 	reqType := sqlc.AssistanceTypeWaiter
 	switch req.Type {

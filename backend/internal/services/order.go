@@ -56,7 +56,9 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	// Idempotency check before starting the transaction.
 	existing, err := s.repos.GetOrderByIdempotencyKey(ctx, req.IdempotencyKey)
 	if err == nil {
-		s.metrics.IdempotencyReplaysTotal.WithLabelValues("order").Inc()
+		if s.metrics != nil && s.metrics.IdempotencyReplaysTotal != nil {
+			s.metrics.IdempotencyReplaysTotal.WithLabelValues("order").Inc()
+		}
 		items, err := s.repos.ListOrderItems(ctx, existing.ID)
 		if err != nil {
 			return PlaceOrderResult{}, fmt.Errorf("fetch order items on replay: %w", err)
@@ -275,7 +277,9 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderID uuid.UUID,
 	if err != nil {
 		return sqlc.Order{}, err
 	}
-	s.metrics.OrderLifecycleDuration.WithLabelValues(string(current), string(newStatus)).Observe(time.Since(start).Seconds())
+	if s.metrics != nil && s.metrics.OrderLifecycleDuration != nil {
+		s.metrics.OrderLifecycleDuration.WithLabelValues(string(current), string(newStatus)).Observe(time.Since(start).Seconds())
+	}
 
 	s.publishOrderStatusEvent(ctx, order.SessionID, newStatus, updated)
 	s.repos.LogEvent(ctx, order.SessionID, order.BranchID, "ORDER_STATUS_CHANGED", "staff", staffID,

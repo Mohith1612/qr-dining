@@ -14,18 +14,18 @@ type Metrics struct {
 	HTTPRequestDuration *prometheus.HistogramVec
 
 	// WebSocket
-	WSConnectionsActive  prometheus.Gauge
-	WSMessagesSentTotal  *prometheus.CounterVec
-	WSClientEvictions    prometheus.Counter
-	WSReconnectsTotal    prometheus.Counter
+	WSConnectionsActive prometheus.Gauge
+	WSMessagesSentTotal *prometheus.CounterVec
+	WSClientEvictions   prometheus.Counter
+	WSReconnectsTotal   prometheus.Counter
 
 	// Database
-	DBQueryDuration    *prometheus.HistogramVec
-	DBErrorsTotal      *prometheus.CounterVec
-	DBPoolTotalConns   prometheus.Gauge
-	DBPoolIdleConns    prometheus.Gauge
+	DBQueryDuration     *prometheus.HistogramVec
+	DBErrorsTotal       *prometheus.CounterVec
+	DBPoolTotalConns    prometheus.Gauge
+	DBPoolIdleConns     prometheus.Gauge
 	DBPoolAcquiredConns prometheus.Gauge
-	DBPoolAcquireCount prometheus.Counter
+	DBPoolAcquireCount  prometheus.Counter
 
 	// Redis
 	RedisOpsTotal        *prometheus.CounterVec
@@ -36,11 +36,12 @@ type Metrics struct {
 	RedisReconnectsTotal prometheus.Counter
 
 	// Business
-	ActiveSessionsTotal    prometheus.Gauge
-	OrdersTotal            *prometheus.CounterVec
-	OrderLifecycleDuration *prometheus.HistogramVec
-	SessionDuration        prometheus.Histogram
-	IdempotencyReplaysTotal *prometheus.CounterVec
+	ActiveSessionsTotal      prometheus.Gauge
+	OrdersTotal              *prometheus.CounterVec
+	OrderLifecycleDuration   *prometheus.HistogramVec
+	SessionDuration          prometheus.Histogram
+	IdempotencyReplaysTotal  *prometheus.CounterVec
+	LegacyIdentityUsageTotal *prometheus.CounterVec
 
 	// Background workers
 	WorkerRunsTotal   *prometheus.CounterVec
@@ -172,6 +173,11 @@ func NewMetrics() *Metrics {
 			Help: "Total idempotency replay responses by entity type.",
 		}, []string{"entity"}),
 
+		LegacyIdentityUsageTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "legacy_identity_usage_total",
+			Help: "Total uses of legacy client-supplied identity mechanisms by mechanism and endpoint class.",
+		}, []string{"mechanism", "endpoint_class"}),
+
 		WorkerRunsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "background_worker_runs_total",
 			Help: "Total background worker executions by worker name and status.",
@@ -209,6 +215,7 @@ func NewMetrics() *Metrics {
 		m.OrderLifecycleDuration,
 		m.SessionDuration,
 		m.IdempotencyReplaysTotal,
+		m.LegacyIdentityUsageTotal,
 		m.WorkerRunsTotal,
 		m.WorkerPanicsTotal,
 	)

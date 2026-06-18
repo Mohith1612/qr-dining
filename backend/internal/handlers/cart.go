@@ -6,17 +6,19 @@ import (
 	"strconv"
 
 	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type CartHandler struct {
-	svc *services.CartService
+	svc     *services.CartService
+	metrics *observability.Metrics
 }
 
-func NewCartHandler(svc *services.CartService) *CartHandler {
-	return &CartHandler{svc: svc}
+func NewCartHandler(svc *services.CartService, metrics *observability.Metrics) *CartHandler {
+	return &CartHandler{svc: svc, metrics: metrics}
 }
 
 func (h *CartHandler) GetCart(c *gin.Context) {
@@ -30,6 +32,7 @@ func (h *CartHandler) GetCart(c *gin.Context) {
 		respondValidationError(c, "X-Participant-ID header required")
 		return
 	}
+	recordLegacyIdentityUsage(h.metrics, legacyMechanismHeaderParticipantID, legacyEndpointCart)
 
 	result, err := h.svc.GetCart(c.Request.Context(), sessionID, participantID)
 	if err != nil {
@@ -57,6 +60,7 @@ func (h *CartHandler) AddItem(c *gin.Context) {
 		respondValidationError(c, "X-Participant-ID header required")
 		return
 	}
+	recordLegacyIdentityUsage(h.metrics, legacyMechanismHeaderParticipantID, legacyEndpointCart)
 
 	var req addCartItemRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -104,6 +108,7 @@ func (h *CartHandler) RemoveItem(c *gin.Context) {
 		respondValidationError(c, "X-Participant-ID header required")
 		return
 	}
+	recordLegacyIdentityUsage(h.metrics, legacyMechanismHeaderParticipantID, legacyEndpointCart)
 
 	if err := h.svc.RemoveItem(c.Request.Context(), sessionID, participantID, itemID); err != nil {
 		if errors.Is(err, domain.ErrCartItemNotFound) {

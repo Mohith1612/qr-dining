@@ -19,8 +19,8 @@ func TestWebhookReplay_Idempotent(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	sessionSvc := services.NewSessionService(repos, pub)
-	paymentSvc := services.NewPaymentService(repos, pub)
+	sessionSvc := newTestSessionService(repos, pub)
+	paymentSvc := newTestPaymentService(repos, pub, sessionSvc)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants", "payments", "payment_webhook_events")
 	})
@@ -34,7 +34,7 @@ func TestWebhookReplay_Idempotent(t *testing.T) {
 	payment, err := paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
 		SessionID: sess.Session.ID,
 		Amount:    50.00,
-		Method:    sqlc.PaymentMethodUpi,
+		Method:    sqlc.PaymentMethodDigital,
 	})
 	if err != nil {
 		t.Fatalf("InitiatePayment: %v", err)

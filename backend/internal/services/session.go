@@ -150,8 +150,12 @@ func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, request
 		return err
 	}
 
-	s.metrics.SessionDuration.Observe(time.Since(sess.CreatedAt).Seconds())
-	s.presence.Delete(ctx, id)
+	if s.metrics != nil && s.metrics.SessionDuration != nil {
+		s.metrics.SessionDuration.Observe(time.Since(sess.CreatedAt).Seconds())
+	}
+	if s.presence != nil {
+		s.presence.Delete(ctx, id)
+	}
 
 	actorID := int64(0)
 	if requesterID != nil {
@@ -185,12 +189,12 @@ func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, d
 // SessionSnapshot is the full authoritative state of a session at a point in time.
 // Clients call GET /sessions/:id/snapshot on WebSocket reconnect to reconcile local state.
 type SessionSnapshot struct {
-	Session         sqlc.Session             `json:"session"`
-	TableIdentifier string                   `json:"table_identifier"`
+	Session         sqlc.Session              `json:"session"`
+	TableIdentifier string                    `json:"table_identifier"`
 	Participants    []sqlc.SessionParticipant `json:"participants"`
-	Orders          []sqlc.Order             `json:"orders"`
-	Assistance      []sqlc.AssistanceRequest `json:"assistance"`
-	SnapshotAt      time.Time                `json:"snapshot_at"`
+	Orders          []sqlc.Order              `json:"orders"`
+	Assistance      []sqlc.AssistanceRequest  `json:"assistance"`
+	SnapshotAt      time.Time                 `json:"snapshot_at"`
 }
 
 // GetSnapshot assembles the full current state of a session in parallel.
@@ -245,4 +249,3 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID) (
 		SnapshotAt:      time.Now().UTC(),
 	}, nil
 }
-

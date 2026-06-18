@@ -18,8 +18,8 @@ func TestPlaceOrder_HappyPath(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	sessionSvc := services.NewSessionService(repos, pub)
-	orderSvc := services.NewOrderService(repos, pub)
+	sessionSvc := newTestSessionService(repos, pub)
+	orderSvc := newTestOrderService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants", "orders", "order_items", "carts", "cart_items")
 	})
@@ -61,8 +61,8 @@ func TestPlaceOrder_Idempotent(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	sessionSvc := services.NewSessionService(repos, pub)
-	orderSvc := services.NewOrderService(repos, pub)
+	sessionSvc := newTestSessionService(repos, pub)
+	orderSvc := newTestOrderService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants", "orders", "order_items", "carts", "cart_items")
 	})
@@ -111,8 +111,8 @@ func TestUpdateOrderStatus_InvalidTransition(t *testing.T) {
 	f := testutil.SeedFixtures(t, pool)
 	repos := testutil.NewTestRepos(pool)
 	pub := events.NewNoopPublisher()
-	sessionSvc := services.NewSessionService(repos, pub)
-	orderSvc := services.NewOrderService(repos, pub)
+	sessionSvc := newTestSessionService(repos, pub)
+	orderSvc := newTestOrderService(repos, pub)
 	t.Cleanup(func() {
 		testutil.TruncateTables(t, pool, "sessions", "session_participants", "orders", "order_items", "carts", "cart_items")
 	})
