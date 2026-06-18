@@ -501,7 +501,7 @@ export default function MenuPage({ params }: Props) {
             className="eyebrow"
             style={{ padding: "8px 20px", color: "var(--ink-3)", fontSize: 12 }}
           >
-            {filteredCategories.reduce((s, c) => s + c.items.length, 0)} dishes found
+            {(() => { const n = filteredCategories.reduce((s, c) => s + c.items.length, 0); return `${n} ${n === 1 ? "dish" : "dishes"} found` })()}
           </div>
         )}
 
