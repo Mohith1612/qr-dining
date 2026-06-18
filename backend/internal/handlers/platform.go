@@ -554,8 +554,10 @@ func (h *PlatformHandler) ListAudit(c *gin.Context) {
 	for _, row := range rows {
 		out = append(out, auditV2PlatformResponse(row))
 	}
-	h.logPlatformAudit(c, session.PlatformUserID, "platform.audit.list", "audit_log", "", 0, 0, 0, gin.H{})
 	c.JSON(http.StatusOK, gin.H{"audit": out})
+	if h.audit != nil {
+		h.audit.Record(c.Request.Context(), platformAuditReadEvent(session))
+	}
 }
 
 func (h *PlatformHandler) requirePlatformRole(c *gin.Context, roles ...string) (services.PlatformSession, bool) {
@@ -722,6 +724,18 @@ func auditV2PlatformResponse(row sqlc.AuditLog) gin.H {
 		"row_hash":        nullableText(row.RowHash),
 		"previous_hash":   nullableText(row.PreviousHash),
 		"created_at":      row.CreatedAt,
+	}
+}
+
+func platformAuditReadEvent(session services.PlatformSession) audit.AuditEvent {
+	return audit.AuditEvent{
+		ResourceType: audit.ResourceAuditLog,
+		Action:       audit.ActionAuditRead,
+		ActorType:    audit.ActorTypePlatformUser,
+		ActorID:      strconv.FormatInt(session.PlatformUserID, 10),
+		ActorDisplay: session.Email,
+		RiskLevel:    audit.RiskLow,
+		Result:       audit.ResultSuccess,
 	}
 }
 

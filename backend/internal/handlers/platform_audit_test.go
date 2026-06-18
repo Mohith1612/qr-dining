@@ -6,7 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
+	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -73,5 +75,34 @@ func TestAuditV2PlatformResponseUsesRawJSON(t *testing.T) {
 	}
 	if got["organization_id"] != float64(10) {
 		t.Fatalf("organization_id = %v, want 10", got["organization_id"])
+	}
+}
+
+func TestPlatformAuditReadEventUsesAuditV2Fields(t *testing.T) {
+	ev := platformAuditReadEvent(services.PlatformSession{
+		PlatformUserID: 42,
+		Email:          "auditor@example.test",
+	})
+
+	if ev.ResourceType != audit.ResourceAuditLog {
+		t.Fatalf("resource_type = %s, want %s", ev.ResourceType, audit.ResourceAuditLog)
+	}
+	if ev.Action != audit.ActionAuditRead {
+		t.Fatalf("action = %s, want %s", ev.Action, audit.ActionAuditRead)
+	}
+	if ev.ActorType != audit.ActorTypePlatformUser {
+		t.Fatalf("actor_type = %s, want %s", ev.ActorType, audit.ActorTypePlatformUser)
+	}
+	if ev.ActorID != "42" {
+		t.Fatalf("actor_id = %s, want 42", ev.ActorID)
+	}
+	if ev.ActorDisplay != "auditor@example.test" {
+		t.Fatalf("actor_display = %s, want auditor@example.test", ev.ActorDisplay)
+	}
+	if ev.Result != audit.ResultSuccess {
+		t.Fatalf("result = %s, want %s", ev.Result, audit.ResultSuccess)
+	}
+	if ev.RiskLevel != audit.RiskLow {
+		t.Fatalf("risk_level = %s, want %s", ev.RiskLevel, audit.RiskLow)
 	}
 }
