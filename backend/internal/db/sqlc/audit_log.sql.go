@@ -203,6 +203,7 @@ WHERE organization_id = $1
   AND ($4::TIMESTAMPTZ IS NULL OR created_at < $4)
   AND ($5::TEXT IS NULL OR action = $5)
   AND ($6::TEXT IS NULL OR result::TEXT = $6)
+  AND ($7::TEXT IS NULL OR source::TEXT = $7)
 ORDER BY created_at DESC, id DESC
 LIMIT 200
 `
@@ -214,6 +215,7 @@ type ListAuditLogForOrganizationParams struct {
 	ToTime         pgtype.Timestamptz `json:"to_time"`
 	Action         pgtype.Text        `json:"action"`
 	Result         pgtype.Text        `json:"result"`
+	Source         pgtype.Text        `json:"source"`
 }
 
 func (q *Queries) ListAuditLogForOrganization(ctx context.Context, arg ListAuditLogForOrganizationParams) ([]AuditLog, error) {
@@ -224,6 +226,7 @@ func (q *Queries) ListAuditLogForOrganization(ctx context.Context, arg ListAudit
 		arg.ToTime,
 		arg.Action,
 		arg.Result,
+		arg.Source,
 	)
 	if err != nil {
 		return nil, err

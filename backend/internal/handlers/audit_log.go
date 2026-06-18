@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/audit"
+	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
+	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/gin-gonic/gin"
@@ -15,14 +18,15 @@ import (
 
 type AuditLogHandler struct {
 	repos *repository.Repos
+	authz *authz.Authorizer
 	audit *audit.Writer
 }
 
-func NewAuditLogHandler(repos *repository.Repos, auditWriter *audit.Writer) *AuditLogHandler {
-	return &AuditLogHandler{repos: repos, audit: auditWriter}
+func NewAuditLogHandler(repos *repository.Repos, authorizer *authz.Authorizer, auditWriter *audit.Writer) *AuditLogHandler {
+	return &AuditLogHandler{repos: repos, authz: authorizer, audit: auditWriter}
 }
 
-// GET /branches/:id/audit — branch staff only; staff session must belong to this branch.
+// GET /branches/:id/audit — owner/manager only; staff session must belong to this branch.
 func (h *AuditLogHandler) GetBranchAuditLog(c *gin.Context) {
 	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -37,6 +41,13 @@ func (h *AuditLogHandler) GetBranchAuditLog(c *gin.Context) {
 	}
 	if sess.BranchID != branchID {
 		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionAuditReadBranch, authz.BranchResource(branchID, actor.Scope.OrganizationID)) {
 		return
 	}
 
@@ -56,18 +67,21 @@ func (h *AuditLogHandler) GetBranchAuditLog(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"audit_log": logs})
-	h.audit.Record(c.Request.Context(), audit.AuditEvent{
-		BranchID:     branchID,
-		ResourceType: audit.ResourceAuditLog,
-		Action:       audit.ActionAuditRead,
-		ActorType:    audit.ActorTypeStaff,
-		ActorID:      audit.IDStr(sess.StaffID),
-		RiskLevel:    audit.RiskLow,
-		Result:       audit.ResultSuccess,
-	})
+	if h.audit != nil {
+		h.audit.Record(c.Request.Context(), audit.AuditEvent{
+			OrganizationID: actor.Scope.OrganizationID,
+			BranchID:       branchID,
+			ResourceType:   audit.ResourceAuditLog,
+			Action:         audit.ActionAuditRead,
+			ActorType:      audit.ActorTypeStaff,
+			ActorID:        audit.IDStr(sess.StaffID),
+			RiskLevel:      audit.RiskLow,
+			Result:         audit.ResultSuccess,
+		})
+	}
 }
 
-// GET /orgs/:org_id/audit — org staff only; staff session must belong to this org.
+// GET /orgs/:org_id/audit — active organization owners/admins only.
 func (h *AuditLogHandler) GetOrgAuditLog(c *gin.Context) {
 	orgID, err := strconv.ParseInt(c.Param("org_id"), 10, 64)
 	if err != nil {
@@ -80,7 +94,16 @@ func (h *AuditLogHandler) GetOrgAuditLog(c *gin.Context) {
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
 		return
 	}
-	if sess.OrganizationID != orgID {
+	member, err := h.repos.GetOrganizationMembershipForStaff(c.Request.Context(), orgID, sess.StaffID)
+	if err != nil {
+		if errors.Is(err, domain.ErrForbidden) {
+			respondError(c, http.StatusForbidden, CodeForbidden, "organization access denied")
+			return
+		}
+		respondInternalError(c)
+		return
+	}
+	if member.Role != "owner" && member.Role != "admin" {
 		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}
@@ -90,6 +113,7 @@ func (h *AuditLogHandler) GetOrgAuditLog(c *gin.Context) {
 		BranchID:       optionalInt8Param(c, "branch_id"),
 		Action:         optionalTextParam(c, "action"),
 		Result:         optionalTextParam(c, "result"),
+		Source:         optionalTextParam(c, "source"),
 		FromTime:       optionalTimestampParam(c, "from"),
 		ToTime:         optionalTimestampParam(c, "to"),
 	}
@@ -101,15 +125,17 @@ func (h *AuditLogHandler) GetOrgAuditLog(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"audit_log": logs})
-	h.audit.Record(c.Request.Context(), audit.AuditEvent{
-		OrganizationID: orgID,
-		ResourceType:   audit.ResourceAuditLog,
-		Action:         audit.ActionAuditRead,
-		ActorType:      audit.ActorTypeStaff,
-		ActorID:        audit.IDStr(sess.StaffID),
-		RiskLevel:      audit.RiskLow,
-		Result:         audit.ResultSuccess,
-	})
+	if h.audit != nil {
+		h.audit.Record(c.Request.Context(), audit.AuditEvent{
+			OrganizationID: orgID,
+			ResourceType:   audit.ResourceAuditLog,
+			Action:         audit.ActionAuditRead,
+			ActorType:      audit.ActorTypeStaff,
+			ActorID:        audit.IDStr(sess.StaffID),
+			RiskLevel:      audit.RiskLow,
+			Result:         audit.ResultSuccess,
+		})
+	}
 }
 
 func optionalTextParam(c *gin.Context, key string) pgtype.Text {

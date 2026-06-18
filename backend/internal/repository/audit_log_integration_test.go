@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	dbPkg "github.com/Mohith1612/qr-dining/internal/db"
 	"github.com/Mohith1612/qr-dining/internal/audit"
+	dbPkg "github.com/Mohith1612/qr-dining/internal/db"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/repository"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 )
 
@@ -148,6 +148,99 @@ func TestAuditLog_OrgIsolation(t *testing.T) {
 	}
 	if logs200[0].ActorID != "20" {
 		t.Errorf("org 200 actor_id: got %v, want 20", logs200[0].ActorID)
+	}
+}
+
+func TestAuditLog_OrganizationSourceFilter(t *testing.T) {
+	pool := openAuditTestPool(t)
+	repos := repository.New(pool, zerolog.Nop())
+	q := sqlc.New(pool)
+	w := audit.NewWriter(q, true, zerolog.Nop(), nil)
+	ctx := context.Background()
+
+	w.Record(ctx, audit.AuditEvent{
+		OrganizationID: 300,
+		ResourceType:   audit.ResourceOrganization,
+		ResourceID:     "300",
+		Action:         audit.ActionBranchSettingsUpdate,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        "30",
+		Source:         audit.SourceWeb,
+	})
+	w.Record(ctx, audit.AuditEvent{
+		OrganizationID: 300,
+		ResourceType:   audit.ResourceOrganization,
+		ResourceID:     "300",
+		Action:         audit.ActionBranchSettingsUpdate,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        "31",
+		Source:         audit.SourceAPI,
+	})
+
+	logs, err := repos.ListAuditLogForOrganization(ctx, sqlc.ListAuditLogForOrganizationParams{
+		OrganizationID: pgtype.Int8{Int64: 300, Valid: true},
+		Source:         pgtype.Text{String: string(audit.SourceWeb), Valid: true},
+	})
+	if err != nil {
+		t.Fatalf("list org source: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected 1 web source row, got %d", len(logs))
+	}
+	if logs[0].Source != sqlc.AuditSourceType(audit.SourceWeb) {
+		t.Fatalf("source = %s, want %s", logs[0].Source, audit.SourceWeb)
+	}
+}
+
+func TestAuditLog_PlatformFiltersV2Rows(t *testing.T) {
+	pool := openAuditTestPool(t)
+	repos := repository.New(pool, zerolog.Nop())
+	q := sqlc.New(pool)
+	w := audit.NewWriter(q, true, zerolog.Nop(), nil)
+	ctx := context.Background()
+
+	w.Record(ctx, audit.AuditEvent{
+		OrganizationID: 400,
+		BranchID:       401,
+		ResourceType:   audit.ResourcePlatformSupportSession,
+		ResourceID:     "1",
+		Action:         audit.ActionPlatformSupportAccess,
+		ActorType:      audit.ActorTypePlatformUser,
+		ActorID:        "99",
+		Result:         audit.ResultSuccess,
+		Source:         audit.SourceWeb,
+		RiskLevel:      audit.RiskCritical,
+	})
+	w.Record(ctx, audit.AuditEvent{
+		OrganizationID: 400,
+		BranchID:       402,
+		ResourceType:   audit.ResourcePlatformSupportSession,
+		ResourceID:     "2",
+		Action:         audit.ActionPlatformSupportAccess,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        "100",
+		Result:         audit.ResultDenied,
+		Source:         audit.SourceAPI,
+		RiskLevel:      audit.RiskHigh,
+	})
+
+	logs, err := repos.ListAuditLogPlatform(ctx, sqlc.ListAuditLogPlatformParams{
+		OrganizationID: pgtype.Int8{Int64: 400, Valid: true},
+		ActorType:      pgtype.Text{String: string(audit.ActorTypePlatformUser), Valid: true},
+		Result:         pgtype.Text{String: string(audit.ResultSuccess), Valid: true},
+		Source:         pgtype.Text{String: string(audit.SourceWeb), Valid: true},
+	})
+	if err != nil {
+		t.Fatalf("list platform audit v2: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected 1 platform audit row, got %d", len(logs))
+	}
+	if logs[0].ActorType != sqlc.AuditActorType(audit.ActorTypePlatformUser) {
+		t.Fatalf("actor_type = %s, want %s", logs[0].ActorType, audit.ActorTypePlatformUser)
+	}
+	if logs[0].Source != sqlc.AuditSourceType(audit.SourceWeb) || logs[0].Result != sqlc.AuditResultType(audit.ResultSuccess) {
+		t.Fatalf("unexpected source/result: %s/%s", logs[0].Source, logs[0].Result)
 	}
 }
 

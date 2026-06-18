@@ -106,3 +106,73 @@ func TestRedact_BothBeforeAndAfter(t *testing.T) {
 		t.Errorf("after.role: got %v, want manager", ra["role"])
 	}
 }
+
+func TestRedact_ArrayOfObjects(t *testing.T) {
+	raw, _ := json.Marshal(map[string]any{
+		"attempts": []any{
+			map[string]any{"token": "tok_123", "status": "failed"},
+			map[string]any{"card_number": "4242424242424242", "cvv": "123", "amount": 100},
+		},
+	})
+	got, _ := Redact(raw, nil)
+
+	var result map[string]any
+	if err := json.Unmarshal(got, &result); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	attempts, _ := result["attempts"].([]any)
+	if len(attempts) != 2 {
+		t.Fatalf("attempts length = %d, want 2", len(attempts))
+	}
+	first := attempts[0].(map[string]any)
+	second := attempts[1].(map[string]any)
+	if first["token"] != "[REDACTED]" {
+		t.Errorf("token: got %v, want [REDACTED]", first["token"])
+	}
+	if first["status"] != "failed" {
+		t.Errorf("status: got %v, want failed", first["status"])
+	}
+	if second["card_number"] != "[REDACTED]" || second["cvv"] != "[REDACTED]" {
+		t.Errorf("payment fields not redacted: %+v", second)
+	}
+	if second["amount"] != float64(100) {
+		t.Errorf("amount should be preserved, got %v", second["amount"])
+	}
+}
+
+func TestRedact_NestedArrays(t *testing.T) {
+	raw, _ := json.Marshal(map[string]any{
+		"events": []any{
+			[]any{
+				map[string]any{
+					"password": "hunter2",
+					"payload": []any{
+						map[string]any{"api_secret": "sk_123", "name": "safe"},
+					},
+				},
+			},
+			"scalar",
+		},
+	})
+	got, _ := Redact(raw, nil)
+
+	var result map[string]any
+	if err := json.Unmarshal(got, &result); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	events := result["events"].([]any)
+	nested := events[0].([]any)[0].(map[string]any)
+	if nested["password"] != "[REDACTED]" {
+		t.Errorf("password: got %v, want [REDACTED]", nested["password"])
+	}
+	payload := nested["payload"].([]any)[0].(map[string]any)
+	if payload["api_secret"] != "[REDACTED]" {
+		t.Errorf("api_secret: got %v, want [REDACTED]", payload["api_secret"])
+	}
+	if payload["name"] != "safe" {
+		t.Errorf("name should be preserved, got %v", payload["name"])
+	}
+	if events[1] != "scalar" {
+		t.Errorf("scalar array value should be preserved, got %v", events[1])
+	}
+}

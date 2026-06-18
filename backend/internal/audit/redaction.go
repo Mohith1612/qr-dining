@@ -29,7 +29,7 @@ func isSensitive(key string) bool {
 }
 
 // Redact removes sensitive fields from before/after JSON blobs before audit insertion.
-// It walks object keys recursively. Non-object or nil input is returned unchanged.
+// It walks object keys and arrays recursively. Non-object or nil input is returned unchanged.
 // The function is idempotent.
 func Redact(before, after json.RawMessage) (json.RawMessage, json.RawMessage) {
 	return redactJSON(before), redactJSON(after)
@@ -39,16 +39,37 @@ func redactJSON(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 {
 		return raw
 	}
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
 		return raw
 	}
-	redactMap(obj)
-	out, err := json.Marshal(obj)
+	redacted, changed := redactValue(value)
+	if !changed {
+		return raw
+	}
+	out, err := json.Marshal(redacted)
 	if err != nil {
 		return raw
 	}
 	return out
+}
+
+func redactValue(v any) (any, bool) {
+	switch typed := v.(type) {
+	case map[string]any:
+		redactMap(typed)
+		return typed, true
+	case []any:
+		for i, item := range typed {
+			redacted, changed := redactValue(item)
+			if changed {
+				typed[i] = redacted
+			}
+		}
+		return typed, true
+	default:
+		return v, false
+	}
 }
 
 func redactMap(m map[string]any) {
@@ -57,8 +78,8 @@ func redactMap(m map[string]any) {
 			m[k] = "[REDACTED]"
 			continue
 		}
-		if nested, ok := v.(map[string]any); ok {
-			redactMap(nested)
+		if redacted, changed := redactValue(v); changed {
+			m[k] = redacted
 		}
 	}
 }

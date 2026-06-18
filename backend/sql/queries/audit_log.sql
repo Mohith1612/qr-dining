@@ -68,6 +68,7 @@ WHERE organization_id = @organization_id
   AND (sqlc.narg('to_time')::TIMESTAMPTZ IS NULL OR created_at < sqlc.narg('to_time'))
   AND (sqlc.narg('action')::TEXT IS NULL OR action = sqlc.narg('action'))
   AND (sqlc.narg('result')::TEXT IS NULL OR result::TEXT = sqlc.narg('result'))
+  AND (sqlc.narg('source')::TEXT IS NULL OR source::TEXT = sqlc.narg('source'))
 ORDER BY created_at DESC, id DESC
 LIMIT 200;
 

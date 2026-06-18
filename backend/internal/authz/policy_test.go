@@ -69,6 +69,25 @@ func TestAuthorizeStaffDeactivationRequiresOwnerAndTargetBranch(t *testing.T) {
 	}
 }
 
+func TestAuthorizeAuditReadBranchRequiresManagerOrOwner(t *testing.T) {
+	a := NewAuthorizer()
+	resource := BranchResource(10, 1)
+
+	for _, role := range []sqlc.StaffRole{sqlc.StaffRoleOwner, sqlc.StaffRoleManager} {
+		if d := a.Authorize(staff(role, 10, 1), ActionAuditReadBranch, resource); !d.Allowed {
+			t.Fatalf("role %s denied audit read: %s", role, d.Reason)
+		}
+	}
+	for _, role := range []sqlc.StaffRole{sqlc.StaffRoleWaiter, sqlc.StaffRoleKitchen} {
+		if d := a.Authorize(staff(role, 10, 1), ActionAuditReadBranch, resource); d.Allowed {
+			t.Fatalf("role %s unexpectedly allowed audit read", role)
+		}
+	}
+	if d := a.Authorize(staff(sqlc.StaffRoleOwner, 11, 1), ActionAuditReadBranch, resource); d.Allowed {
+		t.Fatal("cross-branch owner unexpectedly allowed audit read")
+	}
+}
+
 func staff(role sqlc.StaffRole, branchID, orgID int64) Actor {
 	return Actor{Type: ActorTypeStaff, ID: 1, Role: role, Scope: Scope{BranchID: branchID, OrganizationID: orgID}}
 }

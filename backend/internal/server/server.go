@@ -110,7 +110,7 @@ func New(
 	uploadH := handlers.NewUploadHandler(storage.NewR2Client(cfg.R2), repos)
 	billingH := handlers.NewBillingHandler(repos, guestTokens, cfg.FeatureFlags)
 	promoH := handlers.NewPromoHandler(promoSvc, repos, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
-	auditLogH := handlers.NewAuditLogHandler(repos, auditWriter)
+	auditLogH := handlers.NewAuditLogHandler(repos, authorizer, auditWriter)
 
 	_ = participantSvc // used by ws handler indirectly
 

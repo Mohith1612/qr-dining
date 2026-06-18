@@ -541,20 +541,20 @@ func (h *PlatformHandler) ListAudit(c *gin.Context) {
 	if !ok {
 		return
 	}
-	params, ok := platformAuditFilters(c)
+	params, ok := auditV2PlatformFilters(c)
 	if !ok {
 		return
 	}
-	rows, err := h.repos.ListPlatformAuditLog(c.Request.Context(), params)
+	rows, err := h.repos.ListAuditLogPlatform(c.Request.Context(), params)
 	if err != nil {
 		respondInternalError(c)
 		return
 	}
 	out := make([]gin.H, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, platformAuditResponse(row))
+		out = append(out, auditV2PlatformResponse(row))
 	}
-	h.logPlatformAudit(c, session.PlatformUserID, "platform.audit.list", "platform_audit_log", "", 0, 0, 0, gin.H{})
+	h.logPlatformAudit(c, session.PlatformUserID, "platform.audit.list", "audit_log", "", 0, 0, 0, gin.H{})
 	c.JSON(http.StatusOK, gin.H{"audit": out})
 }
 
@@ -693,11 +693,65 @@ func platformAuditResponse(row sqlc.PlatformAuditLog) gin.H {
 	}
 }
 
+func auditV2PlatformResponse(row sqlc.AuditLog) gin.H {
+	return gin.H{
+		"id":              row.ID,
+		"organization_id": nullableInt64(row.OrganizationID),
+		"branch_id":       nullableInt64(row.BranchID),
+		"restaurant_id":   nullableInt64(row.RestaurantID),
+		"session_id":      nullableUUID(row.SessionID),
+		"table_id":        nullableInt64(row.TableID),
+		"resource_type":   row.ResourceType,
+		"resource_id":     row.ResourceID,
+		"action":          row.Action,
+		"result":          row.Result,
+		"actor_type":      row.ActorType,
+		"actor_id":        row.ActorID,
+		"actor_display":   row.ActorDisplay,
+		"actor_scope":     row.ActorScopeJson,
+		"request_id":      row.RequestID,
+		"correlation_id":  row.CorrelationID,
+		"idempotency_key": row.IdempotencyKey,
+		"ip":              row.Ip,
+		"user_agent":      row.UserAgent,
+		"source":          row.Source,
+		"before":          rawJSONOrNil(row.BeforeJson),
+		"after":           rawJSONOrNil(row.AfterJson),
+		"metadata":        row.MetadataJson,
+		"risk_level":      row.RiskLevel,
+		"row_hash":        nullableText(row.RowHash),
+		"previous_hash":   nullableText(row.PreviousHash),
+		"created_at":      row.CreatedAt,
+	}
+}
+
 func nullableInt64(v pgtype.Int8) *int64 {
 	if !v.Valid {
 		return nil
 	}
 	return &v.Int64
+}
+
+func nullableText(v pgtype.Text) *string {
+	if !v.Valid {
+		return nil
+	}
+	return &v.String
+}
+
+func nullableUUID(v pgtype.UUID) *string {
+	if !v.Valid {
+		return nil
+	}
+	s := fmt.Sprintf("%x-%x-%x-%x-%x", v.Bytes[0:4], v.Bytes[4:6], v.Bytes[6:8], v.Bytes[8:10], v.Bytes[10:16])
+	return &s
+}
+
+func rawJSONOrNil(v []byte) json.RawMessage {
+	if len(v) == 0 {
+		return nil
+	}
+	return json.RawMessage(v)
 }
 
 func parseInt64Param(c *gin.Context, name, message string) (int64, bool) {
@@ -721,22 +775,8 @@ func platformSettingsJSON(c *gin.Context, raw *json.RawMessage) (json.RawMessage
 	return *raw, true
 }
 
-func platformAuditFilters(c *gin.Context) (sqlc.ListPlatformAuditLogParams, bool) {
-	var p sqlc.ListPlatformAuditLogParams
-	if raw := c.Query("platform_user_id"); raw != "" {
-		id, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			respondValidationError(c, "invalid platform_user_id")
-			return p, false
-		}
-		p.PlatformUserID = pgtype.Int8{Int64: id, Valid: true}
-	}
-	if action := strings.TrimSpace(c.Query("action")); action != "" {
-		p.Action = pgtype.Text{String: action, Valid: true}
-	}
-	if targetType := strings.TrimSpace(c.Query("target_type")); targetType != "" {
-		p.TargetType = pgtype.Text{String: targetType, Valid: true}
-	}
+func auditV2PlatformFilters(c *gin.Context) (sqlc.ListAuditLogPlatformParams, bool) {
+	var p sqlc.ListAuditLogPlatformParams
 	if raw := c.Query("organization_id"); raw != "" {
 		id, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
@@ -752,6 +792,15 @@ func platformAuditFilters(c *gin.Context) (sqlc.ListPlatformAuditLogParams, bool
 			return p, false
 		}
 		p.BranchID = pgtype.Int8{Int64: id, Valid: true}
+	}
+	if actorType := strings.TrimSpace(c.Query("actor_type")); actorType != "" {
+		p.ActorType = pgtype.Text{String: actorType, Valid: true}
+	}
+	if result := strings.TrimSpace(c.Query("result")); result != "" {
+		p.Result = pgtype.Text{String: result, Valid: true}
+	}
+	if source := strings.TrimSpace(c.Query("source")); source != "" {
+		p.Source = pgtype.Text{String: source, Valid: true}
 	}
 	if raw := c.Query("from"); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)

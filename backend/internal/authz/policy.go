@@ -98,8 +98,10 @@ func roleAllowed(role sqlc.StaffRole, action Action) bool {
 		return role == sqlc.StaffRoleOwner
 	case ActionStaffPinUpdate:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager || role == sqlc.StaffRoleWaiter || role == sqlc.StaffRoleKitchen
-	case ActionBranchRead, ActionAuditReadBranch:
+	case ActionBranchRead:
 		return role != ""
+	case ActionAuditReadBranch:
+		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
 	case ActionBranchUpdateSettings, ActionOrganizationRead, ActionOrganizationUpdate, ActionPaymentSettleStaff:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
 	default:
