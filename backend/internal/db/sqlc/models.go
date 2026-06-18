@@ -100,6 +100,185 @@ func (ns NullAssistanceType) Value() (driver.Value, error) {
 	return string(ns.AssistanceType), nil
 }
 
+type AuditActorType string
+
+const (
+	AuditActorTypePlatformUser     AuditActorType = "platform_user"
+	AuditActorTypeOrganizationUser AuditActorType = "organization_user"
+	AuditActorTypeStaff            AuditActorType = "staff"
+	AuditActorTypeGuest            AuditActorType = "guest"
+	AuditActorTypeSystem           AuditActorType = "system"
+	AuditActorTypeWebhook          AuditActorType = "webhook"
+)
+
+func (e *AuditActorType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AuditActorType(s)
+	case string:
+		*e = AuditActorType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AuditActorType: %T", src)
+	}
+	return nil
+}
+
+type NullAuditActorType struct {
+	AuditActorType AuditActorType `json:"audit_actor_type"`
+	Valid          bool           `json:"valid"` // Valid is true if AuditActorType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAuditActorType) Scan(value interface{}) error {
+	if value == nil {
+		ns.AuditActorType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AuditActorType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAuditActorType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AuditActorType), nil
+}
+
+type AuditResultType string
+
+const (
+	AuditResultTypeSuccess AuditResultType = "success"
+	AuditResultTypeFailure AuditResultType = "failure"
+	AuditResultTypeDenied  AuditResultType = "denied"
+)
+
+func (e *AuditResultType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AuditResultType(s)
+	case string:
+		*e = AuditResultType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AuditResultType: %T", src)
+	}
+	return nil
+}
+
+type NullAuditResultType struct {
+	AuditResultType AuditResultType `json:"audit_result_type"`
+	Valid           bool            `json:"valid"` // Valid is true if AuditResultType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAuditResultType) Scan(value interface{}) error {
+	if value == nil {
+		ns.AuditResultType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AuditResultType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAuditResultType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AuditResultType), nil
+}
+
+type AuditRiskLevel string
+
+const (
+	AuditRiskLevelLow      AuditRiskLevel = "low"
+	AuditRiskLevelMedium   AuditRiskLevel = "medium"
+	AuditRiskLevelHigh     AuditRiskLevel = "high"
+	AuditRiskLevelCritical AuditRiskLevel = "critical"
+)
+
+func (e *AuditRiskLevel) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AuditRiskLevel(s)
+	case string:
+		*e = AuditRiskLevel(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AuditRiskLevel: %T", src)
+	}
+	return nil
+}
+
+type NullAuditRiskLevel struct {
+	AuditRiskLevel AuditRiskLevel `json:"audit_risk_level"`
+	Valid          bool           `json:"valid"` // Valid is true if AuditRiskLevel is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAuditRiskLevel) Scan(value interface{}) error {
+	if value == nil {
+		ns.AuditRiskLevel, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AuditRiskLevel.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAuditRiskLevel) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AuditRiskLevel), nil
+}
+
+type AuditSourceType string
+
+const (
+	AuditSourceTypeWeb     AuditSourceType = "web"
+	AuditSourceTypeMobile  AuditSourceType = "mobile"
+	AuditSourceTypePwa     AuditSourceType = "pwa"
+	AuditSourceTypeApi     AuditSourceType = "api"
+	AuditSourceTypeWebhook AuditSourceType = "webhook"
+	AuditSourceTypeSystem  AuditSourceType = "system"
+)
+
+func (e *AuditSourceType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AuditSourceType(s)
+	case string:
+		*e = AuditSourceType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AuditSourceType: %T", src)
+	}
+	return nil
+}
+
+type NullAuditSourceType struct {
+	AuditSourceType AuditSourceType `json:"audit_source_type"`
+	Valid           bool            `json:"valid"` // Valid is true if AuditSourceType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAuditSourceType) Scan(value interface{}) error {
+	if value == nil {
+		ns.AuditSourceType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AuditSourceType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAuditSourceType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AuditSourceType), nil
+}
+
 type OrderStatus string
 
 const (
@@ -459,6 +638,36 @@ type AssistanceRequest struct {
 	ResolvedAt    pgtype.Timestamptz `json:"resolved_at"`
 }
 
+type AuditLog struct {
+	ID             int64           `json:"id"`
+	OrganizationID pgtype.Int8     `json:"organization_id"`
+	BranchID       pgtype.Int8     `json:"branch_id"`
+	RestaurantID   pgtype.Int8     `json:"restaurant_id"`
+	SessionID      pgtype.UUID     `json:"session_id"`
+	TableID        pgtype.Int8     `json:"table_id"`
+	ResourceType   string          `json:"resource_type"`
+	ResourceID     string          `json:"resource_id"`
+	Action         string          `json:"action"`
+	Result         AuditResultType `json:"result"`
+	ActorType      AuditActorType  `json:"actor_type"`
+	ActorID        string          `json:"actor_id"`
+	ActorDisplay   string          `json:"actor_display"`
+	ActorScopeJson json.RawMessage `json:"actor_scope_json"`
+	RequestID      string          `json:"request_id"`
+	CorrelationID  string          `json:"correlation_id"`
+	IdempotencyKey string          `json:"idempotency_key"`
+	Ip             string          `json:"ip"`
+	UserAgent      string          `json:"user_agent"`
+	Source         AuditSourceType `json:"source"`
+	BeforeJson     []byte          `json:"before_json"`
+	AfterJson      []byte          `json:"after_json"`
+	MetadataJson   json.RawMessage `json:"metadata_json"`
+	RiskLevel      AuditRiskLevel  `json:"risk_level"`
+	RowHash        pgtype.Text     `json:"row_hash"`
+	PreviousHash   pgtype.Text     `json:"previous_hash"`
+	CreatedAt      time.Time       `json:"created_at"`
+}
+
 type Branch struct {
 	ID                    int64           `json:"id"`
 	RestaurantID          int64           `json:"restaurant_id"`
@@ -633,6 +842,60 @@ type PaymentWebhookEvent struct {
 	PaymentID       pgtype.Int8        `json:"payment_id"`
 	ErrorMessage    pgtype.Text        `json:"error_message"`
 	CreatedAt       time.Time          `json:"created_at"`
+}
+
+type PlatformAuditLog struct {
+	ID               int64           `json:"id"`
+	PlatformUserID   pgtype.Int8     `json:"platform_user_id"`
+	Action           string          `json:"action"`
+	TargetType       string          `json:"target_type"`
+	TargetID         string          `json:"target_id"`
+	OrganizationID   pgtype.Int8     `json:"organization_id"`
+	BranchID         pgtype.Int8     `json:"branch_id"`
+	SupportSessionID pgtype.Int8     `json:"support_session_id"`
+	RequestID        string          `json:"request_id"`
+	Payload          json.RawMessage `json:"payload"`
+	CreatedAt        time.Time       `json:"created_at"`
+}
+
+type PlatformSession struct {
+	ID             uuid.UUID          `json:"id"`
+	PlatformUserID int64              `json:"platform_user_id"`
+	TokenHash      string             `json:"token_hash"`
+	DeviceName     string             `json:"device_name"`
+	CreatedAt      time.Time          `json:"created_at"`
+	LastSeenAt     time.Time          `json:"last_seen_at"`
+	ExpiresAt      time.Time          `json:"expires_at"`
+	RevokedAt      pgtype.Timestamptz `json:"revoked_at"`
+}
+
+type PlatformSupportSession struct {
+	ID                       int64       `json:"id"`
+	PlatformUserID           int64       `json:"platform_user_id"`
+	OrganizationID           int64       `json:"organization_id"`
+	BranchID                 pgtype.Int8 `json:"branch_id"`
+	Reason                   string      `json:"reason"`
+	ApprovedByPlatformUserID pgtype.Int8 `json:"approved_by_platform_user_id"`
+	StartsAt                 time.Time   `json:"starts_at"`
+	ExpiresAt                time.Time   `json:"expires_at"`
+	CreatedAt                time.Time   `json:"created_at"`
+}
+
+type PlatformUser struct {
+	ID           int64     `json:"id"`
+	Email        string    `json:"email"`
+	DisplayName  string    `json:"display_name"`
+	PasswordHash string    `json:"password_hash"`
+	Status       string    `json:"status"`
+	MfaRequired  bool      `json:"mfa_required"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type PlatformUserRole struct {
+	PlatformUserID int64     `json:"platform_user_id"`
+	Role           string    `json:"role"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type Promo struct {

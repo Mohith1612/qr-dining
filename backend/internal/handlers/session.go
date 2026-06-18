@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/auth"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
@@ -23,10 +24,11 @@ type SessionHandler struct {
 	metrics     *observability.Metrics
 	guestTokens *auth.GuestTokenService
 	flags       config.FeatureFlags
+	audit       *audit.Writer
 }
 
-func NewSessionHandler(svc *services.SessionService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *SessionHandler {
-	return &SessionHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags}
+func NewSessionHandler(svc *services.SessionService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, auditWriter *audit.Writer) *SessionHandler {
+	return &SessionHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags, audit: auditWriter}
 }
 
 type createSessionRequest struct {
@@ -54,6 +56,18 @@ func (h *SessionHandler) Create(c *gin.Context) {
 		return
 	}
 
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:     result.Session.BranchID,
+		SessionID:    result.Session.ID,
+		TableID:      result.Session.TableID,
+		ResourceType: audit.ResourceSession,
+		ResourceID:   result.Session.ID.String(),
+		Action:       audit.ActionSessionCreate,
+		Result:       audit.ResultSuccess,
+		ActorType:    audit.ActorTypeGuest,
+		ActorID:      audit.IDStr(result.Participant.ID),
+		RiskLevel:    audit.RiskLow,
+	})
 	c.JSON(http.StatusCreated, gin.H{
 		"session":            result.Session,
 		"participant":        result.Participant,
@@ -109,6 +123,16 @@ func (h *SessionHandler) Close(c *gin.Context) {
 		return
 	}
 
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		SessionID:    id,
+		ResourceType: audit.ResourceSession,
+		ResourceID:   id.String(),
+		Action:       audit.ActionSessionClose,
+		Result:       audit.ResultSuccess,
+		ActorType:    audit.ActorTypeGuest,
+		ActorID:      audit.IDStr(participantID),
+		RiskLevel:    audit.RiskLow,
+	})
 	c.Status(http.StatusNoContent)
 }
 

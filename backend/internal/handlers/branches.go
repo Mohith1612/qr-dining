@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/repository"
@@ -15,10 +16,11 @@ import (
 
 type BranchHandler struct {
 	repos *repository.Repos
+	audit *audit.Writer
 }
 
-func NewBranchHandler(repos *repository.Repos) *BranchHandler {
-	return &BranchHandler{repos: repos}
+func NewBranchHandler(repos *repository.Repos, auditWriter *audit.Writer) *BranchHandler {
+	return &BranchHandler{repos: repos, audit: auditWriter}
 }
 
 type updateBranchRequest struct {
@@ -160,6 +162,29 @@ func (h *BranchHandler) UpdateBranch(c *gin.Context) {
 		}
 	}
 
+	updatedFields := []string{}
+	if req.SessionTimeoutMinutes != nil {
+		updatedFields = append(updatedFields, "session_timeout_minutes")
+	}
+	if req.LogoURL != nil {
+		updatedFields = append(updatedFields, "logo_url")
+	}
+	if req.OrderPrefix != nil {
+		updatedFields = append(updatedFields, "order_prefix")
+	}
+	if req.Theme != nil {
+		updatedFields = append(updatedFields, "theme")
+	}
+	if req.TaxRate != nil {
+		updatedFields = append(updatedFields, "tax_rate")
+	}
+	if req.ServiceChargeRate != nil {
+		updatedFields = append(updatedFields, "service_charge_rate")
+	}
+	if req.IncludeTaxInPrice != nil {
+		updatedFields = append(updatedFields, "include_tax_in_price")
+	}
+
 	if req.TaxRate != nil || req.ServiceChargeRate != nil || req.IncludeTaxInPrice != nil {
 		// Read current values first so we only update what was sent.
 		taxRate, serviceChargeRate, includeTaxInPrice := 0.0, 0.0, false
@@ -200,5 +225,16 @@ func (h *BranchHandler) UpdateBranch(c *gin.Context) {
 		}
 	}
 
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:     branchID,
+		ResourceType: audit.ResourceBranch,
+		ResourceID:   audit.IDStr(branchID),
+		Action:       audit.ActionBranchSettingsUpdate,
+		Result:       audit.ResultSuccess,
+		ActorType:    audit.ActorTypeStaff,
+		ActorID:      audit.IDStr(sess.StaffID),
+		RiskLevel:    audit.RiskMedium,
+		Metadata:     map[string]any{"fields_updated": updatedFields},
+	})
 	c.Status(http.StatusNoContent)
 }

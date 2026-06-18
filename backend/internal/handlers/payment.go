@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/auth"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
@@ -17,10 +18,11 @@ type PaymentHandler struct {
 	repos       *repository.Repos
 	guestTokens *auth.GuestTokenService
 	flags       config.FeatureFlags
+	audit       *audit.Writer
 }
 
-func NewPaymentHandler(svc *services.PaymentService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags) *PaymentHandler {
-	return &PaymentHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags}
+func NewPaymentHandler(svc *services.PaymentService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, auditWriter *audit.Writer) *PaymentHandler {
+	return &PaymentHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags, audit: auditWriter}
 }
 
 type initiatePaymentRequest struct {
@@ -79,6 +81,15 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, payment)
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		SessionID:    sessionID,
+		ResourceType: audit.ResourcePayment,
+		ResourceID:   audit.IDStr(payment.ID),
+		Action:       audit.ActionPaymentInitiate,
+		ActorType:    audit.ActorTypeGuest,
+		RiskLevel:    audit.RiskMedium,
+		Result:       audit.ResultSuccess,
+	})
 }
 
 func (h *PaymentHandler) Webhook(c *gin.Context) {

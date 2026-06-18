@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/auth"
 	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
@@ -25,10 +26,11 @@ type AssistanceHandler struct {
 	guestTokens *auth.GuestTokenService
 	flags       config.FeatureFlags
 	authz       *authz.Authorizer
+	audit       *audit.Writer
 }
 
-func NewAssistanceHandler(svc *services.AssistanceService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer) *AssistanceHandler {
-	return &AssistanceHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags, authz: authorizer}
+func NewAssistanceHandler(svc *services.AssistanceService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer, auditWriter *audit.Writer) *AssistanceHandler {
+	return &AssistanceHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags, authz: authorizer, audit: auditWriter}
 }
 
 type requestAssistanceRequest struct {
@@ -107,7 +109,7 @@ func (h *AssistanceHandler) Acknowledge(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionAssistanceAck, authz.AssistanceResource(target.ID, session.BranchID, target.SessionID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionAssistanceAck, authz.AssistanceResource(target.ID, session.BranchID, target.SessionID, orgID)) {
 		return
 	}
 	ar, err := h.svc.Acknowledge(c.Request.Context(), id, session.BranchID, staffSession.StaffID)
@@ -148,7 +150,7 @@ func (h *AssistanceHandler) Resolve(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionAssistanceResolve, authz.AssistanceResource(target.ID, session.BranchID, target.SessionID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionAssistanceResolve, authz.AssistanceResource(target.ID, session.BranchID, target.SessionID, orgID)) {
 		return
 	}
 	ar, err := h.svc.Resolve(c.Request.Context(), id, session.BranchID, staffSession.StaffID)

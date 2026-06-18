@@ -46,6 +46,9 @@ type Metrics struct {
 	// Background workers
 	WorkerRunsTotal   *prometheus.CounterVec
 	WorkerPanicsTotal *prometheus.CounterVec
+
+	// Audit
+	AuditWriteFailuresTotal *prometheus.CounterVec
 }
 
 func NewMetrics() *Metrics {
@@ -187,6 +190,11 @@ func NewMetrics() *Metrics {
 			Name: "background_worker_panics_total",
 			Help: "Total panics recovered in background workers by worker name.",
 		}, []string{"worker"}),
+
+		AuditWriteFailuresTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "audit_write_failures_total",
+			Help: "Total audit_log write failures by action and error class.",
+		}, []string{"action", "error_class"}),
 	}
 
 	reg.MustRegister(
@@ -218,6 +226,7 @@ func NewMetrics() *Metrics {
 		m.LegacyIdentityUsageTotal,
 		m.WorkerRunsTotal,
 		m.WorkerPanicsTotal,
+		m.AuditWriteFailuresTotal,
 	)
 
 	return m

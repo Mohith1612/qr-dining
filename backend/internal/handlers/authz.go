@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/repository"
@@ -32,13 +34,31 @@ func restaurantIDForBranch(c *gin.Context, repos *repository.Repos, branchID int
 	return organization.ID, true
 }
 
-func requireAuthorized(c *gin.Context, repos *repository.Repos, authorizer *authz.Authorizer, actor authz.Actor, action authz.Action, resource authz.Resource) bool {
+func requireAuthorized(c *gin.Context, repos *repository.Repos, authorizer *authz.Authorizer, writer *audit.Writer, actor authz.Actor, action authz.Action, resource authz.Resource) bool {
 	decision := authorizer.Authorize(actor, action, resource)
 	if decision.Allowed {
 		return true
 	}
 	requestID, _ := c.Get(middleware.RequestIDKey)
 	repos.LogAuthzDenied(c.Request.Context(), actor, action, resource, decision, stringValue(requestID))
+	if writer != nil {
+		writer.Record(c.Request.Context(), audit.AuditEvent{
+			OrganizationID: decision.ActorScope.OrganizationID,
+			BranchID:       decision.ActorScope.BranchID,
+			ResourceType:   string(resource.Type),
+			ResourceID:     resource.ID,
+			Action:         audit.ActionAuthzDenied,
+			Result:         audit.ResultDenied,
+			ActorType:      audit.ActorType(actor.Type),
+			ActorID:        fmt.Sprintf("%d", actor.ID),
+			RiskLevel:      audit.RiskMedium,
+			Metadata: map[string]any{
+				"denied_action": string(action),
+				"reason":        decision.Reason,
+				"actor_role":    string(actor.Role),
+			},
+		})
+	}
 	respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 	return false
 }

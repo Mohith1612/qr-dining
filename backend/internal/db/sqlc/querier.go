@@ -15,6 +15,7 @@ type Querier interface {
 	AbandonSession(ctx context.Context, id uuid.UUID) error
 	AbandonStaleSession(ctx context.Context, id uuid.UUID) error
 	AddCartItem(ctx context.Context, arg AddCartItemParams) (CartItem, error)
+	AddPlatformUserRole(ctx context.Context, arg AddPlatformUserRoleParams) error
 	ClearCart(ctx context.Context, cartID int64) error
 	CloseSessionIfActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	CountItemsInCategory(ctx context.Context, categoryID int64) (int64, error)
@@ -25,8 +26,15 @@ type Querier interface {
 	CreateItemModifierScoped(ctx context.Context, arg CreateItemModifierScopedParams) (ItemModifier, error)
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
+	CreateOrganizationBranchMembership(ctx context.Context, arg CreateOrganizationBranchMembershipParams) error
+	CreateOrganizationMember(ctx context.Context, arg CreateOrganizationMemberParams) (OrganizationMember, error)
 	CreateParticipant(ctx context.Context, arg CreateParticipantParams) (SessionParticipant, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
+	CreatePlatformBranch(ctx context.Context, arg CreatePlatformBranchParams) (Branch, error)
+	CreatePlatformOrganization(ctx context.Context, arg CreatePlatformOrganizationParams) (Organization, error)
+	CreatePlatformRestaurant(ctx context.Context, arg CreatePlatformRestaurantParams) (Restaurant, error)
+	CreatePlatformSession(ctx context.Context, arg CreatePlatformSessionParams) (PlatformSession, error)
+	CreatePlatformSupportSession(ctx context.Context, arg CreatePlatformSupportSessionParams) (PlatformSupportSession, error)
 	CreatePromo(ctx context.Context, arg CreatePromoParams) (Promo, error)
 	CreatePromoRedemption(ctx context.Context, arg CreatePromoRedemptionParams) (PromoRedemption, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
@@ -40,6 +48,7 @@ type Querier interface {
 	DeleteItemModifierScoped(ctx context.Context, arg DeleteItemModifierScopedParams) error
 	DeleteMenuCategory(ctx context.Context, arg DeleteMenuCategoryParams) error
 	DeleteMenuItem(ctx context.Context, arg DeleteMenuItemParams) error
+	GetActivePlatformSessionByTokenHash(ctx context.Context, tokenHash string) (PlatformSession, error)
 	GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error)
 	GetActiveStaffSessionByTokenHash(ctx context.Context, tokenHash string) (StaffSession, error)
 	GetAssistanceRequestByID(ctx context.Context, id int64) (AssistanceRequest, error)
@@ -78,6 +87,9 @@ type Querier interface {
 	GetParticipantByID(ctx context.Context, id int64) (SessionParticipant, error)
 	GetPaymentByID(ctx context.Context, id int64) (Payment, error)
 	GetPlanByTier(ctx context.Context, tier PlanTier) (SubscriptionPlan, error)
+	GetPlatformSupportSessionByID(ctx context.Context, id int64) (PlatformSupportSession, error)
+	GetPlatformUserByEmail(ctx context.Context, email string) (PlatformUser, error)
+	GetPlatformUserByID(ctx context.Context, id int64) (PlatformUser, error)
 	GetPromoByCode(ctx context.Context, arg GetPromoByCodeParams) (Promo, error)
 	GetPromoByID(ctx context.Context, id int64) (Promo, error)
 	GetRecentEventsByBranch(ctx context.Context, branchID pgtype.Int8) ([]EventLog, error)
@@ -95,9 +107,11 @@ type Querier interface {
 	GetTableByQRToken(ctx context.Context, qrCodeToken string) (Table, error)
 	// Returns the most ordered menu items for a branch within a time window.
 	GetTopOrderedItems(ctx context.Context, arg GetTopOrderedItemsParams) ([]GetTopOrderedItemsRow, error)
+	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error
 	InsertEventLog(ctx context.Context, arg InsertEventLogParams) error
 	InsertMenuCategory(ctx context.Context, arg InsertMenuCategoryParams) (MenuCategory, error)
 	InsertMenuItem(ctx context.Context, arg InsertMenuItemParams) (MenuItem, error)
+	InsertPlatformAuditLog(ctx context.Context, arg InsertPlatformAuditLogParams) error
 	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) (PaymentWebhookEvent, error)
 	LinkSessionToCustomer(ctx context.Context, arg LinkSessionToCustomerParams) error
 	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]AssistanceRequest, error)
@@ -107,6 +121,9 @@ type Querier interface {
 	ListAllMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
 	ListAllMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error)
 	ListAssistanceForSession(ctx context.Context, sessionID uuid.UUID) ([]AssistanceRequest, error)
+	ListAuditLogForBranch(ctx context.Context, arg ListAuditLogForBranchParams) ([]AuditLog, error)
+	ListAuditLogForOrganization(ctx context.Context, arg ListAuditLogForOrganizationParams) ([]AuditLog, error)
+	ListAuditLogPlatform(ctx context.Context, arg ListAuditLogPlatformParams) ([]AuditLog, error)
 	ListBranchesForOrganization(ctx context.Context, organizationID int64) ([]Branch, error)
 	ListCartItems(ctx context.Context, cartID int64) ([]ListCartItemsRow, error)
 	// Queries used by background worker routines.
@@ -122,6 +139,11 @@ type Querier interface {
 	ListParticipantsBySession(ctx context.Context, sessionID uuid.UUID) ([]SessionParticipant, error)
 	ListPaymentsForSession(ctx context.Context, sessionID uuid.UUID) ([]Payment, error)
 	ListPlans(ctx context.Context) ([]SubscriptionPlan, error)
+	ListPlatformAuditLog(ctx context.Context, arg ListPlatformAuditLogParams) ([]PlatformAuditLog, error)
+	ListPlatformOrganizations(ctx context.Context) ([]Organization, error)
+	ListPlatformRolesForUser(ctx context.Context, platformUserID int64) ([]string, error)
+	ListPlatformSupportSessions(ctx context.Context) ([]PlatformSupportSession, error)
+	ListPlatformUsers(ctx context.Context) ([]PlatformUser, error)
 	ListPromosForBranch(ctx context.Context, branchID int64) ([]Promo, error)
 	ListSessionsExpiringSoon(ctx context.Context) ([]ListSessionsExpiringSoonRow, error)
 	ListStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
@@ -132,9 +154,11 @@ type Querier interface {
 	NextOrderNumber(ctx context.Context, arg NextOrderNumberParams) (int32, error)
 	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
+	RevokePlatformSession(ctx context.Context, arg RevokePlatformSessionParams) error
 	RevokeStaffSessionsForStaff(ctx context.Context, staffID int64) error
 	SearchCustomersByPhone(ctx context.Context, arg SearchCustomersByPhoneParams) ([]Customer, error)
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
+	TouchPlatformSession(ctx context.Context, id uuid.UUID) error
 	TouchStaffSession(ctx context.Context, id uuid.UUID) error
 	UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistanceStatusParams) (AssistanceRequest, error)
 	UpdateAssistanceStatusScoped(ctx context.Context, arg UpdateAssistanceStatusScopedParams) (AssistanceRequest, error)
@@ -157,6 +181,7 @@ type Querier interface {
 	UpdateStaffPIN(ctx context.Context, arg UpdateStaffPINParams) error
 	UpdateTableStatus(ctx context.Context, arg UpdateTableStatusParams) error
 	UpsertCustomer(ctx context.Context, arg UpsertCustomerParams) (Customer, error)
+	UpsertPlatformUser(ctx context.Context, arg UpsertPlatformUserParams) (PlatformUser, error)
 	UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) (RestaurantSubscription, error)
 }
 

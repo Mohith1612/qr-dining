@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/auth"
 	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
+	dbsqlc "github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/events"
 	"github.com/Mohith1612/qr-dining/internal/handlers"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
@@ -53,6 +55,7 @@ func New(
 	// ── Middleware stack ─────────────────────────────────────────────────────
 	r.Use(middleware.Recover(logger))
 	r.Use(middleware.RequestID())
+	r.Use(audit.Middleware())
 	r.Use(middleware.Logger(logger))
 	r.Use(middleware.Metrics(metrics))
 	r.Use(middleware.CORS(cfg.CORS.AllowedOrigins))
@@ -74,34 +77,40 @@ func New(
 	assistanceSvc := services.NewAssistanceService(repos, publisher)
 	menuSvc := services.NewMenuService(repos, cache)
 	staffSvc := services.NewStaffService(repos, cache, logger)
+	platformSvc := services.NewPlatformService(repos, cache, logger)
 	paymentSvc := services.NewPaymentService(repos, publisher, metrics, sessionSvc, logger)
 	subSvc := services.NewSubscriptionService(repos)
 	analyticsSvc := services.NewAnalyticsService(repos, subSvc, cache)
 	customerSvc := services.NewCustomerService(repos)
 
+	// ── Audit writer ─────────────────────────────────────────────────────────
+	auditWriter := audit.NewWriter(dbsqlc.New(db), cfg.FeatureFlags.AuditLogV2Enabled, logger, metrics.AuditWriteFailuresTotal)
+
 	// ── Handlers ─────────────────────────────────────────────────────────────
 	health := handlers.NewHealthHandler(db, redis)
-	sessionH := handlers.NewSessionHandler(sessionSvc, repos, metrics, guestTokens, cfg.FeatureFlags)
+	sessionH := handlers.NewSessionHandler(sessionSvc, repos, metrics, guestTokens, cfg.FeatureFlags, auditWriter)
 	cartH := handlers.NewCartHandler(cartSvc, repos, metrics, guestTokens, cfg.FeatureFlags)
-	orderH := handlers.NewOrderHandler(orderSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer)
-	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer)
+	orderH := handlers.NewOrderHandler(orderSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
+	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	menuH := handlers.NewMenuHandler(menuSvc)
-	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer)
-	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags)
+	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
+	platformH := handlers.NewPlatformHandler(repos, platformSvc, auditWriter)
+	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, auditWriter)
 	wsH := handlers.NewWSHandler(hub, repos, metrics, guestTokens, cfg.FeatureFlags)
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc, repos, guestTokens, cfg.FeatureFlags)
-	menuAdminH := handlers.NewMenuAdminHandler(menuSvc, repos, authorizer)
+	menuAdminH := handlers.NewMenuAdminHandler(menuSvc, repos, authorizer, auditWriter)
 	eventLogH := handlers.NewEventLogHandler(repos)
 	tenantH := handlers.NewTenantHandler(repos)
 	subH := handlers.NewSubscriptionHandler(repos, subSvc)
 	analyticsH := handlers.NewAnalyticsHandler(analyticsSvc)
-	orgH := handlers.NewOrganizationHandler(repos, analyticsSvc, cfg.FeatureFlags, authorizer)
-	tableH := handlers.NewTableHandler(repos)
-	branchH := handlers.NewBranchHandler(repos)
-	customerH := handlers.NewCustomerHandler(customerSvc, repos, guestTokens, cfg.FeatureFlags, authorizer)
+	orgH := handlers.NewOrganizationHandler(repos, analyticsSvc, cfg.FeatureFlags, authorizer, auditWriter)
+	tableH := handlers.NewTableHandler(repos, auditWriter)
+	branchH := handlers.NewBranchHandler(repos, auditWriter)
+	customerH := handlers.NewCustomerHandler(customerSvc, repos, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	uploadH := handlers.NewUploadHandler(storage.NewR2Client(cfg.R2), repos)
 	billingH := handlers.NewBillingHandler(repos, guestTokens, cfg.FeatureFlags)
-	promoH := handlers.NewPromoHandler(promoSvc, repos, guestTokens, cfg.FeatureFlags, authorizer)
+	promoH := handlers.NewPromoHandler(promoSvc, repos, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
+	auditLogH := handlers.NewAuditLogHandler(repos, auditWriter)
 
 	_ = participantSvc // used by ws handler indirectly
 
@@ -164,6 +173,26 @@ func New(
 	authGroup := r.Group("/")
 	authGroup.Use(middleware.RateLimitStrict(rateLimiter, "auth", 10))
 	authGroup.POST("/staff/auth", staffH.Authenticate)
+	authGroup.POST("/platform/auth", platformH.Authenticate)
+
+	// Platform-protected routes (separate trust domain; staff tokens are rejected).
+	platformAPI := r.Group("/platform")
+	platformAPI.Use(middleware.RateLimit(rateLimiter, cfg.Server.RateLimitRPM))
+	platformAPI.Use(middleware.PlatformAuth(platformSvc, logger))
+	platformAPI.POST("/auth/logout", platformH.Logout)
+	platformAPI.GET("/users", platformH.ListUsers)
+	platformAPI.GET("/users/:id", platformH.GetUser)
+	platformAPI.GET("/organizations", platformH.ListOrganizations)
+	platformAPI.POST("/organizations", platformH.CreateOrganization)
+	platformAPI.GET("/organizations/:org_id", platformH.GetOrganization)
+	platformAPI.PATCH("/organizations/:org_id", platformH.UpdateOrganization)
+	platformAPI.GET("/organizations/:org_id/branches", platformH.ListBranches)
+	platformAPI.POST("/organizations/:org_id/branches", platformH.CreateBranch)
+	platformAPI.GET("/branches/:branch_id", platformH.GetBranch)
+	platformAPI.POST("/support/sessions", platformH.CreateSupportSession)
+	platformAPI.GET("/support/sessions", platformH.ListSupportSessions)
+	platformAPI.GET("/support/sessions/:id", platformH.GetSupportSession)
+	platformAPI.GET("/audit", platformH.ListAudit)
 
 	// Staff-protected routes (require valid staff token).
 	staffAPI := r.Group("/")
@@ -194,6 +223,8 @@ func New(
 	branchStaffAPI.PATCH("", branchH.UpdateBranch)
 	branchStaffAPI.GET("/customers", customerH.SearchCustomers)
 
+	branchStaffAPI.GET("/audit", auditLogH.GetBranchAuditLog)
+
 	// Organization governance — staff authenticated, feature-flagged in handler.
 	orgAPI := staffAPI.Group("/orgs/:org_id")
 	orgAPI.GET("", orgH.GetOrganization)
@@ -202,6 +233,7 @@ func New(
 	orgAPI.GET("/analytics/top-items", orgH.GetTopItems)
 	orgAPI.GET("/analytics/busy-hours", orgH.GetBusyHours)
 	orgAPI.GET("/analytics/order-volume", orgH.GetOrderVolume)
+	orgAPI.GET("/audit", auditLogH.GetOrgAuditLog)
 
 	// Promo management — staff protected.
 	branchStaffAPI.GET("/promos", promoH.ListPromos)

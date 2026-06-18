@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
@@ -17,10 +18,11 @@ type MenuAdminHandler struct {
 	svc   *services.MenuService
 	repos *repository.Repos
 	authz *authz.Authorizer
+	audit *audit.Writer
 }
 
-func NewMenuAdminHandler(svc *services.MenuService, repos *repository.Repos, authorizer *authz.Authorizer) *MenuAdminHandler {
-	return &MenuAdminHandler{svc: svc, repos: repos, authz: authorizer}
+func NewMenuAdminHandler(svc *services.MenuService, repos *repository.Repos, authorizer *authz.Authorizer, auditWriter *audit.Writer) *MenuAdminHandler {
+	return &MenuAdminHandler{svc: svc, repos: repos, authz: authorizer, audit: auditWriter}
 }
 
 type createCategoryRequest struct {
@@ -54,6 +56,16 @@ func (h *MenuAdminHandler) CreateCategory(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, cat)
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:     branchID,
+		ResourceType: audit.ResourceMenuCategory,
+		ResourceID:   audit.IDStr(cat.ID),
+		Action:       audit.ActionMenuCategoryCreate,
+		ActorType:    audit.ActorTypeStaff,
+		ActorID:      audit.IDStr(sess.StaffID),
+		RiskLevel:    audit.RiskLow,
+		Result:       audit.ResultSuccess,
+	})
 }
 
 type createMenuItemRequest struct {
@@ -124,6 +136,16 @@ func (h *MenuAdminHandler) CreateItem(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, item)
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:     branchID,
+		ResourceType: audit.ResourceMenuItem,
+		ResourceID:   audit.IDStr(item.ID),
+		Action:       audit.ActionMenuItemCreate,
+		ActorType:    audit.ActorTypeStaff,
+		ActorID:      audit.IDStr(sess.StaffID),
+		RiskLevel:    audit.RiskLow,
+		Result:       audit.ResultSuccess,
+	})
 }
 
 type updateMenuItemRequest struct {
@@ -170,7 +192,7 @@ func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuItemUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuItemUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
@@ -219,6 +241,17 @@ func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, item)
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		OrganizationID: orgID,
+		BranchID:       target.BranchID,
+		ResourceType:   audit.ResourceMenuItem,
+		ResourceID:     audit.IDStr(item.ID),
+		Action:         audit.ActionMenuItemUpdate,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        audit.IDStr(sess.StaffID),
+		RiskLevel:      audit.RiskLow,
+		Result:         audit.ResultSuccess,
+	})
 }
 
 type toggleAvailabilityRequest struct {
@@ -257,7 +290,7 @@ func (h *MenuAdminHandler) ToggleAvailability(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuItemToggleAvailable, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuItemToggleAvailable, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
@@ -306,7 +339,7 @@ func (h *MenuAdminHandler) ToggleFeatured(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuItemToggleAvailable, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuItemToggleAvailable, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
@@ -382,7 +415,7 @@ func (h *MenuAdminHandler) DeleteMenuItem(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuItemUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuItemUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
@@ -392,6 +425,17 @@ func (h *MenuAdminHandler) DeleteMenuItem(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		OrganizationID: orgID,
+		BranchID:       target.BranchID,
+		ResourceType:   audit.ResourceMenuItem,
+		ResourceID:     audit.IDStr(target.ID),
+		Action:         audit.ActionMenuItemDelete,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        audit.IDStr(sess.StaffID),
+		RiskLevel:      audit.RiskMedium,
+		Result:         audit.ResultSuccess,
+	})
 }
 
 func (h *MenuAdminHandler) DeleteMenuCategory(c *gin.Context) {
@@ -419,7 +463,7 @@ func (h *MenuAdminHandler) DeleteMenuCategory(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuCategoryUpdate, authz.MenuCategoryResource(target.ID, target.BranchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuCategoryUpdate, authz.MenuCategoryResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
@@ -429,6 +473,17 @@ func (h *MenuAdminHandler) DeleteMenuCategory(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		OrganizationID: orgID,
+		BranchID:       target.BranchID,
+		ResourceType:   audit.ResourceMenuCategory,
+		ResourceID:     audit.IDStr(target.ID),
+		Action:         audit.ActionMenuCategoryDelete,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        audit.IDStr(sess.StaffID),
+		RiskLevel:      audit.RiskMedium,
+		Result:         audit.ResultSuccess,
+	})
 }
 
 type updateMenuCategoryRequest struct {
@@ -469,7 +524,7 @@ func (h *MenuAdminHandler) UpdateMenuCategory(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuCategoryUpdate, authz.MenuCategoryResource(target.ID, target.BranchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuCategoryUpdate, authz.MenuCategoryResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
@@ -486,6 +541,17 @@ func (h *MenuAdminHandler) UpdateMenuCategory(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, cat)
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		OrganizationID: orgID,
+		BranchID:       target.BranchID,
+		ResourceType:   audit.ResourceMenuCategory,
+		ResourceID:     audit.IDStr(cat.ID),
+		Action:         audit.ActionMenuCategoryUpdate,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        audit.IDStr(sess.StaffID),
+		RiskLevel:      audit.RiskLow,
+		Result:         audit.ResultSuccess,
+	})
 }
 
 type addModifierRequest struct {
@@ -527,7 +593,7 @@ func (h *MenuAdminHandler) AddItemModifier(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuModifierUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuModifierUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
@@ -572,7 +638,7 @@ func (h *MenuAdminHandler) DeleteItemModifier(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionMenuModifierUpdate, authz.MenuModifierResource(target.ID, target.BranchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuModifierUpdate, authz.MenuModifierResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 

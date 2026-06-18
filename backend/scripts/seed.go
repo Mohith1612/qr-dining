@@ -38,6 +38,33 @@ func main() {
 
 	q := sqlc.New(pool)
 
+	// ── Optional Platform Admin ───────────────────────────────────────────────
+	platformEmail := os.Getenv("PLATFORM_ADMIN_EMAIL")
+	platformPassword := os.Getenv("PLATFORM_ADMIN_PASSWORD")
+	if platformEmail != "" && platformPassword != "" {
+		hash, err := services.HashPlatformPassword(platformPassword)
+		if err != nil {
+			fatal("hash platform admin password", err)
+		}
+		admin, err := q.UpsertPlatformUser(ctx, sqlc.UpsertPlatformUserParams{
+			Email:        services.NormalizePlatformEmail(platformEmail),
+			DisplayName:  getenv("PLATFORM_ADMIN_NAME", "Platform Admin"),
+			PasswordHash: hash,
+			Status:       "active",
+			MfaRequired:  false,
+		})
+		if err != nil {
+			fatal("upsert platform admin", err)
+		}
+		if err := q.AddPlatformUserRole(ctx, sqlc.AddPlatformUserRoleParams{
+			PlatformUserID: admin.ID,
+			Role:           services.PlatformRoleSuperAdmin,
+		}); err != nil {
+			fatal("add platform admin role", err)
+		}
+		fmt.Printf("platform admin id=%d email=%s role=%s\n", admin.ID, admin.Email, services.PlatformRoleSuperAdmin)
+	}
+
 	// ── Organization / Restaurant ─────────────────────────────────────────────
 	var organizationID int64
 	err = pool.QueryRow(ctx,
@@ -512,6 +539,13 @@ func mustToken() string {
 		panic(err)
 	}
 	return hex.EncodeToString(b)
+}
+
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func fatal(msg string, err error) {

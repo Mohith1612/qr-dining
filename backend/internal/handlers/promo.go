@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/auth"
 	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
@@ -25,10 +26,11 @@ type PromoHandler struct {
 	guestTokens *auth.GuestTokenService
 	flags       config.FeatureFlags
 	authz       *authz.Authorizer
+	audit       *audit.Writer
 }
 
-func NewPromoHandler(svc *services.PromoService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer) *PromoHandler {
-	return &PromoHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags, authz: authorizer}
+func NewPromoHandler(svc *services.PromoService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer, auditWriter *audit.Writer) *PromoHandler {
+	return &PromoHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags, authz: authorizer, audit: auditWriter}
 }
 
 // POST /sessions/:id/promos/validate — public, rate-limited.
@@ -108,7 +110,7 @@ func (h *PromoHandler) ListPromos(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionBranchRead, authz.BranchResource(branchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionBranchRead, authz.BranchResource(branchID, orgID)) {
 		return
 	}
 
@@ -154,7 +156,7 @@ func (h *PromoHandler) CreatePromo(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionPromoCreate, authz.PromoResource(0, branchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionPromoCreate, authz.PromoResource(0, branchID, orgID)) {
 		return
 	}
 
@@ -259,7 +261,7 @@ func (h *PromoHandler) DeactivatePromo(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionPromoDeactivate, authz.PromoResource(promo.ID, promo.BranchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionPromoDeactivate, authz.PromoResource(promo.ID, promo.BranchID, orgID)) {
 		return
 	}
 

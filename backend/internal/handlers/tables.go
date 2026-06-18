@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/crypto"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
@@ -15,10 +16,11 @@ import (
 
 type TableHandler struct {
 	repos *repository.Repos
+	audit *audit.Writer
 }
 
-func NewTableHandler(repos *repository.Repos) *TableHandler {
-	return &TableHandler{repos: repos}
+func NewTableHandler(repos *repository.Repos, auditWriter *audit.Writer) *TableHandler {
+	return &TableHandler{repos: repos, audit: auditWriter}
 }
 
 type tableResponse struct {
@@ -175,5 +177,16 @@ func (h *TableHandler) RefreshQR(c *gin.Context) {
 		return
 	}
 
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:     updated.BranchID,
+		ResourceType: audit.ResourceQRToken,
+		ResourceID:   audit.IDStr(tableID),
+		Action:       audit.ActionQRTokenRotate,
+		Result:       audit.ResultSuccess,
+		ActorType:    audit.ActorTypeStaff,
+		ActorID:      audit.IDStr(sess.StaffID),
+		RiskLevel:    audit.RiskMedium,
+		Metadata:     map[string]any{"table_identifier": updated.Identifier},
+	})
 	c.JSON(http.StatusOK, tableToResponse(updated))
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
@@ -21,10 +22,11 @@ type OrganizationHandler struct {
 	svc   *services.AnalyticsService
 	flags config.FeatureFlags
 	authz *authz.Authorizer
+	audit *audit.Writer
 }
 
-func NewOrganizationHandler(repos *repository.Repos, analyticsSvc *services.AnalyticsService, flags config.FeatureFlags, authorizer *authz.Authorizer) *OrganizationHandler {
-	return &OrganizationHandler{repos: repos, svc: analyticsSvc, flags: flags, authz: authorizer}
+func NewOrganizationHandler(repos *repository.Repos, analyticsSvc *services.AnalyticsService, flags config.FeatureFlags, authorizer *authz.Authorizer, auditWriter *audit.Writer) *OrganizationHandler {
+	return &OrganizationHandler{repos: repos, svc: analyticsSvc, flags: flags, authz: authorizer, audit: auditWriter}
 }
 
 type updateOrganizationRequest struct {
@@ -214,7 +216,7 @@ func (h *OrganizationHandler) authorizeOrg(c *gin.Context, action authz.Action, 
 	}
 
 	actor := authz.StaffActor(sess.StaffID, sess.Role, sess.BranchID, org.ID, sess.SessionID.String())
-	if !requireAuthorized(c, h.repos, h.authz, actor, action, authz.OrganizationResource(org.ID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, action, authz.OrganizationResource(org.ID)) {
 		return sqlc.Organization{}, authz.Actor{}, sqlc.OrganizationMember{}, false
 	}
 

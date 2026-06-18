@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/auth"
 	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
@@ -22,10 +23,11 @@ type CustomerHandler struct {
 	guestTokens *auth.GuestTokenService
 	flags       config.FeatureFlags
 	authz       *authz.Authorizer
+	audit       *audit.Writer
 }
 
-func NewCustomerHandler(svc *services.CustomerService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer) *CustomerHandler {
-	return &CustomerHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags, authz: authorizer}
+func NewCustomerHandler(svc *services.CustomerService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer, auditWriter *audit.Writer) *CustomerHandler {
+	return &CustomerHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags, authz: authorizer, audit: auditWriter}
 }
 
 type linkCustomerRequest struct {
@@ -144,7 +146,7 @@ func (h *CustomerHandler) GetCustomerHistory(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionCustomerHistory, authz.CustomerResource(customer.ID, customerOrg.ID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionCustomerHistory, authz.CustomerResource(customer.ID, customerOrg.ID)) {
 		return
 	}
 
@@ -199,7 +201,7 @@ func (h *CustomerHandler) DeleteCustomer(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionCustomerDelete, authz.CustomerResource(customer.ID, customerOrg.ID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionCustomerDelete, authz.CustomerResource(customer.ID, customerOrg.ID)) {
 		return
 	}
 
@@ -209,4 +211,14 @@ func (h *CustomerHandler) DeleteCustomer(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		OrganizationID: customerOrg.ID,
+		ResourceType:   audit.ResourceCustomer,
+		ResourceID:     audit.IDStr(customer.ID),
+		Action:         audit.ActionCustomerDelete,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        audit.IDStr(staffSession.StaffID),
+		RiskLevel:      audit.RiskHigh,
+		Result:         audit.ResultSuccess,
+	})
 }

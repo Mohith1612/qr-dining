@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
@@ -22,10 +23,11 @@ type StaffHandler struct {
 	metrics *observability.Metrics
 	flags   config.FeatureFlags
 	authz   *authz.Authorizer
+	audit   *audit.Writer
 }
 
-func NewStaffHandler(svc *services.StaffService, repos *repository.Repos, metrics *observability.Metrics, flags config.FeatureFlags, authorizer *authz.Authorizer) *StaffHandler {
-	return &StaffHandler{svc: svc, repos: repos, metrics: metrics, flags: flags, authz: authorizer}
+func NewStaffHandler(svc *services.StaffService, repos *repository.Repos, metrics *observability.Metrics, flags config.FeatureFlags, authorizer *authz.Authorizer, auditWriter *audit.Writer) *StaffHandler {
+	return &StaffHandler{svc: svc, repos: repos, metrics: metrics, flags: flags, authz: authorizer, audit: auditWriter}
 }
 
 type staffAuthRequest struct {
@@ -60,6 +62,15 @@ func (h *StaffHandler) Authenticate(c *gin.Context) {
 	}
 	if err != nil {
 		if errors.Is(err, domain.ErrParticipantUnauthorized) {
+			h.audit.Record(c.Request.Context(), audit.AuditEvent{
+				BranchID:     req.BranchID,
+				ResourceType: audit.ResourceStaff,
+				Action:       audit.ActionStaffLoginFailed,
+				Result:       audit.ResultFailure,
+				ActorType:    audit.ActorTypeStaff,
+				RiskLevel:    audit.RiskHigh,
+				Metadata:     map[string]any{"reason": "invalid_credentials"},
+			})
 			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "invalid credentials")
 			return
 		}
@@ -67,6 +78,17 @@ func (h *StaffHandler) Authenticate(c *gin.Context) {
 		return
 	}
 
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:       session.BranchID,
+		OrganizationID: session.OrganizationID,
+		ResourceType:   audit.ResourceStaff,
+		ResourceID:     audit.IDStr(session.StaffID),
+		Action:         audit.ActionStaffLogin,
+		Result:         audit.ResultSuccess,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        audit.IDStr(session.StaffID),
+		RiskLevel:      audit.RiskMedium,
+	})
 	c.JSON(http.StatusOK, session)
 }
 
@@ -108,6 +130,18 @@ func (h *StaffHandler) CreateStaff(c *gin.Context) {
 		return
 	}
 
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:       branchID,
+		OrganizationID: sess.OrganizationID,
+		ResourceType:   audit.ResourceStaff,
+		ResourceID:     audit.IDStr(staff.ID),
+		Action:         audit.ActionStaffCreate,
+		Result:         audit.ResultSuccess,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        audit.IDStr(sess.StaffID),
+		RiskLevel:      audit.RiskMedium,
+		After:          audit.MustJSON(map[string]any{"name": staff.Name, "role": string(staff.Role)}),
+	})
 	c.JSON(http.StatusCreated, gin.H{
 		"id":         staff.ID,
 		"branch_id":  staff.BranchID,
@@ -152,7 +186,7 @@ func (h *StaffHandler) RotatePIN(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionStaffPinUpdate, authz.StaffResource(target.ID, target.BranchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionStaffPinUpdate, authz.StaffResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
@@ -171,6 +205,16 @@ func (h *StaffHandler) RotatePIN(c *gin.Context) {
 		return
 	}
 
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:     target.BranchID,
+		ResourceType: audit.ResourceStaff,
+		ResourceID:   audit.IDStr(staffID),
+		Action:       audit.ActionStaffPINReset,
+		Result:       audit.ResultSuccess,
+		ActorType:    audit.ActorTypeStaff,
+		ActorID:      audit.IDStr(sess.StaffID),
+		RiskLevel:    audit.RiskHigh,
+	})
 	c.Status(http.StatusNoContent)
 }
 
@@ -201,7 +245,7 @@ func (h *StaffHandler) DeactivateStaff(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionStaffDeactivate, authz.StaffResource(target.ID, target.BranchID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionStaffDeactivate, authz.StaffResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
 
@@ -210,5 +254,22 @@ func (h *StaffHandler) DeactivateStaff(c *gin.Context) {
 		return
 	}
 
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:       target.BranchID,
+		OrganizationID: actor.Scope.OrganizationID,
+		ResourceType:   audit.ResourceStaff,
+		ResourceID:     audit.IDStr(staffID),
+		Action:         audit.ActionStaffDeactivate,
+		Result:         audit.ResultSuccess,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        audit.IDStr(sess.StaffID),
+		ActorScope: map[string]any{
+			"org_id": actor.Scope.OrganizationID,
+			"branch_id": target.BranchID,
+			"role": string(sess.Role),
+		},
+		RiskLevel: audit.RiskHigh,
+		After:     audit.MustJSON(map[string]any{"is_active": false}),
+	})
 	c.Status(http.StatusNoContent)
 }

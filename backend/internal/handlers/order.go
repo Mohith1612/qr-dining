@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/auth"
 	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
@@ -24,10 +25,11 @@ type OrderHandler struct {
 	guestTokens *auth.GuestTokenService
 	flags       config.FeatureFlags
 	authz       *authz.Authorizer
+	audit       *audit.Writer
 }
 
-func NewOrderHandler(svc *services.OrderService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer) *OrderHandler {
-	return &OrderHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags, authz: authorizer}
+func NewOrderHandler(svc *services.OrderService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, authorizer *authz.Authorizer, auditWriter *audit.Writer) *OrderHandler {
+	return &OrderHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, flags: flags, authz: authorizer, audit: auditWriter}
 }
 
 type placeOrderRequest struct {
@@ -167,7 +169,7 @@ func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !requireAuthorized(c, h.repos, h.authz, actor, authz.ActionOrderStatusUpdate, authz.OrderResource(target.ID, target.BranchID, target.SessionID, orgID)) {
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionOrderStatusUpdate, authz.OrderResource(target.ID, target.BranchID, target.SessionID, orgID)) {
 		return
 	}
 	order, err := h.svc.UpdateOrderStatus(c.Request.Context(), orderID, target.BranchID, newStatus, staffSession.StaffID)
