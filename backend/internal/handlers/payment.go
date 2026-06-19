@@ -43,6 +43,7 @@ type initiatePaymentRequest struct {
 	OrderID            *uuid.UUID `json:"order_id"`
 	Amount             float64    `json:"amount" binding:"required,gt=0"`
 	Method             string     `json:"method" binding:"required"`
+	IdempotencyKey     string     `json:"idempotency_key" binding:"required"`
 	ProviderPaymentRef string     `json:"provider_payment_ref"`
 	ProviderOrderRef   string     `json:"provider_order_ref"`
 }
@@ -53,7 +54,12 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		respondValidationError(c, "invalid session id")
 		return
 	}
-	if !requireGuestSession(c, h.guestTokens, h.repos, sessionID, h.flags.AuthGuestCredentialsRequired) {
+	participantID, ok := guestParticipantID(c, h.guestTokens, h.repos, sessionID, 0, h.flags.AuthGuestCredentialsRequired)
+	if !ok {
+		return
+	}
+	if participantID == 0 {
+		respondValidationError(c, "guest participant is required")
 		return
 	}
 
@@ -91,22 +97,35 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		Method:                  method,
 		Bill:                    billSnapshotInputFromBill(bill),
 		StaffSettlementRequired: h.flags.PaymentStaffSettlementRequired,
+		IdempotencyKey:          req.IdempotencyKey,
+		ActorType:               "participant",
+		ActorID:                 participantID,
 		ProviderPaymentRef:      req.ProviderPaymentRef,
 		ProviderOrderRef:        req.ProviderOrderRef,
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrIdempotencyConflict) {
+			respondError(c, http.StatusConflict, "IDEMPOTENCY_CONFLICT", err.Error())
+			return
+		}
+		if errors.Is(err, domain.ErrIdempotencyInProgress) {
+			respondError(c, http.StatusConflict, "IDEMPOTENCY_IN_PROGRESS", err.Error())
+			return
+		}
 		respondInternalError(c)
 		return
 	}
 	c.JSON(http.StatusCreated, payment)
 	h.audit.Record(c.Request.Context(), audit.AuditEvent{
-		SessionID:    sessionID,
-		ResourceType: audit.ResourcePayment,
-		ResourceID:   audit.IDStr(payment.ID),
-		Action:       audit.ActionPaymentInitiate,
-		ActorType:    audit.ActorTypeGuest,
-		RiskLevel:    audit.RiskMedium,
-		Result:       audit.ResultSuccess,
+		SessionID:      sessionID,
+		ResourceType:   audit.ResourcePayment,
+		ResourceID:     audit.IDStr(payment.ID),
+		Action:         audit.ActionPaymentInitiate,
+		ActorType:      audit.ActorTypeGuest,
+		ActorID:        audit.IDStr(participantID),
+		IdempotencyKey: req.IdempotencyKey,
+		RiskLevel:      audit.RiskMedium,
+		Result:         audit.ResultSuccess,
 	})
 }
 

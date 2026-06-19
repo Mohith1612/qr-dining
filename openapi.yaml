@@ -1052,7 +1052,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [amount, method]
+              required: [amount, method, idempotency_key]
               properties:
                 order_id:
                   type: string
@@ -1065,6 +1065,9 @@ paths:
                 method:
                   type: string
                   enum: [cash, card, digital, card_manual, upi]
+                idempotency_key:
+                  type: string
+                  description: Client-generated payment idempotency key scoped to the session and guest actor
                 provider_payment_ref:
                   type: string
                   description: Provider payment reference for externally created provider payments

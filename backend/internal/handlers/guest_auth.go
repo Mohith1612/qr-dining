@@ -30,6 +30,11 @@ func guestParticipantID(
 ) (int64, bool) {
 	token := guestTokenFromHeader(c)
 	if token == "" {
+		if legacyParticipantID == 0 {
+			if headerParticipantID, ok := participantIDFromHeader(c); ok {
+				legacyParticipantID = headerParticipantID
+			}
+		}
 		if required {
 			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential required")
 			return 0, false

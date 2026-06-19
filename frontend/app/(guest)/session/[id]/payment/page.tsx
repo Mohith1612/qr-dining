@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useOrdersStore } from "@/store/orders"
 import { useSession } from "@/hooks/useSession"
 import { paymentsApi } from "@/lib/api/payments"
+import { generateIdempotencyKey } from "@/lib/idempotency"
 import { formatCurrency } from "@/lib/format"
 import { Banknote, CreditCard, Smartphone, CheckCircle, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
@@ -78,7 +79,7 @@ export default function PaymentPage() {
     setLoading(method)
     try {
       // Send amount=0 as a hint; backend computes the authoritative total server-side.
-      const payment = await paymentsApi.initiate(session.id, total, method, undefined, participant?.id)
+      const payment = await paymentsApi.initiate(session.id, total, method, generateIdempotencyKey(), undefined, participant?.id)
       setPaidTotal(total)
       setPaid(method)
       toast.success(payment.status === "completed" ? "Payment completed." : "Payment request sent.")

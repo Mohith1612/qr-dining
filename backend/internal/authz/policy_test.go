@@ -26,6 +26,24 @@ func TestAuthorizeDeniesCrossBranch(t *testing.T) {
 	}
 }
 
+func TestAuthorizeDeniesCrossBranchOrderStatusUpdate(t *testing.T) {
+	a := NewAuthorizer()
+	resource := OrderResource(newUUID(t), 10, newUUID(t), 1)
+	decision := a.Authorize(staff(sqlc.StaffRoleOwner, 11, 1), ActionOrderStatusUpdate, resource)
+	if decision.Allowed {
+		t.Fatal("expected staff from another branch to be denied order status update")
+	}
+}
+
+func TestAuthorizeDeniesCrossBranchPaymentSettlement(t *testing.T) {
+	a := NewAuthorizer()
+	resource := Resource{Type: ResourceTypePayment, ID: "1", Scope: Scope{BranchID: 10, OrganizationID: 1}}
+	decision := a.Authorize(staff(sqlc.StaffRoleOwner, 11, 1), ActionPaymentSettleStaff, resource)
+	if decision.Allowed {
+		t.Fatal("expected staff from another branch to be denied payment settlement")
+	}
+}
+
 func TestAuthorizeMenuRoles(t *testing.T) {
 	a := NewAuthorizer()
 	resource := MenuItemResource(1, 10, 1)

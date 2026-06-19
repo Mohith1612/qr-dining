@@ -33,9 +33,12 @@ func TestWebhookReplay_Idempotent(t *testing.T) {
 	}
 
 	payment, err := paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
-		SessionID: sess.Session.ID,
-		BranchID:  f.BranchID,
-		Method:    sqlc.PaymentMethodDigital,
+		SessionID:      sess.Session.ID,
+		BranchID:       f.BranchID,
+		Method:         sqlc.PaymentMethodDigital,
+		IdempotencyKey: uuid.NewString(),
+		ActorType:      "participant",
+		ActorID:        sess.Participant.ID,
 		Bill: services.BillSnapshotInput{
 			Total:          50.00,
 			Currency:       "INR",
@@ -119,6 +122,9 @@ func TestManualPaymentRequiresStaffSettlementAndRejectsStaleSnapshot(t *testing.
 		BranchID:                f.BranchID,
 		Method:                  sqlc.PaymentMethodCash,
 		StaffSettlementRequired: true,
+		IdempotencyKey:          uuid.NewString(),
+		ActorType:               "participant",
+		ActorID:                 sess.Participant.ID,
 		Bill: services.BillSnapshotInput{
 			Total:          50.00,
 			Currency:       "INR",
@@ -162,9 +168,12 @@ func TestWebhookRejectsAmountMismatch(t *testing.T) {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	payment, err := paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
-		SessionID: sess.Session.ID,
-		BranchID:  f.BranchID,
-		Method:    sqlc.PaymentMethodDigital,
+		SessionID:      sess.Session.ID,
+		BranchID:       f.BranchID,
+		Method:         sqlc.PaymentMethodDigital,
+		IdempotencyKey: uuid.NewString(),
+		ActorType:      "participant",
+		ActorID:        sess.Participant.ID,
 		Bill: services.BillSnapshotInput{
 			Total:          50.00,
 			Currency:       "INR",
@@ -200,5 +209,52 @@ func TestWebhookRejectsAmountMismatch(t *testing.T) {
 	}
 	if updated.Status == sqlc.PaymentStatusCompleted {
 		t.Fatal("amount-mismatched webhook completed payment")
+	}
+}
+
+func TestInitiatePayment_IdempotencyConflictAndReplay(t *testing.T) {
+	pool := testutil.OpenTestDB(t)
+	f := testutil.SeedFixtures(t, pool)
+	repos := testutil.NewTestRepos(pool)
+	pub := events.NewNoopPublisher()
+	sessionSvc := newTestSessionService(repos, pub)
+	paymentSvc := newTestPaymentService(repos, pub, sessionSvc)
+	t.Cleanup(func() {
+		testutil.TruncateTables(t, pool, "sessions", "session_participants", "payments", "bill_snapshots", "idempotency_keys")
+	})
+
+	ctx := context.Background()
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	key := uuid.NewString()
+	req := services.InitiatePaymentRequest{
+		SessionID:      sess.Session.ID,
+		BranchID:       f.BranchID,
+		Method:         sqlc.PaymentMethodCash,
+		IdempotencyKey: key,
+		ActorType:      "participant",
+		ActorID:        sess.Participant.ID,
+		Bill: services.BillSnapshotInput{
+			Total:          50.00,
+			Currency:       "INR",
+			CreatedByActor: "guest:0",
+		},
+	}
+	first, err := paymentSvc.InitiatePayment(ctx, req)
+	if err != nil {
+		t.Fatalf("first InitiatePayment: %v", err)
+	}
+	second, err := paymentSvc.InitiatePayment(ctx, req)
+	if err != nil {
+		t.Fatalf("second InitiatePayment: %v", err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("payment replay returned different payment: first=%d second=%d", first.ID, second.ID)
+	}
+	req.Bill.Total = 60.00
+	if _, err := paymentSvc.InitiatePayment(ctx, req); !isErr(err, domain.ErrIdempotencyConflict) {
+		t.Fatalf("changed payment replay error: got %v, want idempotency conflict", err)
 	}
 }

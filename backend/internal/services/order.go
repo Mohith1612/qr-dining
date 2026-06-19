@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
@@ -194,6 +195,7 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	var result PlaceOrderResult
 	var appliedPromoID *int64
 	var discountAmount float64
+	var promoFailure error
 
 	txErr := s.repos.WithTx(ctx, func(tx *repository.Repos) error {
 		// Validate and apply promo inside transaction for atomicity.
@@ -206,6 +208,7 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 				PhoneE164:  req.PhoneE164,
 			})
 			if err != nil {
+				promoFailure = err
 				return err
 			}
 			discountAmount = promoResult.DiscountAmount
@@ -282,9 +285,11 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 		// Record promo redemption within the same transaction.
 		if appliedPromoID != nil {
 			if _, err := tx.CreatePromoRedemption(ctx, *appliedPromoID, order.ID, req.PhoneE164); err != nil {
+				promoFailure = err
 				return fmt.Errorf("create promo redemption: %w", err)
 			}
 			if err := tx.IncrementPromoRedemptionCount(ctx, *appliedPromoID); err != nil {
+				promoFailure = err
 				return fmt.Errorf("increment promo redemption count: %w", err)
 			}
 		}
@@ -297,6 +302,23 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	})
 	if txErr != nil {
 		_ = s.repos.FailIdempotencyKey(ctx, idemScope)
+		if req.PromoCode != nil && promoFailure != nil {
+			s.repos.LogAuditV2(ctx, audit.AuditEvent{
+				BranchID:       req.BranchID,
+				SessionID:      req.SessionID,
+				ResourceType:   audit.ResourcePromo,
+				Action:         audit.ActionPromoRedeem,
+				Result:         audit.ResultFailure,
+				ActorType:      audit.ActorTypeGuest,
+				ActorID:        strconv.FormatInt(req.PlacedByParticipantID, 10),
+				IdempotencyKey: req.IdempotencyKey,
+				RiskLevel:      audit.RiskMedium,
+				Metadata: map[string]any{
+					"promo_code": *req.PromoCode,
+					"reason":     promoFailure.Error(),
+				},
+			})
+		}
 		return PlaceOrderResult{}, txErr
 	}
 
@@ -304,6 +326,23 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	s.repos.LogEvent(ctx, req.SessionID, req.BranchID, "ORDER_PLACED", "participant", req.PlacedByParticipantID, result.Order)
 
 	if appliedPromoID != nil && req.PromoCode != nil {
+		s.repos.LogAuditV2(ctx, audit.AuditEvent{
+			BranchID:       req.BranchID,
+			SessionID:      req.SessionID,
+			ResourceType:   audit.ResourcePromo,
+			ResourceID:     strconv.FormatInt(*appliedPromoID, 10),
+			Action:         audit.ActionPromoRedeem,
+			Result:         audit.ResultSuccess,
+			ActorType:      audit.ActorTypeGuest,
+			ActorID:        strconv.FormatInt(req.PlacedByParticipantID, 10),
+			IdempotencyKey: req.IdempotencyKey,
+			RiskLevel:      audit.RiskMedium,
+			Metadata: map[string]any{
+				"order_id":        result.Order.ID.String(),
+				"promo_code":      *req.PromoCode,
+				"discount_amount": discountAmount,
+			},
+		})
 		s.publisher.PromoApplied(ctx, req.SessionID, map[string]any{
 			"order_id":        result.Order.ID,
 			"promo_code":      *req.PromoCode,

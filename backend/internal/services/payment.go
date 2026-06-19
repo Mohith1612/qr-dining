@@ -2,11 +2,16 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
+	"time"
 
+	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
@@ -56,6 +61,9 @@ type InitiatePaymentRequest struct {
 	Provider                string
 	ProviderPaymentRef      string
 	ProviderOrderRef        string
+	IdempotencyKey          string
+	ActorType               string
+	ActorID                 int64
 }
 
 type BillSnapshotInput struct {
@@ -71,6 +79,45 @@ type BillSnapshotInput struct {
 }
 
 func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymentRequest) (sqlc.Payment, error) {
+	actorType := req.ActorType
+	if actorType == "" {
+		actorType = "guest"
+	}
+	idemScope := repository.IdempotencyScope{
+		ScopeType: "session",
+		ScopeID:   req.SessionID.String(),
+		ActorType: actorType,
+		ActorID:   strconv.FormatInt(req.ActorID, 10),
+		Key:       req.IdempotencyKey,
+	}
+	requestHash := hashPaymentRequest(req)
+	if req.IdempotencyKey != "" {
+		_, inserted, err := s.repos.CreateIdempotencyKey(ctx, idemScope, requestHash, time.Now().Add(24*time.Hour))
+		if err != nil {
+			return sqlc.Payment{}, err
+		}
+		if !inserted {
+			existingKey, err := s.repos.GetIdempotencyKey(ctx, idemScope)
+			if err != nil {
+				return sqlc.Payment{}, err
+			}
+			if existingKey.RequestHash != requestHash {
+				return sqlc.Payment{}, domain.ErrIdempotencyConflict
+			}
+			if existingKey.Status != "completed" || !existingKey.ResponseResourceID.Valid {
+				return sqlc.Payment{}, domain.ErrIdempotencyInProgress
+			}
+			paymentID, err := strconv.ParseInt(existingKey.ResponseResourceID.String, 10, 64)
+			if err != nil {
+				return sqlc.Payment{}, fmt.Errorf("parse idempotent payment id: %w", err)
+			}
+			if s.metrics != nil && s.metrics.IdempotencyReplaysTotal != nil {
+				s.metrics.IdempotencyReplaysTotal.WithLabelValues("payment").Inc()
+			}
+			return s.repos.GetPaymentByID(ctx, paymentID)
+		}
+	}
+
 	var amount pgtype.Numeric
 	if err := amount.Scan(fmt.Sprintf("%.2f", req.Bill.Total)); err != nil {
 		return sqlc.Payment{}, fmt.Errorf("encode amount: %w", err)
@@ -116,8 +163,19 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 			ProviderPaymentRef: pgtype.Text{String: providerRef, Valid: providerRef != ""},
 			ProviderOrderRef:   pgtype.Text{String: req.ProviderOrderRef, Valid: req.ProviderOrderRef != ""},
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		if req.IdempotencyKey != "" {
+			if err := tx.CompleteIdempotencyKey(ctx, idemScope, "payment", strconv.FormatInt(payment.ID, 10)); err != nil {
+				return fmt.Errorf("complete payment idempotency key: %w", err)
+			}
+		}
+		return nil
 	})
+	if err != nil && req.IdempotencyKey != "" {
+		_ = s.repos.FailIdempotencyKey(ctx, idemScope)
+	}
 	if err == nil {
 		s.publisher.PaymentInitiated(ctx, req.SessionID, payment)
 		if payment.Status == sqlc.PaymentStatusCompleted {
@@ -127,6 +185,48 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 		}
 	}
 	return payment, err
+}
+
+func hashPaymentRequest(req InitiatePaymentRequest) string {
+	actorType := req.ActorType
+	if actorType == "" {
+		actorType = "guest"
+	}
+	sourceOrderIDs := make([]string, 0, len(req.Bill.SourceOrderIDs))
+	for _, id := range req.Bill.SourceOrderIDs {
+		sourceOrderIDs = append(sourceOrderIDs, id.String())
+	}
+	sort.Strings(sourceOrderIDs)
+	payload := struct {
+		SessionID          string   `json:"session_id"`
+		ActorType          string   `json:"actor_type"`
+		ActorID            int64    `json:"actor_id"`
+		OrderID            string   `json:"order_id,omitempty"`
+		Method             string   `json:"method"`
+		Total              float64  `json:"total"`
+		Currency           string   `json:"currency"`
+		Provider           string   `json:"provider,omitempty"`
+		ProviderPaymentRef string   `json:"provider_payment_ref,omitempty"`
+		ProviderOrderRef   string   `json:"provider_order_ref,omitempty"`
+		SourceOrderIDs     []string `json:"source_order_ids"`
+	}{
+		SessionID:          req.SessionID.String(),
+		ActorType:          actorType,
+		ActorID:            req.ActorID,
+		Method:             string(req.Method),
+		Total:              req.Bill.Total,
+		Currency:           req.Bill.Currency,
+		Provider:           req.Provider,
+		ProviderPaymentRef: req.ProviderPaymentRef,
+		ProviderOrderRef:   req.ProviderOrderRef,
+		SourceOrderIDs:     sourceOrderIDs,
+	}
+	if req.OrderID != nil {
+		payload.OrderID = req.OrderID.String()
+	}
+	b, _ := json.Marshal(payload)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 type ProcessWebhookRequest struct {
@@ -158,16 +258,19 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, req ProcessWebhookR
 	if err != nil {
 		// Record the error but don't fail the webhook receipt.
 		_ = s.repos.MarkWebhookProcessed(ctx, event.ID, 0, err.Error())
+		s.auditWebhookFailure(ctx, req, event.ID, 0, err)
 		return nil
 	}
 
 	payment, err := s.repos.GetPaymentByProviderRef(ctx, req.Provider, eventPayload.PaymentRef)
 	if err != nil {
 		_ = s.repos.MarkWebhookProcessed(ctx, event.ID, 0, err.Error())
+		s.auditWebhookFailure(ctx, req, event.ID, 0, err)
 		return nil
 	}
 	if err := verifyWebhookPayment(payment, eventPayload); err != nil {
 		_ = s.repos.MarkWebhookProcessed(ctx, event.ID, payment.ID, err.Error())
+		s.auditWebhookFailure(ctx, req, event.ID, payment.ID, err)
 		return nil
 	}
 
@@ -176,12 +279,14 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, req ProcessWebhookR
 		domain.PaymentStatus(newStatus),
 	); err != nil {
 		_ = s.repos.MarkWebhookProcessed(ctx, event.ID, payment.ID, err.Error())
+		s.auditWebhookFailure(ctx, req, event.ID, payment.ID, err)
 		return nil
 	}
 
 	updated, err := s.repos.UpdatePaymentStatusExpected(ctx, payment.ID, payment.Status, newStatus)
 	if err != nil {
 		_ = s.repos.MarkWebhookProcessed(ctx, event.ID, payment.ID, err.Error())
+		s.auditWebhookFailure(ctx, req, event.ID, payment.ID, err)
 		return nil
 	}
 	_ = s.repos.MarkWebhookProcessed(ctx, event.ID, payment.ID, "")
@@ -197,6 +302,24 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, req ProcessWebhookR
 	}
 
 	return nil
+}
+
+func (s *PaymentService) auditWebhookFailure(ctx context.Context, req ProcessWebhookRequest, eventID, paymentID int64, err error) {
+	s.repos.LogAuditV2(ctx, audit.AuditEvent{
+		ResourceType: audit.ResourcePayment,
+		ResourceID:   strconv.FormatInt(paymentID, 10),
+		Action:       audit.ActionPaymentWebhookProcess,
+		Result:       audit.ResultFailure,
+		ActorType:    audit.ActorTypeWebhook,
+		Source:       audit.SourceWebhook,
+		RiskLevel:    audit.RiskHigh,
+		Metadata: map[string]any{
+			"provider":          req.Provider,
+			"external_event_id": req.ExternalEventID,
+			"webhook_event_id":  eventID,
+			"error":             err.Error(),
+		},
+	})
 }
 
 func (s *PaymentService) SettlePaymentByStaff(ctx context.Context, paymentID, staffID, branchID int64) (sqlc.Payment, error) {
@@ -291,14 +414,11 @@ func normalizePaymentMethodStatus(method sqlc.PaymentMethod, staffRequired bool)
 	case sqlc.PaymentMethodCard:
 		method = sqlc.PaymentMethodCardManual
 	case sqlc.PaymentMethodDigital:
-		method = sqlc.PaymentMethodUpi
+		return method, sqlc.PaymentStatusProviderPending
 	}
 	switch method {
 	case sqlc.PaymentMethodCash, sqlc.PaymentMethodCardManual:
-		if staffRequired {
-			return method, sqlc.PaymentStatusRequiresStaffConfirmation
-		}
-		return method, sqlc.PaymentStatusCompleted
+		return method, sqlc.PaymentStatusRequiresStaffConfirmation
 	case sqlc.PaymentMethodUpi:
 		if staffRequired {
 			return method, sqlc.PaymentStatusRequiresStaffConfirmation
