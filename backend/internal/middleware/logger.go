@@ -33,9 +33,24 @@ func Logger(base zerolog.Logger) gin.HandlerFunc {
 			event = log.Warn()
 		}
 
+		if staff, ok := GetStaffSession(c); ok {
+			event = event.
+				Str("actor_type", "staff").
+				Int64("actor_id", staff.StaffID).
+				Int64("organization_id", staff.OrganizationID).
+				Int64("branch_id", staff.BranchID)
+		} else if platform, ok := GetPlatformSession(c); ok {
+			event = event.
+				Str("actor_type", "platform_user").
+				Int64("actor_id", platform.PlatformUserID)
+		} else if organizationID, ok := GetTenantOrganizationID(c); ok {
+			event = event.Int64("organization_id", organizationID)
+		}
+
 		event.
 			Str("method", c.Request.Method).
-			Str("path", c.FullPath()).
+			Str("route", c.FullPath()).
+			Str("action", c.Request.Method+" "+c.FullPath()).
 			Str("client_ip", c.ClientIP()).
 			Int("status", status).
 			Dur("latency_ms", latency).

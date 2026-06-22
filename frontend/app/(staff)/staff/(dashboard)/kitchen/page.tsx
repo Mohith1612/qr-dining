@@ -59,7 +59,7 @@ function KitchenCard({
 }) {
   const next = NEXT_STATUS[order.status]
   const nextLabel = NEXT_LABEL[order.status]
-  const displayId = order.order_number ?? order.id.slice(0, 8)
+  const displayId = order.order_operational_id ?? order.order_number_display ?? order.order_number ?? order.id.slice(0, 8)
   const mins = elapsedMins(order.created_at)
   const isStale = mins >= 15
 
@@ -67,7 +67,7 @@ function KitchenCard({
     <HospitalityCard elev={2} style={{ padding: 14, borderRadius: "var(--rad-md)", borderLeft: `3px solid ${tone}` }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-        <span className="mono" style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600 }}>#{displayId}</span>
+        <span className="mono" style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600 }}>{displayId}</span>
         <span style={{ fontSize: 10, color: "var(--ink-4)" }}>{relativeTime(order.created_at)}</span>
       </div>
 

@@ -36,6 +36,7 @@ function RequestCard({
 }) {
   const urgent = isUrgent(request)
   const accentColor = urgent ? "var(--alert)" : request.status === "pending" ? "var(--accent)" : "var(--ok)"
+  const tableLabel = request.table_identifier ?? `Table ${request.table_id}`
 
   return (
     <div style={{
@@ -57,7 +58,7 @@ function RequestCard({
           background: "var(--bg-elev-2)", borderRadius: "var(--rad-pill)",
           color: "var(--ink-2)", letterSpacing: "0.04em", textTransform: "uppercase",
         }}>
-          Table {request.table_id}
+          {tableLabel}
         </span>
         <span style={{ fontSize: 13, color: "var(--ink-1)", fontWeight: 500 }}>
           {TYPE_LABEL[request.type]}
@@ -152,7 +153,7 @@ export default function WaiterPage() {
       setRequests((prev) =>
         action === "resolve"
           ? prev.filter((r) => r.id !== id)
-          : prev.map((r) => (r.id === id ? updated : r))
+          : prev.map((r) => (r.id === id ? { ...r, ...updated } : r))
       )
       toast.success(action === "ack" ? "On your way!" : "Resolved")
     } catch {
@@ -164,7 +165,7 @@ export default function WaiterPage() {
 
   const pending      = requests.filter((r) => r.status === "pending")
   const acknowledged = requests.filter((r) => r.status === "acknowledged")
-  const tableIdsWithRequests = new Set(requests.map((r) => r.table_id))
+  const tableLabelsWithRequests = new Set(requests.map((r) => r.table_identifier ?? `T${r.table_id}`))
 
   if (loading) {
     return (
@@ -234,7 +235,7 @@ export default function WaiterPage() {
             <p className="eyebrow" style={{ marginBottom: 10 }}>Floor</p>
             <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
               {KNOWN_TABLES.map(({ id, label }) => {
-                const hasRequest = tableIdsWithRequests.has(id)
+                const hasRequest = tableLabelsWithRequests.has(label)
                 return (
                   <HospitalityCard key={id} elev={1} style={{ padding: "16px 14px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>

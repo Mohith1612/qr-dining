@@ -120,7 +120,7 @@ func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) 
 }
 
 const listAuditLogForBranch = `-- name: ListAuditLogForBranch :many
-SELECT id, organization_id, branch_id, restaurant_id, session_id, table_id, resource_type, resource_id, action, result, actor_type, actor_id, actor_display, actor_scope_json, request_id, correlation_id, idempotency_key, ip, user_agent, source, before_json, after_json, metadata_json, risk_level, row_hash, previous_hash, created_at FROM audit_log
+SELECT id, organization_id, branch_id, restaurant_id, session_id, table_id, resource_type, resource_id, action, result, actor_type, actor_id, actor_display, actor_scope_json, request_id, correlation_id, idempotency_key, ip, user_agent, source, before_json, after_json, metadata_json, risk_level, row_hash, previous_hash, created_at, event_reference FROM audit_log
 WHERE branch_id = $1
   AND ($2::TIMESTAMPTZ IS NULL OR created_at >= $2)
   AND ($3::TIMESTAMPTZ IS NULL OR created_at < $3)
@@ -184,6 +184,7 @@ func (q *Queries) ListAuditLogForBranch(ctx context.Context, arg ListAuditLogFor
 			&i.RowHash,
 			&i.PreviousHash,
 			&i.CreatedAt,
+			&i.EventReference,
 		); err != nil {
 			return nil, err
 		}
@@ -196,7 +197,7 @@ func (q *Queries) ListAuditLogForBranch(ctx context.Context, arg ListAuditLogFor
 }
 
 const listAuditLogForOrganization = `-- name: ListAuditLogForOrganization :many
-SELECT id, organization_id, branch_id, restaurant_id, session_id, table_id, resource_type, resource_id, action, result, actor_type, actor_id, actor_display, actor_scope_json, request_id, correlation_id, idempotency_key, ip, user_agent, source, before_json, after_json, metadata_json, risk_level, row_hash, previous_hash, created_at FROM audit_log
+SELECT id, organization_id, branch_id, restaurant_id, session_id, table_id, resource_type, resource_id, action, result, actor_type, actor_id, actor_display, actor_scope_json, request_id, correlation_id, idempotency_key, ip, user_agent, source, before_json, after_json, metadata_json, risk_level, row_hash, previous_hash, created_at, event_reference FROM audit_log
 WHERE organization_id = $1
   AND ($2::BIGINT IS NULL OR branch_id = $2)
   AND ($3::TIMESTAMPTZ IS NULL OR created_at >= $3)
@@ -263,6 +264,7 @@ func (q *Queries) ListAuditLogForOrganization(ctx context.Context, arg ListAudit
 			&i.RowHash,
 			&i.PreviousHash,
 			&i.CreatedAt,
+			&i.EventReference,
 		); err != nil {
 			return nil, err
 		}
@@ -275,7 +277,7 @@ func (q *Queries) ListAuditLogForOrganization(ctx context.Context, arg ListAudit
 }
 
 const listAuditLogPlatform = `-- name: ListAuditLogPlatform :many
-SELECT id, organization_id, branch_id, restaurant_id, session_id, table_id, resource_type, resource_id, action, result, actor_type, actor_id, actor_display, actor_scope_json, request_id, correlation_id, idempotency_key, ip, user_agent, source, before_json, after_json, metadata_json, risk_level, row_hash, previous_hash, created_at FROM audit_log
+SELECT id, organization_id, branch_id, restaurant_id, session_id, table_id, resource_type, resource_id, action, result, actor_type, actor_id, actor_display, actor_scope_json, request_id, correlation_id, idempotency_key, ip, user_agent, source, before_json, after_json, metadata_json, risk_level, row_hash, previous_hash, created_at, event_reference FROM audit_log
 WHERE ($1::BIGINT IS NULL OR organization_id = $1)
   AND ($2::BIGINT IS NULL OR branch_id = $2)
   AND ($3::TEXT IS NULL OR actor_type::TEXT = $3)
@@ -342,6 +344,7 @@ func (q *Queries) ListAuditLogPlatform(ctx context.Context, arg ListAuditLogPlat
 			&i.RowHash,
 			&i.PreviousHash,
 			&i.CreatedAt,
+			&i.EventReference,
 		); err != nil {
 			return nil, err
 		}

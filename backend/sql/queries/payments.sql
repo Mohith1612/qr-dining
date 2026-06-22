@@ -10,10 +10,20 @@ INSERT INTO payments (
   currency,
   provider,
   provider_payment_ref,
-  provider_order_ref
+  provider_order_ref,
+  payment_business_date,
+  payment_sequence,
+  payment_reference
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING *;
+
+-- name: NextPaymentNumber :one
+INSERT INTO payment_sequences (branch_id, date, last_seq)
+VALUES ($1, $2, 1)
+ON CONFLICT (branch_id, date)
+DO UPDATE SET last_seq = payment_sequences.last_seq + 1
+RETURNING last_seq;
 
 -- name: GetPaymentByID :one
 SELECT * FROM payments WHERE id = $1;

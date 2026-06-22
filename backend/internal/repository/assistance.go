@@ -71,6 +71,6 @@ func (r *Repos) ListAssistanceForSession(ctx context.Context, sessionID uuid.UUI
 	return r.q.ListAssistanceForSession(ctx, sessionID)
 }
 
-func (r *Repos) ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]sqlc.AssistanceRequest, error) {
+func (r *Repos) ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]sqlc.ListActiveAssistanceForBranchRow, error) {
 	return r.q.ListActiveAssistanceForBranch(ctx, branchID)
 }

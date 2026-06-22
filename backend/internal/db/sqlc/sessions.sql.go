@@ -39,19 +39,36 @@ func (q *Queries) CloseSessionIfActive(ctx context.Context, id uuid.UUID) (uuid.
 }
 
 const createSession = `-- name: CreateSession :one
-INSERT INTO sessions (branch_id, table_id, session_token)
-VALUES ($1, $2, $3)
-RETURNING id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id
+INSERT INTO sessions (
+  branch_id,
+  table_id,
+  session_token,
+  session_business_date,
+  visit_number,
+  session_number
+)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number
 `
 
 type CreateSessionParams struct {
-	BranchID     int64  `json:"branch_id"`
-	TableID      int64  `json:"table_id"`
-	SessionToken string `json:"session_token"`
+	BranchID            int64       `json:"branch_id"`
+	TableID             int64       `json:"table_id"`
+	SessionToken        string      `json:"session_token"`
+	SessionBusinessDate pgtype.Date `json:"session_business_date"`
+	VisitNumber         int32       `json:"visit_number"`
+	SessionNumber       string      `json:"session_number"`
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
-	row := q.db.QueryRow(ctx, createSession, arg.BranchID, arg.TableID, arg.SessionToken)
+	row := q.db.QueryRow(ctx, createSession,
+		arg.BranchID,
+		arg.TableID,
+		arg.SessionToken,
+		arg.SessionBusinessDate,
+		arg.VisitNumber,
+		arg.SessionNumber,
+	)
 	var i Session
 	err := row.Scan(
 		&i.ID,
@@ -64,12 +81,15 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.ClosedAt,
 		&i.WarnedAt,
 		&i.CustomerID,
+		&i.SessionBusinessDate,
+		&i.VisitNumber,
+		&i.SessionNumber,
 	)
 	return i, err
 }
 
 const getActiveSessionForTable = `-- name: GetActiveSessionForTable :one
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id FROM sessions
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number FROM sessions
 WHERE table_id = $1 AND status = 'active'
 LIMIT 1
 `
@@ -88,12 +108,15 @@ func (q *Queries) GetActiveSessionForTable(ctx context.Context, tableID int64) (
 		&i.ClosedAt,
 		&i.WarnedAt,
 		&i.CustomerID,
+		&i.SessionBusinessDate,
+		&i.VisitNumber,
+		&i.SessionNumber,
 	)
 	return i, err
 }
 
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id FROM sessions WHERE id = $1
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error) {
@@ -110,12 +133,15 @@ func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, er
 		&i.ClosedAt,
 		&i.WarnedAt,
 		&i.CustomerID,
+		&i.SessionBusinessDate,
+		&i.VisitNumber,
+		&i.SessionNumber,
 	)
 	return i, err
 }
 
 const getSessionByToken = `-- name: GetSessionByToken :one
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id FROM sessions WHERE session_token = $1 AND status = 'active'
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number FROM sessions WHERE session_token = $1 AND status = 'active'
 `
 
 func (q *Queries) GetSessionByToken(ctx context.Context, sessionToken string) (Session, error) {
@@ -132,6 +158,9 @@ func (q *Queries) GetSessionByToken(ctx context.Context, sessionToken string) (S
 		&i.ClosedAt,
 		&i.WarnedAt,
 		&i.CustomerID,
+		&i.SessionBusinessDate,
+		&i.VisitNumber,
+		&i.SessionNumber,
 	)
 	return i, err
 }
@@ -157,7 +186,7 @@ func (q *Queries) GetSessionParticipantByID(ctx context.Context, id int64) (Sess
 }
 
 const listActiveSessionsForBranch = `-- name: ListActiveSessionsForBranch :many
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id FROM sessions
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number FROM sessions
 WHERE branch_id = $1 AND status = 'active'
 ORDER BY created_at DESC
 `
@@ -182,6 +211,9 @@ func (q *Queries) ListActiveSessionsForBranch(ctx context.Context, branchID int6
 			&i.ClosedAt,
 			&i.WarnedAt,
 			&i.CustomerID,
+			&i.SessionBusinessDate,
+			&i.VisitNumber,
+			&i.SessionNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -242,6 +274,26 @@ UPDATE sessions SET warned_at = NOW() WHERE id = $1 AND warned_at IS NULL
 func (q *Queries) MarkSessionWarned(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markSessionWarned, id)
 	return err
+}
+
+const nextSessionNumber = `-- name: NextSessionNumber :one
+INSERT INTO session_sequences (branch_id, date, last_seq)
+VALUES ($1, $2, 1)
+ON CONFLICT (branch_id, date)
+DO UPDATE SET last_seq = session_sequences.last_seq + 1
+RETURNING last_seq
+`
+
+type NextSessionNumberParams struct {
+	BranchID int64       `json:"branch_id"`
+	Date     pgtype.Date `json:"date"`
+}
+
+func (q *Queries) NextSessionNumber(ctx context.Context, arg NextSessionNumberParams) (int32, error) {
+	row := q.db.QueryRow(ctx, nextSessionNumber, arg.BranchID, arg.Date)
+	var last_seq int32
+	err := row.Scan(&last_seq)
+	return last_seq, err
 }
 
 const setSessionHost = `-- name: SetSessionHost :exec

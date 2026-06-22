@@ -428,6 +428,25 @@ func (h *PlatformHandler) GetBranch(c *gin.Context) {
 	c.JSON(http.StatusOK, platformBranchResponse(branch))
 }
 
+func (h *PlatformHandler) SearchSupport(c *gin.Context) {
+	session, ok := h.requireAnyPlatformRole(c, services.PlatformRoleSupportAdmin, services.PlatformRoleReadOnlyAuditor)
+	if !ok {
+		return
+	}
+	query := strings.TrimSpace(c.Query("q"))
+	if query == "" {
+		respondValidationError(c, "q is required")
+		return
+	}
+	results, err := h.repos.SearchSupportReferences(c.Request.Context(), query, 20)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	h.logPlatformAudit(c, session.PlatformUserID, "platform.support.search", "support_reference", query, 0, 0, 0, gin.H{"result_count": len(results)})
+	c.JSON(http.StatusOK, gin.H{"results": results})
+}
+
 type createPlatformSupportSessionRequest struct {
 	OrganizationID           int64      `json:"organization_id" binding:"required"`
 	BranchID                 *int64     `json:"branch_id"`
@@ -724,6 +743,7 @@ func auditV2PlatformResponse(row sqlc.AuditLog) gin.H {
 		"row_hash":        nullableText(row.RowHash),
 		"previous_hash":   nullableText(row.PreviousHash),
 		"created_at":      row.CreatedAt,
+		"event_reference": row.EventReference,
 	}
 }
 

@@ -124,7 +124,7 @@ type Querier interface {
 	InsertPlatformAuditLog(ctx context.Context, arg InsertPlatformAuditLogParams) error
 	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) (PaymentWebhookEvent, error)
 	LinkSessionToCustomer(ctx context.Context, arg LinkSessionToCustomerParams) error
-	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]AssistanceRequest, error)
+	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]ListActiveAssistanceForBranchRow, error)
 	ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]ListActiveOrdersForBranchRow, error)
 	ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]Session, error)
 	ListActiveStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
@@ -162,6 +162,8 @@ type Querier interface {
 	MarkSessionWarned(ctx context.Context, id uuid.UUID) error
 	MarkWebhookProcessed(ctx context.Context, arg MarkWebhookProcessedParams) error
 	NextOrderNumber(ctx context.Context, arg NextOrderNumberParams) (int32, error)
+	NextPaymentNumber(ctx context.Context, arg NextPaymentNumberParams) (int32, error)
+	NextSessionNumber(ctx context.Context, arg NextSessionNumberParams) (int32, error)
 	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
 	RevokePlatformSession(ctx context.Context, arg RevokePlatformSessionParams) error

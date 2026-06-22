@@ -64,7 +64,25 @@ func (s *SessionService) CreateSession(ctx context.Context, tableID int64, displ
 			return err
 		}
 
-		sess, err := tx.CreateSession(ctx, table.BranchID, tableID, token)
+		branch, err := tx.GetBranchByID(ctx, table.BranchID)
+		if err != nil {
+			return fmt.Errorf("get branch: %w", err)
+		}
+		localDate, businessDate := branchBusinessDate(branch, time.Now())
+		visitNumber, err := tx.NextSessionNumber(ctx, table.BranchID, businessDate)
+		if err != nil {
+			return fmt.Errorf("next session number: %w", err)
+		}
+		sessionNumber := sessionReference(branch.BranchCode, localDate, visitNumber)
+
+		sess, err := tx.CreateSession(ctx, sqlc.CreateSessionParams{
+			BranchID:            table.BranchID,
+			TableID:             tableID,
+			SessionToken:        token,
+			SessionBusinessDate: businessDate,
+			VisitNumber:         visitNumber,
+			SessionNumber:       sessionNumber,
+		})
 		if err != nil {
 			return fmt.Errorf("create session: %w", err)
 		}

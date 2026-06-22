@@ -24,8 +24,12 @@ WHERE ar.id = $1
 RETURNING ar.*;
 
 -- name: ListActiveAssistanceForBranch :many
-SELECT ar.*
+SELECT
+  ar.*,
+  t.identifier AS table_identifier,
+  s.session_number
 FROM assistance_requests ar
+JOIN sessions s ON s.id = ar.session_id
 JOIN tables t ON t.id = ar.table_id
 WHERE t.branch_id = $1
   AND ar.status IN ('pending', 'acknowledged')

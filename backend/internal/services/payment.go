@@ -146,22 +146,36 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 
 	var payment sqlc.Payment
 	err := s.repos.WithTx(ctx, func(tx *repository.Repos) error {
+		branch, err := tx.GetBranchByID(ctx, req.BranchID)
+		if err != nil {
+			return fmt.Errorf("get branch: %w", err)
+		}
+		localDate, businessDate := branchBusinessDate(branch, time.Now())
+		paymentSeq, err := tx.NextPaymentNumber(ctx, req.BranchID, businessDate)
+		if err != nil {
+			return fmt.Errorf("next payment number: %w", err)
+		}
+		paymentRef := paymentReference(branch.BranchCode, localDate, paymentSeq)
+
 		snapshot, err := tx.CreateBillSnapshot(ctx, billSnapshotParams(req.SessionID, req.BranchID, req.Bill, currency))
 		if err != nil {
 			return fmt.Errorf("create bill snapshot: %w", err)
 		}
 		payment, err = tx.CreatePayment(ctx, sqlc.CreatePaymentParams{
-			SessionID:          req.SessionID,
-			OrderID:            orderID,
-			Amount:             amount,
-			Method:             method,
-			Status:             status,
-			BillSnapshotID:     pgtype.Int8{Int64: snapshot.ID, Valid: true},
-			BranchID:           req.BranchID,
-			Currency:           currency,
-			Provider:           pgtype.Text{String: provider, Valid: provider != ""},
-			ProviderPaymentRef: pgtype.Text{String: providerRef, Valid: providerRef != ""},
-			ProviderOrderRef:   pgtype.Text{String: req.ProviderOrderRef, Valid: req.ProviderOrderRef != ""},
+			SessionID:           req.SessionID,
+			OrderID:             orderID,
+			Amount:              amount,
+			Method:              method,
+			Status:              status,
+			BillSnapshotID:      pgtype.Int8{Int64: snapshot.ID, Valid: true},
+			BranchID:            req.BranchID,
+			Currency:            currency,
+			Provider:            pgtype.Text{String: provider, Valid: provider != ""},
+			ProviderPaymentRef:  pgtype.Text{String: providerRef, Valid: providerRef != ""},
+			ProviderOrderRef:    pgtype.Text{String: req.ProviderOrderRef, Valid: req.ProviderOrderRef != ""},
+			PaymentBusinessDate: businessDate,
+			PaymentSequence:     paymentSeq,
+			PaymentReference:    paymentRef,
 		})
 		if err != nil {
 			return err

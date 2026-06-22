@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -67,23 +68,40 @@ func (q *Queries) GetAssistanceRequestByID(ctx context.Context, id int64) (Assis
 }
 
 const listActiveAssistanceForBranch = `-- name: ListActiveAssistanceForBranch :many
-SELECT ar.id, ar.session_id, ar.table_id, ar.participant_id, ar.type, ar.status, ar.created_at, ar.resolved_at
+SELECT
+  ar.id, ar.session_id, ar.table_id, ar.participant_id, ar.type, ar.status, ar.created_at, ar.resolved_at,
+  t.identifier AS table_identifier,
+  s.session_number
 FROM assistance_requests ar
+JOIN sessions s ON s.id = ar.session_id
 JOIN tables t ON t.id = ar.table_id
 WHERE t.branch_id = $1
   AND ar.status IN ('pending', 'acknowledged')
 ORDER BY ar.created_at ASC
 `
 
-func (q *Queries) ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]AssistanceRequest, error) {
+type ListActiveAssistanceForBranchRow struct {
+	ID              int64              `json:"id"`
+	SessionID       uuid.UUID          `json:"session_id"`
+	TableID         int64              `json:"table_id"`
+	ParticipantID   pgtype.Int8        `json:"participant_id"`
+	Type            AssistanceType     `json:"type"`
+	Status          AssistanceStatus   `json:"status"`
+	CreatedAt       time.Time          `json:"created_at"`
+	ResolvedAt      pgtype.Timestamptz `json:"resolved_at"`
+	TableIdentifier string             `json:"table_identifier"`
+	SessionNumber   string             `json:"session_number"`
+}
+
+func (q *Queries) ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]ListActiveAssistanceForBranchRow, error) {
 	rows, err := q.db.Query(ctx, listActiveAssistanceForBranch, branchID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []AssistanceRequest{}
+	items := []ListActiveAssistanceForBranchRow{}
 	for rows.Next() {
-		var i AssistanceRequest
+		var i ListActiveAssistanceForBranchRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.SessionID,
@@ -93,6 +111,8 @@ func (q *Queries) ListActiveAssistanceForBranch(ctx context.Context, branchID in
 			&i.Status,
 			&i.CreatedAt,
 			&i.ResolvedAt,
+			&i.TableIdentifier,
+			&i.SessionNumber,
 		); err != nil {
 			return nil, err
 		}

@@ -673,6 +673,7 @@ type AuditLog struct {
 	RowHash        pgtype.Text     `json:"row_hash"`
 	PreviousHash   pgtype.Text     `json:"previous_hash"`
 	CreatedAt      time.Time       `json:"created_at"`
+	EventReference string          `json:"event_reference"`
 }
 
 type BillSnapshot struct {
@@ -858,26 +859,35 @@ type OrganizationMember struct {
 }
 
 type Payment struct {
-	ID                 int64              `json:"id"`
-	SessionID          uuid.UUID          `json:"session_id"`
-	OrderID            pgtype.UUID        `json:"order_id"`
-	Amount             pgtype.Numeric     `json:"amount"`
-	Method             PaymentMethod      `json:"method"`
-	Status             PaymentStatus      `json:"status"`
-	InitiatedAt        time.Time          `json:"initiated_at"`
-	CompletedAt        pgtype.Timestamptz `json:"completed_at"`
-	Subtotal           pgtype.Numeric     `json:"subtotal"`
-	TaxAmount          pgtype.Numeric     `json:"tax_amount"`
-	ServiceCharge      pgtype.Numeric     `json:"service_charge"`
-	TipAmount          pgtype.Numeric     `json:"tip_amount"`
-	BillSnapshotID     pgtype.Int8        `json:"bill_snapshot_id"`
-	BranchID           int64              `json:"branch_id"`
-	Currency           string             `json:"currency"`
-	Provider           pgtype.Text        `json:"provider"`
-	ProviderPaymentRef pgtype.Text        `json:"provider_payment_ref"`
-	ProviderOrderRef   pgtype.Text        `json:"provider_order_ref"`
-	SettledByStaffID   pgtype.Int8        `json:"settled_by_staff_id"`
-	SettledAt          pgtype.Timestamptz `json:"settled_at"`
+	ID                  int64              `json:"id"`
+	SessionID           uuid.UUID          `json:"session_id"`
+	OrderID             pgtype.UUID        `json:"order_id"`
+	Amount              pgtype.Numeric     `json:"amount"`
+	Method              PaymentMethod      `json:"method"`
+	Status              PaymentStatus      `json:"status"`
+	InitiatedAt         time.Time          `json:"initiated_at"`
+	CompletedAt         pgtype.Timestamptz `json:"completed_at"`
+	Subtotal            pgtype.Numeric     `json:"subtotal"`
+	TaxAmount           pgtype.Numeric     `json:"tax_amount"`
+	ServiceCharge       pgtype.Numeric     `json:"service_charge"`
+	TipAmount           pgtype.Numeric     `json:"tip_amount"`
+	BillSnapshotID      pgtype.Int8        `json:"bill_snapshot_id"`
+	BranchID            int64              `json:"branch_id"`
+	Currency            string             `json:"currency"`
+	Provider            pgtype.Text        `json:"provider"`
+	ProviderPaymentRef  pgtype.Text        `json:"provider_payment_ref"`
+	ProviderOrderRef    pgtype.Text        `json:"provider_order_ref"`
+	SettledByStaffID    pgtype.Int8        `json:"settled_by_staff_id"`
+	SettledAt           pgtype.Timestamptz `json:"settled_at"`
+	PaymentBusinessDate pgtype.Date        `json:"payment_business_date"`
+	PaymentSequence     int32              `json:"payment_sequence"`
+	PaymentReference    string             `json:"payment_reference"`
+}
+
+type PaymentSequence struct {
+	BranchID int64       `json:"branch_id"`
+	Date     pgtype.Date `json:"date"`
+	LastSeq  int32       `json:"last_seq"`
 }
 
 type PaymentWebhookEvent struct {
@@ -1000,16 +1010,19 @@ type RestaurantSubscription struct {
 }
 
 type Session struct {
-	ID                uuid.UUID          `json:"id"`
-	BranchID          int64              `json:"branch_id"`
-	TableID           int64              `json:"table_id"`
-	HostParticipantID pgtype.Int8        `json:"host_participant_id"`
-	Status            SessionStatus      `json:"status"`
-	SessionToken      string             `json:"session_token"`
-	CreatedAt         time.Time          `json:"created_at"`
-	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
-	WarnedAt          pgtype.Timestamptz `json:"warned_at"`
-	CustomerID        pgtype.Int8        `json:"customer_id"`
+	ID                  uuid.UUID          `json:"id"`
+	BranchID            int64              `json:"branch_id"`
+	TableID             int64              `json:"table_id"`
+	HostParticipantID   pgtype.Int8        `json:"host_participant_id"`
+	Status              SessionStatus      `json:"status"`
+	SessionToken        string             `json:"session_token"`
+	CreatedAt           time.Time          `json:"created_at"`
+	ClosedAt            pgtype.Timestamptz `json:"closed_at"`
+	WarnedAt            pgtype.Timestamptz `json:"warned_at"`
+	CustomerID          pgtype.Int8        `json:"customer_id"`
+	SessionBusinessDate pgtype.Date        `json:"session_business_date"`
+	VisitNumber         int32              `json:"visit_number"`
+	SessionNumber       string             `json:"session_number"`
 }
 
 type SessionEvent struct {
@@ -1032,6 +1045,12 @@ type SessionParticipant struct {
 	LastSeenAt        time.Time `json:"last_seen_at"`
 	IsHost            bool      `json:"is_host"`
 	CredentialVersion int32     `json:"credential_version"`
+}
+
+type SessionSequence struct {
+	BranchID int64       `json:"branch_id"`
+	Date     pgtype.Date `json:"date"`
+	LastSeq  int32       `json:"last_seq"`
 }
 
 type Staff struct {

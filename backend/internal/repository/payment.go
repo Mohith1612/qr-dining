@@ -16,6 +16,13 @@ func (r *Repos) CreatePayment(ctx context.Context, p sqlc.CreatePaymentParams) (
 	return r.q.CreatePayment(ctx, p)
 }
 
+func (r *Repos) NextPaymentNumber(ctx context.Context, branchID int64, businessDate pgtype.Date) (int32, error) {
+	return r.q.NextPaymentNumber(ctx, sqlc.NextPaymentNumberParams{
+		BranchID: branchID,
+		Date:     businessDate,
+	})
+}
+
 func (r *Repos) CreateBillSnapshot(ctx context.Context, p sqlc.CreateBillSnapshotParams) (sqlc.BillSnapshot, error) {
 	return r.q.CreateBillSnapshot(ctx, p)
 }

@@ -14,16 +14,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func (r *Repos) CreateSession(ctx context.Context, branchID, tableID int64, token string) (sqlc.Session, error) {
+func (r *Repos) CreateSession(ctx context.Context, p sqlc.CreateSessionParams) (sqlc.Session, error) {
 	sess, err := r.q.CreateSession(ctx, sqlc.CreateSessionParams{
-		BranchID:     branchID,
-		TableID:      tableID,
-		SessionToken: token,
+		BranchID:            p.BranchID,
+		TableID:             p.TableID,
+		SessionToken:        p.SessionToken,
+		SessionBusinessDate: p.SessionBusinessDate,
+		VisitNumber:         p.VisitNumber,
+		SessionNumber:       p.SessionNumber,
 	})
 	if isDuplicateError(err) {
 		return sqlc.Session{}, domain.ErrSessionAlreadyActive
 	}
 	return sess, err
+}
+
+func (r *Repos) NextSessionNumber(ctx context.Context, branchID int64, businessDate pgtype.Date) (int32, error) {
+	return r.q.NextSessionNumber(ctx, sqlc.NextSessionNumberParams{
+		BranchID: branchID,
+		Date:     businessDate,
+	})
 }
 
 func (r *Repos) SetSessionHost(ctx context.Context, sessionID uuid.UUID, participantID int64) error {

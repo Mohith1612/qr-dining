@@ -191,6 +191,7 @@ func New(
 	platformAPI.GET("/organizations/:org_id/branches", platformH.ListBranches)
 	platformAPI.POST("/organizations/:org_id/branches", platformH.CreateBranch)
 	platformAPI.GET("/branches/:branch_id", platformH.GetBranch)
+	platformAPI.GET("/support/search", platformH.SearchSupport)
 	platformAPI.POST("/support/sessions", platformH.CreateSupportSession)
 	platformAPI.GET("/support/sessions", platformH.ListSupportSessions)
 	platformAPI.GET("/support/sessions/:id", platformH.GetSupportSession)

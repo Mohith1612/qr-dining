@@ -1,7 +1,21 @@
 -- name: CreateSession :one
-INSERT INTO sessions (branch_id, table_id, session_token)
-VALUES ($1, $2, $3)
+INSERT INTO sessions (
+  branch_id,
+  table_id,
+  session_token,
+  session_business_date,
+  visit_number,
+  session_number
+)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
+
+-- name: NextSessionNumber :one
+INSERT INTO session_sequences (branch_id, date, last_seq)
+VALUES ($1, $2, 1)
+ON CONFLICT (branch_id, date)
+DO UPDATE SET last_seq = session_sequences.last_seq + 1
+RETURNING last_seq;
 
 -- name: GetSessionByToken :one
 SELECT * FROM sessions WHERE session_token = $1 AND status = 'active';

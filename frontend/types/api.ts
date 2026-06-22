@@ -12,6 +12,8 @@ export interface Session {
   branch_id: number
   table_id: number
   table_identifier?: string
+  session_number?: string
+  visit_number?: number
   host_participant_id: number | null
   status: "active" | "closed" | "abandoned"
   session_token: string
@@ -106,6 +108,8 @@ export interface Order {
   created_at: string
   updated_at: string
   order_number?: string | null
+  order_number_display?: string
+  order_operational_id?: string
 }
 
 export interface OrderItem {
@@ -124,7 +128,9 @@ export type AssistanceStatus = "pending" | "acknowledged" | "resolved"
 export interface AssistanceRequest {
   id: number
   session_id: string
+  session_number?: string
   table_id: number
+  table_identifier?: string
   participant_id: number
   type: AssistanceType
   status: AssistanceStatus
@@ -157,6 +163,7 @@ export interface Payment {
   currency?: string
   provider?: string | null
   provider_payment_ref?: string | null
+  payment_reference?: string
   settled_by_staff_id?: number | null
   settled_at?: string | null
 }
@@ -168,6 +175,7 @@ export interface Staff {
   branch_id: number
   name: string
   role: StaffRole
+  staff_code?: string
 }
 
 export interface StaffSession {

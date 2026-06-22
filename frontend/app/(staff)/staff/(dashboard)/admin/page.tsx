@@ -101,10 +101,10 @@ function SessionsTab() {
             >
               <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                 <p className="mono" style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  #{s.id.slice(0, 8)}
+                  {s.session_number ?? `Session ${s.id.slice(0, 8)}`}
                 </p>
                 <p style={{ fontSize: 12, color: "var(--ink-3)" }}>
-                  {s.table_identifier ?? `Table ${s.table_id}`} · {relativeTime(s.created_at)}
+                  {s.table_identifier ?? `Table ${s.table_id}`} · Visit {s.visit_number ?? "—"} · {relativeTime(s.created_at)}
                 </p>
               </div>
               <span
