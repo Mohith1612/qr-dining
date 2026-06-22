@@ -20,10 +20,31 @@ const (
 type SessionStatus string
 
 const (
-	SessionStatusActive    SessionStatus = "active"
-	SessionStatusClosed    SessionStatus = "closed"
-	SessionStatusAbandoned SessionStatus = "abandoned"
+	SessionStatusActive               SessionStatus = "active"
+	SessionStatusPaymentPending       SessionStatus = "payment_pending"
+	SessionStatusAwaitingReactivation SessionStatus = "awaiting_reactivation"
+	SessionStatusClosed               SessionStatus = "closed"
+	SessionStatusAbandoned            SessionStatus = "abandoned"
+	SessionStatusExpired              SessionStatus = "expired"
 )
+
+// IsSessionTerminal reports whether a session status accepts no further
+// transitions. Reads against terminal sessions are bounded by the 60-minute
+// read window in the snapshot handler.
+func IsSessionTerminal(s SessionStatus) bool {
+	switch s {
+	case SessionStatusClosed, SessionStatusAbandoned, SessionStatusExpired:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsSessionCartFrozen reports whether cart and order mutations must be rejected
+// for a session in this status. Reads remain available.
+func IsSessionCartFrozen(s SessionStatus) bool {
+	return s == SessionStatusPaymentPending
+}
 
 // AssistanceStatus mirrors the PostgreSQL enum values.
 type AssistanceStatus string
@@ -59,9 +80,30 @@ var orderTransitions = map[OrderStatus][]OrderStatus{
 }
 
 var sessionTransitions = map[SessionStatus][]SessionStatus{
-	SessionStatusActive:    {SessionStatusClosed, SessionStatusAbandoned},
+	SessionStatusActive: {
+		SessionStatusPaymentPending,
+		SessionStatusAwaitingReactivation,
+		SessionStatusClosed,
+		SessionStatusAbandoned,
+		SessionStatusExpired,
+	},
+	SessionStatusPaymentPending: {
+		SessionStatusActive,
+		SessionStatusAwaitingReactivation,
+		SessionStatusClosed,
+		SessionStatusAbandoned,
+		SessionStatusExpired,
+	},
+	SessionStatusAwaitingReactivation: {
+		SessionStatusActive,
+		SessionStatusPaymentPending,
+		SessionStatusAbandoned,
+		SessionStatusExpired,
+		SessionStatusClosed,
+	},
 	SessionStatusClosed:    {},
 	SessionStatusAbandoned: {},
+	SessionStatusExpired:   {},
 }
 
 var assistanceTransitions = map[AssistanceStatus][]AssistanceStatus{

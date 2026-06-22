@@ -39,18 +39,61 @@ func TestValidateSessionTransition(t *testing.T) {
 		to      domain.SessionStatus
 		wantErr bool
 	}{
+		// Original transitions
 		{domain.SessionStatusActive, domain.SessionStatusClosed, false},
 		{domain.SessionStatusActive, domain.SessionStatusAbandoned, false},
+		// Phase A intermediate states
+		{domain.SessionStatusActive, domain.SessionStatusPaymentPending, false},
+		{domain.SessionStatusPaymentPending, domain.SessionStatusActive, false},
+		{domain.SessionStatusPaymentPending, domain.SessionStatusClosed, false},
+		{domain.SessionStatusActive, domain.SessionStatusAwaitingReactivation, false},
+		{domain.SessionStatusAwaitingReactivation, domain.SessionStatusActive, false},
+		{domain.SessionStatusAwaitingReactivation, domain.SessionStatusAbandoned, false},
+		{domain.SessionStatusActive, domain.SessionStatusExpired, false},
 		// Terminal states
 		{domain.SessionStatusClosed, domain.SessionStatusActive, true},
 		{domain.SessionStatusAbandoned, domain.SessionStatusActive, true},
 		{domain.SessionStatusClosed, domain.SessionStatusAbandoned, true},
+		{domain.SessionStatusExpired, domain.SessionStatusActive, true},
+		{domain.SessionStatusExpired, domain.SessionStatusClosed, true},
 	}
 
 	for _, tt := range tests {
 		err := domain.ValidateSessionTransition(tt.from, tt.to)
 		if (err != nil) != tt.wantErr {
 			t.Errorf("ValidateSessionTransition(%s→%s): got err=%v, wantErr=%v", tt.from, tt.to, err, tt.wantErr)
+		}
+	}
+}
+
+func TestIsSessionTerminal(t *testing.T) {
+	terminal := []domain.SessionStatus{domain.SessionStatusClosed, domain.SessionStatusAbandoned, domain.SessionStatusExpired}
+	for _, s := range terminal {
+		if !domain.IsSessionTerminal(s) {
+			t.Errorf("IsSessionTerminal(%s) = false, want true", s)
+		}
+	}
+	nonTerminal := []domain.SessionStatus{domain.SessionStatusActive, domain.SessionStatusPaymentPending, domain.SessionStatusAwaitingReactivation}
+	for _, s := range nonTerminal {
+		if domain.IsSessionTerminal(s) {
+			t.Errorf("IsSessionTerminal(%s) = true, want false", s)
+		}
+	}
+}
+
+func TestIsSessionCartFrozen(t *testing.T) {
+	if !domain.IsSessionCartFrozen(domain.SessionStatusPaymentPending) {
+		t.Error("payment_pending should freeze cart")
+	}
+	for _, s := range []domain.SessionStatus{
+		domain.SessionStatusActive,
+		domain.SessionStatusAwaitingReactivation,
+		domain.SessionStatusClosed,
+		domain.SessionStatusAbandoned,
+		domain.SessionStatusExpired,
+	} {
+		if domain.IsSessionCartFrozen(s) {
+			t.Errorf("IsSessionCartFrozen(%s) = true, want false", s)
 		}
 	}
 }
