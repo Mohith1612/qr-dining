@@ -10,6 +10,8 @@ WHERE s.status = 'active'
 ORDER BY s.created_at ASC;
 
 -- name: AbandonStaleSession :exec
+-- Accepts both active and awaiting_reactivation states; the latter is the
+-- terminal stage of the awaiting_reactivation pipeline.
 UPDATE sessions
 SET status = 'abandoned', closed_at = NOW()
-WHERE id = $1 AND status = 'active';
+WHERE id = $1 AND status IN ('active', 'awaiting_reactivation');

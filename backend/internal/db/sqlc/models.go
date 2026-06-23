@@ -8,6 +8,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
@@ -922,6 +923,17 @@ type PlatformAuditLog struct {
 	CreatedAt        time.Time       `json:"created_at"`
 }
 
+type PlatformMfaChallenge struct {
+	ID             uuid.UUID          `json:"id"`
+	PlatformUserID int64              `json:"platform_user_id"`
+	ChallengeHash  string             `json:"challenge_hash"`
+	IssuedAt       time.Time          `json:"issued_at"`
+	ExpiresAt      time.Time          `json:"expires_at"`
+	ConsumedAt     pgtype.Timestamptz `json:"consumed_at"`
+	Ip             *netip.Addr        `json:"ip"`
+	UserAgent      pgtype.Text        `json:"user_agent"`
+}
+
 type PlatformSession struct {
 	ID             uuid.UUID          `json:"id"`
 	PlatformUserID int64              `json:"platform_user_id"`
@@ -954,6 +966,17 @@ type PlatformUser struct {
 	MfaRequired  bool      `json:"mfa_required"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type PlatformUserMfa struct {
+	PlatformUserID  int64              `json:"platform_user_id"`
+	SecretEncrypted string             `json:"secret_encrypted"`
+	Status          string             `json:"status"`
+	RecoveryCodes   json.RawMessage    `json:"recovery_codes"`
+	EnrolledAt      pgtype.Timestamptz `json:"enrolled_at"`
+	LastUsedAt      pgtype.Timestamptz `json:"last_used_at"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
 }
 
 type PlatformUserRole struct {
@@ -1013,19 +1036,20 @@ type RestaurantSubscription struct {
 }
 
 type Session struct {
-	ID                  uuid.UUID          `json:"id"`
-	BranchID            int64              `json:"branch_id"`
-	TableID             int64              `json:"table_id"`
-	HostParticipantID   pgtype.Int8        `json:"host_participant_id"`
-	Status              SessionStatus      `json:"status"`
-	SessionToken        string             `json:"session_token"`
-	CreatedAt           time.Time          `json:"created_at"`
-	ClosedAt            pgtype.Timestamptz `json:"closed_at"`
-	WarnedAt            pgtype.Timestamptz `json:"warned_at"`
-	CustomerID          pgtype.Int8        `json:"customer_id"`
-	SessionBusinessDate pgtype.Date        `json:"session_business_date"`
-	VisitNumber         int32              `json:"visit_number"`
-	SessionNumber       string             `json:"session_number"`
+	ID                     uuid.UUID          `json:"id"`
+	BranchID               int64              `json:"branch_id"`
+	TableID                int64              `json:"table_id"`
+	HostParticipantID      pgtype.Int8        `json:"host_participant_id"`
+	Status                 SessionStatus      `json:"status"`
+	SessionToken           string             `json:"session_token"`
+	CreatedAt              time.Time          `json:"created_at"`
+	ClosedAt               pgtype.Timestamptz `json:"closed_at"`
+	WarnedAt               pgtype.Timestamptz `json:"warned_at"`
+	CustomerID             pgtype.Int8        `json:"customer_id"`
+	SessionBusinessDate    pgtype.Date        `json:"session_business_date"`
+	VisitNumber            int32              `json:"visit_number"`
+	SessionNumber          string             `json:"session_number"`
+	AwaitingReactivationAt pgtype.Timestamptz `json:"awaiting_reactivation_at"`
 }
 
 type SessionEvent struct {

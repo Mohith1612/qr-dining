@@ -6,6 +6,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -13,13 +14,18 @@ import (
 
 type Querier interface {
 	AbandonSession(ctx context.Context, id uuid.UUID) error
+	// Accepts both active and awaiting_reactivation states; the latter is the
+	// terminal stage of the awaiting_reactivation pipeline.
 	AbandonStaleSession(ctx context.Context, id uuid.UUID) error
+	ActivatePlatformMFA(ctx context.Context, arg ActivatePlatformMFAParams) (PlatformUserMfa, error)
 	AddCartItem(ctx context.Context, arg AddCartItemParams) (CartItem, error)
 	AddPlatformUserRole(ctx context.Context, arg AddPlatformUserRoleParams) error
 	BumpAllParticipantCredentialVersions(ctx context.Context, sessionID uuid.UUID) error
 	ClearCart(ctx context.Context, cartID int64) error
 	CloseSessionIfActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
+	ConsumePlatformMFAChallenge(ctx context.Context, challengeHash string) error
+	ConsumeRecoveryCodes(ctx context.Context, arg ConsumeRecoveryCodesParams) error
 	CountItemsInCategory(ctx context.Context, categoryID int64) (int64, error)
 	CountPromoRedemptions(ctx context.Context, promoID int64) (int64, error)
 	CountPromoRedemptionsByPhone(ctx context.Context, arg CountPromoRedemptionsByPhoneParams) (int64, error)
@@ -35,6 +41,7 @@ type Querier interface {
 	CreateParticipant(ctx context.Context, arg CreateParticipantParams) (SessionParticipant, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
 	CreatePlatformBranch(ctx context.Context, arg CreatePlatformBranchParams) (Branch, error)
+	CreatePlatformMFAChallenge(ctx context.Context, arg CreatePlatformMFAChallengeParams) (PlatformMfaChallenge, error)
 	CreatePlatformOrganization(ctx context.Context, arg CreatePlatformOrganizationParams) (Organization, error)
 	CreatePlatformRestaurant(ctx context.Context, arg CreatePlatformRestaurantParams) (Restaurant, error)
 	CreatePlatformSession(ctx context.Context, arg CreatePlatformSessionParams) (PlatformSession, error)
@@ -52,6 +59,7 @@ type Querier interface {
 	DeleteItemModifierScoped(ctx context.Context, arg DeleteItemModifierScopedParams) error
 	DeleteMenuCategory(ctx context.Context, arg DeleteMenuCategoryParams) error
 	DeleteMenuItem(ctx context.Context, arg DeleteMenuItemParams) error
+	DisablePlatformMFA(ctx context.Context, platformUserID int64) error
 	FailIdempotencyKey(ctx context.Context, arg FailIdempotencyKeyParams) error
 	GetActivePlatformSessionByTokenHash(ctx context.Context, tokenHash string) (PlatformSession, error)
 	GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error)
@@ -96,6 +104,8 @@ type Querier interface {
 	GetPaymentByID(ctx context.Context, id int64) (Payment, error)
 	GetPaymentByProviderRef(ctx context.Context, arg GetPaymentByProviderRefParams) (Payment, error)
 	GetPlanByTier(ctx context.Context, tier PlanTier) (SubscriptionPlan, error)
+	GetPlatformMFA(ctx context.Context, platformUserID int64) (PlatformUserMfa, error)
+	GetPlatformMFAChallengeByHash(ctx context.Context, challengeHash string) (PlatformMfaChallenge, error)
 	GetPlatformSupportSessionByID(ctx context.Context, id int64) (PlatformSupportSession, error)
 	GetPlatformUserByEmail(ctx context.Context, email string) (PlatformUser, error)
 	GetPlatformUserByID(ctx context.Context, id int64) (PlatformUser, error)
@@ -117,6 +127,7 @@ type Querier interface {
 	GetTableByQRToken(ctx context.Context, qrCodeToken string) (Table, error)
 	// Returns the most ordered menu items for a branch within a time window.
 	GetTopOrderedItems(ctx context.Context, arg GetTopOrderedItemsParams) ([]GetTopOrderedItemsRow, error)
+	HasNonTerminalPaymentForSession(ctx context.Context, sessionID uuid.UUID) (bool, error)
 	IncrementPromoRedemptionCount(ctx context.Context, id int64) error
 	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error
 	InsertEventLog(ctx context.Context, arg InsertEventLogParams) error
@@ -128,6 +139,10 @@ type Querier interface {
 	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]ListActiveAssistanceForBranchRow, error)
 	ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]ListActiveOrdersForBranchRow, error)
 	ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]Session, error)
+	// Returns active sessions older than the grace floor — candidates for the
+	// awaiting_reactivation transition. The worker still has to verify Redis
+	// presence absence before transitioning.
+	ListActiveSessionsForReactivationScan(ctx context.Context, dollar_1 time.Time) ([]ListActiveSessionsForReactivationScanRow, error)
 	ListActiveStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
 	ListAllMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
 	ListAllMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error)
@@ -156,6 +171,10 @@ type Querier interface {
 	ListPlatformSupportSessions(ctx context.Context) ([]PlatformSupportSession, error)
 	ListPlatformUsers(ctx context.Context) ([]PlatformUser, error)
 	ListPromosForBranch(ctx context.Context, branchID int64) ([]Promo, error)
+	// Returns sessions whose reactivation window has been exceeded. Caller is
+	// responsible for verifying no non-terminal payment exists before abandoning
+	// (TIM-1 in payment-finalization-invariants.md).
+	ListSessionsAwaitingReactivationExpired(ctx context.Context, dollar_1 time.Time) ([]ListSessionsAwaitingReactivationExpiredRow, error)
 	ListSessionsExpiringSoon(ctx context.Context) ([]ListSessionsExpiringSoonRow, error)
 	ListStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
 	ListTablesForBranch(ctx context.Context, branchID int64) ([]Table, error)
@@ -165,6 +184,7 @@ type Querier interface {
 	NextOrderNumber(ctx context.Context, arg NextOrderNumberParams) (int32, error)
 	NextPaymentNumber(ctx context.Context, arg NextPaymentNumberParams) (int32, error)
 	NextSessionNumber(ctx context.Context, arg NextSessionNumberParams) (int32, error)
+	ReactivateSession(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
 	RevokeAllParticipants(ctx context.Context, arg RevokeAllParticipantsParams) error
@@ -174,9 +194,11 @@ type Querier interface {
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
 	SettlePaymentByStaff(ctx context.Context, arg SettlePaymentByStaffParams) (Payment, error)
 	SumCompletedPaymentsForSession(ctx context.Context, sessionID uuid.UUID) (pgtype.Numeric, error)
+	TouchPlatformMFAUse(ctx context.Context, platformUserID int64) error
 	TouchPlatformSession(ctx context.Context, id uuid.UUID) error
 	TouchStaffSession(ctx context.Context, id uuid.UUID) error
 	TransitionSessionToActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	TransitionSessionToAwaitingReactivation(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	TransitionSessionToPaymentPending(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistanceStatusParams) (AssistanceRequest, error)
 	UpdateAssistanceStatusScoped(ctx context.Context, arg UpdateAssistanceStatusScopedParams) (AssistanceRequest, error)
@@ -201,6 +223,7 @@ type Querier interface {
 	UpdateStaffPIN(ctx context.Context, arg UpdateStaffPINParams) error
 	UpdateTableStatus(ctx context.Context, arg UpdateTableStatusParams) error
 	UpsertCustomer(ctx context.Context, arg UpsertCustomerParams) (Customer, error)
+	UpsertPlatformMFAPending(ctx context.Context, arg UpsertPlatformMFAPendingParams) (PlatformUserMfa, error)
 	UpsertPlatformUser(ctx context.Context, arg UpsertPlatformUserParams) (PlatformUser, error)
 	UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) (RestaurantSubscription, error)
 }

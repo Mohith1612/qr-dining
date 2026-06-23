@@ -57,6 +57,50 @@ UPDATE session_participants
 SET credential_version = credential_version + 1
 WHERE session_id = $1;
 
+-- name: TransitionSessionToAwaitingReactivation :one
+UPDATE sessions
+SET status = 'awaiting_reactivation',
+    awaiting_reactivation_at = NOW()
+WHERE id = $1 AND status = 'active'
+RETURNING id;
+
+-- name: ReactivateSession :one
+UPDATE sessions
+SET status = 'active',
+    awaiting_reactivation_at = NULL
+WHERE id = $1 AND status = 'awaiting_reactivation'
+RETURNING id;
+
+-- name: ListSessionsAwaitingReactivationExpired :many
+-- Returns sessions whose reactivation window has been exceeded. Caller is
+-- responsible for verifying no non-terminal payment exists before abandoning
+-- (TIM-1 in payment-finalization-invariants.md).
+SELECT s.id, s.branch_id, s.table_id, b.organization_id
+FROM sessions s
+JOIN branches b ON b.id = s.branch_id
+WHERE s.status = 'awaiting_reactivation'
+  AND s.awaiting_reactivation_at IS NOT NULL
+  AND s.awaiting_reactivation_at < $1::timestamptz
+ORDER BY s.awaiting_reactivation_at ASC;
+
+-- name: ListActiveSessionsForReactivationScan :many
+-- Returns active sessions older than the grace floor — candidates for the
+-- awaiting_reactivation transition. The worker still has to verify Redis
+-- presence absence before transitioning.
+SELECT s.id, s.branch_id, s.table_id, b.organization_id
+FROM sessions s
+JOIN branches b ON b.id = s.branch_id
+WHERE s.status = 'active'
+  AND s.created_at < $1::timestamptz
+ORDER BY s.created_at ASC;
+
+-- name: HasNonTerminalPaymentForSession :one
+SELECT EXISTS (
+    SELECT 1 FROM payments
+    WHERE session_id = $1
+      AND status NOT IN ('completed', 'failed', 'cancelled', 'refunded', 'partially_refunded')
+) AS has_pending;
+
 -- name: ListSessionsExpiringSoon :many
 SELECT s.id, s.branch_id, s.created_at, b.session_timeout_minutes
 FROM sessions s

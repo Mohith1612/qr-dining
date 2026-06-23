@@ -59,7 +59,7 @@ INSERT INTO sessions (
   session_number
 )
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number
+RETURNING id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number, awaiting_reactivation_at
 `
 
 type CreateSessionParams struct {
@@ -95,12 +95,13 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.SessionBusinessDate,
 		&i.VisitNumber,
 		&i.SessionNumber,
+		&i.AwaitingReactivationAt,
 	)
 	return i, err
 }
 
 const getActiveSessionForTable = `-- name: GetActiveSessionForTable :one
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number FROM sessions
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number, awaiting_reactivation_at FROM sessions
 WHERE table_id = $1 AND status = 'active'
 LIMIT 1
 `
@@ -122,12 +123,13 @@ func (q *Queries) GetActiveSessionForTable(ctx context.Context, tableID int64) (
 		&i.SessionBusinessDate,
 		&i.VisitNumber,
 		&i.SessionNumber,
+		&i.AwaitingReactivationAt,
 	)
 	return i, err
 }
 
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number FROM sessions WHERE id = $1
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number, awaiting_reactivation_at FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error) {
@@ -147,12 +149,13 @@ func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, er
 		&i.SessionBusinessDate,
 		&i.VisitNumber,
 		&i.SessionNumber,
+		&i.AwaitingReactivationAt,
 	)
 	return i, err
 }
 
 const getSessionByToken = `-- name: GetSessionByToken :one
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number FROM sessions WHERE session_token = $1 AND status = 'active'
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number, awaiting_reactivation_at FROM sessions WHERE session_token = $1 AND status = 'active'
 `
 
 func (q *Queries) GetSessionByToken(ctx context.Context, sessionToken string) (Session, error) {
@@ -172,6 +175,7 @@ func (q *Queries) GetSessionByToken(ctx context.Context, sessionToken string) (S
 		&i.SessionBusinessDate,
 		&i.VisitNumber,
 		&i.SessionNumber,
+		&i.AwaitingReactivationAt,
 	)
 	return i, err
 }
@@ -198,8 +202,23 @@ func (q *Queries) GetSessionParticipantByID(ctx context.Context, id int64) (Sess
 	return i, err
 }
 
+const hasNonTerminalPaymentForSession = `-- name: HasNonTerminalPaymentForSession :one
+SELECT EXISTS (
+    SELECT 1 FROM payments
+    WHERE session_id = $1
+      AND status NOT IN ('completed', 'failed', 'cancelled', 'refunded', 'partially_refunded')
+) AS has_pending
+`
+
+func (q *Queries) HasNonTerminalPaymentForSession(ctx context.Context, sessionID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, hasNonTerminalPaymentForSession, sessionID)
+	var has_pending bool
+	err := row.Scan(&has_pending)
+	return has_pending, err
+}
+
 const listActiveSessionsForBranch = `-- name: ListActiveSessionsForBranch :many
-SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number FROM sessions
+SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number, awaiting_reactivation_at FROM sessions
 WHERE branch_id = $1 AND status = 'active'
 ORDER BY created_at DESC
 `
@@ -227,6 +246,96 @@ func (q *Queries) ListActiveSessionsForBranch(ctx context.Context, branchID int6
 			&i.SessionBusinessDate,
 			&i.VisitNumber,
 			&i.SessionNumber,
+			&i.AwaitingReactivationAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActiveSessionsForReactivationScan = `-- name: ListActiveSessionsForReactivationScan :many
+SELECT s.id, s.branch_id, s.table_id, b.organization_id
+FROM sessions s
+JOIN branches b ON b.id = s.branch_id
+WHERE s.status = 'active'
+  AND s.created_at < $1::timestamptz
+ORDER BY s.created_at ASC
+`
+
+type ListActiveSessionsForReactivationScanRow struct {
+	ID             uuid.UUID `json:"id"`
+	BranchID       int64     `json:"branch_id"`
+	TableID        int64     `json:"table_id"`
+	OrganizationID int64     `json:"organization_id"`
+}
+
+// Returns active sessions older than the grace floor — candidates for the
+// awaiting_reactivation transition. The worker still has to verify Redis
+// presence absence before transitioning.
+func (q *Queries) ListActiveSessionsForReactivationScan(ctx context.Context, dollar_1 time.Time) ([]ListActiveSessionsForReactivationScanRow, error) {
+	rows, err := q.db.Query(ctx, listActiveSessionsForReactivationScan, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveSessionsForReactivationScanRow{}
+	for rows.Next() {
+		var i ListActiveSessionsForReactivationScanRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BranchID,
+			&i.TableID,
+			&i.OrganizationID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSessionsAwaitingReactivationExpired = `-- name: ListSessionsAwaitingReactivationExpired :many
+SELECT s.id, s.branch_id, s.table_id, b.organization_id
+FROM sessions s
+JOIN branches b ON b.id = s.branch_id
+WHERE s.status = 'awaiting_reactivation'
+  AND s.awaiting_reactivation_at IS NOT NULL
+  AND s.awaiting_reactivation_at < $1::timestamptz
+ORDER BY s.awaiting_reactivation_at ASC
+`
+
+type ListSessionsAwaitingReactivationExpiredRow struct {
+	ID             uuid.UUID `json:"id"`
+	BranchID       int64     `json:"branch_id"`
+	TableID        int64     `json:"table_id"`
+	OrganizationID int64     `json:"organization_id"`
+}
+
+// Returns sessions whose reactivation window has been exceeded. Caller is
+// responsible for verifying no non-terminal payment exists before abandoning
+// (TIM-1 in payment-finalization-invariants.md).
+func (q *Queries) ListSessionsAwaitingReactivationExpired(ctx context.Context, dollar_1 time.Time) ([]ListSessionsAwaitingReactivationExpiredRow, error) {
+	rows, err := q.db.Query(ctx, listSessionsAwaitingReactivationExpired, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionsAwaitingReactivationExpiredRow{}
+	for rows.Next() {
+		var i ListSessionsAwaitingReactivationExpiredRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BranchID,
+			&i.TableID,
+			&i.OrganizationID,
 		); err != nil {
 			return nil, err
 		}
@@ -309,6 +418,21 @@ func (q *Queries) NextSessionNumber(ctx context.Context, arg NextSessionNumberPa
 	return last_seq, err
 }
 
+const reactivateSession = `-- name: ReactivateSession :one
+UPDATE sessions
+SET status = 'active',
+    awaiting_reactivation_at = NULL
+WHERE id = $1 AND status = 'awaiting_reactivation'
+RETURNING id
+`
+
+func (q *Queries) ReactivateSession(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, reactivateSession, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const revokeAllParticipants = `-- name: RevokeAllParticipants :exec
 UPDATE session_participants
 SET revoked_at = NOW(), revoked_reason = $2
@@ -348,6 +472,21 @@ RETURNING id
 
 func (q *Queries) TransitionSessionToActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, transitionSessionToActive, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
+const transitionSessionToAwaitingReactivation = `-- name: TransitionSessionToAwaitingReactivation :one
+UPDATE sessions
+SET status = 'awaiting_reactivation',
+    awaiting_reactivation_at = NOW()
+WHERE id = $1 AND status = 'active'
+RETURNING id
+`
+
+func (q *Queries) TransitionSessionToAwaitingReactivation(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, transitionSessionToAwaitingReactivation, id)
 	var id_2 uuid.UUID
 	err := row.Scan(&id_2)
 	return id_2, err
