@@ -3,6 +3,12 @@
 Date: 2026-05-22
 Status: Authoritative pre-production security checklist. Every item must be either DONE with evidence in the repo, or have an owner and a date before the production gate opens.
 
+Phase A implementation status (2026-05-22):
+- Rate limiter now fails CLOSED on `/staff/auth`, `/platform/auth`, payment initiation, webhook receipt, and WS ticket issuance (see `RateLimitSensitive` in `middleware/ratelimit.go`). Per-session limits added for payment initiate, WS ticket issuance, order placement, assistance.
+- Guest credential revocation: `session_participants.revoked_at` is set + `credential_version` is bumped on every terminal session transition. The validator rejects revoked tokens.
+- Audit redaction expanded with `signature` / `mfa` / `2fa` / `refresh_token` / `access_token` / `private_key` / `api_key` / `pan` / `csrf_token` / `otp` / `recovery_code` patterns.
+- Still TODO before strict cutover: HttpOnly cookie for staff token, CSP middleware / nginx headers, MFA enforcement for platform users, brute-force lockout per `(branch_id, staff_code)`, WS per-connection inbound rate limit.
+
 ## 0. Threat Model Summary
 
 Adversaries assumed:

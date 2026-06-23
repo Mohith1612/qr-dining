@@ -3,6 +3,13 @@
 Date: 2026-05-22
 Status: Authoritative specification. Code must converge to this. Differences between this document and `backend/internal/services/session.go` or `backend/internal/worker/worker.go` are bugs.
 
+Phase A implementation status (2026-05-22):
+- New states (`payment_pending`, `awaiting_reactivation`, `expired`) added to the enum (migration `000023`).
+- One-non-terminal-per-table partial unique index extended (migration `000024`).
+- `payment_pending` entry/exit, cart/order freeze, and resurrection prevention (revoked_at + credential_version bump on close) are wired.
+- Snapshot 60-minute terminal read window is wired (`services/session.go:GetSnapshot`, returns HTTP 410 outside the window).
+- `awaiting_reactivation` worker pipeline (presence_grace → quiet_grace → reactivation_window) is NOT yet wired; the stale-session worker still transitions `active → abandoned` directly. Deferred to Phase B.
+
 ## 0. Why this exists
 
 QR Dining sessions are long-lived (often 45-120 minutes), shared across multiple devices, and naturally bridge crashes, network drops, browser history revisits, multi-tab restoration, and abrupt staff actions. The current code stores session status as a freeform text column with values `active`, `closed`, `abandoned`. That undersells the actual lifecycle. This document defines the canonical states, transitions, triggers, side effects, and adversarial scenarios. It is migration-aware: the canonical state must be derivable from the existing columns without a destructive schema change.

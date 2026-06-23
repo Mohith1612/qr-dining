@@ -3,6 +3,13 @@
 Date: 2026-05-22
 Status: Authoritative payment correctness contract. Concrete behavior in `backend/internal/services/payment.go`, `backend/internal/handlers/payment.go`, and `backend/migrations/000021_payment_order_correctness.up.sql` must satisfy every invariant here. Deviations are bugs.
 
+Phase A implementation status (2026-05-22):
+- BS-5 / CMP-1 / CMP-2: cart and order placement reject with 409 `PAYMENT_IN_PROGRESS` when the session is in `payment_pending`; the session moves back to `active` after every payment on the snapshot has terminally failed/cancelled.
+- SET-1 / SET-2: settlement still uses `UPDATE ... WHERE id=$1 AND status=$expected`; payment-pending entry/exit is now wrapped in the same transaction as snapshot/payment creation.
+- WH-* webhook invariants unchanged from Phase 7.
+- IDM-* idempotency invariants unchanged from Phase 7.
+- New per-route rate limits on `/sessions/:id/payments` and `/webhooks/payments/:provider`; both fail closed when the rate-limit backend is unreachable.
+
 ## 0. Why this exists
 
 Payments are the only part of QR Dining where double-execution loses or duplicates real money. The original audit's F-06, F-07, F-12, F-19 findings all centered on payment correctness. Hardening landed in Phase 7 with bill snapshots, signed webhooks, scoped idempotency, staff settlement, and the order state machine. This document promotes those into named invariants that must hold under network failure, concurrent actors, replay, and timeout.
