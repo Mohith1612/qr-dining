@@ -6,18 +6,34 @@ import (
 )
 
 var sensitiveKeys = map[string]bool{
-	"pin":           true,
-	"pin_hash":      true,
-	"current_pin":   true,
-	"new_pin":       true,
-	"token":         true,
-	"token_hash":    true,
-	"password":      true,
-	"password_hash": true,
-	"card_number":   true,
-	"cvv":           true,
-	"cvc":           true,
-	"expiry":        true,
+	"pin":               true,
+	"pin_hash":          true,
+	"current_pin":       true,
+	"new_pin":           true,
+	"token":             true,
+	"token_hash":        true,
+	"password":          true,
+	"password_hash":     true,
+	"card_number":       true,
+	"cvv":               true,
+	"cvc":               true,
+	"expiry":            true,
+	"pan":               true,
+	"card_pan":          true,
+	"signature":         true,
+	"webhook_signature": true,
+	"payment_signature": true,
+	"x_payment_signature": true,
+	"csrf_token":        true,
+	"refresh_token":     true,
+	"access_token":      true,
+	"client_secret":     true,
+	"private_key":       true,
+	"api_key":           true,
+	"otp":               true,
+	"otp_code":          true,
+	"mfa_code":          true,
+	"recovery_code":     true,
 }
 
 func isSensitive(key string) bool {
@@ -25,7 +41,28 @@ func isSensitive(key string) bool {
 	if sensitiveKeys[k] {
 		return true
 	}
-	return strings.Contains(k, "secret") || strings.Contains(k, "bcrypt")
+	// Substring matches catch derived names like "stripe_signature",
+	// "csrf_token_v2", "mfa_secret" without enumerating each variant.
+	for _, needle := range sensitiveSubstrings {
+		if strings.Contains(k, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+var sensitiveSubstrings = []string{
+	"secret",
+	"bcrypt",
+	"signature",
+	"refresh_token",
+	"access_token",
+	"private_key",
+	"api_key",
+	"_pin",
+	"pin_",
+	"mfa",
+	"2fa",
 }
 
 // Redact removes sensitive fields from before/after JSON blobs before audit insertion.

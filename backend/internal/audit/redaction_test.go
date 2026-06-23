@@ -140,6 +140,62 @@ func TestRedact_ArrayOfObjects(t *testing.T) {
 	}
 }
 
+func TestRedact_PhaseAExpandedKeys(t *testing.T) {
+	keys := []string{
+		"signature",
+		"webhook_signature",
+		"payment_signature",
+		"x_payment_signature",
+		"csrf_token",
+		"refresh_token",
+		"access_token",
+		"client_secret",
+		"private_key",
+		"api_key",
+		"otp",
+		"mfa_code",
+		"recovery_code",
+		"pan",
+		"card_pan",
+	}
+	for _, key := range keys {
+		raw, _ := json.Marshal(map[string]any{key: "sensitive-value"})
+		got, _ := Redact(raw, nil)
+		var result map[string]any
+		if err := json.Unmarshal(got, &result); err != nil {
+			t.Fatalf("key %q: unmarshal: %v", key, err)
+		}
+		if result[key] != "[REDACTED]" {
+			t.Errorf("key %q: got %v, want [REDACTED]", key, result[key])
+		}
+	}
+}
+
+func TestRedact_PhaseASubstrings(t *testing.T) {
+	// Derived names should match via substring rules added in Phase A.
+	raw, _ := json.Marshal(map[string]any{
+		"stripe_signature":  "sig_123",
+		"X-Razorpay-Signature": "sig_456",
+		"new_pin_hash":      "hash",
+		"mfa_secret":        "totp",
+		"client_2fa_seed":   "abc",
+		"benign_field":      "ok",
+	})
+	got, _ := Redact(raw, nil)
+	var result map[string]any
+	if err := json.Unmarshal(got, &result); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, k := range []string{"stripe_signature", "X-Razorpay-Signature", "new_pin_hash", "mfa_secret", "client_2fa_seed"} {
+		if result[k] != "[REDACTED]" {
+			t.Errorf("key %q: got %v, want [REDACTED]", k, result[k])
+		}
+	}
+	if result["benign_field"] != "ok" {
+		t.Errorf("benign_field should be preserved, got %v", result["benign_field"])
+	}
+}
+
 func TestRedact_NestedArrays(t *testing.T) {
 	raw, _ := json.Marshal(map[string]any{
 		"events": []any{
