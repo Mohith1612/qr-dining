@@ -82,6 +82,15 @@ FOR UPDATE OF s
 		if err := tx.UpdateTableStatus(ctx, tableID, sqlc.TableStatusAvailable); err != nil {
 			return err
 		}
+		// Revoke guest credentials in the same transaction so a stored token can
+		// never be used to act on a terminal session. Bumping credential_version
+		// also invalidates outstanding tokens whose signature is otherwise valid.
+		if err := tx.RevokeAllParticipants(ctx, id, "session_abandoned"); err != nil {
+			return err
+		}
+		if err := tx.BumpAllParticipantCredentialVersions(ctx, id); err != nil {
+			return err
+		}
 		abandoned = true
 		return nil
 	})

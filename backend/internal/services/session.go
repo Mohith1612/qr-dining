@@ -164,6 +164,15 @@ func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, request
 		if err := tx.UpdateTableStatus(ctx, sess.TableID, sqlc.TableStatusAvailable); err != nil {
 			return err
 		}
+		// Revoke guest credentials and rotate credential_version atomically with
+		// the close so stored tokens (browser history, restored tabs, share
+		// links) cannot resurrect a terminal session.
+		if err := tx.RevokeAllParticipants(ctx, id, "session_closed"); err != nil {
+			return err
+		}
+		if err := tx.BumpAllParticipantCredentialVersions(ctx, id); err != nil {
+			return err
+		}
 		closed = true
 		return nil
 	})
@@ -224,14 +233,30 @@ type SessionSnapshot struct {
 	Assistance      []sqlc.AssistanceRequest  `json:"assistance"`
 	MissedEvents    []ws.Envelope             `json:"missed_events,omitempty"`
 	SnapshotAt      time.Time                 `json:"snapshot_at"`
+	SessionEnded    bool                      `json:"session_ended,omitempty"`
+	CloseReason     string                    `json:"close_reason,omitempty"`
 }
+
+// TerminalReadWindow is the grace window during which the snapshot endpoint
+// still returns a read-only payload for a terminal session. After this window
+// the snapshot returns 410. Per session-lifecycle-state-machine.md §13.
+const TerminalReadWindow = 60 * time.Minute
 
 // GetSnapshot assembles the full current state of a session in parallel.
 // Used by clients to reconcile state after a WebSocket reconnect.
+//
+// For terminal sessions (closed/abandoned/expired), the snapshot is still
+// returned during a 60-minute read window so dispute handling and the
+// guest's own receipt screen continue to work. After the window the caller
+// receives ErrSessionTerminalReadExpired and must surface a 410.
 func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID, lastSequence int64) (SessionSnapshot, error) {
 	sess, err := s.repos.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return SessionSnapshot{}, err
+	}
+	terminal := domain.IsSessionTerminal(domain.SessionStatus(sess.Status))
+	if terminal && sess.ClosedAt.Valid && time.Since(sess.ClosedAt.Time) > TerminalReadWindow {
+		return SessionSnapshot{}, domain.ErrSessionTerminalReadExpired
 	}
 
 	var (
@@ -277,7 +302,7 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID, l
 		return SessionSnapshot{}, err
 	}
 
-	return SessionSnapshot{
+	snap := SessionSnapshot{
 		Session:         sess,
 		TableIdentifier: tableIdentifier,
 		Participants:    participants,
@@ -285,5 +310,10 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID, l
 		Assistance:      assistance,
 		MissedEvents:    missedEvents,
 		SnapshotAt:      time.Now().UTC(),
-	}, nil
+	}
+	if terminal {
+		snap.SessionEnded = true
+		snap.CloseReason = string(sess.Status)
+	}
+	return snap, nil
 }
