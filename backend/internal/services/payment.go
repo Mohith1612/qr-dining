@@ -18,6 +18,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
 )
@@ -146,6 +147,25 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 
 	var payment sqlc.Payment
 	err := s.repos.WithTx(ctx, func(tx *repository.Repos) error {
+		// Move the session into payment_pending inside this transaction so cart
+		// and order mutations are frozen for the duration of the payment. The
+		// transition is a no-op if the session is already in payment_pending
+		// because a concurrent participant created the snapshot first; any
+		// other state (closed/abandoned/expired) blocks the initiation.
+		sess, err := tx.GetSessionByID(ctx, req.SessionID)
+		if err != nil {
+			return err
+		}
+		switch sqlc.SessionStatus(sess.Status) {
+		case sqlc.SessionStatusActive:
+			if _, err := tx.TransitionSessionToPaymentPending(ctx, req.SessionID); err != nil {
+				return fmt.Errorf("transition session to payment_pending: %w", err)
+			}
+		case sqlc.SessionStatusPaymentPending:
+			// merge into existing snapshot path
+		default:
+			return domain.ErrSessionNotActive
+		}
 		branch, err := tx.GetBranchByID(ctx, req.BranchID)
 		if err != nil {
 			return fmt.Errorf("get branch: %w", err)
@@ -305,7 +325,8 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, req ProcessWebhookR
 	}
 	_ = s.repos.MarkWebhookProcessed(ctx, event.ID, payment.ID, "")
 
-	if newStatus == sqlc.PaymentStatusCompleted {
+	switch newStatus {
+	case sqlc.PaymentStatusCompleted:
 		s.publisher.PaymentCompleted(ctx, payment.SessionID, updated)
 		sess, _ := s.repos.GetSessionByID(ctx, payment.SessionID)
 		s.repos.LogEvent(ctx, payment.SessionID, sess.BranchID, "PAYMENT_COMPLETED", "system", 0, updated)
@@ -313,9 +334,53 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, req ProcessWebhookR
 		if err := s.maybeCloseSettledSession(ctx, payment.SessionID); err != nil {
 			s.logger.Warn().Err(err).Str("session_id", payment.SessionID.String()).Msg("auto-close session after payment failed")
 		}
+	case sqlc.PaymentStatusFailed, sqlc.PaymentStatusCancelled:
+		// If no non-terminal payments remain against the session, release the
+		// payment_pending freeze so the guest can change the order or retry.
+		if err := s.maybeReleasePaymentPending(ctx, payment.SessionID); err != nil {
+			s.logger.Warn().Err(err).Str("session_id", payment.SessionID.String()).Msg("release payment_pending failed")
+		}
 	}
 
 	return nil
+}
+
+// maybeReleasePaymentPending checks every payment for the session and returns
+// the session to 'active' only when no non-terminal payment remains. This is
+// invoked from any path that moves a payment into a terminal failed/cancelled
+// state.
+func (s *PaymentService) maybeReleasePaymentPending(ctx context.Context, sessionID uuid.UUID) error {
+	payments, err := s.repos.ListPaymentsForSession(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	for _, p := range payments {
+		if !isTerminalPaymentStatus(p.Status) {
+			return nil
+		}
+	}
+	if _, err := s.repos.TransitionSessionToActive(ctx, sessionID); err != nil {
+		// pgx.ErrNoRows means the session was not in payment_pending anymore
+		// (already closed or already active); treat as advisory.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func isTerminalPaymentStatus(s sqlc.PaymentStatus) bool {
+	switch s {
+	case sqlc.PaymentStatusCompleted,
+		sqlc.PaymentStatusFailed,
+		sqlc.PaymentStatusCancelled,
+		sqlc.PaymentStatusRefunded,
+		sqlc.PaymentStatusPartiallyRefunded:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *PaymentService) auditWebhookFailure(ctx context.Context, req ProcessWebhookRequest, eventID, paymentID int64, err error) {

@@ -62,6 +62,9 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	if err != nil {
 		return PlaceOrderResult{}, err
 	}
+	if domain.IsSessionCartFrozen(domain.SessionStatus(sess.Status)) {
+		return PlaceOrderResult{}, domain.ErrPaymentInProgress
+	}
 	if sess.Status != sqlc.SessionStatusActive {
 		return PlaceOrderResult{}, domain.ErrSessionClosed
 	}

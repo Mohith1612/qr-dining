@@ -54,6 +54,19 @@ func (s *CartService) GetCart(ctx context.Context, sessionID uuid.UUID, particip
 }
 
 func (s *CartService) AddItem(ctx context.Context, req AddItemRequest) (sqlc.CartItem, error) {
+	// Reject mutations once the session has entered payment_pending or any
+	// terminal state. Reads remain allowed via GetCart.
+	sess, err := s.repos.GetSessionByID(ctx, req.SessionID)
+	if err != nil {
+		return sqlc.CartItem{}, err
+	}
+	if domain.IsSessionCartFrozen(domain.SessionStatus(sess.Status)) {
+		return sqlc.CartItem{}, domain.ErrPaymentInProgress
+	}
+	if domain.IsSessionTerminal(domain.SessionStatus(sess.Status)) {
+		return sqlc.CartItem{}, domain.ErrSessionClosed
+	}
+
 	// Validate menu item availability.
 	menuItem, err := s.repos.GetMenuItemByID(ctx, req.MenuItemID)
 	if err != nil {
@@ -98,6 +111,12 @@ func (s *CartService) RemoveItem(ctx context.Context, sessionID uuid.UUID, parti
 	sess, err := s.repos.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return err
+	}
+	if domain.IsSessionCartFrozen(domain.SessionStatus(sess.Status)) {
+		return domain.ErrPaymentInProgress
+	}
+	if domain.IsSessionTerminal(domain.SessionStatus(sess.Status)) {
+		return domain.ErrSessionClosed
 	}
 
 	cart, err := s.repos.GetOrCreateCart(ctx, sessionID, participantID)

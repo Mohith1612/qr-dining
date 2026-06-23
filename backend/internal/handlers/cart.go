@@ -102,6 +102,10 @@ func (h *CartHandler) AddItem(c *gin.Context) {
 			respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
 		case errors.Is(err, domain.ErrMenuItemUnavailable):
 			respondError(c, http.StatusUnprocessableEntity, CodeMenuItemUnavailable, err.Error())
+		case errors.Is(err, domain.ErrPaymentInProgress):
+			respondError(c, http.StatusConflict, CodePaymentInProgress, err.Error())
+		case errors.Is(err, domain.ErrSessionClosed):
+			respondError(c, http.StatusConflict, CodeSessionClosed, err.Error())
 		default:
 			respondInternalError(c)
 		}
@@ -135,11 +139,16 @@ func (h *CartHandler) RemoveItem(c *gin.Context) {
 	}
 
 	if err := h.svc.RemoveItem(c.Request.Context(), sessionID, participantID, itemID); err != nil {
-		if errors.Is(err, domain.ErrCartItemNotFound) {
+		switch {
+		case errors.Is(err, domain.ErrCartItemNotFound):
 			respondError(c, http.StatusNotFound, CodeCartItemNotFound, err.Error())
-			return
+		case errors.Is(err, domain.ErrPaymentInProgress):
+			respondError(c, http.StatusConflict, CodePaymentInProgress, err.Error())
+		case errors.Is(err, domain.ErrSessionClosed):
+			respondError(c, http.StatusConflict, CodeSessionClosed, err.Error())
+		default:
+			respondInternalError(c)
 		}
-		respondInternalError(c)
 		return
 	}
 	c.Status(http.StatusNoContent)
