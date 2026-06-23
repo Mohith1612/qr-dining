@@ -16,6 +16,7 @@ type Querier interface {
 	AbandonStaleSession(ctx context.Context, id uuid.UUID) error
 	AddCartItem(ctx context.Context, arg AddCartItemParams) (CartItem, error)
 	AddPlatformUserRole(ctx context.Context, arg AddPlatformUserRoleParams) error
+	BumpAllParticipantCredentialVersions(ctx context.Context, sessionID uuid.UUID) error
 	ClearCart(ctx context.Context, cartID int64) error
 	CloseSessionIfActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
@@ -166,6 +167,7 @@ type Querier interface {
 	NextSessionNumber(ctx context.Context, arg NextSessionNumberParams) (int32, error)
 	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
+	RevokeAllParticipants(ctx context.Context, arg RevokeAllParticipantsParams) error
 	RevokePlatformSession(ctx context.Context, arg RevokePlatformSessionParams) error
 	RevokeStaffSessionsForStaff(ctx context.Context, staffID int64) error
 	SearchCustomersByPhone(ctx context.Context, arg SearchCustomersByPhoneParams) ([]Customer, error)
@@ -174,6 +176,8 @@ type Querier interface {
 	SumCompletedPaymentsForSession(ctx context.Context, sessionID uuid.UUID) (pgtype.Numeric, error)
 	TouchPlatformSession(ctx context.Context, id uuid.UUID) error
 	TouchStaffSession(ctx context.Context, id uuid.UUID) error
+	TransitionSessionToActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	TransitionSessionToPaymentPending(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	UpdateAssistanceStatus(ctx context.Context, arg UpdateAssistanceStatusParams) (AssistanceRequest, error)
 	UpdateAssistanceStatusScoped(ctx context.Context, arg UpdateAssistanceStatusScopedParams) (AssistanceRequest, error)
 	UpdateBranchOrderPrefix(ctx context.Context, arg UpdateBranchOrderPrefixParams) error

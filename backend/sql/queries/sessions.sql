@@ -32,8 +32,30 @@ UPDATE sessions SET host_participant_id = $2 WHERE id = $1;
 -- name: CloseSessionIfActive :one
 UPDATE sessions
 SET status = 'closed', closed_at = NOW()
+WHERE id = $1 AND status IN ('active', 'payment_pending', 'awaiting_reactivation')
+RETURNING id;
+
+-- name: TransitionSessionToPaymentPending :one
+UPDATE sessions
+SET status = 'payment_pending'
 WHERE id = $1 AND status = 'active'
 RETURNING id;
+
+-- name: TransitionSessionToActive :one
+UPDATE sessions
+SET status = 'active'
+WHERE id = $1 AND status = 'payment_pending'
+RETURNING id;
+
+-- name: RevokeAllParticipants :exec
+UPDATE session_participants
+SET revoked_at = NOW(), revoked_reason = $2
+WHERE session_id = $1 AND revoked_at IS NULL;
+
+-- name: BumpAllParticipantCredentialVersions :exec
+UPDATE session_participants
+SET credential_version = credential_version + 1
+WHERE session_id = $1;
 
 -- name: ListSessionsExpiringSoon :many
 SELECT s.id, s.branch_id, s.created_at, b.session_timeout_minutes

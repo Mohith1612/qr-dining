@@ -507,9 +507,12 @@ func (ns NullPromoType) Value() (driver.Value, error) {
 type SessionStatus string
 
 const (
-	SessionStatusActive    SessionStatus = "active"
-	SessionStatusClosed    SessionStatus = "closed"
-	SessionStatusAbandoned SessionStatus = "abandoned"
+	SessionStatusActive               SessionStatus = "active"
+	SessionStatusClosed               SessionStatus = "closed"
+	SessionStatusAbandoned            SessionStatus = "abandoned"
+	SessionStatusPaymentPending       SessionStatus = "payment_pending"
+	SessionStatusAwaitingReactivation SessionStatus = "awaiting_reactivation"
+	SessionStatusExpired              SessionStatus = "expired"
 )
 
 func (e *SessionStatus) Scan(src interface{}) error {
@@ -1037,14 +1040,16 @@ type SessionEvent struct {
 }
 
 type SessionParticipant struct {
-	ID                int64     `json:"id"`
-	SessionID         uuid.UUID `json:"session_id"`
-	DisplayName       string    `json:"display_name"`
-	DeviceFingerprint string    `json:"device_fingerprint"`
-	JoinedAt          time.Time `json:"joined_at"`
-	LastSeenAt        time.Time `json:"last_seen_at"`
-	IsHost            bool      `json:"is_host"`
-	CredentialVersion int32     `json:"credential_version"`
+	ID                int64              `json:"id"`
+	SessionID         uuid.UUID          `json:"session_id"`
+	DisplayName       string             `json:"display_name"`
+	DeviceFingerprint string             `json:"device_fingerprint"`
+	JoinedAt          time.Time          `json:"joined_at"`
+	LastSeenAt        time.Time          `json:"last_seen_at"`
+	IsHost            bool               `json:"is_host"`
+	CredentialVersion int32              `json:"credential_version"`
+	RevokedAt         pgtype.Timestamptz `json:"revoked_at"`
+	RevokedReason     pgtype.Text        `json:"revoked_reason"`
 }
 
 type SessionSequence struct {

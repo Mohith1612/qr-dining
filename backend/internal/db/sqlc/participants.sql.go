@@ -14,7 +14,7 @@ import (
 const createParticipant = `-- name: CreateParticipant :one
 INSERT INTO session_participants (session_id, display_name, device_fingerprint, is_host)
 VALUES ($1, $2, $3, $4)
-RETURNING id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version
+RETURNING id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason
 `
 
 type CreateParticipantParams struct {
@@ -41,12 +41,14 @@ func (q *Queries) CreateParticipant(ctx context.Context, arg CreateParticipantPa
 		&i.LastSeenAt,
 		&i.IsHost,
 		&i.CredentialVersion,
+		&i.RevokedAt,
+		&i.RevokedReason,
 	)
 	return i, err
 }
 
 const getParticipantByID = `-- name: GetParticipantByID :one
-SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version FROM session_participants WHERE id = $1
+SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason FROM session_participants WHERE id = $1
 `
 
 func (q *Queries) GetParticipantByID(ctx context.Context, id int64) (SessionParticipant, error) {
@@ -61,12 +63,14 @@ func (q *Queries) GetParticipantByID(ctx context.Context, id int64) (SessionPart
 		&i.LastSeenAt,
 		&i.IsHost,
 		&i.CredentialVersion,
+		&i.RevokedAt,
+		&i.RevokedReason,
 	)
 	return i, err
 }
 
 const listParticipantsBySession = `-- name: ListParticipantsBySession :many
-SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version FROM session_participants
+SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason FROM session_participants
 WHERE session_id = $1
 ORDER BY joined_at ASC
 `
@@ -89,6 +93,8 @@ func (q *Queries) ListParticipantsBySession(ctx context.Context, sessionID uuid.
 			&i.LastSeenAt,
 			&i.IsHost,
 			&i.CredentialVersion,
+			&i.RevokedAt,
+			&i.RevokedReason,
 		); err != nil {
 			return nil, err
 		}

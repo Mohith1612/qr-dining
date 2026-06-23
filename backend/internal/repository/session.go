@@ -85,6 +85,38 @@ func (r *Repos) AbandonSession(ctx context.Context, id uuid.UUID) error {
 	return r.q.AbandonSession(ctx, id)
 }
 
+// TransitionSessionToPaymentPending moves an active session into payment_pending
+// inside the caller's transaction. Returns pgx.ErrNoRows if the row is not in
+// 'active' status — callers treat that as a "session already in a non-active
+// state" signal and decide whether to fail or merge.
+func (r *Repos) TransitionSessionToPaymentPending(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return r.q.TransitionSessionToPaymentPending(ctx, id)
+}
+
+// TransitionSessionToActive reverses payment_pending back to active when every
+// payment against the bill snapshot has terminally failed or been cancelled.
+func (r *Repos) TransitionSessionToActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return r.q.TransitionSessionToActive(ctx, id)
+}
+
+// RevokeAllParticipants marks every non-revoked participant in a session as
+// revoked. Used inside the close/abandon transactions so stored guest tokens
+// can never be used to act on a terminal session.
+func (r *Repos) RevokeAllParticipants(ctx context.Context, sessionID uuid.UUID, reason string) error {
+	return r.q.RevokeAllParticipants(ctx, sqlc.RevokeAllParticipantsParams{
+		SessionID:     sessionID,
+		RevokedReason: pgtype.Text{String: reason, Valid: reason != ""},
+	})
+}
+
+// BumpAllParticipantCredentialVersions increments credential_version for every
+// participant in a session. Guest tokens issued with the prior version no
+// longer validate, achieving total credential invalidation without a separate
+// JTI denylist.
+func (r *Repos) BumpAllParticipantCredentialVersions(ctx context.Context, sessionID uuid.UUID) error {
+	return r.q.BumpAllParticipantCredentialVersions(ctx, sessionID)
+}
+
 func (r *Repos) ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]sqlc.Session, error) {
 	return r.q.ListActiveSessionsForBranch(ctx, branchID)
 }

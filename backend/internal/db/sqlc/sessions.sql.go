@@ -24,10 +24,21 @@ func (q *Queries) AbandonSession(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const bumpAllParticipantCredentialVersions = `-- name: BumpAllParticipantCredentialVersions :exec
+UPDATE session_participants
+SET credential_version = credential_version + 1
+WHERE session_id = $1
+`
+
+func (q *Queries) BumpAllParticipantCredentialVersions(ctx context.Context, sessionID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, bumpAllParticipantCredentialVersions, sessionID)
+	return err
+}
+
 const closeSessionIfActive = `-- name: CloseSessionIfActive :one
 UPDATE sessions
 SET status = 'closed', closed_at = NOW()
-WHERE id = $1 AND status = 'active'
+WHERE id = $1 AND status IN ('active', 'payment_pending', 'awaiting_reactivation')
 RETURNING id
 `
 
@@ -166,7 +177,7 @@ func (q *Queries) GetSessionByToken(ctx context.Context, sessionToken string) (S
 }
 
 const getSessionParticipantByID = `-- name: GetSessionParticipantByID :one
-SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version FROM session_participants WHERE id = $1
+SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason FROM session_participants WHERE id = $1
 `
 
 func (q *Queries) GetSessionParticipantByID(ctx context.Context, id int64) (SessionParticipant, error) {
@@ -181,6 +192,8 @@ func (q *Queries) GetSessionParticipantByID(ctx context.Context, id int64) (Sess
 		&i.LastSeenAt,
 		&i.IsHost,
 		&i.CredentialVersion,
+		&i.RevokedAt,
+		&i.RevokedReason,
 	)
 	return i, err
 }
@@ -296,6 +309,22 @@ func (q *Queries) NextSessionNumber(ctx context.Context, arg NextSessionNumberPa
 	return last_seq, err
 }
 
+const revokeAllParticipants = `-- name: RevokeAllParticipants :exec
+UPDATE session_participants
+SET revoked_at = NOW(), revoked_reason = $2
+WHERE session_id = $1 AND revoked_at IS NULL
+`
+
+type RevokeAllParticipantsParams struct {
+	SessionID     uuid.UUID   `json:"session_id"`
+	RevokedReason pgtype.Text `json:"revoked_reason"`
+}
+
+func (q *Queries) RevokeAllParticipants(ctx context.Context, arg RevokeAllParticipantsParams) error {
+	_, err := q.db.Exec(ctx, revokeAllParticipants, arg.SessionID, arg.RevokedReason)
+	return err
+}
+
 const setSessionHost = `-- name: SetSessionHost :exec
 UPDATE sessions SET host_participant_id = $2 WHERE id = $1
 `
@@ -308,4 +337,32 @@ type SetSessionHostParams struct {
 func (q *Queries) SetSessionHost(ctx context.Context, arg SetSessionHostParams) error {
 	_, err := q.db.Exec(ctx, setSessionHost, arg.ID, arg.HostParticipantID)
 	return err
+}
+
+const transitionSessionToActive = `-- name: TransitionSessionToActive :one
+UPDATE sessions
+SET status = 'active'
+WHERE id = $1 AND status = 'payment_pending'
+RETURNING id
+`
+
+func (q *Queries) TransitionSessionToActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, transitionSessionToActive, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
+const transitionSessionToPaymentPending = `-- name: TransitionSessionToPaymentPending :one
+UPDATE sessions
+SET status = 'payment_pending'
+WHERE id = $1 AND status = 'active'
+RETURNING id
+`
+
+func (q *Queries) TransitionSessionToPaymentPending(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, transitionSessionToPaymentPending, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
 }
