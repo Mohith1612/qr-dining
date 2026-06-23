@@ -64,6 +64,10 @@ func guestParticipantID(
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential is no longer valid")
 		return 0, false
 	}
+	if participant.RevokedAt.Valid {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential has been revoked")
+		return 0, false
+	}
 
 	return claims.ParticipantID, true
 }

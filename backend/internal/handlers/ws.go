@@ -115,6 +115,10 @@ func (h *WSHandler) upgradeWithTicket(c *gin.Context, ticket string) {
 		respondError(c, http.StatusForbidden, CodeParticipantNotFound, "participant not in session")
 		return
 	}
+	if participant.RevokedAt.Valid {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential has been revoked")
+		return
+	}
 
 	if err := h.hub.Upgrade(c.Writer, c.Request, claims.SessionID, claims.ParticipantID); err != nil {
 		return
