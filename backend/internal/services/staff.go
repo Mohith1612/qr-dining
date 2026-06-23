@@ -35,10 +35,30 @@ type StaffService struct {
 	cache        *redisPkg.Cache
 	logger       zerolog.Logger
 	requireDBRow bool
+	lockout      *redisPkg.LockoutStore
+	lockPolicy   redisPkg.LockoutPolicy
 }
 
 func NewStaffService(repos *repository.Repos, cache *redisPkg.Cache, logger zerolog.Logger) *StaffService {
-	return &StaffService{repos: repos, cache: cache, logger: logger}
+	return &StaffService{
+		repos:  repos,
+		cache:  cache,
+		logger: logger,
+		lockPolicy: redisPkg.LockoutPolicy{
+			Window:         5 * time.Minute,
+			MaxFailures:    10,
+			LockoutTTL:     15 * time.Minute,
+			FailOpenOnLoss: false,
+		},
+	}
+}
+
+// SetLockoutStore attaches a brute-force protection store to staff auth. When
+// not configured, Authenticate / AuthenticateWithCode skip lockout checks —
+// useful for unit tests that don't have Redis. Production wires this at
+// bootstrap.
+func (s *StaffService) SetLockoutStore(store *redisPkg.LockoutStore) {
+	s.lockout = store
 }
 
 // SetRequireSessionDBRow toggles strict DB-backed staff session validation.
@@ -61,8 +81,15 @@ type StaffSession struct {
 }
 
 // Authenticate verifies a staff PIN against stored bcrypt hashes for the branch.
-// Returns a session token stored in Redis on success.
+// Returns a session token stored in Redis on success. Failure counters and
+// lockouts are tracked per-branch (the legacy flow has no staff_code, so the
+// branch is the only identity available).
 func (s *StaffService) Authenticate(ctx context.Context, branchID int64, pin string) (StaffSession, error) {
+	identity := fmt.Sprintf("branch:%d", branchID)
+	if err := s.preAuthCheckLockout(ctx, identity); err != nil {
+		return StaffSession{}, err
+	}
+
 	staff, err := s.repos.ListActiveStaffForBranch(ctx, branchID)
 	if err != nil {
 		return StaffSession{}, err
@@ -75,24 +102,75 @@ func (s *StaffService) Authenticate(ctx context.Context, branchID int64, pin str
 		}
 	}
 	if len(matches) != 1 {
+		s.recordAuthFailure(ctx, identity)
 		return StaffSession{}, domain.ErrParticipantUnauthorized
 	}
+	s.resetAuthFailure(ctx, identity)
 	return s.createSession(ctx, matches[0], "")
 }
 
 func (s *StaffService) AuthenticateWithCode(ctx context.Context, branchCode, staffCode, pin, deviceName string) (StaffSession, error) {
+	identity := fmt.Sprintf("code:%s:%s", normalizeCode(branchCode), normalizeCode(staffCode))
+	if err := s.preAuthCheckLockout(ctx, identity); err != nil {
+		return StaffSession{}, err
+	}
+
 	branch, err := s.repos.GetBranchByCode(ctx, normalizeCode(branchCode))
 	if err != nil {
+		s.recordAuthFailure(ctx, identity)
 		return StaffSession{}, domain.ErrParticipantUnauthorized
 	}
 	staff, err := s.repos.GetStaffByBranchAndCode(ctx, branch.ID, normalizeCode(staffCode))
 	if err != nil {
+		s.recordAuthFailure(ctx, identity)
 		return StaffSession{}, domain.ErrParticipantUnauthorized
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(staff.PinHash), []byte(pin)); err != nil {
+		s.recordAuthFailure(ctx, identity)
 		return StaffSession{}, domain.ErrParticipantUnauthorized
 	}
+	s.resetAuthFailure(ctx, identity)
 	return s.createSession(ctx, staff, deviceName)
+}
+
+// LockoutRetryAfter reports how long the staff identity is locked for, or 0
+// if not locked. Handler surfaces this via the Retry-After header.
+func (s *StaffService) LockoutRetryAfter(ctx context.Context, identity string) int {
+	if s.lockout == nil {
+		return 0
+	}
+	return s.lockout.RemainingLockoutSeconds(ctx, "staff_auth", identity)
+}
+
+func (s *StaffService) preAuthCheckLockout(ctx context.Context, identity string) error {
+	if s.lockout == nil {
+		return nil
+	}
+	if err := s.lockout.CheckLocked(ctx, "staff_auth", identity, s.lockPolicy); err != nil {
+		if errors.Is(err, redisPkg.ErrAuthLockedOut) {
+			return domain.ErrAuthLockedOut
+		}
+		// Lockout backend unavailable: per policy FailOpenOnLoss=false, refuse the
+		// login. The user is shown the same generic auth error so an outage
+		// cannot be used to fingerprint accounts.
+		s.logger.Warn().Err(err).Str("identity", identity).Msg("staff auth lockout backend unavailable")
+		return domain.ErrUnauthorized
+	}
+	return nil
+}
+
+func (s *StaffService) recordAuthFailure(ctx context.Context, identity string) {
+	if s.lockout == nil {
+		return
+	}
+	_, _ = s.lockout.RecordFailure(ctx, "staff_auth", identity, s.lockPolicy)
+}
+
+func (s *StaffService) resetAuthFailure(ctx context.Context, identity string) {
+	if s.lockout == nil {
+		return
+	}
+	s.lockout.Reset(ctx, "staff_auth", identity)
 }
 
 func (s *StaffService) createSession(ctx context.Context, staff sqlc.Staff, deviceName string) (StaffSession, error) {

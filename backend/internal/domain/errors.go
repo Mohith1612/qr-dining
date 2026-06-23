@@ -76,8 +76,11 @@ var (
 
 // Auth
 var (
-	ErrUnauthorized = errors.New("unauthorized")
-	ErrForbidden    = errors.New("insufficient role for this operation")
+	ErrUnauthorized   = errors.New("unauthorized")
+	ErrForbidden      = errors.New("insufficient role for this operation")
+	ErrAuthLockedOut  = errors.New("authentication temporarily locked due to repeated failures")
+	ErrMFARequired    = errors.New("multi-factor authentication required")
+	ErrMFAInvalidCode = errors.New("invalid multi-factor authentication code")
 )
 
 // Tenant

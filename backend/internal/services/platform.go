@@ -30,13 +30,34 @@ const (
 )
 
 type PlatformService struct {
-	repos  *repository.Repos
-	cache  *redisPkg.Cache
-	logger zerolog.Logger
+	repos      *repository.Repos
+	cache      *redisPkg.Cache
+	logger     zerolog.Logger
+	lockout    *redisPkg.LockoutStore
+	lockPolicy redisPkg.LockoutPolicy
+	mfaEncKey  string
 }
 
 func NewPlatformService(repos *repository.Repos, cache *redisPkg.Cache, logger zerolog.Logger) *PlatformService {
-	return &PlatformService{repos: repos, cache: cache, logger: logger}
+	return &PlatformService{
+		repos:  repos,
+		cache:  cache,
+		logger: logger,
+		// Platform admin auth is tighter than branch staff PIN: fewer attempts
+		// allowed, longer lockout, longer lookback window. Manual operator
+		// unlock is the recovery path.
+		lockPolicy: redisPkg.LockoutPolicy{
+			Window:         5 * time.Minute,
+			MaxFailures:    5,
+			LockoutTTL:     30 * time.Minute,
+			FailOpenOnLoss: false,
+		},
+	}
+}
+
+// SetLockoutStore wires the brute-force protection store.
+func (s *PlatformService) SetLockoutStore(store *redisPkg.LockoutStore) {
+	s.lockout = store
 }
 
 type PlatformSession struct {
@@ -49,15 +70,32 @@ type PlatformSession struct {
 	ExpiresAt      time.Time `json:"expires_at"`
 }
 
+// PlatformAuthResult bundles the two possible outcomes of a successful
+// password check: either a fully-issued session, or an MFA challenge that
+// must be completed before a session is issued. Exactly one of the two
+// embedded values is populated.
+type PlatformAuthResult struct {
+	Session   *PlatformSession      `json:"session,omitempty"`
+	Challenge *PlatformMFAChallenge `json:"mfa_challenge,omitempty"`
+}
+
 func (s *PlatformService) Authenticate(ctx context.Context, email, password, deviceName string) (PlatformSession, error) {
-	user, err := s.repos.GetPlatformUserByEmail(ctx, NormalizePlatformEmail(email))
+	identity := NormalizePlatformEmail(email)
+	if err := s.preAuthCheckLockout(ctx, identity); err != nil {
+		return PlatformSession{}, err
+	}
+
+	user, err := s.repos.GetPlatformUserByEmail(ctx, identity)
 	if err != nil {
+		s.recordAuthFailure(ctx, identity)
 		return PlatformSession{}, domain.ErrUnauthorized
 	}
 	if user.Status != "active" {
+		s.recordAuthFailure(ctx, identity)
 		return PlatformSession{}, domain.ErrUnauthorized
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		s.recordAuthFailure(ctx, identity)
 		return PlatformSession{}, domain.ErrUnauthorized
 	}
 	roles, err := s.repos.ListPlatformRolesForUser(ctx, user.ID)
@@ -65,9 +103,78 @@ func (s *PlatformService) Authenticate(ctx context.Context, email, password, dev
 		return PlatformSession{}, err
 	}
 	if len(roles) == 0 {
+		s.recordAuthFailure(ctx, identity)
 		return PlatformSession{}, domain.ErrUnauthorized
 	}
+	s.resetAuthFailure(ctx, identity)
 	return s.createSession(ctx, user, roles, deviceName)
+}
+
+// AuthenticateWithMFA returns either a full session or an MFA challenge,
+// depending on whether the user has active MFA enrolled. Brute-force lockout
+// applies to the password check; subsequent MFA verification is gated by the
+// challenge expiry.
+func (s *PlatformService) AuthenticateWithMFA(ctx context.Context, email, password, deviceName, ip, userAgent string) (PlatformAuthResult, error) {
+	session, err := s.Authenticate(ctx, email, password, deviceName)
+	if err != nil {
+		return PlatformAuthResult{}, err
+	}
+	active, mfaErr := s.MFAStatus(ctx, session.PlatformUserID)
+	if mfaErr != nil {
+		return PlatformAuthResult{}, mfaErr
+	}
+	if !active {
+		// User is enrolled in MFA-required policy but has not completed enrollment yet,
+		// OR MFA is not required and not enrolled. In either case, issue the session
+		// directly — the platform.users.mfa_required flag is enforced at enrollment
+		// time, not at every login (otherwise no one could ever do their first login
+		// to set up MFA).
+		return PlatformAuthResult{Session: &session}, nil
+	}
+	// MFA is active. Revoke the just-issued session and return a challenge —
+	// the session is only released after the user completes the second factor.
+	_ = s.Logout(ctx, session, session.Token)
+	challenge, err := s.IssueMFAChallenge(ctx, session.PlatformUserID, ip, userAgent)
+	if err != nil {
+		return PlatformAuthResult{}, err
+	}
+	return PlatformAuthResult{Challenge: &challenge}, nil
+}
+
+// LockoutRetryAfter reports remaining lockout seconds for a platform email.
+func (s *PlatformService) LockoutRetryAfter(ctx context.Context, identity string) int {
+	if s.lockout == nil {
+		return 0
+	}
+	return s.lockout.RemainingLockoutSeconds(ctx, "platform_auth", NormalizePlatformEmail(identity))
+}
+
+func (s *PlatformService) preAuthCheckLockout(ctx context.Context, identity string) error {
+	if s.lockout == nil {
+		return nil
+	}
+	if err := s.lockout.CheckLocked(ctx, "platform_auth", identity, s.lockPolicy); err != nil {
+		if errors.Is(err, redisPkg.ErrAuthLockedOut) {
+			return domain.ErrAuthLockedOut
+		}
+		s.logger.Warn().Err(err).Str("identity", identity).Msg("platform auth lockout backend unavailable")
+		return domain.ErrUnauthorized
+	}
+	return nil
+}
+
+func (s *PlatformService) recordAuthFailure(ctx context.Context, identity string) {
+	if s.lockout == nil {
+		return
+	}
+	_, _ = s.lockout.RecordFailure(ctx, "platform_auth", identity, s.lockPolicy)
+}
+
+func (s *PlatformService) resetAuthFailure(ctx context.Context, identity string) {
+	if s.lockout == nil {
+		return
+	}
+	s.lockout.Reset(ctx, "platform_auth", identity)
 }
 
 func (s *PlatformService) createSession(ctx context.Context, user sqlc.PlatformUser, roles []string, deviceName string) (PlatformSession, error) {
