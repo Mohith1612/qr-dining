@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/Mohith1612/qr-dining/internal/auth"
 	"github.com/Mohith1612/qr-dining/internal/config"
+	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
@@ -47,6 +49,10 @@ func (h *SnapshotHandler) GetSnapshot(c *gin.Context) {
 
 	snapshot, err := h.svc.GetSnapshot(c.Request.Context(), sessionID, lastSequence)
 	if err != nil {
+		if errors.Is(err, domain.ErrSessionTerminalReadExpired) {
+			respondError(c, http.StatusGone, CodeSessionEnded, err.Error())
+			return
+		}
 		sessionError(c, err)
 		return
 	}
