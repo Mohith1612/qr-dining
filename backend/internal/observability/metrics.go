@@ -49,6 +49,16 @@ type Metrics struct {
 
 	// Audit
 	AuditWriteFailuresTotal *prometheus.CounterVec
+
+	// LegacyAuthzBypassTotal counts policy denials that were allowed through
+	// because AUTHZ_CENTRAL_POLICY_ENFORCE was off. A spike here right before
+	// the cutover means the strict flip will break legitimate traffic.
+	LegacyAuthzBypassTotal *prometheus.CounterVec
+
+	// RateLimiterUnavailableTotal counts requests denied because the rate
+	// limiter backend was unreachable on a fail-closed surface (staff auth,
+	// payment, webhook, ws-ticket).
+	RateLimiterUnavailableTotal *prometheus.CounterVec
 }
 
 func NewMetrics() *Metrics {
@@ -195,6 +205,16 @@ func NewMetrics() *Metrics {
 			Name: "audit_write_failures_total",
 			Help: "Total audit_log write failures by action and error class.",
 		}, []string{"action", "error_class"}),
+
+		LegacyAuthzBypassTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "legacy_authz_bypass_total",
+			Help: "Total policy denials allowed through because AUTHZ_CENTRAL_POLICY_ENFORCE was off.",
+		}, []string{"action", "actor_role"}),
+
+		RateLimiterUnavailableTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "rate_limiter_unavailable_total",
+			Help: "Total requests denied because the rate-limit backend was unreachable on a fail-closed surface.",
+		}, []string{"surface"}),
 	}
 
 	reg.MustRegister(
@@ -227,6 +247,8 @@ func NewMetrics() *Metrics {
 		m.WorkerRunsTotal,
 		m.WorkerPanicsTotal,
 		m.AuditWriteFailuresTotal,
+		m.LegacyAuthzBypassTotal,
+		m.RateLimiterUnavailableTotal,
 	)
 
 	return m

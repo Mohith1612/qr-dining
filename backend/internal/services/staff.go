@@ -31,14 +31,21 @@ const (
 )
 
 type StaffService struct {
-	repos  *repository.Repos
-	cache  *redisPkg.Cache
-	logger zerolog.Logger
+	repos        *repository.Repos
+	cache        *redisPkg.Cache
+	logger       zerolog.Logger
+	requireDBRow bool
 }
 
 func NewStaffService(repos *repository.Repos, cache *redisPkg.Cache, logger zerolog.Logger) *StaffService {
 	return &StaffService{repos: repos, cache: cache, logger: logger}
 }
+
+// SetRequireSessionDBRow toggles strict DB-backed staff session validation.
+// When true, ValidateToken rejects any Redis-only hit whose corresponding
+// staff_sessions row is missing or stale. Wired from
+// AUTH_STAFF_SESSION_DB_REQUIRED at bootstrap.
+func (s *StaffService) SetRequireSessionDBRow(require bool) { s.requireDBRow = require }
 
 type StaffSession struct {
 	Token          string         `json:"token"`
@@ -166,16 +173,29 @@ func (s *StaffService) validateSessionState(ctx context.Context, token string, s
 	if !staff.IsActive || staff.TokenVersion != session.TokenVersion || staff.PinVersion != session.PinVersion {
 		return errors.New("invalid or expired staff token")
 	}
-	if session.SessionID != uuid.Nil {
-		dbSession, err := s.repos.GetActiveStaffSessionByTokenHash(ctx, hashToken(token))
-		if err != nil {
-			return err
-		}
-		if dbSession.ID != session.SessionID || dbSession.TokenVersion != session.TokenVersion || dbSession.PinVersion != session.PinVersion {
+	if session.SessionID == uuid.Nil {
+		// Token was issued before staff_sessions existed. Strict mode rejects;
+		// shadow mode allows so the rollout can proceed without invalidating
+		// every active shift on flag flip.
+		if s.requireDBRow {
 			return errors.New("invalid or expired staff token")
 		}
-		_ = s.repos.TouchStaffSession(ctx, dbSession.ID)
+		return nil
 	}
+	dbSession, err := s.repos.GetActiveStaffSessionByTokenHash(ctx, hashToken(token))
+	if err != nil {
+		if s.requireDBRow {
+			return errors.New("invalid or expired staff token")
+		}
+		// Permissive mode: missing DB row is treated as advisory. The Redis
+		// session is still bound to staff_id/token_version/pin_version which
+		// just passed validation above.
+		return nil
+	}
+	if dbSession.ID != session.SessionID || dbSession.TokenVersion != session.TokenVersion || dbSession.PinVersion != session.PinVersion {
+		return errors.New("invalid or expired staff token")
+	}
+	_ = s.repos.TouchStaffSession(ctx, dbSession.ID)
 	return nil
 }
 

@@ -15,11 +15,30 @@ type Decision struct {
 	AuditHint     string
 }
 
-type Authorizer struct{}
+type Authorizer struct {
+	enforce bool
+}
 
+// NewAuthorizer constructs an authorizer in shadow mode: denials are recorded
+// but Authorize() still reports the would-be decision so callers can choose to
+// log-and-allow instead of blocking. This is the safe default during the
+// rollout window in which legacy callers may not yet supply complete scope
+// information.
 func NewAuthorizer() *Authorizer {
 	return &Authorizer{}
 }
+
+// NewEnforcingAuthorizer constructs an authorizer whose Enforce() reports true.
+// Wired from the AUTHZ_CENTRAL_POLICY_ENFORCE feature flag so the cutover
+// between shadow and strict mode is a one-line config change.
+func NewEnforcingAuthorizer(enforce bool) *Authorizer {
+	return &Authorizer{enforce: enforce}
+}
+
+// Enforce reports whether denials should block requests. When false, callers
+// should record the would-be denial (metric + audit) but allow the request to
+// proceed.
+func (a *Authorizer) Enforce() bool { return a.enforce }
 
 func (a *Authorizer) Authorize(actor Actor, action Action, resource Resource) Decision {
 	decision := Decision{

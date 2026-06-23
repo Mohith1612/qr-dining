@@ -67,7 +67,10 @@ func New(
 	presence := redisPkg.NewPresence(redis)
 	wsTickets := redisPkg.NewWSTicketStore(redis)
 	guestTokens := auth.NewGuestTokenService(cfg.Auth.GuestTokenSecret, cfg.Auth.GuestTokenTTL)
-	authorizer := authz.NewAuthorizer()
+	authorizer := authz.NewEnforcingAuthorizer(cfg.FeatureFlags.AuthzCentralPolicyEnforce)
+	handlers.SetHandlerMetrics(metrics)
+	handlers.SetActiveFeatureFlags(cfg.FeatureFlags)
+	middleware.SetRateLimitMetrics(metrics)
 
 	// ── Services ─────────────────────────────────────────────────────────────
 	sessionSvc := services.NewSessionService(repos, publisher, metrics, presence)
@@ -78,6 +81,7 @@ func New(
 	assistanceSvc := services.NewAssistanceService(repos, publisher)
 	menuSvc := services.NewMenuService(repos, cache)
 	staffSvc := services.NewStaffService(repos, cache, logger)
+	staffSvc.SetRequireSessionDBRow(cfg.FeatureFlags.AuthStaffSessionDBRequired)
 	platformSvc := services.NewPlatformService(repos, cache, logger)
 	paymentSvc := services.NewPaymentService(repos, publisher, metrics, sessionSvc, logger)
 	subSvc := services.NewSubscriptionService(repos)
@@ -131,24 +135,46 @@ func New(
 	api.GET("/sessions/:id", sessionH.Get)
 	api.DELETE("/sessions/:id", sessionH.Close)
 	api.POST("/sessions/:id/join", sessionH.Join)
-	api.POST("/sessions/:id/ws-ticket", sessionH.IssueWSTicket)
+	api.POST("/sessions/:id/ws-ticket",
+		middleware.RateLimitSensitive(rateLimiter, "ws_ticket", 60),
+		middleware.RateLimitByKey(rateLimiter, "ws_ticket_session", 12, func(c *gin.Context) string { return c.Param("id") }),
+		sessionH.IssueWSTicket,
+	)
 
 	// Cart
 	api.GET("/sessions/:id/cart", cartH.GetCart)
 	api.POST("/sessions/:id/cart/items", cartH.AddItem)
 	api.DELETE("/sessions/:id/cart/items/:item_id", cartH.RemoveItem)
 
-	// Orders
-	api.POST("/sessions/:id/orders", orderH.PlaceOrder)
+	// Orders — per-session cap on placement curtails replay storms and
+	// idempotency-key fuzzing. Falls back to global RPM if session id is
+	// missing.
+	api.POST("/sessions/:id/orders",
+		middleware.RateLimitByKey(rateLimiter, "order_place_session", 12, func(c *gin.Context) string { return c.Param("id") }),
+		orderH.PlaceOrder,
+	)
 	api.GET("/sessions/:id/orders", orderH.ListOrders)
 
-	// Assistance
-	api.POST("/sessions/:id/assist", assistanceH.Request)
+	// Assistance — low cap because legitimate guests rarely tap "call waiter"
+	// more than a handful of times per service.
+	api.POST("/sessions/:id/assist",
+		middleware.RateLimitByKey(rateLimiter, "assist_session", 6, func(c *gin.Context) string { return c.Param("id") }),
+		assistanceH.Request,
+	)
 
-	// Payments
-	api.POST("/sessions/:id/payments", paymentH.InitiatePayment)
+	// Payments — sensitive endpoints fail closed on rate-limit backend outage so
+	// a Redis blip cannot weaken brute-force / replay protection. Also adds a
+	// per-session limit on initiation so a stuck client cannot retry-spam.
+	api.POST("/sessions/:id/payments",
+		middleware.RateLimitSensitive(rateLimiter, "payment_init", 30),
+		middleware.RateLimitByKey(rateLimiter, "payment_init_session", 6, func(c *gin.Context) string { return c.Param("id") }),
+		paymentH.InitiatePayment,
+	)
 	api.GET("/sessions/:id/bill", billingH.GetBill)
-	api.POST("/webhooks/payments/:provider", paymentH.Webhook)
+	api.POST("/webhooks/payments/:provider",
+		middleware.RateLimitSensitive(rateLimiter, "webhook", 200),
+		paymentH.Webhook,
+	)
 
 	// Customer opt-in (guest, no auth)
 	api.POST("/sessions/:id/customer", customerH.LinkCustomer)
@@ -171,9 +197,11 @@ func New(
 	// Subscription plans — public.
 	api.GET("/plans", subH.ListPlans)
 
-	// Staff auth — strict 10 RPM limit to prevent PIN brute force.
+	// Staff auth — strict 10 RPM limit to prevent PIN brute force. Fails closed
+	// when Redis is unavailable so an infra blip cannot disable brute-force
+	// protection on a credential endpoint.
 	authGroup := r.Group("/")
-	authGroup.Use(middleware.RateLimitStrict(rateLimiter, "auth", 10))
+	authGroup.Use(middleware.RateLimitSensitive(rateLimiter, "auth", 10))
 	authGroup.POST("/staff/auth", staffH.Authenticate)
 	authGroup.POST("/platform/auth", platformH.Authenticate)
 

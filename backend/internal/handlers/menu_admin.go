@@ -184,6 +184,9 @@ func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
 		menuAdminError(c, err)
 		return
 	}
+	if !enforceBranchScopeFromBody(c, req.BranchID, target.BranchID, "menu_item_update") {
+		return
+	}
 	actor, ok := staffActorForRequest(c, h.repos, sess)
 	if !ok {
 		return
@@ -282,6 +285,9 @@ func (h *MenuAdminHandler) ToggleAvailability(c *gin.Context) {
 		menuAdminError(c, err)
 		return
 	}
+	if !enforceBranchScopeFromBody(c, req.BranchID, target.BranchID, "menu_item_toggle_availability") {
+		return
+	}
 	actor, ok := staffActorForRequest(c, h.repos, sess)
 	if !ok {
 		return
@@ -329,6 +335,9 @@ func (h *MenuAdminHandler) ToggleFeatured(c *gin.Context) {
 	target, err := h.svc.GetMenuItem(c.Request.Context(), itemID)
 	if err != nil {
 		menuAdminError(c, err)
+		return
+	}
+	if !enforceBranchScopeFromBody(c, req.BranchID, target.BranchID, "menu_item_toggle_featured") {
 		return
 	}
 	actor, ok := staffActorForRequest(c, h.repos, sess)
