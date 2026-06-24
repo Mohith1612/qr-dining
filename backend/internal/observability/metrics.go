@@ -19,6 +19,12 @@ type Metrics struct {
 	WSClientEvictions   prometheus.Counter
 	WSReconnectsTotal   prometheus.Counter
 
+	// WebSocket inbound abuse hardening
+	WSInboundMessagesTotal prometheus.Counter
+	WSInboundDroppedTotal  prometheus.Counter
+	WSMalformedEventsTotal prometheus.Counter
+	WSAbusiveClosesTotal   prometheus.Counter
+
 	// Database
 	DBQueryDuration     *prometheus.HistogramVec
 	DBErrorsTotal       *prometheus.CounterVec
@@ -96,6 +102,26 @@ func NewMetrics() *Metrics {
 		WSReconnectsTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "ws_reconnects_total",
 			Help: "Total WebSocket reconnect events detected (participant already had an active client).",
+		}),
+
+		WSInboundMessagesTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "ws_inbound_messages_total",
+			Help: "Total inbound WebSocket frames read from clients (before rate-limit/validation).",
+		}),
+
+		WSInboundDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "ws_inbound_dropped_total",
+			Help: "Total inbound WebSocket frames dropped because the per-connection inbound rate limit was exceeded.",
+		}),
+
+		WSMalformedEventsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "ws_malformed_events_total",
+			Help: "Total inbound WebSocket frames that failed envelope parsing.",
+		}),
+
+		WSAbusiveClosesTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "ws_abusive_closes_total",
+			Help: "Total WebSocket connections force-closed after exceeding the inbound abuse strike budget.",
 		}),
 
 		DBQueryDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -226,6 +252,10 @@ func NewMetrics() *Metrics {
 		m.WSMessagesSentTotal,
 		m.WSClientEvictions,
 		m.WSReconnectsTotal,
+		m.WSInboundMessagesTotal,
+		m.WSInboundDroppedTotal,
+		m.WSMalformedEventsTotal,
+		m.WSAbusiveClosesTotal,
 		m.DBQueryDuration,
 		m.DBErrorsTotal,
 		m.DBPoolTotalConns,
