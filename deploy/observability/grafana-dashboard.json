@@ -1,0 +1,181 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "title": "qr-dining — Operational Readiness",
+  "uid": "qr-dining-ops",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "tags": ["qr-dining", "rollout", "sre"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "${DS_PROMETHEUS}" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Availability",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "App up",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "targets": [{ "expr": "up{job=\"qr-dining\"}", "legendFormat": "{{instance}}" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP 5xx ratio",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 10, "x": 4, "y": 1 },
+      "targets": [{ "expr": "sum(rate(http_requests_total{status=~\"5.*\"}[5m])) / sum(rate(http_requests_total[5m]))", "legendFormat": "5xx ratio" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by status",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 10, "x": 14, "y": 1 },
+      "targets": [{ "expr": "sum by (status) (rate(http_requests_total[5m]))", "legendFormat": "{{status}}" }]
+    },
+    {
+      "type": "row",
+      "title": "Rollout gates (must be flat-zero before flipping strict flags)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "legacy_authz_bypass (gate: AUTHZ_CENTRAL_POLICY_ENFORCE)",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 9 },
+      "targets": [{ "expr": "sum by (action, actor_role) (rate(legacy_authz_bypass_total[5m]))", "legendFormat": "{{action}}/{{actor_role}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "legacy_identity_usage (gate: AUTH_GUEST_CREDENTIALS_REQUIRED / WS_TICKET_AUTH_REQUIRED)",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 9 },
+      "targets": [{ "expr": "sum by (mechanism, endpoint_class) (rate(legacy_identity_usage_total[5m]))", "legendFormat": "{{mechanism}}/{{endpoint_class}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "audit write failures + rate-limiter unavailable",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 9 },
+      "targets": [
+        { "expr": "sum(rate(audit_write_failures_total[5m]))", "legendFormat": "audit write failures" },
+        { "expr": "sum by (surface) (rate(rate_limiter_unavailable_total[5m]))", "legendFormat": "limiter unavailable {{surface}}" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "WebSocket + abuse hardening",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 }
+    },
+    {
+      "type": "stat",
+      "title": "Active WS connections",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 17 },
+      "targets": [{ "expr": "ws_connections_active" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Reconnects / evictions",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 10, "x": 4, "y": 17 },
+      "targets": [
+        { "expr": "rate(ws_reconnects_total[5m])", "legendFormat": "reconnects/s" },
+        { "expr": "rate(ws_client_evictions_total[5m])", "legendFormat": "evictions/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Inbound abuse: dropped / malformed / force-closed",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 10, "x": 14, "y": 17 },
+      "targets": [
+        { "expr": "rate(ws_inbound_dropped_total[5m])", "legendFormat": "dropped/s" },
+        { "expr": "rate(ws_malformed_events_total[5m])", "legendFormat": "malformed/s" },
+        { "expr": "rate(ws_abusive_closes_total[5m])", "legendFormat": "force-closed/s" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Datastores",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 }
+    },
+    {
+      "type": "stat",
+      "title": "Redis pub/sub connected",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 25 },
+      "targets": [{ "expr": "redis_pubsub_connected" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Postgres pool",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 10, "x": 4, "y": 25 },
+      "targets": [
+        { "expr": "db_pool_total_conns", "legendFormat": "total" },
+        { "expr": "db_pool_acquired_conns", "legendFormat": "acquired" },
+        { "expr": "db_pool_idle_conns", "legendFormat": "idle" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis pub/sub reconnects + errors",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 10, "x": 14, "y": 25 },
+      "targets": [
+        { "expr": "rate(redis_pubsub_reconnects_total[5m])", "legendFormat": "reconnects/s" },
+        { "expr": "sum by (operation) (rate(redis_pubsub_errors_total[5m]))", "legendFormat": "err {{operation}}" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Lifecycle workers + payments",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Worker runs by status",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 33 },
+      "targets": [{ "expr": "sum by (worker, status) (rate(background_worker_runs_total[5m]))", "legendFormat": "{{worker}}/{{status}}" }]
+    },
+    {
+      "type": "stat",
+      "title": "Active sessions",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 4, "x": 8, "y": 33 },
+      "targets": [{ "expr": "active_sessions_total" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Idempotency replays (payment / webhook)",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 33 },
+      "targets": [{ "expr": "sum by (entity) (rate(idempotency_replays_total[5m]))", "legendFormat": "{{entity}}" }]
+    }
+  ]
+}

@@ -1,0 +1,188 @@
+# qr-dining — minimum production alerting baseline.
+#
+# Load into Prometheus via rule_files. Every expression below references a metric
+# that the app actually emits (internal/observability/metrics.go) — no aspirational
+# series. Severities: page = wake someone; ticket = next-business-hours.
+#
+# Several rules are ROLLOUT GATES: a non-zero value means flipping the matching
+# strict flag will break live traffic. Those are annotated `rollout_gate`.
+
+groups:
+  - name: qr-dining-availability
+    rules:
+      - alert: AppTargetDown
+        expr: up{job="qr-dining"} == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "qr-dining app target is down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} for >1m. Check container health and /readyz."
+
+      - alert: HighServerErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.*"}[5m]))
+            / sum(rate(http_requests_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "5xx rate above 5%"
+          description: "More than 5% of HTTP responses are 5xx over 10m. Inspect logs and downstream (DB/Redis) health."
+
+  - name: qr-dining-datastores
+    rules:
+      - alert: PostgresPoolExhausted
+        expr: db_pool_idle_conns == 0 and db_pool_acquired_conns >= db_pool_total_conns
+        for: 3m
+        labels:
+          severity: page
+        annotations:
+          summary: "Postgres connection pool exhausted"
+          description: "No idle connections for >3m; requests are queuing on acquire. Check for slow queries or a connection leak."
+
+      - alert: PostgresQueryErrors
+        expr: sum(rate(db_errors_total[5m])) > 0
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Sustained Postgres query errors"
+          description: "db_errors_total is incrementing for >10m on query {{ $labels.query }}."
+
+      - alert: RedisPubSubDisconnected
+        expr: redis_pubsub_connected == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "Redis pub/sub subscriber disconnected"
+          description: "Realtime fan-out is down. Postgres remains authoritative, but clients will rely on snapshot reconciliation until pub/sub recovers. The subscriber auto-reconnects with backoff (1s→30s)."
+
+      - alert: RedisPubSubReconnectStorm
+        expr: rate(redis_pubsub_reconnects_total[5m]) > 0.2
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Redis pub/sub reconnecting repeatedly"
+          description: "The subscriber has restarted repeatedly over 10m — Redis is flapping or the network is unstable."
+
+  - name: qr-dining-websocket
+    rules:
+      - alert: WSAbusiveCloses
+        expr: rate(ws_abusive_closes_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "WebSocket connections force-closed for inbound abuse"
+          description: "Per-connection inbound strike budget exceeded. Could be a buggy client or a flood attempt — correlate with source IPs in logs."
+
+      - alert: WSInboundDropSpike
+        expr: rate(ws_inbound_dropped_total[5m]) > 5
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Elevated inbound WebSocket frame drops"
+          description: "Per-connection inbound rate limit is dropping frames at >5/s. Investigate client behavior before it escalates to force-closes."
+
+      - alert: WSClientEvictionSpike
+        expr: rate(ws_client_evictions_total[5m]) > 1
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "WebSocket slow-consumer evictions elevated"
+          description: "Clients are being evicted for full send buffers — broker overload, slow networks, or a fan-out hotspot."
+
+      - alert: WSReconnectStorm
+        expr: rate(ws_reconnects_total[5m]) > 10
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "WebSocket reconnect storm"
+          description: "Reconnect rate >10/s for 10m — possible edge (Cloudflare/nginx) instability or a deploy flapping connections."
+
+  - name: qr-dining-workers
+    rules:
+      - alert: BackgroundWorkerPanic
+        expr: increase(background_worker_panics_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Background worker panicked"
+          description: "Worker {{ $labels.worker }} panicked. Lifecycle cleanup (stale sessions, reactivation, table reconciliation) may be stalled — risk of stuck sessions / unavailable tables."
+
+      - alert: StaleSessionCleanerStalled
+        expr: increase(background_worker_runs_total{worker="stale_session_cleaner",status="ok"}[15m]) == 0
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Stale-session cleaner not completing"
+          description: "No successful stale_session_cleaner run in 15m. Abandoned sessions will not transition and tables will not free up."
+
+      - alert: ReactivationPipelineStalled
+        expr: increase(background_worker_runs_total{worker="reactivation_pipeline",status="ok"}[15m]) == 0
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Reactivation pipeline not completing"
+          description: "No successful reactivation_pipeline run in 15m. Sessions may not move active→awaiting_reactivation→abandoned correctly."
+
+  - name: qr-dining-integrity
+    rules:
+      - alert: AuditWriteFailures
+        expr: rate(audit_write_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: page
+          rollout_gate: AUDIT_LOG_V2_ENABLED
+        annotations:
+          summary: "Audit log write failures"
+          description: "audit_write_failures_total incrementing on action {{ $labels.action }}. With AUDIT_LOG_V2_ENABLED the audit trail has gaps — compliance/forensics risk."
+
+      - alert: RateLimiterUnavailable
+        expr: rate(rate_limiter_unavailable_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Fail-closed rate limiter rejecting traffic"
+          description: "Redis-backed limiter is unreachable on a fail-closed surface ({{ $labels.surface }}: staff auth / payment / webhook / ws-ticket). Those endpoints are returning 503. Restore Redis."
+
+      - alert: WebhookReplaySpike
+        expr: rate(idempotency_replays_total{entity="webhook"}[5m]) > 1
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Elevated webhook idempotency replays"
+          description: "Provider is re-delivering webhooks at >1/s (or a replay attempt). Dedup is holding — confirm no settlement double-counts."
+
+  - name: qr-dining-rollout-gates
+    rules:
+      - alert: LegacyAuthzBypassPresent
+        expr: rate(legacy_authz_bypass_total[10m]) > 0
+        for: 15m
+        labels:
+          severity: ticket
+          rollout_gate: AUTHZ_CENTRAL_POLICY_ENFORCE
+        annotations:
+          summary: "Central-policy denials currently being bypassed"
+          description: "legacy_authz_bypass_total is non-zero on action {{ $labels.action }} / role {{ $labels.actor_role }}. Flipping AUTHZ_CENTRAL_POLICY_ENFORCE now WILL block this traffic. Resolve to zero before cutover."
+
+      - alert: LegacyIdentityUsagePresent
+        expr: rate(legacy_identity_usage_total[10m]) > 0
+        for: 15m
+        labels:
+          severity: ticket
+          rollout_gate: AUTH_GUEST_CREDENTIALS_REQUIRED,WS_TICKET_AUTH_REQUIRED
+        annotations:
+          summary: "Legacy client-supplied identity still in use"
+          description: "legacy_identity_usage_total non-zero via {{ $labels.mechanism }} on {{ $labels.endpoint_class }}. Flipping the guest-credential / ws-ticket strict flags will break these callers (likely stale frontends). Drive to zero before cutover."
