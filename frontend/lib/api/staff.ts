@@ -13,8 +13,11 @@ import type {
 } from "@/types/api"
 
 export const staffApi = {
-  auth: (branchId: number, pin: string) =>
-    api.post<StaffSession>("/staff/auth", { branch_id: branchId, pin }),
+  auth: (branchCode: string, staffCode: string, pin: string) =>
+    api.post<StaffSession>("/staff/auth", { branch_code: branchCode, staff_code: staffCode, pin }),
+
+  logout: (staffToken: string) =>
+    api.post<void>("/staff/logout", {}, { staffToken }),
 
   createStaff: (
     branchId: number,

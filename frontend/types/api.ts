@@ -15,7 +15,7 @@ export interface Session {
   session_number?: string
   visit_number?: number
   host_participant_id: number | null
-  status: "active" | "closed" | "abandoned"
+  status: "active" | "closed" | "abandoned" | "awaiting_reactivation" | "expired" | "payment_pending"
   session_token: string
   created_at: string
   closed_at: string | null

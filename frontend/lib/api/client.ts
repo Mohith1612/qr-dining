@@ -27,7 +27,6 @@ export function friendlyErrorMessage(code: string): string {
 }
 
 type RequestOptions = {
-  participantId?: number
   staffToken?: string
   guestToken?: string
   body?: unknown
@@ -36,14 +35,10 @@ type RequestOptions = {
 
 async function request<T>(
   path: string,
-  { participantId, staffToken, guestToken, body, method = "GET" }: RequestOptions = {}
+  { staffToken, guestToken, body, method = "GET" }: RequestOptions = {}
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-  }
-
-  if (participantId != null) {
-    headers["X-Participant-ID"] = String(participantId)
   }
 
   if (staffToken || guestToken) {
@@ -58,6 +53,7 @@ async function request<T>(
 
   const res = await fetch(`${env.apiUrl}${path}`, {
     method,
+    credentials: "include",
     headers,
     body: body != null ? JSON.stringify(body) : undefined,
   })
@@ -77,16 +73,18 @@ async function request<T>(
   return res.json() as Promise<T>
 }
 
+type CallOptions = Omit<RequestOptions, "body" | "method">
+
 export const api = {
-  get: <T>(path: string, opts?: Omit<RequestOptions, "body" | "method">) =>
+  get: <T>(path: string, opts?: CallOptions) =>
     request<T>(path, { ...opts, method: "GET" }),
 
-  post: <T>(path: string, body: unknown, opts?: Omit<RequestOptions, "body" | "method">) =>
+  post: <T>(path: string, body: unknown, opts?: CallOptions) =>
     request<T>(path, { ...opts, method: "POST", body }),
 
-  patch: <T>(path: string, body: unknown, opts?: Omit<RequestOptions, "body" | "method">) =>
+  patch: <T>(path: string, body: unknown, opts?: CallOptions) =>
     request<T>(path, { ...opts, method: "PATCH", body }),
 
-  delete: <T>(path: string, opts?: Omit<RequestOptions, "body" | "method">) =>
+  delete: <T>(path: string, opts?: CallOptions) =>
     request<T>(path, { ...opts, method: "DELETE" }),
 }

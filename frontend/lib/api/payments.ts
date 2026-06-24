@@ -8,15 +8,15 @@ export const paymentsApi = {
     method: PaymentMethod,
     idempotencyKey: string,
     orderId?: string,
-    participantId?: number
+    guestToken?: string
   ) =>
     api.post<Payment>(`/sessions/${sessionId}/payments`, {
       amount,
       method,
       idempotency_key: idempotencyKey,
       order_id: orderId ?? null,
-    }, { participantId }),
+    }, { guestToken }),
 
-  getBill: (sessionId: string, participantId?: number) =>
-    api.get<BillData>(`/sessions/${sessionId}/bill`, { participantId }),
+  getBill: (sessionId: string, guestToken?: string) =>
+    api.get<BillData>(`/sessions/${sessionId}/bill`, { guestToken }),
 }

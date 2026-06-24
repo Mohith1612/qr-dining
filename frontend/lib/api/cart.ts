@@ -24,15 +24,15 @@ function mapCartItem(item: BackendCartItem): CartItem {
 }
 
 export const cartApi = {
-  getCart: (sessionId: string, participantId: number) =>
+  getCart: (sessionId: string, guestToken: string) =>
     api.get<{ Cart: { id: number; session_id: string; participant_id: number }; Items: BackendCartItem[] }>(
       `/sessions/${sessionId}/cart`,
-      { participantId }
+      { guestToken }
     ).then(r => (r.Items ?? []).map(mapCartItem)),
 
   addItem: (
     sessionId: string,
-    participantId: number,
+    guestToken: string,
     menuItemId: number,
     quantity: number,
     modifierIds?: number[],
@@ -41,9 +41,9 @@ export const cartApi = {
     api.post<BackendCartItem>(
       `/sessions/${sessionId}/cart/items`,
       { menu_item_id: menuItemId, quantity, modifier_ids: modifierIds, note },
-      { participantId }
+      { guestToken }
     ).then(mapCartItem),
 
-  removeItem: (sessionId: string, participantId: number, itemId: number) =>
-    api.delete<void>(`/sessions/${sessionId}/cart/items/${itemId}`, { participantId }),
+  removeItem: (sessionId: string, guestToken: string, itemId: number) =>
+    api.delete<void>(`/sessions/${sessionId}/cart/items/${itemId}`, { guestToken }),
 }

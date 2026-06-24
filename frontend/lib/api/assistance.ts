@@ -5,14 +5,13 @@ export const assistanceApi = {
   request: (
     sessionId: string,
     tableId: number,
-    type: AssistanceType = "waiter",
-    participantId?: number
+    guestToken: string,
+    type: AssistanceType = "waiter"
   ) =>
     api.post<AssistanceRequest>(`/sessions/${sessionId}/assist`, {
       table_id: tableId,
       type,
-      participant_id: participantId,
-    }),
+    }, { guestToken }),
 
   acknowledge: (id: number, staffToken: string) =>
     api.patch<AssistanceRequest>(`/assist/${id}/ack`, {}, { staffToken }),

@@ -28,14 +28,18 @@ export const sessionsApi = {
       device_fingerprint: deviceFingerprint,
     }),
 
-  wsTicket: (id: string, guestToken: string) =>
-    api.post<WSTicketResponse>(`/sessions/${id}/ws-ticket`, {}, { guestToken }),
+  wsTicket: (id: string, guestToken: string, since?: number) =>
+    api.post<WSTicketResponse>(
+      `/sessions/${id}/ws-ticket`,
+      since && since > 0 ? { since } : {},
+      { guestToken }
+    ),
 
   snapshot: (id: string, guestToken?: string, lastSequence?: number) => {
     const query = lastSequence && lastSequence > 0 ? `?last_sequence=${lastSequence}` : ""
     return api.get<SessionSnapshot>(`/sessions/${id}/snapshot${query}`, { guestToken })
   },
 
-  close: (id: string, participantId: number) =>
-    api.delete<void>(`/sessions/${id}`, { participantId }),
+  close: (id: string, guestToken: string) =>
+    api.delete<void>(`/sessions/${id}`, { guestToken }),
 }
