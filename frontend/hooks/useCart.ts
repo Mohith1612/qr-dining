@@ -8,7 +8,7 @@ import type { CartItem } from "@/types/api"
 export function useCart() {
   const items = useCartStore((s) => s.items)
   const loading = useCartStore((s) => s.loading)
-  const { session, participant } = useSession()
+  const { session } = useSession()
 
   const total = items.reduce((sum, item) => {
     const modifierTotal = item.selected_modifiers?.reduce((s, m) => s + m.price_delta, 0) ?? 0
@@ -23,10 +23,12 @@ export function useCart() {
     modifierIds?: number[],
     note?: string
   ): Promise<CartItem | null> {
-    if (!session || !participant) return null
+    if (!session) return null
+    const guestToken = sessionStorage.getItem("guest_access_token")
+    if (!guestToken) return null
     useCartStore.getState().setLoading(true)
     try {
-      const item = await cartApi.addItem(session.id, participant.id, menuItemId, quantity, modifierIds, note)
+      const item = await cartApi.addItem(session.id, guestToken, menuItemId, quantity, modifierIds, note)
       useCartStore.getState().addItem(item)
       return item
     } finally {
@@ -35,21 +37,25 @@ export function useCart() {
   }
 
   async function removeItem(itemId: number): Promise<void> {
-    if (!session || !participant) return
+    if (!session) return
+    const guestToken = sessionStorage.getItem("guest_access_token")
+    if (!guestToken) return
     const snapshot = useCartStore.getState().items
     useCartStore.getState().removeItem(itemId)
     try {
-      await cartApi.removeItem(session.id, participant.id, itemId)
+      await cartApi.removeItem(session.id, guestToken, itemId)
     } catch {
       useCartStore.getState().setItems(snapshot)
     }
   }
 
   async function refreshCart(): Promise<void> {
-    if (!session || !participant) return
+    if (!session) return
+    const guestToken = sessionStorage.getItem("guest_access_token")
+    if (!guestToken) return
     useCartStore.getState().setLoading(true)
     try {
-      const fresh = await cartApi.getCart(session.id, participant.id)
+      const fresh = await cartApi.getCart(session.id, guestToken)
       useCartStore.getState().setItems(fresh)
     } finally {
       useCartStore.getState().setLoading(false)

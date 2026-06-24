@@ -12,13 +12,17 @@ import { cartApi } from "@/lib/api/cart"
 import type { WSEventHandlerMap } from "@/types/ws"
 import type { Participant, Order, AssistanceRequest, Payment, SessionSnapshot } from "@/types/api"
 
-export function useWebSocket(sessionId: string, participantId: number) {
+export function useWebSocket(sessionId: string) {
   const connRef = useRef<WSConnection | null>(null)
 
   useEffect(() => {
     const handlers: WSEventHandlerMap = {
       SESSION_CLOSED: () => {
         useSessionStore.getState().markClosed()
+      },
+
+      SESSION_REACTIVATED: () => {
+        useSessionStore.getState().setIsReactivating(false)
       },
 
       SESSION_EXPIRING_SOON: (payload) => {
@@ -48,7 +52,9 @@ export function useWebSocket(sessionId: string, participantId: number) {
 
       CART_UPDATED: async () => {
         try {
-          const items = await cartApi.getCart(sessionId, participantId)
+          const guestToken = sessionStorage.getItem("guest_access_token")
+          if (!guestToken) return
+          const items = await cartApi.getCart(sessionId, guestToken)
           useCartStore.getState().setItems(items)
         } catch {}
       },
@@ -99,7 +105,7 @@ export function useWebSocket(sessionId: string, participantId: number) {
       },
     }
 
-    const conn = new WSConnection(sessionId, participantId, handlers)
+    const conn = new WSConnection(sessionId, handlers)
     connRef.current = conn
     conn.connect()
 
@@ -107,7 +113,7 @@ export function useWebSocket(sessionId: string, participantId: number) {
       conn.disconnect()
       connRef.current = null
     }
-  }, [sessionId, participantId])
+  }, [sessionId])
 
   const status = useWsStore((s) => s.status)
   const attempt = useWsStore((s) => s.attempt)

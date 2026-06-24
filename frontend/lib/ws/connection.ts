@@ -4,11 +4,13 @@ import { env } from "@/config/env"
 import { sessionsApi } from "@/lib/api/sessions"
 import { reconcileSnapshot } from "./reconciliation"
 import { useWsStore } from "@/store/ws"
+import { useSessionStore } from "@/store/session"
 import type { WSEnvelope, WSEventHandlerMap } from "@/types/ws"
 
 const BACKOFF_STEPS_MS = [1000, 2000, 4000, 8000, 16000, 30000]
 const MAX_ATTEMPTS = 10
 const PING_INTERVAL_MS = 30_000
+const TERMINAL_STATUSES: string[] = ["closed", "abandoned", "expired"]
 
 export class WSConnection {
   private ws: WebSocket | null = null
@@ -19,7 +21,6 @@ export class WSConnection {
 
   constructor(
     private readonly sessionId: string,
-    private readonly participantId: number,
     private readonly handlers: WSEventHandlerMap
   ) {}
 
@@ -29,21 +30,23 @@ export class WSConnection {
   }
 
   private async openSocket(): Promise<void> {
-    const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
-    let url = `${env.wsUrl}/ws?session_id=${this.sessionId}&participant_id=${this.participantId}`
+    const guestToken = sessionStorage.getItem("guest_access_token")
+    if (!guestToken) {
+      useWsStore.getState().setStatus("failed")
+      return
+    }
 
-    if (guestToken) {
-      try {
-        const { ticket } = await sessionsApi.wsTicket(this.sessionId, guestToken)
-        url = `${env.wsUrl}/ws?ticket=${encodeURIComponent(ticket)}`
-      } catch {
-        useWsStore.getState().setStatus("failed")
-        return
-      }
+    let ticket: string
+    try {
+      const res = await sessionsApi.wsTicket(this.sessionId, guestToken, this.lastSequence)
+      ticket = res.ticket
+    } catch {
+      useWsStore.getState().setStatus("failed")
+      return
     }
 
     if (this.stopped) return
-    this.ws = new WebSocket(url)
+    this.ws = new WebSocket(`${env.wsUrl}/ws?ticket=${encodeURIComponent(ticket)}`)
 
     this.ws.onopen = () => {
       this.attemptCount = 0
@@ -105,9 +108,10 @@ export class WSConnection {
     try {
       const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
       const snapshot = await sessionsApi.snapshot(this.sessionId, guestToken, this.lastSequence)
+      const status = snapshot.session.status
 
-      if (snapshot.session.status !== "active") {
-        // Session ended while disconnected — stop and let UI handle it
+      if (TERMINAL_STATUSES.includes(status)) {
+        // Session is in a terminal state — stop and surface to UI
         useWsStore.getState().setStatus("disconnected")
         this.handlers["SESSION_CLOSED"]?.(null, {
           event: "SESSION_CLOSED",
@@ -118,6 +122,14 @@ export class WSConnection {
         return
       }
 
+      if (status === "awaiting_reactivation") {
+        // Session is paused but resumable — update UI and keep retrying
+        useSessionStore.getState().markPaused()
+        this.scheduleReconnect()
+        return
+      }
+
+      // Session is active — replay missed events and reconnect
       for (const event of snapshot.missed_events ?? []) {
         this.handleEnvelope(event)
       }

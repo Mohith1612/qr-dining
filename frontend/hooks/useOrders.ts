@@ -15,7 +15,7 @@ interface PlaceOrderItem {
 
 export function useOrders() {
   const orders = useOrdersStore((s) => s.orders)
-  const { session, participant } = useSession()
+  const { session } = useSession()
 
   const sorted = [...orders].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -26,12 +26,13 @@ export function useOrders() {
     promoCode?: string,
     phoneE164?: string
   ): Promise<{ order_items: OrderItem[] } | null> {
-    if (!session || !participant) return null
+    if (!session) return null
+    const guestToken = sessionStorage.getItem("guest_access_token")
+    if (!guestToken) return null
     const key = generateIdempotencyKey()
     const result = await ordersApi.place(
       session.id,
-      session.branch_id,
-      participant.id,
+      guestToken,
       key,
       items,
       promoCode,

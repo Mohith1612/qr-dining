@@ -7,17 +7,19 @@ import type { AssistanceType } from "@/types/api"
 
 export function useAssistance() {
   const requests = useAssistanceStore((s) => s.requests)
-  const { session, participant } = useSession()
+  const { session } = useSession()
 
   const active = requests.filter((r) => r.status !== "resolved")
 
   async function requestAssistance(type?: AssistanceType) {
     if (!session) return null
+    const guestToken = sessionStorage.getItem("guest_access_token")
+    if (!guestToken) return null
     const req = await assistanceApi.request(
       session.id,
       session.table_id,
-      type,
-      participant?.id
+      guestToken,
+      type
     )
     useAssistanceStore.getState().addRequest(req)
     return req
