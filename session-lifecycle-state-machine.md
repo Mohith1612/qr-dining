@@ -8,7 +8,11 @@ Phase A implementation status (2026-05-22):
 - One-non-terminal-per-table partial unique index extended (migration `000024`).
 - `payment_pending` entry/exit, cart/order freeze, and resurrection prevention (revoked_at + credential_version bump on close) are wired.
 - Snapshot 60-minute terminal read window is wired (`services/session.go:GetSnapshot`, returns HTTP 410 outside the window).
-- `awaiting_reactivation` worker pipeline (presence_grace → quiet_grace → reactivation_window) is NOT yet wired; the stale-session worker still transitions `active → abandoned` directly. Deferred to Phase B.
+
+Phase B implementation status (2026-05-24):
+- `awaiting_reactivation` worker pipeline is wired in `RunReactivationPipeline` (migration `000026` adds the timestamp column). Worker uses Redis presence as the liveness signal and skips sessions with a non-terminal payment (TIM-1).
+- Snapshot endpoint transitions `awaiting_reactivation → active` on reconnect within `SESSION_REACTIVATION_WINDOW` (default 5m).
+- The deeper `quiet_grace_seconds` HTTP-traffic gate from the spec is NOT yet wired; the worker uses only presence absence + `presence_grace`. Adding a per-session `last_activity_at` column updated by every HTTP handler is the deferred refinement (Phase C if needed).
 
 ## 0. Why this exists
 

@@ -7,7 +7,14 @@ Phase A implementation status (2026-05-22):
 - Rate limiter now fails CLOSED on `/staff/auth`, `/platform/auth`, payment initiation, webhook receipt, and WS ticket issuance (see `RateLimitSensitive` in `middleware/ratelimit.go`). Per-session limits added for payment initiate, WS ticket issuance, order placement, assistance.
 - Guest credential revocation: `session_participants.revoked_at` is set + `credential_version` is bumped on every terminal session transition. The validator rejects revoked tokens.
 - Audit redaction expanded with `signature` / `mfa` / `2fa` / `refresh_token` / `access_token` / `private_key` / `api_key` / `pan` / `csrf_token` / `otp` / `recovery_code` patterns.
-- Still TODO before strict cutover: HttpOnly cookie for staff token, CSP middleware / nginx headers, MFA enforcement for platform users, brute-force lockout per `(branch_id, staff_code)`, WS per-connection inbound rate limit.
+
+Phase B implementation status (2026-05-24):
+- Brute-force lockout wired: staff (10 fails/5min/`(branch_id,staff_code)` → 15-min lock); platform (5 fails/5min/email → 30-min lock). Returns HTTP 423 `AUTH_LOCKED_OUT` with `Retry-After`. Fail-closed on Redis loss.
+- MFA (TOTP) implemented for platform users: AES-GCM-encrypted secret, bcrypt-hashed recovery codes, ephemeral 5-min challenge flow, dependency-free RFC 6238. Routes: `/platform/auth/mfa`, `/platform/mfa/{enroll,confirm,disable}`. Requires `MFA_ENCRYPTION_KEY` env var.
+- Staff token HttpOnly cookie path issued behind `AUTH_STAFF_COOKIE_ENABLED`; middleware accepts cookie OR Bearer. `POST /staff/logout` clears the cookie.
+- Security-header middleware (`SecurityHeaders`) emits strict API-shaped CSP + nosniff + frame-deny + COOP/CORP + (optional) HSTS on every API response. Frontend `next.config.ts` carries the full HTML CSP.
+- Support session caps enforced: soft 4h / hard 24h. Expired support sessions return HTTP 410. Reads write a tenant-visible audit event.
+- Still TODO before final cutover: frontend cookie migration off localStorage, CSRF token strategy once cookies are the sole transport, CSP nonce migration, WS per-connection inbound rate limit, organization user auth separation.
 
 ## 0. Threat Model Summary
 
