@@ -70,7 +70,7 @@ FOR UPDATE OF s
 			}
 			return err
 		}
-		if result.TableID != tableID || status != sqlc.SessionStatusActive {
+		if result.TableID != tableID || (status != sqlc.SessionStatusActive && status != sqlc.SessionStatusAwaitingReactivation) {
 			return nil
 		}
 		if err := tx.ExecRaw(ctx, `SELECT id FROM tables WHERE id = $1 FOR UPDATE`, tableID); err != nil {

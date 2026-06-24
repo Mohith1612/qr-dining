@@ -70,6 +70,29 @@ func (p *Presence) GetPresent(ctx context.Context, sessionID uuid.UUID) (map[int
 	return result, nil
 }
 
+// GetPresentScoped reads the organization/branch-scoped presence hash. Used
+// by the awaiting_reactivation worker since heartbeats write into the scoped
+// key path; the legacy unscoped path is checked separately.
+func (p *Presence) GetPresentScoped(ctx context.Context, organizationID, branchID int64, sessionID uuid.UUID) (map[int64]time.Time, error) {
+	raw, err := p.client.HGetAll(ctx, presenceKey(organizationID, branchID, sessionID)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("get presence scoped: %w", err)
+	}
+	result := make(map[int64]time.Time, len(raw))
+	for idStr, tsStr := range raw {
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			continue
+		}
+		ts, err := time.Parse(time.RFC3339, tsStr)
+		if err != nil {
+			continue
+		}
+		result[id] = ts
+	}
+	return result, nil
+}
+
 // Remove deletes a participant from the presence hash on disconnect.
 func (p *Presence) Remove(ctx context.Context, sessionID uuid.UUID, participantID int64) error {
 	field := strconv.FormatInt(participantID, 10)

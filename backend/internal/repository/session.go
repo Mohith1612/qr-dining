@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
@@ -115,6 +116,78 @@ func (r *Repos) RevokeAllParticipants(ctx context.Context, sessionID uuid.UUID, 
 // JTI denylist.
 func (r *Repos) BumpAllParticipantCredentialVersions(ctx context.Context, sessionID uuid.UUID) error {
 	return r.q.BumpAllParticipantCredentialVersions(ctx, sessionID)
+}
+
+// TransitionSessionToAwaitingReactivation moves an active session into the
+// awaiting_reactivation state and stamps awaiting_reactivation_at so the
+// worker and snapshot endpoint can compute the reactivation window.
+func (r *Repos) TransitionSessionToAwaitingReactivation(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return r.q.TransitionSessionToAwaitingReactivation(ctx, id)
+}
+
+// ReactivateSession moves a session out of awaiting_reactivation back into
+// active. Called from the snapshot endpoint when a guest reconnects within
+// the reactivation window.
+func (r *Repos) ReactivateSession(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return r.q.ReactivateSession(ctx, id)
+}
+
+// HasNonTerminalPaymentForSession reports whether any payment row is still
+// requested/provider_pending/requires_staff_confirmation. The worker uses
+// this to honor TIM-1 (don't abandon during payment_pending).
+func (r *Repos) HasNonTerminalPaymentForSession(ctx context.Context, sessionID uuid.UUID) (bool, error) {
+	return r.q.HasNonTerminalPaymentForSession(ctx, sessionID)
+}
+
+// ReactivationCandidate mirrors the worker projection so callers don't have
+// to import the sqlc-generated row type.
+type ReactivationCandidate struct {
+	ID             uuid.UUID
+	OrganizationID int64
+	BranchID       int64
+	TableID        int64
+}
+
+// AwaitingReactivationRow mirrors the worker projection.
+type AwaitingReactivationRow struct {
+	ID             uuid.UUID
+	OrganizationID int64
+	BranchID       int64
+	TableID        int64
+}
+
+func (r *Repos) ListReactivationCandidates(ctx context.Context, olderThan time.Time) ([]ReactivationCandidate, error) {
+	rows, err := r.q.ListActiveSessionsForReactivationScan(ctx, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReactivationCandidate, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ReactivationCandidate{
+			ID:             row.ID,
+			OrganizationID: row.OrganizationID,
+			BranchID:       row.BranchID,
+			TableID:        row.TableID,
+		})
+	}
+	return out, nil
+}
+
+func (r *Repos) ListAwaitingReactivationExpired(ctx context.Context, olderThan time.Time) ([]AwaitingReactivationRow, error) {
+	rows, err := r.q.ListSessionsAwaitingReactivationExpired(ctx, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AwaitingReactivationRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, AwaitingReactivationRow{
+			ID:             row.ID,
+			OrganizationID: row.OrganizationID,
+			BranchID:       row.BranchID,
+			TableID:        row.TableID,
+		})
+	}
+	return out, nil
 }
 
 func (r *Repos) ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]sqlc.Session, error) {

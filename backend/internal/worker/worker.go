@@ -32,6 +32,24 @@ type ExpiringSoonSession struct {
 	SessionTimeoutMinutes int16
 }
 
+// ReactivationCandidate is a session that may need to move from active into
+// awaiting_reactivation.
+type ReactivationCandidate struct {
+	ID             uuid.UUID
+	OrganizationID int64
+	BranchID       int64
+	TableID        int64
+}
+
+// AwaitingReactivationExpired is a session that has overstayed the
+// reactivation window and is eligible for abandonment.
+type AwaitingReactivationExpired struct {
+	ID             uuid.UUID
+	OrganizationID int64
+	BranchID       int64
+	TableID        int64
+}
+
 // Querier abstracts the DB queries the worker needs.
 // Implemented by *sqlc.Queries after code generation; interface allows compilation before that.
 type Querier interface {
@@ -41,6 +59,11 @@ type Querier interface {
 	MarkSessionWarned(ctx context.Context, id uuid.UUID) error
 	ReconcileSessionTables(ctx context.Context) ([]repository.SessionTableReconciliation, error)
 	LogEvent(ctx context.Context, sessionID uuid.UUID, branchID int64, eventType, actorType string, actorID int64, payload any)
+
+	ListReactivationCandidates(ctx context.Context, olderThan time.Time) ([]ReactivationCandidate, error)
+	TransitionToAwaitingReactivation(ctx context.Context, id uuid.UUID) error
+	ListAwaitingReactivationExpired(ctx context.Context, olderThan time.Time) ([]AwaitingReactivationExpired, error)
+	HasNonTerminalPayment(ctx context.Context, sessionID uuid.UUID) (bool, error)
 }
 
 // Worker runs lightweight background maintenance goroutines.
@@ -151,6 +174,109 @@ func (w *Worker) RunPresenceExpiry(ctx context.Context, interval time.Duration) 
 			})
 		}
 	}
+}
+
+// RunReactivationPipeline drives the awaiting_reactivation lifecycle:
+//   - Active sessions whose presence has been gone past `presenceGrace` are
+//     moved to awaiting_reactivation. The table stays occupied.
+//   - awaiting_reactivation sessions whose `awaiting_reactivation_at` is older
+//     than `reactivationWindow` are abandoned, unless a non-terminal payment
+//     exists (TIM-1).
+//
+// The pipeline is conservative: it never bypasses payment_pending sessions
+// and it relies on the same advisory locking the stale-session worker uses
+// for concurrency safety with webhooks.
+func (w *Worker) RunReactivationPipeline(ctx context.Context, interval, presenceGrace, reactivationWindow time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.runWithLock(ctx, "reactivation_pipeline", 4*time.Minute, func() {
+				w.safeRun("reactivation_pipeline", func() {
+					tickCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+					defer cancel()
+					w.runReactivationPipeline(tickCtx, presenceGrace, reactivationWindow)
+				})
+			})
+		}
+	}
+}
+
+func (w *Worker) runReactivationPipeline(ctx context.Context, presenceGrace, reactivationWindow time.Duration) {
+	// Phase 1: active → awaiting_reactivation when presence is empty.
+	candidates, err := w.queries.ListReactivationCandidates(ctx, time.Now().UTC().Add(-presenceGrace))
+	if err != nil {
+		w.logger.Error().Err(err).Msg("list reactivation candidates")
+		w.metrics.WorkerRunsTotal.WithLabelValues("reactivation_pipeline", "error").Inc()
+		return
+	}
+	movedToAwaiting := 0
+	for _, c := range candidates {
+		present, err := w.presence.GetPresentScoped(ctx, c.OrganizationID, c.BranchID, c.ID)
+		if err != nil {
+			w.logger.Warn().Err(err).Str("session_id", c.ID.String()).Msg("read presence")
+			continue
+		}
+		if len(present) > 0 {
+			continue
+		}
+		// Don't tear into payment_pending — that has its own state machine.
+		hasPending, err := w.queries.HasNonTerminalPayment(ctx, c.ID)
+		if err == nil && hasPending {
+			continue
+		}
+		if err := w.queries.TransitionToAwaitingReactivation(ctx, c.ID); err != nil {
+			w.logger.Warn().Err(err).Str("session_id", c.ID.String()).Msg("transition to awaiting_reactivation")
+			continue
+		}
+		movedToAwaiting++
+		w.queries.LogEvent(ctx, c.ID, c.BranchID, "SESSION_AWAITING_REACTIVATION", "system", 0, map[string]any{"reason": "presence_lost"})
+		w.publisher.SessionExpiringSoon(ctx, c.ID, map[string]any{"reason": "presence_lost"})
+	}
+
+	// Phase 2: awaiting_reactivation → abandoned when window has elapsed and
+	// no payment is in flight.
+	expired, err := w.queries.ListAwaitingReactivationExpired(ctx, time.Now().UTC().Add(-reactivationWindow))
+	if err != nil {
+		w.logger.Error().Err(err).Msg("list expired awaiting_reactivation")
+		w.metrics.WorkerRunsTotal.WithLabelValues("reactivation_pipeline", "error").Inc()
+		return
+	}
+	abandoned := 0
+	for _, e := range expired {
+		hasPending, err := w.queries.HasNonTerminalPayment(ctx, e.ID)
+		if err != nil {
+			w.logger.Warn().Err(err).Str("session_id", e.ID.String()).Msg("payment check")
+			continue
+		}
+		if hasPending {
+			// Staff intervention required — surface to ops.
+			w.logger.Warn().Str("session_id", e.ID.String()).Msg("awaiting_reactivation expired but payment is in flight; skipping abandon")
+			continue
+		}
+		result, didAbandon, err := w.queries.AbandonStaleSession(ctx, e.ID, e.TableID)
+		if err != nil {
+			w.logger.Error().Err(err).Str("session_id", e.ID.String()).Msg("abandon awaiting_reactivation")
+			continue
+		}
+		if !didAbandon {
+			continue
+		}
+		w.publisher.SessionClosed(ctx, e.ID, map[string]string{"reason": "reactivation_window_expired"})
+		w.presence.DeleteScoped(ctx, result.OrganizationID, result.BranchID, e.ID)
+		w.queries.LogEvent(ctx, result.SessionID, result.BranchID, "SESSION_ABANDONED", "system", 0, map[string]any{"reason": "reactivation_window_expired"})
+		w.recordSystemSessionAudit(ctx, audit.ActionSessionAbandon, result, map[string]any{"reason": "reactivation_window_expired"})
+		abandoned++
+	}
+
+	if movedToAwaiting > 0 || abandoned > 0 {
+		w.logger.Info().Int("awaiting", movedToAwaiting).Int("abandoned", abandoned).Msg("reactivation pipeline")
+	}
+	w.metrics.WorkerRunsTotal.WithLabelValues("reactivation_pipeline", "ok").Inc()
 }
 
 func (w *Worker) RunSessionTableReconciler(ctx context.Context, interval time.Duration) {

@@ -254,6 +254,22 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID, l
 	if err != nil {
 		return SessionSnapshot{}, err
 	}
+	// Reconnect path: if the worker put us into awaiting_reactivation but the
+	// guest is back within the window, transition back to active. The window
+	// itself is enforced by the worker (it only enters awaiting_reactivation
+	// after presence_grace and abandons after reactivation_window), so the
+	// snapshot endpoint just trusts the state column here.
+	if sess.Status == sqlc.SessionStatusAwaitingReactivation {
+		if _, err := s.repos.ReactivateSession(ctx, sessionID); err == nil {
+			sess.Status = sqlc.SessionStatusActive
+			sess.AwaitingReactivationAt.Valid = false
+			s.publisher.SessionCreated(ctx, sessionID, map[string]string{"reason": "reactivated"})
+			s.repos.LogEvent(ctx, sessionID, sess.BranchID, "SESSION_REACTIVATED", "participant", 0, map[string]any{})
+		}
+		// If ReactivateSession returned pgx.ErrNoRows it means the worker
+		// abandoned us between the read and the update — fall through to the
+		// terminal-window path below.
+	}
 	terminal := domain.IsSessionTerminal(domain.SessionStatus(sess.Status))
 	if terminal && sess.ClosedAt.Valid && time.Since(sess.ClosedAt.Time) > TerminalReadWindow {
 		return SessionSnapshot{}, domain.ErrSessionTerminalReadExpired
