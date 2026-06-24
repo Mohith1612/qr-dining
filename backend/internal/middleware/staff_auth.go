@@ -9,18 +9,23 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const StaffSessionKey = "staff_session"
+const (
+	StaffSessionKey  = "staff_session"
+	StaffCookieName  = "qrd_staff_session"
+	StaffCookiePath  = "/"
+)
 
-// StaffAuth validates the Bearer token from the Authorization header against Redis.
-// On success, the StaffSession is stored in the Gin context under StaffSessionKey.
+// StaffAuth validates a staff session token from EITHER the Authorization
+// Bearer header OR a HttpOnly session cookie. The cookie path lets the
+// frontend migrate off localStorage incrementally — both transports stay
+// supported until the rollout is complete.
 func StaffAuth(staffSvc *services.StaffService, logger zerolog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		auth := c.GetHeader("Authorization")
-		token, ok := strings.CutPrefix(auth, "Bearer ")
-		if !ok || token == "" {
+		token := staffTokenFromRequest(c)
+		if token == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, map[string]string{
 				"code":    "UNAUTHORIZED",
-				"message": "missing or invalid Authorization header",
+				"message": "missing or invalid staff credentials",
 			})
 			return
 		}
@@ -55,4 +60,19 @@ func GetStaffSession(c *gin.Context) (services.StaffSession, bool) {
 	}
 	s, ok := v.(services.StaffSession)
 	return s, ok
+}
+
+// staffTokenFromRequest prefers the Authorization Bearer header for
+// backwards compatibility with existing frontend clients, then falls back to
+// the HttpOnly cookie. Both transports point at the same Redis/DB session
+// row, so honoring either is safe.
+func staffTokenFromRequest(c *gin.Context) string {
+	auth := c.GetHeader("Authorization")
+	if token, ok := strings.CutPrefix(auth, "Bearer "); ok && token != "" {
+		return token
+	}
+	if cookie, err := c.Cookie(StaffCookieName); err == nil && cookie != "" {
+		return cookie
+	}
+	return ""
 }

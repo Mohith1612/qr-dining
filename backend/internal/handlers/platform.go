@@ -44,14 +44,135 @@ func (h *PlatformHandler) Authenticate(c *gin.Context) {
 		respondValidationError(c, err.Error())
 		return
 	}
-	session, err := h.svc.Authenticate(c.Request.Context(), req.Email, req.Password, req.DeviceName)
+	result, err := h.svc.AuthenticateWithMFA(c.Request.Context(), req.Email, req.Password, req.DeviceName, c.ClientIP(), c.GetHeader("User-Agent"))
 	if err != nil {
+		if errors.Is(err, domain.ErrAuthLockedOut) {
+			h.logPlatformAudit(c, 0, "platform.auth.locked_out", "platform_user", "", 0, 0, 0, gin.H{"email": services.NormalizePlatformEmail(req.Email)})
+			if retry := h.svc.LockoutRetryAfter(c.Request.Context(), req.Email); retry > 0 {
+				c.Header("Retry-After", strconv.Itoa(retry))
+			}
+			respondError(c, http.StatusLocked, CodeAuthLockedOut, "too many failed attempts; try again later")
+			return
+		}
 		h.logPlatformAudit(c, 0, "platform.auth.failed", "platform_user", "", 0, 0, 0, gin.H{"email": services.NormalizePlatformEmail(req.Email)})
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "invalid credentials")
 		return
 	}
+	if result.Challenge != nil {
+		h.logPlatformAudit(c, 0, "platform.auth.mfa_challenge_issued", "platform_user", "", 0, 0, 0, gin.H{"email": services.NormalizePlatformEmail(req.Email)})
+		c.JSON(http.StatusOK, gin.H{
+			"mfa_required":      true,
+			"mfa_challenge":     result.Challenge.Challenge,
+			"mfa_expires_at":    result.Challenge.ExpiresAt,
+		})
+		return
+	}
+	session := result.Session
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.auth.succeeded", "platform_user", strconv.FormatInt(session.PlatformUserID, 10), 0, 0, 0, gin.H{"email": session.Email})
 	c.JSON(http.StatusOK, session)
+}
+
+type platformMFACompleteRequest struct {
+	Challenge  string `json:"mfa_challenge" binding:"required"`
+	Code       string `json:"mfa_code" binding:"required"`
+	DeviceName string `json:"device_name"`
+}
+
+// CompleteMFA finishes a login interrupted at the MFA stage: the caller
+// supplies the challenge token plus the user's TOTP or recovery code; on
+// success a full PlatformSession is issued just as if MFA had not been
+// required.
+func (h *PlatformHandler) CompleteMFA(c *gin.Context) {
+	var req platformMFACompleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	session, err := h.svc.CompleteMFAChallenge(c.Request.Context(), req.Challenge, req.Code, req.DeviceName)
+	if err != nil {
+		if errors.Is(err, domain.ErrMFAInvalidCode) {
+			h.logPlatformAudit(c, 0, "platform.auth.mfa_failed", "platform_user", "", 0, 0, 0, gin.H{"reason": "invalid_code"})
+			respondError(c, http.StatusUnauthorized, CodeMFAInvalidCode, "invalid mfa code")
+			return
+		}
+		h.logPlatformAudit(c, 0, "platform.auth.mfa_failed", "platform_user", "", 0, 0, 0, gin.H{"reason": "challenge_invalid"})
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "invalid mfa challenge")
+		return
+	}
+	h.logPlatformAudit(c, session.PlatformUserID, "platform.auth.mfa_succeeded", "platform_user", strconv.FormatInt(session.PlatformUserID, 10), 0, 0, 0, gin.H{"email": session.Email})
+	c.JSON(http.StatusOK, session)
+}
+
+// BeginMFAEnrollment starts TOTP enrollment for the authenticated platform
+// user. The returned secret + otpauth URI are shown to the user once.
+func (h *PlatformHandler) BeginMFAEnrollment(c *gin.Context) {
+	session, ok := middleware.GetPlatformSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "platform authentication required")
+		return
+	}
+	setup, err := h.svc.BeginMFAEnrollment(c.Request.Context(), session.PlatformUserID)
+	if err != nil {
+		h.logPlatformAudit(c, session.PlatformUserID, "platform.mfa.enroll_failed", "platform_user", strconv.FormatInt(session.PlatformUserID, 10), 0, 0, 0, gin.H{"error": err.Error()})
+		respondInternalError(c)
+		return
+	}
+	h.logPlatformAudit(c, session.PlatformUserID, "platform.mfa.enroll_started", "platform_user", strconv.FormatInt(session.PlatformUserID, 10), 0, 0, 0, gin.H{})
+	c.JSON(http.StatusOK, setup)
+}
+
+type platformMFAConfirmRequest struct {
+	Code string `json:"code" binding:"required"`
+}
+
+// ConfirmMFAEnrollment verifies the first TOTP code and returns the recovery
+// codes. The codes are shown once; only their bcrypt hashes are persisted.
+func (h *PlatformHandler) ConfirmMFAEnrollment(c *gin.Context) {
+	session, ok := middleware.GetPlatformSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "platform authentication required")
+		return
+	}
+	var req platformMFAConfirmRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	result, err := h.svc.ConfirmMFAEnrollment(c.Request.Context(), session.PlatformUserID, req.Code)
+	if err != nil {
+		if errors.Is(err, domain.ErrMFAInvalidCode) {
+			respondError(c, http.StatusUnauthorized, CodeMFAInvalidCode, "invalid code")
+			return
+		}
+		respondInternalError(c)
+		return
+	}
+	h.logPlatformAudit(c, session.PlatformUserID, "platform.mfa.enrolled", "platform_user", strconv.FormatInt(session.PlatformUserID, 10), 0, 0, 0, gin.H{})
+	c.JSON(http.StatusOK, result)
+}
+
+// DisableMFA removes MFA after verifying a current code or recovery code.
+func (h *PlatformHandler) DisableMFA(c *gin.Context) {
+	session, ok := middleware.GetPlatformSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "platform authentication required")
+		return
+	}
+	var req platformMFAConfirmRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	if err := h.svc.DisableMFA(c.Request.Context(), session.PlatformUserID, req.Code); err != nil {
+		if errors.Is(err, domain.ErrMFAInvalidCode) {
+			respondError(c, http.StatusUnauthorized, CodeMFAInvalidCode, "invalid code")
+			return
+		}
+		respondInternalError(c)
+		return
+	}
+	h.logPlatformAudit(c, session.PlatformUserID, "platform.mfa.disabled", "platform_user", strconv.FormatInt(session.PlatformUserID, 10), 0, 0, 0, gin.H{})
+	c.Status(http.StatusNoContent)
 }
 
 func (h *PlatformHandler) Logout(c *gin.Context) {
@@ -447,6 +568,11 @@ func (h *PlatformHandler) SearchSupport(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"results": results})
 }
 
+const (
+	supportSessionSoftCap = 4 * time.Hour
+	supportSessionHardCap = 24 * time.Hour
+)
+
 type createPlatformSupportSessionRequest struct {
 	OrganizationID           int64      `json:"organization_id" binding:"required"`
 	BranchID                 *int64     `json:"branch_id"`
@@ -472,6 +598,23 @@ func (h *PlatformHandler) CreateSupportSession(c *gin.Context) {
 	}
 	if !req.ExpiresAt.After(startsAt) {
 		respondValidationError(c, "expires_at must be after starts_at")
+		return
+	}
+	// Per security-hardening-checklist §14: soft cap 4h, hard cap 24h. The
+	// hard cap is non-negotiable; the soft cap is enforced because operators
+	// should not be creating multi-day support windows without an explicit
+	// cap increase by Platform Engineering.
+	duration := req.ExpiresAt.Sub(startsAt)
+	if duration > supportSessionHardCap {
+		respondValidationError(c, "expires_at exceeds 24h hard cap")
+		return
+	}
+	if duration > supportSessionSoftCap {
+		respondError(c, http.StatusUnprocessableEntity, "SUPPORT_DURATION_EXCEEDS_SOFT_CAP", "support session may not exceed 4h without elevated approval")
+		return
+	}
+	if strings.TrimSpace(req.Reason) == "" {
+		respondValidationError(c, "reason is required")
 		return
 	}
 	if _, err := h.repos.GetOrganizationByID(c.Request.Context(), req.OrganizationID); err != nil {
@@ -551,7 +694,30 @@ func (h *PlatformHandler) GetSupportSession(c *gin.Context) {
 		respondError(c, http.StatusNotFound, CodeTenantNotFound, "support session not found")
 		return
 	}
+	if time.Now().UTC().After(support.ExpiresAt) {
+		// Treat expired sessions as not-found from the API surface so a stale
+		// link can't be used to enumerate prior support windows. The audit
+		// trail still records the attempt for forensic review.
+		h.logPlatformAudit(c, session.PlatformUserID, "platform.support_sessions.read_expired", "platform_support_session", strconv.FormatInt(support.ID, 10), support.OrganizationID, support.BranchID.Int64, support.ID, gin.H{})
+		respondError(c, http.StatusGone, "SUPPORT_SESSION_EXPIRED", "support session has expired")
+		return
+	}
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.support_sessions.read", "platform_support_session", strconv.FormatInt(support.ID, 10), support.OrganizationID, support.BranchID.Int64, support.ID, gin.H{})
+	// Tenant-visible audit: organization owners can see when platform support
+	// looked at their data. The platform audit log above is internal only;
+	// this entry shows up in the org-scoped audit feed.
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		OrganizationID: support.OrganizationID,
+		BranchID:       support.BranchID.Int64,
+		ResourceType:   audit.ResourcePlatformSupportSession,
+		ResourceID:     strconv.FormatInt(support.ID, 10),
+		Action:         audit.ActionPlatformSupportAccess,
+		ActorType:      audit.ActorTypePlatformUser,
+		ActorID:        strconv.FormatInt(session.PlatformUserID, 10),
+		RiskLevel:      audit.RiskCritical,
+		Result:         audit.ResultSuccess,
+		Metadata:       map[string]any{"support_session_id": support.ID, "expires_at": support.ExpiresAt},
+	})
 	c.JSON(http.StatusOK, platformSupportSessionResponse(support))
 }
 

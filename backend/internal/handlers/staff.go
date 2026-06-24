@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/authz"
@@ -28,6 +29,15 @@ type StaffHandler struct {
 
 func NewStaffHandler(svc *services.StaffService, repos *repository.Repos, metrics *observability.Metrics, flags config.FeatureFlags, authorizer *authz.Authorizer, auditWriter *audit.Writer) *StaffHandler {
 	return &StaffHandler{svc: svc, repos: repos, metrics: metrics, flags: flags, authz: authorizer, audit: auditWriter}
+}
+
+// staffLockoutIdentity mirrors the identity key used by StaffService so the
+// handler can ask the service for the remaining lockout duration.
+func staffLockoutIdentity(req staffAuthRequest) string {
+	if req.BranchCode != "" || req.StaffCode != "" {
+		return "code:" + strings.ToUpper(strings.TrimSpace(req.BranchCode)) + ":" + strings.ToUpper(strings.TrimSpace(req.StaffCode))
+	}
+	return "branch:" + strconv.FormatInt(req.BranchID, 10)
 }
 
 type staffAuthRequest struct {
@@ -61,7 +71,24 @@ func (h *StaffHandler) Authenticate(c *gin.Context) {
 		session, err = h.svc.Authenticate(c.Request.Context(), req.BranchID, req.PIN)
 	}
 	if err != nil {
-		if errors.Is(err, domain.ErrParticipantUnauthorized) {
+		switch {
+		case errors.Is(err, domain.ErrAuthLockedOut):
+			h.audit.Record(c.Request.Context(), audit.AuditEvent{
+				BranchID:     req.BranchID,
+				ResourceType: audit.ResourceStaff,
+				Action:       audit.ActionStaffLoginFailed,
+				Result:       audit.ResultDenied,
+				ActorType:    audit.ActorTypeStaff,
+				RiskLevel:    audit.RiskHigh,
+				Metadata:     map[string]any{"reason": "locked_out", "staff_code": req.StaffCode, "branch_code": req.BranchCode},
+			})
+			identity := staffLockoutIdentity(req)
+			if retry := h.svc.LockoutRetryAfter(c.Request.Context(), identity); retry > 0 {
+				c.Header("Retry-After", strconv.Itoa(retry))
+			}
+			respondError(c, http.StatusLocked, CodeAuthLockedOut, "too many failed attempts; try again later")
+			return
+		case errors.Is(err, domain.ErrParticipantUnauthorized):
 			h.audit.Record(c.Request.Context(), audit.AuditEvent{
 				BranchID:     req.BranchID,
 				ResourceType: audit.ResourceStaff,
@@ -73,9 +100,10 @@ func (h *StaffHandler) Authenticate(c *gin.Context) {
 			})
 			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "invalid credentials")
 			return
+		default:
+			respondInternalError(c)
+			return
 		}
-		respondInternalError(c)
-		return
 	}
 
 	h.audit.Record(c.Request.Context(), audit.AuditEvent{
@@ -89,7 +117,34 @@ func (h *StaffHandler) Authenticate(c *gin.Context) {
 		ActorID:        audit.IDStr(session.StaffID),
 		RiskLevel:      audit.RiskMedium,
 	})
+	issueStaffCookieIfEnabled(c, session.Token)
 	c.JSON(http.StatusOK, session)
+}
+
+// Logout invalidates the current staff session and clears the HttpOnly cookie
+// if one was set. Bearer-token-only clients can simply drop the token on the
+// frontend; the cookie path needs explicit clearing.
+func (h *StaffHandler) Logout(c *gin.Context) {
+	clearStaffCookie(c)
+	c.Status(http.StatusNoContent)
+}
+
+// issueStaffCookieIfEnabled sets the HttpOnly staff session cookie when the
+// rollout flag is on. Honors release-mode TLS via the Secure flag so dev (HTTP
+// localhost) and production (HTTPS) both work.
+func issueStaffCookieIfEnabled(c *gin.Context, token string) {
+	if !activeAuthConfig.StaffCookieEnable {
+		return
+	}
+	secure := activeServerConfig.GinMode == "release" || activeServerConfig.EnableHSTS
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(middleware.StaffCookieName, token, 8*60*60, middleware.StaffCookiePath, "", secure, true /* HttpOnly */)
+}
+
+func clearStaffCookie(c *gin.Context) {
+	secure := activeServerConfig.GinMode == "release" || activeServerConfig.EnableHSTS
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(middleware.StaffCookieName, "", -1, middleware.StaffCookiePath, "", secure, true)
 }
 
 type createStaffRequest struct {
