@@ -58,9 +58,10 @@ export function SessionTimeoutBanner() {
 
   async function handleExtend() {
     useSessionStore.getState().setSessionExpiringAt(null)
-    if (session && participant) {
+    if (session) {
       try {
-        await assistanceApi.request(session.id, session.table_id, "waiter", participant.id)
+        const guestToken = sessionStorage.getItem("guest_access_token") ?? ""
+        await assistanceApi.request(session.id, session.table_id, guestToken, "waiter")
       } catch {}
     }
     toast.success("We've let your waiter know you're staying a while.")

@@ -8,19 +8,20 @@ import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
 
 interface Props {
   sessionId: string
-  participantId: number
   onComplete: () => void
 }
 
-export function CustomerOptIn({ sessionId, participantId, onComplete }: Props) {
+export function CustomerOptIn({ sessionId, onComplete }: Props) {
   const [phone, setPhone] = useState("")
   const [name, setName] = useState("")
   const [saving, setSaving] = useState(false)
 
   async function handleSave() {
+    const guestToken = sessionStorage.getItem("guest_access_token")
+    if (!guestToken) { onComplete(); return }
     setSaving(true)
     try {
-      await customersApi.link(sessionId, "+91" + phone, name, participantId)
+      await customersApi.link(sessionId, "+91" + phone, name, guestToken)
       toast.success("We'll remember you next time!")
       onComplete()
     } catch (err) {

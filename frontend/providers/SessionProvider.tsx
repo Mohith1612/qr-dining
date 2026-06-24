@@ -7,6 +7,7 @@ import { sessionsApi } from "@/lib/api/sessions"
 import { useSessionStore } from "@/store/session"
 import { ReconnectingBanner } from "@/components/shared/ReconnectingBanner"
 import { SessionEndedScreen } from "@/components/shared/SessionEndedScreen"
+import { SessionReactivatingBanner } from "@/components/shared/SessionReactivatingBanner"
 import { SessionTimeoutBanner } from "@/components/shared/SessionTimeoutBanner"
 import { ErrorBoundary } from "./ErrorBoundary"
 
@@ -16,11 +17,14 @@ interface SessionProviderProps {
   children: ReactNode
 }
 
+const TERMINAL_STATUSES: string[] = ["closed", "abandoned", "expired"]
+
 export function SessionProvider({ sessionId, participantId, children }: SessionProviderProps) {
   const [snapshotLoaded, setSnapshotLoaded] = useState(false)
   const [sessionClosed, setSessionClosed] = useState(false)
-  const { status } = useWebSocket(sessionId, participantId)
+  const { status } = useWebSocket(sessionId)
   const session = useSessionStore((s) => s.session)
+  const isReactivating = useSessionStore((s) => s.isReactivating)
   const completedPayment = useSessionStore((s) => s.completedPayment)
 
   useEffect(() => {
@@ -40,7 +44,7 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
           useSessionStore.getState().setSession(session, self)
         }
       }
-      if (snap.session.status !== "active") {
+      if (TERMINAL_STATUSES.includes(snap.session.status)) {
         setSessionClosed(true)
       }
       setSnapshotLoaded(true)
@@ -51,7 +55,7 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
   }, [sessionId, participantId])
 
   useEffect(() => {
-    if (session?.status === "closed" || session?.status === "abandoned") {
+    if (session?.status && TERMINAL_STATUSES.includes(session.status)) {
       setSessionClosed(true)
     }
   }, [session?.status])
@@ -90,7 +94,7 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
 
   return (
     <ErrorBoundary>
-      <ReconnectingBanner />
+      {isReactivating ? <SessionReactivatingBanner /> : <ReconnectingBanner />}
       {snapshotLoaded ? children : null}
       <SessionTimeoutBanner />
     </ErrorBoundary>
