@@ -1,0 +1,17 @@
+{
+  "name": "qr-dining-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:desktop": "playwright test --project=desktop",
+    "test:mobile": "playwright test --project=mobile",
+    "test:headed": "playwright test --headed",
+    "screenshots": "playwright test e2e/screenshots/sweep.spec.ts",
+    "install-browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.45.0",
+    "@types/node": "^20.0.0"
+  }
+}
