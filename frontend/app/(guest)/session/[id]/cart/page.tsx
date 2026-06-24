@@ -115,7 +115,8 @@ export default function CartPage({ params }: Props) {
     setPromoError(null)
     try {
       const code = promoCode.trim().toUpperCase()
-      const result = await promosApi.validate(session.id, code, participant?.id)
+      const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
+      const result = await promosApi.validate(session.id, code, guestToken)
       setAppliedPromo(result)
       setAppliedPromoCode(code)
       setPromoCode("")

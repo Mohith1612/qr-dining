@@ -56,10 +56,11 @@ export default function PaymentPage() {
   // Fetch bill on mount and when orders change (new order placed triggers WS → store update).
   useEffect(() => {
     if (!session?.id) return
+    const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
     setBillLoading(true)
     setBillError(null)
     paymentsApi
-      .getBill(session.id, participant?.id)
+      .getBill(session.id, guestToken)
       .then(setBill)
       .catch(() => setBillError("Could not load bill — please ask your waiter."))
       .finally(() => setBillLoading(false))
@@ -76,10 +77,11 @@ export default function PaymentPage() {
 
   async function handlePay(method: PaymentMethod) {
     if (!session || paid) return
+    const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
     setLoading(method)
     try {
       // Send amount=0 as a hint; backend computes the authoritative total server-side.
-      const payment = await paymentsApi.initiate(session.id, total, method, generateIdempotencyKey(), undefined, participant?.id)
+      const payment = await paymentsApi.initiate(session.id, total, method, generateIdempotencyKey(), undefined, guestToken)
       setPaidTotal(total)
       setPaid(method)
       toast.success(payment.status === "completed" ? "Payment completed." : "Payment request sent.")
@@ -138,10 +140,9 @@ export default function PaymentPage() {
         </button>
       </div>
 
-      {showOptIn && session && participant && (
+      {showOptIn && session && (
         <CustomerOptIn
           sessionId={session.id}
-          participantId={participant.id}
           onComplete={() => setShowOptIn(false)}
         />
       )}

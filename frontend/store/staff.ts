@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import { persist } from "zustand/middleware"
+import { persist, createJSONStorage } from "zustand/middleware"
 import type { StaffRole } from "@/types/api"
 
 interface StaffState {
@@ -37,6 +37,7 @@ export const useStaffStore = create<StaffState>()(
     }),
     {
       name: "staff-auth",
+      storage: createJSONStorage(() => sessionStorage),
       onRehydrateStorage: () => (state) => {
         state?._setHydrated()
       },

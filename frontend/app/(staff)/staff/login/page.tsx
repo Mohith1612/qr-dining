@@ -21,21 +21,21 @@ export default function StaffLoginPage() {
   const router = useRouter()
   const setAuth = useStaffStore((s) => s.setAuth)
   const { name: restaurantName } = useTenant()
-  const [branchId, setBranchId] = useState("")
+  const [branchCode, setBranchCode] = useState("")
+  const [staffCode, setStaffCode] = useState("")
   const [pin, setPin] = useState("")
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const id = parseInt(branchId)
-    if (!id || !pin) return
+    if (!branchCode.trim() || !staffCode.trim() || !pin) return
     setLoading(true)
     try {
-      const session = await staffApi.auth(id, pin)
+      const session = await staffApi.auth(branchCode.trim(), staffCode.trim(), pin)
       setAuth(session.token, session.staff_id, session.branch_id, session.role)
       router.replace(ROLE_REDIRECT[session.role])
     } catch {
-      toast.error("Invalid branch ID or PIN. Please try again.")
+      toast.error("Invalid credentials. Please check your branch code, staff code, and PIN.")
     } finally {
       setLoading(false)
     }
@@ -77,16 +77,34 @@ export default function StaffLoginPage() {
         {/* Form card */}
         <HospitalityCard elev={3} style={{ padding: "28px 24px" }}>
           <form onSubmit={handleSubmit}>
-            {/* Branch ID */}
-            <p className="eyebrow" style={{ marginBottom: 8 }}>Branch ID</p>
+            {/* Branch Code */}
+            <p className="eyebrow" style={{ marginBottom: 8 }}>Branch Code</p>
             <input
-              type="number"
-              inputMode="numeric"
-              placeholder="1"
-              value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
+              type="text"
+              autoComplete="username"
+              placeholder="main-restaurant"
+              value={branchCode}
+              onChange={(e) => setBranchCode(e.target.value)}
               required
-              min={1}
+              style={{
+                display: "block", width: "100%", fontSize: 18, boxSizing: "border-box",
+                background: "transparent", outline: "none", border: "none",
+                borderBottom: "1px solid var(--line-2)", paddingBottom: 10,
+                color: "var(--ink-1)", fontFamily: "inherit",
+              }}
+            />
+
+            <div style={{ height: 20 }} />
+
+            {/* Staff Code */}
+            <p className="eyebrow" style={{ marginBottom: 8 }}>Staff Code</p>
+            <input
+              type="text"
+              autoComplete="username"
+              placeholder="your-staff-code"
+              value={staffCode}
+              onChange={(e) => setStaffCode(e.target.value)}
+              required
               style={{
                 display: "block", width: "100%", fontSize: 18, boxSizing: "border-box",
                 background: "transparent", outline: "none", border: "none",
@@ -136,7 +154,7 @@ export default function StaffLoginPage() {
             {/* Submit */}
             <button
               type="submit"
-              disabled={loading || !branchId || !pin}
+              disabled={loading || !branchCode || !staffCode || !pin}
               className="press"
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -144,8 +162,8 @@ export default function StaffLoginPage() {
                 background: "var(--accent)", color: "var(--accent-ink)",
                 border: "none", borderRadius: "var(--rad-md)",
                 fontSize: 15, fontWeight: 600,
-                cursor: loading || !branchId || !pin ? "not-allowed" : "pointer",
-                opacity: loading || !branchId || !pin ? 0.55 : 1,
+                cursor: loading || !branchCode || !staffCode || !pin ? "not-allowed" : "pointer",
+                opacity: loading || !branchCode || !staffCode || !pin ? 0.55 : 1,
               }}
             >
               {loading ? (

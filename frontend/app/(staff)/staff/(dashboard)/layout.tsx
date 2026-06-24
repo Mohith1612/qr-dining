@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useStaffStore } from "@/store/staff"
+import { staffApi } from "@/lib/api/staff"
 import { StaffBar } from "@/components/staff/StaffBar"
 
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
@@ -17,7 +18,10 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
 
   if (!_hydrated || !token) return null
 
-  function handleSignOut() {
+  async function handleSignOut() {
+    if (token) {
+      try { await staffApi.logout(token) } catch {}
+    }
     clear()
     router.replace("/staff/login")
   }
