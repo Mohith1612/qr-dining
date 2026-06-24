@@ -58,6 +58,7 @@ func New(
 	r.Use(audit.Middleware())
 	r.Use(middleware.Logger(logger))
 	r.Use(middleware.Metrics(metrics))
+	r.Use(middleware.SecurityHeaders(cfg.Server.EnableHSTS))
 	r.Use(middleware.CORS(cfg.CORS.AllowedOrigins))
 	r.Use(middleware.MaxBodySize(1 << 20)) // 1 MB request body limit
 	r.Use(middleware.TenantMiddleware(repos, cfg.Server.BaseDomain, cfg.FeatureFlags.TenancyOrganizationsEnabled, logger))
@@ -70,6 +71,8 @@ func New(
 	authorizer := authz.NewEnforcingAuthorizer(cfg.FeatureFlags.AuthzCentralPolicyEnforce)
 	handlers.SetHandlerMetrics(metrics)
 	handlers.SetActiveFeatureFlags(cfg.FeatureFlags)
+	handlers.SetActiveAuthConfig(cfg.Auth)
+	handlers.SetActiveServerConfig(cfg.Server)
 	middleware.SetRateLimitMetrics(metrics)
 
 	// ── Services ─────────────────────────────────────────────────────────────
@@ -80,9 +83,13 @@ func New(
 	orderSvc := services.NewOrderService(repos, publisher, metrics, promoSvc)
 	assistanceSvc := services.NewAssistanceService(repos, publisher)
 	menuSvc := services.NewMenuService(repos, cache)
+	lockoutStore := redisPkg.NewLockoutStore(redis)
 	staffSvc := services.NewStaffService(repos, cache, logger)
 	staffSvc.SetRequireSessionDBRow(cfg.FeatureFlags.AuthStaffSessionDBRequired)
+	staffSvc.SetLockoutStore(lockoutStore)
 	platformSvc := services.NewPlatformService(repos, cache, logger)
+	platformSvc.SetLockoutStore(lockoutStore)
+	platformSvc.SetMFAEncryptionKey(cfg.Auth.MFAEncryptionKey)
 	paymentSvc := services.NewPaymentService(repos, publisher, metrics, sessionSvc, logger)
 	subSvc := services.NewSubscriptionService(repos)
 	analyticsSvc := services.NewAnalyticsService(repos, subSvc, cache)
@@ -204,12 +211,16 @@ func New(
 	authGroup.Use(middleware.RateLimitSensitive(rateLimiter, "auth", 10))
 	authGroup.POST("/staff/auth", staffH.Authenticate)
 	authGroup.POST("/platform/auth", platformH.Authenticate)
+	authGroup.POST("/platform/auth/mfa", platformH.CompleteMFA)
 
 	// Platform-protected routes (separate trust domain; staff tokens are rejected).
 	platformAPI := r.Group("/platform")
 	platformAPI.Use(middleware.RateLimit(rateLimiter, cfg.Server.RateLimitRPM))
 	platformAPI.Use(middleware.PlatformAuth(platformSvc, logger))
 	platformAPI.POST("/auth/logout", platformH.Logout)
+	platformAPI.POST("/mfa/enroll", platformH.BeginMFAEnrollment)
+	platformAPI.POST("/mfa/confirm", platformH.ConfirmMFAEnrollment)
+	platformAPI.POST("/mfa/disable", platformH.DisableMFA)
 	platformAPI.GET("/users", platformH.ListUsers)
 	platformAPI.GET("/users/:id", platformH.GetUser)
 	platformAPI.GET("/organizations", platformH.ListOrganizations)
@@ -230,6 +241,7 @@ func New(
 	staffAPI.Use(middleware.RateLimit(rateLimiter, cfg.Server.RateLimitRPM))
 	staffAPI.Use(middleware.StaffAuth(staffSvc, logger))
 
+	staffAPI.POST("/staff/logout", staffH.Logout)
 	staffAPI.PATCH("/orders/:id/status", orderH.UpdateStatus)
 	staffAPI.PATCH("/payments/:id/settle", paymentH.Settle)
 	staffAPI.PATCH("/assist/:id/ack", assistanceH.Acknowledge)

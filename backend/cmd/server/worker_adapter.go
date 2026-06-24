@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/worker"
@@ -59,4 +60,47 @@ func (w *workerQuerier) ReconcileSessionTables(ctx context.Context) ([]repositor
 
 func (w *workerQuerier) LogEvent(ctx context.Context, sessionID uuid.UUID, branchID int64, eventType, actorType string, actorID int64, payload any) {
 	w.repos.LogEvent(ctx, sessionID, branchID, eventType, actorType, actorID, payload)
+}
+
+func (w *workerQuerier) ListReactivationCandidates(ctx context.Context, olderThan time.Time) ([]worker.ReactivationCandidate, error) {
+	rows, err := w.repos.ListReactivationCandidates(ctx, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]worker.ReactivationCandidate, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, worker.ReactivationCandidate{
+			ID:             r.ID,
+			OrganizationID: r.OrganizationID,
+			BranchID:       r.BranchID,
+			TableID:        r.TableID,
+		})
+	}
+	return out, nil
+}
+
+func (w *workerQuerier) TransitionToAwaitingReactivation(ctx context.Context, id uuid.UUID) error {
+	_, err := w.repos.TransitionSessionToAwaitingReactivation(ctx, id)
+	return err
+}
+
+func (w *workerQuerier) ListAwaitingReactivationExpired(ctx context.Context, olderThan time.Time) ([]worker.AwaitingReactivationExpired, error) {
+	rows, err := w.repos.ListAwaitingReactivationExpired(ctx, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]worker.AwaitingReactivationExpired, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, worker.AwaitingReactivationExpired{
+			ID:             r.ID,
+			OrganizationID: r.OrganizationID,
+			BranchID:       r.BranchID,
+			TableID:        r.TableID,
+		})
+	}
+	return out, nil
+}
+
+func (w *workerQuerier) HasNonTerminalPayment(ctx context.Context, sessionID uuid.UUID) (bool, error) {
+	return w.repos.HasNonTerminalPaymentForSession(ctx, sessionID)
 }

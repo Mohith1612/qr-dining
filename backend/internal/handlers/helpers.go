@@ -23,6 +23,21 @@ var activeFeatureFlags config.FeatureFlags
 // helpers. Call once at server bootstrap.
 func SetActiveFeatureFlags(f config.FeatureFlags) { activeFeatureFlags = f }
 
+// activeAuthConfig holds bootstrap-time auth knobs (cookie issuance, TLS
+// posture) so handlers can branch on them without threading config to every
+// constructor.
+var activeAuthConfig config.AuthConfig
+
+// SetActiveAuthConfig wires AuthConfig values into shared handler helpers.
+func SetActiveAuthConfig(c config.AuthConfig) { activeAuthConfig = c }
+
+// activeServerConfig holds bootstrap-time server knobs (e.g. HSTS / TLS) so
+// cookie helpers can decide whether to mark cookies Secure.
+var activeServerConfig config.ServerConfig
+
+// SetActiveServerConfig wires ServerConfig values into shared handler helpers.
+func SetActiveServerConfig(c config.ServerConfig) { activeServerConfig = c }
+
 // enforceBranchScopeFromBody validates a client-supplied branch_id against the
 // branch derived from the resource being mutated. When STRICT_BRANCH_SCOPED_MUTATIONS
 // is on, a mismatch (or any nonzero request body branch that differs from the

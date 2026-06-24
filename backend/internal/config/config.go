@@ -41,6 +41,7 @@ type ServerConfig struct {
 	TrustedProxies  []string
 	RateLimitRPM    int
 	BaseDomain      string // BASE_DOMAIN: e.g. "dining.example.com". When set, enables subdomain-based tenant extraction.
+	EnableHSTS      bool   // ENABLE_HSTS: emit Strict-Transport-Security on every response. Only flip when TLS terminates in front of the API.
 }
 
 type DBConfig struct {
@@ -65,8 +66,10 @@ type CORSConfig struct {
 }
 
 type AuthConfig struct {
-	GuestTokenSecret string
-	GuestTokenTTL    time.Duration
+	GuestTokenSecret  string
+	GuestTokenTTL     time.Duration
+	MFAEncryptionKey  string // MFA_ENCRYPTION_KEY: AES-GCM key for TOTP secrets at rest. Required if any platform user has mfa_required.
+	StaffCookieEnable bool   // AUTH_STAFF_COOKIE_ENABLED: backend issues HttpOnly cookie on /staff/auth alongside Bearer.
 }
 
 type PaymentConfig struct {
@@ -79,6 +82,12 @@ type WorkerConfig struct {
 	PresenceExpiryInterval   time.Duration
 	SessionReconcileInterval time.Duration
 	Region                   string
+	// SessionPresenceGrace is how long a session may be without active
+	// presence before the worker considers it eligible for awaiting_reactivation.
+	SessionPresenceGrace time.Duration
+	// SessionReactivationWindow is how long a session stays in
+	// awaiting_reactivation before the worker abandons it.
+	SessionReactivationWindow time.Duration
 }
 
 type FeatureFlags struct {
@@ -111,6 +120,7 @@ func Load() (*Config, error) {
 	cfg.Server.GinMode = getenv("GIN_MODE", "release")
 	cfg.Server.TrustedProxies = splitComma("TRUSTED_PROXIES", "172.16.0.0/12")
 	cfg.Server.BaseDomain = getenv("BASE_DOMAIN", "")
+	cfg.Server.EnableHSTS = parseBool("ENABLE_HSTS", false)
 
 	rateLimitRPM, err := parseInt("RATE_LIMIT_RPM", 60)
 	if err != nil {
@@ -157,6 +167,8 @@ func Load() (*Config, error) {
 	// Auth
 	cfg.Auth.GuestTokenSecret = getenv("GUEST_TOKEN_SECRET", "dev-only-guest-token-secret")
 	cfg.Auth.GuestTokenTTL = parseDuration("GUEST_TOKEN_TTL", 2*time.Hour)
+	cfg.Auth.MFAEncryptionKey = getenv("MFA_ENCRYPTION_KEY", "")
+	cfg.Auth.StaffCookieEnable = parseBool("AUTH_STAFF_COOKIE_ENABLED", false)
 
 	cfg.Payment.WebhookSecrets = loadPaymentWebhookSecrets()
 	cfg.Payment.WebhookTimestampTolerance = parseDuration("PAYMENT_WEBHOOK_TIMESTAMP_TOLERANCE", 5*time.Minute)
@@ -166,6 +178,8 @@ func Load() (*Config, error) {
 	cfg.Worker.PresenceExpiryInterval = parseDuration("PRESENCE_EXPIRY_INTERVAL", 60*time.Second)
 	cfg.Worker.SessionReconcileInterval = parseDuration("SESSION_RECONCILE_INTERVAL", 5*time.Minute)
 	cfg.Worker.Region = getenv("WORKER_REGION", "default")
+	cfg.Worker.SessionPresenceGrace = parseDuration("SESSION_PRESENCE_GRACE", 60*time.Second)
+	cfg.Worker.SessionReactivationWindow = parseDuration("SESSION_REACTIVATION_WINDOW", 5*time.Minute)
 
 	// Rollout flags. Phase 0 only parses these flags; later phases decide where
 	// each flag gates strict enforcement.

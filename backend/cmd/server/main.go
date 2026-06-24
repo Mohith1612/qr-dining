@@ -90,6 +90,7 @@ func main() {
 	go w.RunSessionExpiryWarner(ctx, 5*time.Minute)
 	go w.RunPresenceExpiry(ctx, cfg.Worker.PresenceExpiryInterval)
 	go w.RunSessionTableReconciler(ctx, cfg.Worker.SessionReconcileInterval)
+	go w.RunReactivationPipeline(ctx, cfg.Worker.PresenceExpiryInterval, cfg.Worker.SessionPresenceGrace, cfg.Worker.SessionReactivationWindow)
 
 	// 14b. Poll DB pool stats every 30s and export to Prometheus.
 	go func() {
