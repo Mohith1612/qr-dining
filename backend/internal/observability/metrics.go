@@ -61,6 +61,22 @@ type Metrics struct {
 	// the cutover means the strict flip will break legitimate traffic.
 	LegacyAuthzBypassTotal *prometheus.CounterVec
 
+	// Rollout instrumentation (Phase E). Gate the staged strict-flag rollout.
+	//
+	// AuthzDeniedTotal counts real denials after AUTHZ_CENTRAL_POLICY_ENFORCE is on.
+	// PolicyShadowMismatchTotal counts requests the policy WOULD deny while enforce
+	// is off (the pre-flip would-break signal, labelled by route for pinpointing).
+	// TenantResolutionFailuresTotal counts org/restaurant resolution failures.
+	// GuestTokenValidationFailedTotal / WSTicketConsumeFailedTotal count guest and
+	// websocket-ticket auth failures by bounded reason.
+	// PaymentPendingEscalationsTotal counts stalled payment_pending escalations by level.
+	AuthzDeniedTotal                *prometheus.CounterVec
+	PolicyShadowMismatchTotal       *prometheus.CounterVec
+	TenantResolutionFailuresTotal   *prometheus.CounterVec
+	GuestTokenValidationFailedTotal *prometheus.CounterVec
+	WSTicketConsumeFailedTotal      *prometheus.CounterVec
+	PaymentPendingEscalationsTotal  *prometheus.CounterVec
+
 	// RateLimiterUnavailableTotal counts requests denied because the rate
 	// limiter backend was unreachable on a fail-closed surface (staff auth,
 	// payment, webhook, ws-ticket).
@@ -241,6 +257,36 @@ func NewMetrics() *Metrics {
 			Name: "rate_limiter_unavailable_total",
 			Help: "Total requests denied because the rate-limit backend was unreachable on a fail-closed surface.",
 		}, []string{"surface"}),
+
+		AuthzDeniedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "authz_denied_total",
+			Help: "Total authorization denials enforced (AUTHZ_CENTRAL_POLICY_ENFORCE on) by reason.",
+		}, []string{"reason"}),
+
+		PolicyShadowMismatchTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "policy_shadow_mismatch_total",
+			Help: "Requests the central policy would deny while enforcement is off (pre-flip would-break signal) by route and reason.",
+		}, []string{"route", "reason"}),
+
+		TenantResolutionFailuresTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "tenant_resolution_failures_total",
+			Help: "Total tenant/organization resolution failures in tenant middleware by stage.",
+		}, []string{"stage"}),
+
+		GuestTokenValidationFailedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "guest_token_validation_failed_total",
+			Help: "Total guest token validation failures by bounded reason.",
+		}, []string{"reason"}),
+
+		WSTicketConsumeFailedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "ws_ticket_consume_failed_total",
+			Help: "Total websocket ticket consume failures by bounded reason.",
+		}, []string{"reason"}),
+
+		PaymentPendingEscalationsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "payment_pending_escalations_total",
+			Help: "Total stalled payment_pending escalations emitted by the escalation worker, by level.",
+		}, []string{"level"}),
 	}
 
 	reg.MustRegister(
@@ -279,6 +325,12 @@ func NewMetrics() *Metrics {
 		m.AuditWriteFailuresTotal,
 		m.LegacyAuthzBypassTotal,
 		m.RateLimiterUnavailableTotal,
+		m.AuthzDeniedTotal,
+		m.PolicyShadowMismatchTotal,
+		m.TenantResolutionFailuresTotal,
+		m.GuestTokenValidationFailedTotal,
+		m.WSTicketConsumeFailedTotal,
+		m.PaymentPendingEscalationsTotal,
 	)
 
 	return m

@@ -77,14 +77,49 @@ func requireAuthorized(c *gin.Context, repos *repository.Repos, authorizer *auth
 			},
 		})
 	}
+	reason := authzReasonSlug(decision.Reason)
 	if !enforced {
-		if handlerMetrics != nil && handlerMetrics.LegacyAuthzBypassTotal != nil {
-			handlerMetrics.LegacyAuthzBypassTotal.WithLabelValues(string(action), string(actor.Role)).Inc()
+		if handlerMetrics != nil {
+			if handlerMetrics.LegacyAuthzBypassTotal != nil {
+				handlerMetrics.LegacyAuthzBypassTotal.WithLabelValues(string(action), string(actor.Role)).Inc()
+			}
+			// Pre-flip would-break signal: this request is allowed now, but flipping
+			// AUTHZ_CENTRAL_POLICY_ENFORCE would deny it. Route pinpoints the handler.
+			if handlerMetrics.PolicyShadowMismatchTotal != nil {
+				handlerMetrics.PolicyShadowMismatchTotal.WithLabelValues(routeLabel(c), reason).Inc()
+			}
 		}
 		return true
 	}
+	if handlerMetrics != nil && handlerMetrics.AuthzDeniedTotal != nil {
+		handlerMetrics.AuthzDeniedTotal.WithLabelValues(reason).Inc()
+	}
 	respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 	return false
+}
+
+// authzReasonSlug maps the human-readable policy reason to a bounded metric label.
+func authzReasonSlug(reason string) string {
+	switch reason {
+	case "unsupported actor type":
+		return "unsupported_actor_type"
+	case "actor branch does not match resource branch":
+		return "branch_mismatch"
+	case "actor organization does not match resource organization":
+		return "org_mismatch"
+	case "role is not allowed for action":
+		return "role_not_allowed"
+	default:
+		return "other"
+	}
+}
+
+// routeLabel returns the gin route pattern (bounded cardinality) or "unknown".
+func routeLabel(c *gin.Context) string {
+	if fp := c.FullPath(); fp != "" {
+		return fp
+	}
+	return "unknown"
 }
 
 func stringValue(v any) string {

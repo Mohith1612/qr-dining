@@ -44,6 +44,7 @@ func guestParticipantID(
 
 	claims, err := tokens.Validate(token)
 	if err != nil {
+		recordGuestTokenFailure(guestTokenReasonSlug(err))
 		if required || !errors.Is(err, auth.ErrGuestTokenMalformed) {
 			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "invalid guest credential")
 			return 0, false
@@ -51,25 +52,50 @@ func guestParticipantID(
 		return legacyParticipantID, true
 	}
 	if claims.SessionID != sessionID {
+		recordGuestTokenFailure("session_mismatch")
 		respondError(c, http.StatusForbidden, CodeForbidden, "guest credential does not belong to this session")
 		return 0, false
 	}
 	if legacyParticipantID != 0 && claims.ParticipantID != legacyParticipantID {
+		recordGuestTokenFailure("participant_mismatch")
 		respondError(c, http.StatusForbidden, CodeForbidden, "guest credential does not match participant")
 		return 0, false
 	}
 
 	participant, err := repos.GetSessionParticipantByID(c.Request.Context(), claims.ParticipantID)
 	if err != nil || participant.SessionID != sessionID || participant.CredentialVersion != claims.CredentialVersion {
+		recordGuestTokenFailure("stale_credential")
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential is no longer valid")
 		return 0, false
 	}
 	if participant.RevokedAt.Valid {
+		recordGuestTokenFailure("revoked")
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential has been revoked")
 		return 0, false
 	}
 
 	return claims.ParticipantID, true
+}
+
+// guestTokenReasonSlug maps a guest token validation error to a bounded label.
+// ErrGuestTokenInvalid collapses signature + audience mismatch, so they share "invalid".
+func guestTokenReasonSlug(err error) string {
+	switch {
+	case errors.Is(err, auth.ErrGuestTokenMalformed):
+		return "malformed"
+	case errors.Is(err, auth.ErrGuestTokenExpired):
+		return "expired"
+	case errors.Is(err, auth.ErrGuestTokenInvalid):
+		return "invalid"
+	default:
+		return "other"
+	}
+}
+
+func recordGuestTokenFailure(reason string) {
+	if handlerMetrics != nil && handlerMetrics.GuestTokenValidationFailedTotal != nil {
+		handlerMetrics.GuestTokenValidationFailedTotal.WithLabelValues(reason).Inc()
+	}
 }
 
 func requireGuestSession(

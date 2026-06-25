@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -13,6 +14,19 @@ import (
 const TenantRestaurantIDKey = "tenant_restaurant_id"
 const TenantRestaurantSlugKey = "tenant_restaurant_slug"
 const TenantOrganizationIDKey = "tenant_organization_id"
+
+// tenantMetrics is set once at server bootstrap so the tenant middleware can
+// report resolution failures to operators. nil-safe.
+var tenantMetrics *observability.Metrics
+
+// SetTenantMetrics wires observability into the tenant middleware.
+func SetTenantMetrics(m *observability.Metrics) { tenantMetrics = m }
+
+func recordTenantResolutionFailure(stage string) {
+	if tenantMetrics != nil && tenantMetrics.TenantResolutionFailuresTotal != nil {
+		tenantMetrics.TenantResolutionFailuresTotal.WithLabelValues(stage).Inc()
+	}
+}
 
 // TenantMiddleware extracts the restaurant slug from the Host subdomain, resolves it to a
 // restaurant record, and injects the restaurant_id into the Gin context.
@@ -43,6 +57,7 @@ func TenantMiddleware(repos *repository.Repos, baseDomain string, organizationsE
 				})
 				return
 			}
+			recordTenantResolutionFailure("restaurant_slug")
 			logger.Error().Err(err).Str("slug", slug).Msg("tenant resolution failed")
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 				"code":    "INTERNAL_ERROR",
@@ -57,6 +72,7 @@ func TenantMiddleware(repos *repository.Repos, baseDomain string, organizationsE
 		if organizationsEnabled {
 			organization, err := repos.GetOrganizationByRestaurantID(c.Request.Context(), restaurant.ID)
 			if err != nil {
+				recordTenantResolutionFailure("organization_lookup")
 				logger.Error().Err(err).Int64("restaurant_id", restaurant.ID).Msg("tenant organization resolution failed")
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 					"code":    "INTERNAL_ERROR",

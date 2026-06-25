@@ -74,6 +74,7 @@ func New(
 	handlers.SetActiveAuthConfig(cfg.Auth)
 	handlers.SetActiveServerConfig(cfg.Server)
 	middleware.SetRateLimitMetrics(metrics)
+	middleware.SetTenantMetrics(metrics)
 
 	// ── Services ─────────────────────────────────────────────────────────────
 	sessionSvc := services.NewSessionService(repos, publisher, metrics, presence)

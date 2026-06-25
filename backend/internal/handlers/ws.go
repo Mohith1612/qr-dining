@@ -84,13 +84,21 @@ func (h *WSHandler) Upgrade(c *gin.Context) {
 	}
 }
 
+func recordWSTicketConsumeFailure(m *observability.Metrics, reason string) {
+	if m != nil && m.WSTicketConsumeFailedTotal != nil {
+		m.WSTicketConsumeFailedTotal.WithLabelValues(reason).Inc()
+	}
+}
+
 func (h *WSHandler) upgradeWithTicket(c *gin.Context, ticket string) {
 	claims, err := h.tickets.Consume(c.Request.Context(), ticket)
 	if err != nil {
 		if errors.Is(err, redisPkg.ErrWSTicketInvalid) {
+			recordWSTicketConsumeFailure(h.metrics, "invalid")
 			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "invalid websocket ticket")
 			return
 		}
+		recordWSTicketConsumeFailure(h.metrics, "internal")
 		respondInternalError(c)
 		return
 	}
