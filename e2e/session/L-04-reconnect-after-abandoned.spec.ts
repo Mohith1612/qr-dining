@@ -9,7 +9,7 @@ test.describe("L-04: Reconnect after session abandoned", () => {
     const sessionId = created.session.id
     const guestToken = created.guest_access_token
 
-    await forceCloseSession(sessionId)
+    await forceCloseSession(sessionId, guestToken)
 
     // WS ticket should be rejected for closed session
     const ticketRes = await fetch(`${API_URL}/sessions/${sessionId}/ws-ticket`, {

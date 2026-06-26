@@ -9,7 +9,7 @@ test.describe("L-08: Closed session not resurrectable", () => {
     const sessionId = created.session.id
     const guestToken = created.guest_access_token
 
-    await forceCloseSession(sessionId)
+    await forceCloseSession(sessionId, guestToken)
 
     // Cart add
     const cartRes = await fetch(`${API_URL}/sessions/${sessionId}/cart/items`, {

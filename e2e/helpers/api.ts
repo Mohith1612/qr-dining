@@ -32,50 +32,57 @@ async function apiCall<T>(
 
 export async function seedOrg(label: string): Promise<SeededOrg> {
   const slug = `e2e-${label}-${Date.now()}`
-
-  const org = await apiCall<{ id: number; name: string; slug: string }>(
-    "POST", "/platform/organizations",
-    { name: `E2E ${label}`, slug },
-    { token: adminToken }
-  )
-
-  const branch = await apiCall<{ id: number; code: string; name: string }>(
-    "POST", `/platform/organizations/${org.id}/branches`,
-    { name: "Main Branch", code: slug },
-    { token: adminToken }
-  )
-
-  const table = await apiCall<{ id: number; token: string; identifier: string }>(
-    "POST", `/branches/${branch.id}/tables`,
-    { identifier: "T1" },
-    { token: adminToken }
-  )
-
   const staffPin = "123456"
   const staffCode = `staff-${Date.now()}`
-  const staff = await apiCall<{ id: number; role: string }>(
-    "POST", `/branches/${branch.id}/staff`,
-    { name: "Test Staff", role: "waiter", staff_code: staffCode, pin: staffPin },
+
+  // Create organization (platform API requires code + restaurant_slug)
+  const orgRes = await apiCall<{
+    organization: { id: number; name: string; code: string }
+    restaurant: { id: number; slug: string }
+  }>(
+    "POST", "/platform/organizations",
+    { code: slug, name: `E2E ${label}`, restaurant_slug: slug },
     { token: adminToken }
   )
+
+  // Create branch with initial table and initial owner in one platform call
+  const branchRes = await apiCall<{
+    branch: { id: number; branch_code: string; name: string }
+    initial_owner: { id: number; role: string; staff_code: string } | null
+    tables: Array<{ id: number; qr_code_token: string; identifier: string }>
+  }>(
+    "POST", `/platform/organizations/${orgRes.organization.id}/branches`,
+    {
+      name: "Main Branch",
+      initial_tables: [{ identifier: "T1", capacity: 4 }],
+      initial_owner: { name: "Test Staff", staff_code: staffCode, pin: staffPin },
+    },
+    { token: adminToken }
+  )
+
+  const branch = branchRes.branch
+  const table = branchRes.tables[0]
+
+  // Log in as the initial owner to get a staff token for menu seeding
+  const staffCtx = await loginStaff(branch.branch_code, staffCode, staffPin)
 
   const category = await apiCall<{ id: number }>(
     "POST", `/branches/${branch.id}/menu/categories`,
     { name: "Mains", position: 1 },
-    { token: adminToken }
+    { token: staffCtx.token }
   )
 
   const menuItem = await apiCall<{ id: number; name: string; price: number }>(
     "POST", `/branches/${branch.id}/menu/items`,
     { category_id: category.id, name: "Test Dish", price: 150, is_available: true },
-    { token: adminToken }
+    { token: staffCtx.token }
   )
 
   return {
-    org,
-    branch,
-    table,
-    staff: { id: staff.id, staffCode, pin: staffPin, role: staff.role },
+    org: { id: orgRes.organization.id, name: orgRes.organization.name, slug },
+    branch: { id: branch.id, code: branch.branch_code, name: branch.name },
+    table: { id: table.id, token: table.qr_code_token, identifier: table.identifier },
+    staff: { id: staffCtx.staffId, staffCode, pin: staffPin, role: staffCtx.role },
     menu: { categoryId: category.id, itemId: menuItem.id, itemName: menuItem.name, itemPrice: menuItem.price },
   }
 }
@@ -145,11 +152,11 @@ export async function fetchAudit(resourceType: string, resourceId: string): Prom
   )
 }
 
-export async function forceCloseSession(sessionId: string): Promise<void> {
+export async function forceCloseSession(sessionId: string, guestToken: string): Promise<void> {
   await apiCall<void>(
-    "POST", `/platform/sessions/${sessionId}/force-close`,
-    { reason: "e2e_test" },
-    { token: adminToken }
+    "DELETE", `/sessions/${sessionId}`,
+    undefined,
+    { guestToken }
   )
 }
 

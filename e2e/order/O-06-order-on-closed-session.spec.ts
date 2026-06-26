@@ -10,7 +10,7 @@ test.describe("O-06: Order placement rejected on closed session", () => {
     const sessionId = created.session.id
     const guestToken = created.guest_access_token
 
-    await forceCloseSession(sessionId)
+    await forceCloseSession(sessionId, guestToken)
 
     const res = await fetch(`${API_URL}/sessions/${sessionId}/orders`, {
       method: "POST",

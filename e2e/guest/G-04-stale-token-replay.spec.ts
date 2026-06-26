@@ -10,7 +10,7 @@ test.describe("G-04: Stale token replay after session closed", () => {
     const guestToken = created.guest_access_token
 
     // Close the session
-    await forceCloseSession(sessionId)
+    await forceCloseSession(sessionId, guestToken)
 
     // Replay the token on cart mutation
     const cartRes = await fetch(`${API_URL}/sessions/${sessionId}/cart/items`, {

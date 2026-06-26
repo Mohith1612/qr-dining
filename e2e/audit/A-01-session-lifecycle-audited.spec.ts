@@ -6,8 +6,9 @@ test.describe("A-01: Session lifecycle events appear in audit log", () => {
     const { table } = await seedOrg("a01")
     const created = await createSession(table.id, "AuditGuest")
     const sessionId = created.session.id
+    const guestToken = created.guest_access_token
 
-    await forceCloseSession(sessionId)
+    await forceCloseSession(sessionId, guestToken)
 
     const entries = await fetchAudit("session", sessionId).catch(() => [] as any[])
 

@@ -10,7 +10,7 @@ test.describe("L-09: Stale browser revisit after session closed", () => {
     const participantId = created.participant.id
 
     // Close session on backend
-    await forceCloseSession(sessionId)
+    await forceCloseSession(sessionId, guestToken)
 
     // Simulate stale browser: navigate with old sessionStorage
     await page.goto(`/session/${sessionId}`)
