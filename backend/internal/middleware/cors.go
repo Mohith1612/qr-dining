@@ -26,6 +26,11 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID, X-Participant-ID, X-Tenant-Slug")
+			// The frontend sends credentialed requests (credentials: "include") so the
+			// HttpOnly staff cookie can flow. With credentials mode the browser requires
+			// an explicit Allow-Credentials: true and a specific (non-"*") Allow-Origin —
+			// which we already echo above.
+			c.Header("Access-Control-Allow-Credentials", "true")
 			c.Header("Access-Control-Max-Age", "86400")
 			c.Header("Vary", "Origin")
 		}
