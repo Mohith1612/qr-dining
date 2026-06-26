@@ -44,12 +44,14 @@ func guestParticipantID(
 
 	claims, err := tokens.Validate(token)
 	if err != nil {
+		// A bearer token was presented but is not a valid guest credential.
+		// Reject it — never fail open. Failing open here let a staff/foreign JWT
+		// (malformed-as-guest) pass through to participant 0, leaking cross-org
+		// snapshots (T-01) and 500ing guest routes (X-03). The legacy/anonymous
+		// path is only the token == "" branch above.
 		recordGuestTokenFailure(guestTokenReasonSlug(err))
-		if required || !errors.Is(err, auth.ErrGuestTokenMalformed) {
-			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "invalid guest credential")
-			return 0, false
-		}
-		return legacyParticipantID, true
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "invalid guest credential")
+		return 0, false
 	}
 	if claims.SessionID != sessionID {
 		recordGuestTokenFailure("session_mismatch")
