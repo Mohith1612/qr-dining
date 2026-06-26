@@ -209,7 +209,7 @@ func New(
 	// when Redis is unavailable so an infra blip cannot disable brute-force
 	// protection on a credential endpoint.
 	authGroup := r.Group("/")
-	authGroup.Use(middleware.RateLimitSensitive(rateLimiter, "auth", 10))
+	authGroup.Use(middleware.RateLimitSensitive(rateLimiter, "auth", cfg.Server.AuthRateLimitRPM))
 	authGroup.POST("/staff/auth", staffH.Authenticate)
 	authGroup.POST("/platform/auth", platformH.Authenticate)
 	authGroup.POST("/platform/auth/mfa", platformH.CompleteMFA)

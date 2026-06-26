@@ -33,15 +33,16 @@ type R2Config struct {
 }
 
 type ServerConfig struct {
-	Port            int
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	ShutdownTimeout time.Duration
-	GinMode         string
-	TrustedProxies  []string
-	RateLimitRPM    int
-	BaseDomain      string // BASE_DOMAIN: e.g. "dining.example.com". When set, enables subdomain-based tenant extraction.
-	EnableHSTS      bool   // ENABLE_HSTS: emit Strict-Transport-Security on every response. Only flip when TLS terminates in front of the API.
+	Port             int
+	ReadTimeout      time.Duration
+	WriteTimeout     time.Duration
+	ShutdownTimeout  time.Duration
+	GinMode          string
+	TrustedProxies   []string
+	RateLimitRPM     int
+	AuthRateLimitRPM int    // AUTH_RATE_LIMIT_RPM: overrides the default 10 RPM on /staff/auth and /platform/auth. Increase only in test environments.
+	BaseDomain       string // BASE_DOMAIN: e.g. "dining.example.com". When set, enables subdomain-based tenant extraction.
+	EnableHSTS       bool   // ENABLE_HSTS: emit Strict-Transport-Security on every response. Only flip when TLS terminates in front of the API.
 }
 
 type DBConfig struct {
@@ -131,6 +132,12 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.Server.RateLimitRPM = rateLimitRPM
+
+	authRateLimitRPM, err := parseInt("AUTH_RATE_LIMIT_RPM", 10)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Server.AuthRateLimitRPM = authRateLimitRPM
 
 	// Database
 	dbURL := getenv("DATABASE_URL", "")
