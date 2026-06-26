@@ -1,0 +1,51 @@
+# Prometheus blackbox probe for /readyz.
+#
+# Phase D finding F-1: `redis_pubsub_connected` stays 1 during a transient Redis
+# outage (go-redis reconnects transparently), so it is NOT a reliable outage
+# signal. `/readyz` pings Postgres and Redis directly and returns 503 when either
+# is down — probe it with blackbox_exporter so a real dependency outage pages.
+#
+# Requires prometheus/blackbox_exporter running and reachable at blackbox:9115.
+# Merge these into the Prometheus config: the module under `modules:` goes into
+# blackbox.yml; the scrape job goes into prometheus.yml `scrape_configs:`.
+
+# --- blackbox.yml module ---
+modules:
+  readyz_http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      valid_status_codes: [200]   # 503 (any non-200) => probe_success 0
+      fail_if_not_ssl: false
+      preferred_ip_protocol: ip4
+
+# --- prometheus.yml scrape job ---
+scrape_configs:
+  - job_name: qr-dining-readyz
+    metrics_path: /probe
+    params:
+      module: [readyz_http_2xx]
+    static_configs:
+      - targets:
+          - http://app:8080/readyz   # adjust to the in-cluster app address
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+# Pair with this alert (add to prometheus-alerts.yml or keep here):
+#
+# groups:
+#   - name: qr-dining-readyz-probe
+#     rules:
+#       - alert: ReadyzProbeFailing
+#         expr: probe_success{job="qr-dining-readyz"} == 0
+#         for: 1m
+#         labels: { severity: page }
+#         annotations:
+#           summary: "/readyz probe failing"
+#           description: "A dependency (Postgres or Redis) is down; the app is not ready. This is the authoritative outage page (see Phase D F-1)."

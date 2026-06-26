@@ -46,8 +46,10 @@ func (h *HealthHandler) Readiness(c *gin.Context) {
 	}
 
 	status := http.StatusOK
+	statusText := "ready"
 	if !ready {
 		status = http.StatusServiceUnavailable
+		statusText = "not_ready"
 	}
-	c.JSON(status, gin.H{"status": "ready", "checks": checks})
+	c.JSON(status, gin.H{"status": statusText, "checks": checks})
 }
