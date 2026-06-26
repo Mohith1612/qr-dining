@@ -12,6 +12,17 @@
 #   experiments are exercisable. Direct app access stays on :8080.
 
 services:
+  postgres:
+    # Published locally so the chaos bootstrap can seed via the host. Do NOT
+    # publish Postgres in real staging/prod — it stays on the internal network.
+    ports:
+      - "5432:5432"
+
+  redis:
+    # Published locally for host-run app + chaos drivers only. Not for prod.
+    ports:
+      - "6379:6379"
+
   app:
     ports:
       - "8080:8080"
