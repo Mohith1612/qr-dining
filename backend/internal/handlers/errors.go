@@ -22,6 +22,7 @@ const (
 	CodeSessionAlreadyActive     = "SESSION_ALREADY_ACTIVE"
 	CodeSessionEnded             = "SESSION_ENDED"
 	CodePaymentInProgress        = "PAYMENT_IN_PROGRESS"
+	CodePaymentAmountInvalid     = "PAYMENT_AMOUNT_INVALID"
 	CodeCredentialRevoked        = "CREDENTIAL_REVOKED"
 	CodeRateLimiterUnavailable   = "RATE_LIMITER_UNAVAILABLE"
 	CodeAuthLockedOut            = "AUTH_LOCKED_OUT"

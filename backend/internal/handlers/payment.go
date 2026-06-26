@@ -84,6 +84,14 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
+	// Settlement bound: a payment may not exceed the authoritative bill total.
+	// There is no tip field in this flow, so any overage is an overpayment.
+	// epsilon absorbs float rounding in the computed total.
+	if req.Amount > bill.Total+0.01 {
+		respondError(c, http.StatusUnprocessableEntity, CodePaymentAmountInvalid,
+			"payment amount exceeds the bill total")
+		return
+	}
 	sess, err := h.repos.GetSessionByID(c.Request.Context(), sessionID)
 	if err != nil {
 		sessionError(c, err)
