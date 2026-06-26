@@ -91,6 +91,7 @@ func main() {
 	go w.RunPresenceExpiry(ctx, cfg.Worker.PresenceExpiryInterval)
 	go w.RunSessionTableReconciler(ctx, cfg.Worker.SessionReconcileInterval)
 	go w.RunReactivationPipeline(ctx, cfg.Worker.PresenceExpiryInterval, cfg.Worker.SessionPresenceGrace, cfg.Worker.SessionReactivationWindow)
+	go w.RunPaymentPendingEscalation(ctx, cfg.Worker.PaymentPendingEscalationInterval, cfg.Worker.PaymentPendingWarnAfter, cfg.Worker.PaymentPendingCriticalAfter)
 
 	// 14b. Poll DB pool stats every 30s and export to Prometheus.
 	go func() {

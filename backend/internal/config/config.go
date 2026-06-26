@@ -88,6 +88,10 @@ type WorkerConfig struct {
 	// SessionReactivationWindow is how long a session stays in
 	// awaiting_reactivation before the worker abandons it.
 	SessionReactivationWindow time.Duration
+	// Payment_pending escalation thresholds (alert-only).
+	PaymentPendingEscalationInterval time.Duration
+	PaymentPendingWarnAfter          time.Duration
+	PaymentPendingCriticalAfter      time.Duration
 }
 
 type FeatureFlags struct {
@@ -180,6 +184,9 @@ func Load() (*Config, error) {
 	cfg.Worker.Region = getenv("WORKER_REGION", "default")
 	cfg.Worker.SessionPresenceGrace = parseDuration("SESSION_PRESENCE_GRACE", 60*time.Second)
 	cfg.Worker.SessionReactivationWindow = parseDuration("SESSION_REACTIVATION_WINDOW", 5*time.Minute)
+	cfg.Worker.PaymentPendingEscalationInterval = parseDuration("PAYMENT_PENDING_ESCALATION_INTERVAL", time.Minute)
+	cfg.Worker.PaymentPendingWarnAfter = parseDuration("PAYMENT_PENDING_WARN_AFTER", 5*time.Minute)
+	cfg.Worker.PaymentPendingCriticalAfter = parseDuration("PAYMENT_PENDING_CRITICAL_AFTER", 15*time.Minute)
 
 	// Rollout flags. Phase 0 only parses these flags; later phases decide where
 	// each flag gates strict enforcement.

@@ -104,3 +104,22 @@ func (w *workerQuerier) ListAwaitingReactivationExpired(ctx context.Context, old
 func (w *workerQuerier) HasNonTerminalPayment(ctx context.Context, sessionID uuid.UUID) (bool, error) {
 	return w.repos.HasNonTerminalPaymentForSession(ctx, sessionID)
 }
+
+func (w *workerQuerier) ListPaymentPendingStalled(ctx context.Context, olderThan time.Time) ([]worker.StalledPaymentPending, error) {
+	rows, err := w.repos.ListPaymentPendingStalled(ctx, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]worker.StalledPaymentPending, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, worker.StalledPaymentPending{
+			SessionID:      r.SessionID,
+			OrganizationID: r.OrganizationID,
+			BranchID:       r.BranchID,
+			TableID:        r.TableID,
+			PaymentID:      r.PaymentID,
+			InitiatedAt:    r.InitiatedAt,
+		})
+	}
+	return out, nil
+}

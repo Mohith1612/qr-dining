@@ -50,6 +50,17 @@ type AwaitingReactivationExpired struct {
 	TableID        int64
 }
 
+// StalledPaymentPending is a session stuck in payment_pending past the
+// escalation threshold (oldest non-terminal payment's initiated_at).
+type StalledPaymentPending struct {
+	SessionID      uuid.UUID
+	OrganizationID int64
+	BranchID       int64
+	TableID        int64
+	PaymentID      int64
+	InitiatedAt    time.Time
+}
+
 // Querier abstracts the DB queries the worker needs.
 // Implemented by *sqlc.Queries after code generation; interface allows compilation before that.
 type Querier interface {
@@ -64,6 +75,7 @@ type Querier interface {
 	TransitionToAwaitingReactivation(ctx context.Context, id uuid.UUID) error
 	ListAwaitingReactivationExpired(ctx context.Context, olderThan time.Time) ([]AwaitingReactivationExpired, error)
 	HasNonTerminalPayment(ctx context.Context, sessionID uuid.UUID) (bool, error)
+	ListPaymentPendingStalled(ctx context.Context, olderThan time.Time) ([]StalledPaymentPending, error)
 }
 
 // Worker runs lightweight background maintenance goroutines.
@@ -204,6 +216,107 @@ func (w *Worker) RunReactivationPipeline(ctx context.Context, interval, presence
 			})
 		}
 	}
+}
+
+// RunPaymentPendingEscalation surfaces sessions stuck in payment_pending past
+// the warn/critical thresholds. It is ALERT-ONLY: it never mutates payment or
+// session state (auto-settle/auto-cancel would violate settlement invariants).
+// Recovery stays operator-driven — staff settle or cancel via the normal flows.
+func (w *Worker) RunPaymentPendingEscalation(ctx context.Context, interval, warnAfter, criticalAfter time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.runWithLock(ctx, "payment_pending_escalation", 50*time.Second, func() {
+				w.safeRun("payment_pending_escalation", func() {
+					tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					defer cancel()
+					w.escalatePaymentPending(tickCtx, warnAfter, criticalAfter)
+				})
+			})
+		}
+	}
+}
+
+func (w *Worker) escalatePaymentPending(ctx context.Context, warnAfter, criticalAfter time.Duration) {
+	now := time.Now().UTC()
+	stalled, err := w.queries.ListPaymentPendingStalled(ctx, now.Add(-warnAfter))
+	if err != nil {
+		w.logger.Error().Err(err).Msg("list stalled payment_pending")
+		w.metrics.WorkerRunsTotal.WithLabelValues("payment_pending_escalation", "error").Inc()
+		return
+	}
+
+	warned, critical := 0, 0
+	for _, s := range stalled {
+		ageSeconds := int64(now.Sub(s.InitiatedAt).Seconds())
+		level := "warn"
+		if now.Sub(s.InitiatedAt) >= criticalAfter {
+			level = "critical"
+		}
+		// De-dupe: emit once per session per level. Marker outlives the critical
+		// window so a session isn't re-escalated at the same level every tick.
+		if !w.markEscalated(ctx, s.SessionID, level, 2*criticalAfter) {
+			continue
+		}
+
+		w.metrics.PaymentPendingEscalationsTotal.WithLabelValues(level).Inc()
+		w.logger.Warn().
+			Str("session_id", s.SessionID.String()).
+			Int64("payment_id", s.PaymentID).
+			Int64("branch_id", s.BranchID).
+			Str("level", level).
+			Int64("age_seconds", ageSeconds).
+			Msg("payment_pending settlement stalled")
+
+		payload := map[string]any{"level": level, "age_seconds": ageSeconds, "payment_id": s.PaymentID}
+		w.queries.LogEvent(ctx, s.SessionID, s.BranchID, "PAYMENT_SETTLEMENT_STALLED", "system", 0, payload)
+		w.publisher.PaymentSettlementStalled(ctx, s.SessionID, payload)
+		if w.audit != nil {
+			w.audit.Record(ctx, audit.AuditEvent{
+				OrganizationID: s.OrganizationID,
+				BranchID:       s.BranchID,
+				SessionID:      s.SessionID,
+				TableID:        s.TableID,
+				ResourceType:   audit.ResourcePayment,
+				ResourceID:     fmt.Sprintf("%d", s.PaymentID),
+				Action:         audit.ActionPaymentSettlementStalled,
+				Result:         audit.ResultSuccess,
+				ActorType:      audit.ActorTypeSystem,
+				ActorID:        "system",
+				Source:         audit.SourceSystem,
+				RiskLevel:      audit.RiskMedium,
+				Metadata:       payload,
+			})
+		}
+
+		if level == "critical" {
+			critical++
+		} else {
+			warned++
+		}
+	}
+
+	if warned+critical > 0 {
+		w.logger.Info().Int("warned", warned).Int("critical", critical).Msg("payment pending escalation")
+	}
+	w.metrics.WorkerRunsTotal.WithLabelValues("payment_pending_escalation", "ok").Inc()
+}
+
+// markEscalated records a (session,level) escalation in Redis and reports whether
+// this is the first time (true) so the same level fires only once per session.
+func (w *Worker) markEscalated(ctx context.Context, sessionID uuid.UUID, level string, ttl time.Duration) bool {
+	key := fmt.Sprintf("payment_escalated:%s:%s", level, sessionID.String())
+	ok, err := w.redis.SetNX(ctx, key, "1", ttl).Result()
+	if err != nil {
+		// Fail open: better to risk a duplicate alert than to suppress a real one.
+		return true
+	}
+	return ok
 }
 
 func (w *Worker) runReactivationPipeline(ctx context.Context, presenceGrace, reactivationWindow time.Duration) {

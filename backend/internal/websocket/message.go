@@ -28,11 +28,15 @@ const (
 	EventAssistanceResolved     EventType = "ASSISTANCE_RESOLVED"
 	EventPaymentInitiated       EventType = "PAYMENT_INITIATED"
 	EventPaymentCompleted       EventType = "PAYMENT_COMPLETED"
-	EventSessionClosed          EventType = "SESSION_CLOSED"
-	EventSessionExpiringSoon    EventType = "SESSION_EXPIRING_SOON"
-	EventPromoApplied           EventType = "PROMO_APPLIED"
-	EventPing                   EventType = "PING"
-	EventPong                   EventType = "PONG"
+	// EventPaymentSettlementStalled surfaces a payment_pending session whose
+	// settlement has stalled past the escalation threshold. Emitted by the
+	// escalation worker for operator visibility; no state change implied.
+	EventPaymentSettlementStalled EventType = "PAYMENT_SETTLEMENT_STALLED"
+	EventSessionClosed            EventType = "SESSION_CLOSED"
+	EventSessionExpiringSoon      EventType = "SESSION_EXPIRING_SOON"
+	EventPromoApplied             EventType = "PROMO_APPLIED"
+	EventPing                     EventType = "PING"
+	EventPong                     EventType = "PONG"
 )
 
 // Envelope is the standard shape for all WebSocket messages.
