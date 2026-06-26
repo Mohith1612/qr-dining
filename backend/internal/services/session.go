@@ -235,6 +235,11 @@ type SessionSnapshot struct {
 	SnapshotAt      time.Time                 `json:"snapshot_at"`
 	SessionEnded    bool                      `json:"session_ended,omitempty"`
 	CloseReason     string                    `json:"close_reason,omitempty"`
+	// SnapshotAuthoritative tells the client this snapshot IS the full source of
+	// truth and must replace local state wholesale — set when there is no
+	// incremental basis (last_sequence=0) or the requested gap can't be replayed
+	// contiguously (earlier events pruned). Per realtime-reconciliation-invariants.
+	SnapshotAuthoritative bool `json:"snapshot_authoritative,omitempty"`
 }
 
 // TerminalReadWindow is the grace window during which the snapshot endpoint
@@ -326,6 +331,13 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID, l
 		Assistance:      assistance,
 		MissedEvents:    missedEvents,
 		SnapshotAt:      time.Now().UTC(),
+	}
+	// Authoritative when the client has no incremental basis, or when the replay
+	// has a hole (the earliest available event is past last_sequence+1, meaning
+	// older events were pruned). In both cases the client must adopt this full
+	// snapshot rather than rely on missed_events.
+	if lastSequence == 0 || (len(missedEvents) > 0 && missedEvents[0].Sequence > lastSequence+1) {
+		snap.SnapshotAuthoritative = true
 	}
 	if terminal {
 		snap.SessionEnded = true
