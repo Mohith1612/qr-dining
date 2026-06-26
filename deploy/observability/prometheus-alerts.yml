@@ -186,3 +186,63 @@ groups:
         annotations:
           summary: "Legacy client-supplied identity still in use"
           description: "legacy_identity_usage_total non-zero via {{ $labels.mechanism }} on {{ $labels.endpoint_class }}. Flipping the guest-credential / ws-ticket strict flags will break these callers (likely stale frontends). Drive to zero before cutover."
+
+      - alert: PolicyShadowMismatchPresent
+        expr: rate(policy_shadow_mismatch_total[10m]) > 0
+        for: 15m
+        labels:
+          severity: ticket
+          rollout_gate: AUTHZ_CENTRAL_POLICY_ENFORCE
+        annotations:
+          summary: "Central policy would deny live traffic (shadow mismatch)"
+          description: "policy_shadow_mismatch_total non-zero on route {{ $labels.route }} / reason {{ $labels.reason }}. Enforcement is off but the policy would deny this. Flipping AUTHZ_CENTRAL_POLICY_ENFORCE will break it. Required to be zero for the R3 shadow week."
+
+      - alert: TenantResolutionFailures
+        expr: rate(tenant_resolution_failures_total[10m]) > 0
+        for: 10m
+        labels:
+          severity: ticket
+          rollout_gate: TENANCY_ORGANIZATIONS_ENABLED
+        annotations:
+          summary: "Tenant/organization resolution failing"
+          description: "tenant_resolution_failures_total non-zero at stage {{ $labels.stage }}. Enabling TENANCY_ORGANIZATIONS_ENABLED with org-lookup failures present will 500 affected requests. Resolve before R2."
+
+      - alert: GuestTokenValidationFailures
+        expr: rate(guest_token_validation_failed_total[10m]) > 0.2
+        for: 15m
+        labels:
+          severity: ticket
+          rollout_gate: AUTH_GUEST_CREDENTIALS_REQUIRED
+        annotations:
+          summary: "Guest token validation failures elevated"
+          description: "guest_token_validation_failed_total rising on reason {{ $labels.reason }}. Before R6 the expected reasons are expired/invalid, not malformed; a malformed spike means stale clients that the strict flag will reject."
+
+      - alert: WSTicketConsumeFailures
+        expr: rate(ws_ticket_consume_failed_total[10m]) > 0.2
+        for: 15m
+        labels:
+          severity: ticket
+          rollout_gate: WS_TICKET_AUTH_REQUIRED
+        annotations:
+          summary: "WebSocket ticket consume failures elevated"
+          description: "ws_ticket_consume_failed_total rising on reason {{ $labels.reason }}. Before R5 this should trend low; an 'internal' spike implies Redis trouble, an 'invalid' spike implies expired/reused tickets from stale clients."
+
+  - name: qr-dining-enforcement
+    rules:
+      - alert: AuthzDeniedSpike
+        expr: rate(authz_denied_total[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Enforced authorization denials elevated"
+          description: "authz_denied_total rising on reason {{ $labels.reason }} after AUTHZ_CENTRAL_POLICY_ENFORCE is on. Could be a misconfigured handler or real misuse — correlate with the route in policy_shadow_mismatch history."
+
+      - alert: PaymentPendingEscalationCritical
+        expr: increase(payment_pending_escalations_total{level="critical"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Payment settlement stalled (critical)"
+          description: "A session has been in payment_pending past the critical threshold with a non-terminal payment. Staff must settle or cancel — the table cannot free until resolved. Escalation is alert-only; no automatic state change occurs."
