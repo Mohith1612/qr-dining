@@ -53,6 +53,19 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		respondValidationError(c, err.Error())
 		return
 	}
+	// Per-item validation: the `min=1` binding tag only checks array length, not
+	// individual quantities. A zero/negative quantity would otherwise hit the
+	// order_items CHECK (quantity > 0) and surface as a 500.
+	for _, item := range req.Items {
+		if item.MenuItemID <= 0 {
+			respondValidationError(c, "each item requires a valid menu_item_id")
+			return
+		}
+		if item.Quantity < 1 || item.Quantity > 99 {
+			respondValidationError(c, "item quantity must be between 1 and 99")
+			return
+		}
+	}
 	if req.BranchID != 0 || req.PlacedByParticipantID != 0 {
 		respondValidationError(c, "branch_id and placed_by_participant_id are server-derived")
 		return
