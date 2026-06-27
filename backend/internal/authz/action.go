@@ -13,6 +13,7 @@ const (
 	ActionMenuItemUpdate          Action = "menu.item.update"
 	ActionMenuItemToggleAvailable Action = "menu.item.toggle_availability"
 	ActionOrderStatusUpdate       Action = "order.status.update"
+	ActionOrderMarkServed         Action = "order.status.serve"
 	ActionAssistanceAck           Action = "assistance.ack"
 	ActionAssistanceResolve       Action = "assistance.resolve"
 	ActionPaymentSettleStaff      Action = "payment.settle.staff"

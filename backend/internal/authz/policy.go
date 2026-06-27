@@ -75,6 +75,7 @@ func (a *Authorizer) Authorize(actor Actor, action Action, resource Resource) De
 func requiresSameBranch(action Action) bool {
 	switch action {
 	case ActionOrderStatusUpdate,
+		ActionOrderMarkServed,
 		ActionAssistanceAck,
 		ActionAssistanceResolve,
 		ActionMenuItemUpdate,
@@ -110,6 +111,9 @@ func roleAllowed(role sqlc.StaffRole, action Action) bool {
 	switch action {
 	case ActionOrderStatusUpdate, ActionAssistanceAck, ActionAssistanceResolve:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager || role == sqlc.StaffRoleWaiter || role == sqlc.StaffRoleKitchen
+	case ActionOrderMarkServed:
+		// Serving is front-of-house: kitchen prepares to "ready", waiters serve.
+		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager || role == sqlc.StaffRoleWaiter
 	case ActionMenuItemUpdate, ActionMenuItemToggleAvailable, ActionMenuCategoryUpdate, ActionMenuModifierUpdate, ActionPromoCreate, ActionPromoDeactivate, ActionCustomerDelete:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
 	case ActionCustomerHistory:
@@ -122,7 +126,10 @@ func roleAllowed(role sqlc.StaffRole, action Action) bool {
 		return role != ""
 	case ActionAuditReadBranch:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
-	case ActionBranchUpdateSettings, ActionOrganizationRead, ActionOrganizationUpdate, ActionPaymentSettleStaff:
+	case ActionPaymentSettleStaff:
+		// Waiters physically collect cash/card and confirm settlement.
+		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager || role == sqlc.StaffRoleWaiter
+	case ActionBranchUpdateSettings, ActionOrganizationRead, ActionOrganizationUpdate:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
 	default:
 		return false

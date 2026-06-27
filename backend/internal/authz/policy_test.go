@@ -18,6 +18,32 @@ func TestAuthorizeSameBranchOperationalRoles(t *testing.T) {
 	}
 }
 
+func TestAuthorizeMarkServedExcludesKitchen(t *testing.T) {
+	a := NewAuthorizer()
+	resource := OrderResource(newUUID(t), 10, newUUID(t), 1)
+	for _, role := range []sqlc.StaffRole{sqlc.StaffRoleOwner, sqlc.StaffRoleManager, sqlc.StaffRoleWaiter} {
+		if d := a.Authorize(staff(role, 10, 1), ActionOrderMarkServed, resource); !d.Allowed {
+			t.Fatalf("role %s denied mark-served: %s", role, d.Reason)
+		}
+	}
+	if d := a.Authorize(staff(sqlc.StaffRoleKitchen, 10, 1), ActionOrderMarkServed, resource); d.Allowed {
+		t.Fatal("kitchen unexpectedly allowed to mark order served")
+	}
+}
+
+func TestAuthorizePaymentSettlementAllowsWaiter(t *testing.T) {
+	a := NewAuthorizer()
+	resource := Resource{Type: ResourceTypePayment, ID: "1", Scope: Scope{BranchID: 10, OrganizationID: 1}}
+	for _, role := range []sqlc.StaffRole{sqlc.StaffRoleOwner, sqlc.StaffRoleManager, sqlc.StaffRoleWaiter} {
+		if d := a.Authorize(staff(role, 10, 1), ActionPaymentSettleStaff, resource); !d.Allowed {
+			t.Fatalf("role %s denied payment settlement: %s", role, d.Reason)
+		}
+	}
+	if d := a.Authorize(staff(sqlc.StaffRoleKitchen, 10, 1), ActionPaymentSettleStaff, resource); d.Allowed {
+		t.Fatal("kitchen unexpectedly allowed payment settlement")
+	}
+}
+
 func TestAuthorizeDeniesCrossBranch(t *testing.T) {
 	a := NewAuthorizer()
 	decision := a.Authorize(staff(sqlc.StaffRoleOwner, 11, 1), ActionMenuItemUpdate, MenuItemResource(1, 10, 1))
