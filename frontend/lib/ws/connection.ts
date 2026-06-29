@@ -129,11 +129,22 @@ export class WSConnection {
         return
       }
 
-      // Session is active — replay missed events and reconnect
-      for (const event of snapshot.missed_events ?? []) {
-        this.handleEnvelope(event)
+      // Session is active. When the snapshot is authoritative there is a gap
+      // (or no incremental basis), so missed events can't be applied
+      // contiguously — take the snapshot as the whole truth and skip replay.
+      // Otherwise replay the missed events, then reconcile.
+      if (snapshot.snapshot_authoritative) {
+        this.lastSequence = (snapshot.missed_events ?? []).reduce(
+          (max, e) => Math.max(max, e.sequence ?? 0),
+          this.lastSequence
+        )
+        reconcileSnapshot(snapshot)
+      } else {
+        for (const event of snapshot.missed_events ?? []) {
+          this.handleEnvelope(event)
+        }
+        reconcileSnapshot(snapshot)
       }
-      reconcileSnapshot(snapshot)
     } catch {
       // Snapshot fetch failed; retry with backoff
       this.scheduleReconnect()

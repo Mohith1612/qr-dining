@@ -211,6 +211,10 @@ export interface SessionSnapshot {
   assistance: AssistanceRequest[]
   missed_events?: WSEnvelope[]
   snapshot_at: string
+  // When true, this snapshot is the full source of truth and must replace local
+  // state wholesale — missed events cannot be replayed contiguously (gap or no
+  // incremental basis). See realtime-reconciliation-invariants.
+  snapshot_authoritative?: boolean
 }
 
 export interface EventLogEntry {
