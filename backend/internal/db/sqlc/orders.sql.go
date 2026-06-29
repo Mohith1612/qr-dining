@@ -208,6 +208,58 @@ func (q *Queries) GetOrderByScopedIdempotencyKey(ctx context.Context, arg GetOrd
 	return i, err
 }
 
+const listActiveOrderItemsForBranch = `-- name: ListActiveOrderItemsForBranch :many
+SELECT
+    oi.order_id,
+    oi.menu_item_id,
+    oi.quantity,
+    oi.selected_modifiers_json,
+    oi.note,
+    mi.name AS menu_item_name
+FROM order_items oi
+JOIN orders o ON o.id = oi.order_id
+JOIN menu_items mi ON mi.id = oi.menu_item_id
+WHERE o.branch_id = $1
+  AND o.status IN ('pending', 'confirmed', 'preparing', 'ready')
+ORDER BY oi.order_id, oi.id ASC
+`
+
+type ListActiveOrderItemsForBranchRow struct {
+	OrderID               uuid.UUID       `json:"order_id"`
+	MenuItemID            int64           `json:"menu_item_id"`
+	Quantity              int16           `json:"quantity"`
+	SelectedModifiersJson json.RawMessage `json:"selected_modifiers_json"`
+	Note                  string          `json:"note"`
+	MenuItemName          string          `json:"menu_item_name"`
+}
+
+func (q *Queries) ListActiveOrderItemsForBranch(ctx context.Context, branchID int64) ([]ListActiveOrderItemsForBranchRow, error) {
+	rows, err := q.db.Query(ctx, listActiveOrderItemsForBranch, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveOrderItemsForBranchRow{}
+	for rows.Next() {
+		var i ListActiveOrderItemsForBranchRow
+		if err := rows.Scan(
+			&i.OrderID,
+			&i.MenuItemID,
+			&i.Quantity,
+			&i.SelectedModifiersJson,
+			&i.Note,
+			&i.MenuItemName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActiveOrdersForBranch = `-- name: ListActiveOrdersForBranch :many
 SELECT
     o.id, o.session_id, o.branch_id, o.placed_by_participant_id, o.status, o.idempotency_key, o.total_amount, o.created_at, o.updated_at, o.order_number, o.promo_id, o.discount_amount, o.order_business_date, o.order_number_display, o.order_operational_id,

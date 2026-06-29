@@ -432,8 +432,59 @@ func (s *OrderService) ListOrdersForSession(ctx context.Context, sessionID uuid.
 	return s.repos.ListOrdersForSession(ctx, sessionID)
 }
 
-func (s *OrderService) ListActiveForBranch(ctx context.Context, branchID int64) ([]sqlc.ListActiveOrdersForBranchRow, error) {
-	return s.repos.ListActiveOrdersForBranch(ctx, branchID)
+// KitchenOrderItem is one line on a kitchen ticket: what to make, how many,
+// the modifier/customization choices, and any free-text note.
+type KitchenOrderItem struct {
+	MenuItemID int64              `json:"menu_item_id"`
+	Name       string             `json:"name"`
+	Quantity   int16              `json:"quantity"`
+	Modifiers  []ModifierSnapshot `json:"modifiers"`
+	Note       string             `json:"note"`
+}
+
+// KitchenOrder embeds the existing active-order row (preserving every field the
+// kitchen board already binds to) and adds the operational item detail the
+// kitchen needs to actually prepare the order.
+type KitchenOrder struct {
+	sqlc.ListActiveOrdersForBranchRow
+	Items []KitchenOrderItem `json:"items"`
+}
+
+func (s *OrderService) ListActiveForBranch(ctx context.Context, branchID int64) ([]KitchenOrder, error) {
+	orders, err := s.repos.ListActiveOrdersForBranch(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+	itemRows, err := s.repos.ListActiveOrderItemsForBranch(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+
+	itemsByOrder := make(map[uuid.UUID][]KitchenOrderItem, len(orders))
+	for _, row := range itemRows {
+		mods := []ModifierSnapshot{}
+		if len(row.SelectedModifiersJson) > 0 {
+			// Best-effort: a malformed snapshot must not blank the whole ticket.
+			_ = json.Unmarshal(row.SelectedModifiersJson, &mods)
+		}
+		itemsByOrder[row.OrderID] = append(itemsByOrder[row.OrderID], KitchenOrderItem{
+			MenuItemID: row.MenuItemID,
+			Name:       row.MenuItemName,
+			Quantity:   row.Quantity,
+			Modifiers:  mods,
+			Note:       row.Note,
+		})
+	}
+
+	result := make([]KitchenOrder, 0, len(orders))
+	for _, o := range orders {
+		items := itemsByOrder[o.ID]
+		if items == nil {
+			items = []KitchenOrderItem{}
+		}
+		result = append(result, KitchenOrder{ListActiveOrdersForBranchRow: o, Items: items})
+	}
+	return result, nil
 }
 
 func (s *OrderService) publishOrderStatusEvent(ctx context.Context, sessionID uuid.UUID, status domain.OrderStatus, order sqlc.Order) {

@@ -131,3 +131,7 @@ func (r *Repos) UpdateOrderStatusExpected(ctx context.Context, id uuid.UUID, bra
 func (r *Repos) ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]sqlc.ListActiveOrdersForBranchRow, error) {
 	return r.q.ListActiveOrdersForBranch(ctx, branchID)
 }
+
+func (r *Repos) ListActiveOrderItemsForBranch(ctx context.Context, branchID int64) ([]sqlc.ListActiveOrderItemsForBranchRow, error) {
+	return r.q.ListActiveOrderItemsForBranch(ctx, branchID)
+}

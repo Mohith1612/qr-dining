@@ -68,6 +68,21 @@ WHERE o.branch_id = $1
   AND o.status IN ('pending', 'confirmed', 'preparing', 'ready')
 ORDER BY o.created_at ASC;
 
+-- name: ListActiveOrderItemsForBranch :many
+SELECT
+    oi.order_id,
+    oi.menu_item_id,
+    oi.quantity,
+    oi.selected_modifiers_json,
+    oi.note,
+    mi.name AS menu_item_name
+FROM order_items oi
+JOIN orders o ON o.id = oi.order_id
+JOIN menu_items mi ON mi.id = oi.menu_item_id
+WHERE o.branch_id = $1
+  AND o.status IN ('pending', 'confirmed', 'preparing', 'ready')
+ORDER BY oi.order_id, oi.id ASC;
+
 -- name: CreateOrderItem :one
 INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, selected_modifiers_json, note)
 VALUES ($1, $2, $3, $4, $5, $6)

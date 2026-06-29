@@ -137,6 +137,7 @@ type Querier interface {
 	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) (PaymentWebhookEvent, error)
 	LinkSessionToCustomer(ctx context.Context, arg LinkSessionToCustomerParams) error
 	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]ListActiveAssistanceForBranchRow, error)
+	ListActiveOrderItemsForBranch(ctx context.Context, branchID int64) ([]ListActiveOrderItemsForBranchRow, error)
 	ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]ListActiveOrdersForBranchRow, error)
 	ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]Session, error)
 	// Returns active sessions older than the grace floor — candidates for the
