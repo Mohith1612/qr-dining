@@ -67,6 +67,7 @@ func main() {
 
 	// 9. Initialize event publisher.
 	publisher := events.NewPublisher(pubsub, logger)
+	publisher.SetMetrics(metrics)
 
 	// 10. Initialize WebSocket Hub.
 	hub := ws.NewHub(pubsub, metrics, logger, cfg.CORS.AllowedOrigins)

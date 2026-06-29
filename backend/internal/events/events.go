@@ -2,7 +2,9 @@ package events
 
 import (
 	"context"
+	"time"
 
+	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/redis"
 	ws "github.com/Mohith1612/qr-dining/internal/websocket"
 	"github.com/google/uuid"
@@ -12,9 +14,10 @@ import (
 // Publisher wraps the Redis PubSub client and provides typed publish helpers.
 // All service code publishes events through this instead of calling pubsub directly.
 type Publisher struct {
-	pubsub *redis.PubSub
-	store  EventStore
-	logger zerolog.Logger
+	pubsub  *redis.PubSub
+	store   EventStore
+	logger  zerolog.Logger
+	metrics *observability.Metrics
 }
 
 type EventStore interface {
@@ -29,6 +32,12 @@ func (p *Publisher) SetEventStore(store EventStore) {
 	p.store = store
 }
 
+// SetMetrics enables event-publish latency instrumentation. Optional and
+// nil-safe so test publishers can skip it.
+func (p *Publisher) SetMetrics(metrics *observability.Metrics) {
+	p.metrics = metrics
+}
+
 // NewNoopPublisher returns a Publisher that discards all events. For tests only.
 func NewNoopPublisher() *Publisher {
 	return &Publisher{pubsub: nil, logger: zerolog.Nop()}
@@ -40,6 +49,14 @@ func (p *Publisher) publish(ctx context.Context, event ws.EventType, sessionID u
 	if p.pubsub == nil {
 		return
 	}
+	start := time.Now()
+	outcome := "ok"
+	defer func() {
+		if p.metrics != nil && p.metrics.EventPublishDuration != nil {
+			p.metrics.EventPublishDuration.WithLabelValues(string(event), outcome).Observe(time.Since(start).Seconds())
+		}
+	}()
+
 	var (
 		env ws.Envelope
 		err error
@@ -47,18 +64,21 @@ func (p *Publisher) publish(ctx context.Context, event ws.EventType, sessionID u
 	if p.store != nil {
 		env, err = p.store.AppendSessionEvent(ctx, sessionID, event, payload)
 		if err != nil {
+			outcome = "append_error"
 			p.logger.Error().Err(err).Str("event", string(event)).Str("session_id", sessionID.String()).Msg("failed to append session event")
 			return
 		}
 	} else {
 		env, err = ws.NewEnvelope(event, sessionID, payload)
 		if err != nil {
+			outcome = "encode_error"
 			p.logger.Error().Err(err).Str("event", string(event)).Msg("failed to build event envelope")
 			return
 		}
 	}
 	p.logger.Debug().Str("event", string(event)).Str("session_id", sessionID.String()).Msg("publish event")
 	if err := p.pubsub.Publish(ctx, env.SessionID, env.OrganizationID, env.BranchID, env); err != nil {
+		outcome = "publish_error"
 		p.logger.Error().Err(err).Str("event", string(event)).Msg("failed to publish event")
 	}
 }

@@ -40,6 +40,7 @@ type Metrics struct {
 	RedisPubSubConnected prometheus.Gauge
 	RedisPubSubErrors    *prometheus.CounterVec
 	RedisReconnectsTotal prometheus.Counter
+	EventPublishDuration *prometheus.HistogramVec
 
 	// Business
 	ActiveSessionsTotal      prometheus.Gauge
@@ -201,6 +202,12 @@ func NewMetrics() *Metrics {
 			Help: "Total times the Redis pub/sub subscriber has been restarted after an error.",
 		}),
 
+		EventPublishDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "event_publish_duration_seconds",
+			Help:    "Server-side time to persist (append session event) and publish a realtime event to Redis, by event type and outcome.",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2},
+		}, []string{"event", "outcome"}),
+
 		ActiveSessionsTotal: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "active_sessions_total",
 			Help: "Current number of active dining sessions.",
@@ -314,6 +321,7 @@ func NewMetrics() *Metrics {
 		m.RedisPubSubConnected,
 		m.RedisPubSubErrors,
 		m.RedisReconnectsTotal,
+		m.EventPublishDuration,
 		m.ActiveSessionsTotal,
 		m.OrdersTotal,
 		m.OrderLifecycleDuration,
