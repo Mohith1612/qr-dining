@@ -132,6 +132,67 @@ func TestAuthorizeAuditReadBranchRequiresManagerOrOwner(t *testing.T) {
 	}
 }
 
+// R3 governance-boundary regression locks (Decisions A/C): staff creation and
+// branch-settings updates are branch-scoped owner/manager operations, and
+// organization actions are org-scoped — none of which an actor from a different
+// branch or organization may perform.
+
+func TestAuthorizeStaffCreateRequiresOwnerAndSameBranch(t *testing.T) {
+	a := NewAuthorizer()
+	target := StaffResource(0, 10, 1)
+	if d := a.Authorize(staff(sqlc.StaffRoleOwner, 10, 1), ActionStaffCreate, target); !d.Allowed {
+		t.Fatalf("owner same branch denied staff create: %s", d.Reason)
+	}
+	for _, role := range []sqlc.StaffRole{sqlc.StaffRoleManager, sqlc.StaffRoleWaiter, sqlc.StaffRoleKitchen} {
+		if d := a.Authorize(staff(role, 10, 1), ActionStaffCreate, target); d.Allowed {
+			t.Fatalf("role %s unexpectedly allowed staff create", role)
+		}
+	}
+	if d := a.Authorize(staff(sqlc.StaffRoleOwner, 11, 1), ActionStaffCreate, target); d.Allowed {
+		t.Fatal("owner from another branch unexpectedly allowed staff create")
+	}
+}
+
+func TestAuthorizeBranchUpdateSettingsRolesAndBranch(t *testing.T) {
+	a := NewAuthorizer()
+	resource := BranchResource(10, 1)
+	for _, role := range []sqlc.StaffRole{sqlc.StaffRoleOwner, sqlc.StaffRoleManager} {
+		if d := a.Authorize(staff(role, 10, 1), ActionBranchUpdateSettings, resource); !d.Allowed {
+			t.Fatalf("role %s denied branch update: %s", role, d.Reason)
+		}
+	}
+	for _, role := range []sqlc.StaffRole{sqlc.StaffRoleWaiter, sqlc.StaffRoleKitchen} {
+		if d := a.Authorize(staff(role, 10, 1), ActionBranchUpdateSettings, resource); d.Allowed {
+			t.Fatalf("role %s unexpectedly allowed branch update", role)
+		}
+	}
+	if d := a.Authorize(staff(sqlc.StaffRoleOwner, 11, 1), ActionBranchUpdateSettings, resource); d.Allowed {
+		t.Fatal("owner from another branch unexpectedly allowed branch update")
+	}
+}
+
+func TestAuthorizeOrganizationScopeAndRoles(t *testing.T) {
+	a := NewAuthorizer()
+	resource := OrganizationResource(1)
+	for _, action := range []Action{ActionOrganizationRead, ActionOrganizationUpdate} {
+		if d := a.Authorize(staff(sqlc.StaffRoleOwner, 10, 1), action, resource); !d.Allowed {
+			t.Fatalf("owner same org denied %s: %s", action, d.Reason)
+		}
+		if d := a.Authorize(staff(sqlc.StaffRoleManager, 10, 1), action, resource); !d.Allowed {
+			t.Fatalf("manager same org denied %s: %s", action, d.Reason)
+		}
+	}
+	// Cross-org denied even for owner (org_mismatch), and operational roles never allowed.
+	if d := a.Authorize(staff(sqlc.StaffRoleOwner, 10, 2), ActionOrganizationUpdate, resource); d.Allowed {
+		t.Fatal("owner from another org unexpectedly allowed organization update")
+	}
+	for _, role := range []sqlc.StaffRole{sqlc.StaffRoleWaiter, sqlc.StaffRoleKitchen} {
+		if d := a.Authorize(staff(role, 10, 1), ActionOrganizationUpdate, resource); d.Allowed {
+			t.Fatalf("role %s unexpectedly allowed organization update", role)
+		}
+	}
+}
+
 func staff(role sqlc.StaffRole, branchID, orgID int64) Actor {
 	return Actor{Type: ActorTypeStaff, ID: 1, Role: role, Scope: Scope{BranchID: branchID, OrganizationID: orgID}}
 }
