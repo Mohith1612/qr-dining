@@ -181,7 +181,7 @@ func (q *Queries) GetSessionByToken(ctx context.Context, sessionToken string) (S
 }
 
 const getSessionParticipantByID = `-- name: GetSessionParticipantByID :one
-SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason FROM session_participants WHERE id = $1
+SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason, phone_e164 FROM session_participants WHERE id = $1
 `
 
 func (q *Queries) GetSessionParticipantByID(ctx context.Context, id int64) (SessionParticipant, error) {
@@ -198,6 +198,7 @@ func (q *Queries) GetSessionParticipantByID(ctx context.Context, id int64) (Sess
 		&i.CredentialVersion,
 		&i.RevokedAt,
 		&i.RevokedReason,
+		&i.PhoneE164,
 	)
 	return i, err
 }

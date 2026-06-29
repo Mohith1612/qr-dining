@@ -9,19 +9,21 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createParticipant = `-- name: CreateParticipant :one
-INSERT INTO session_participants (session_id, display_name, device_fingerprint, is_host)
-VALUES ($1, $2, $3, $4)
-RETURNING id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason
+INSERT INTO session_participants (session_id, display_name, device_fingerprint, is_host, phone_e164)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason, phone_e164
 `
 
 type CreateParticipantParams struct {
-	SessionID         uuid.UUID `json:"session_id"`
-	DisplayName       string    `json:"display_name"`
-	DeviceFingerprint string    `json:"device_fingerprint"`
-	IsHost            bool      `json:"is_host"`
+	SessionID         uuid.UUID   `json:"session_id"`
+	DisplayName       string      `json:"display_name"`
+	DeviceFingerprint string      `json:"device_fingerprint"`
+	IsHost            bool        `json:"is_host"`
+	PhoneE164         pgtype.Text `json:"phone_e164"`
 }
 
 func (q *Queries) CreateParticipant(ctx context.Context, arg CreateParticipantParams) (SessionParticipant, error) {
@@ -30,6 +32,7 @@ func (q *Queries) CreateParticipant(ctx context.Context, arg CreateParticipantPa
 		arg.DisplayName,
 		arg.DeviceFingerprint,
 		arg.IsHost,
+		arg.PhoneE164,
 	)
 	var i SessionParticipant
 	err := row.Scan(
@@ -43,12 +46,39 @@ func (q *Queries) CreateParticipant(ctx context.Context, arg CreateParticipantPa
 		&i.CredentialVersion,
 		&i.RevokedAt,
 		&i.RevokedReason,
+		&i.PhoneE164,
+	)
+	return i, err
+}
+
+const getOldestActiveParticipant = `-- name: GetOldestActiveParticipant :one
+SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason, phone_e164 FROM session_participants
+WHERE session_id = $1 AND revoked_at IS NULL
+ORDER BY joined_at ASC, id ASC
+LIMIT 1
+`
+
+func (q *Queries) GetOldestActiveParticipant(ctx context.Context, sessionID uuid.UUID) (SessionParticipant, error) {
+	row := q.db.QueryRow(ctx, getOldestActiveParticipant, sessionID)
+	var i SessionParticipant
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.DisplayName,
+		&i.DeviceFingerprint,
+		&i.JoinedAt,
+		&i.LastSeenAt,
+		&i.IsHost,
+		&i.CredentialVersion,
+		&i.RevokedAt,
+		&i.RevokedReason,
+		&i.PhoneE164,
 	)
 	return i, err
 }
 
 const getParticipantByID = `-- name: GetParticipantByID :one
-SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason FROM session_participants WHERE id = $1
+SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason, phone_e164 FROM session_participants WHERE id = $1
 `
 
 func (q *Queries) GetParticipantByID(ctx context.Context, id int64) (SessionParticipant, error) {
@@ -65,12 +95,13 @@ func (q *Queries) GetParticipantByID(ctx context.Context, id int64) (SessionPart
 		&i.CredentialVersion,
 		&i.RevokedAt,
 		&i.RevokedReason,
+		&i.PhoneE164,
 	)
 	return i, err
 }
 
 const listParticipantsBySession = `-- name: ListParticipantsBySession :many
-SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason FROM session_participants
+SELECT id, session_id, display_name, device_fingerprint, joined_at, last_seen_at, is_host, credential_version, revoked_at, revoked_reason, phone_e164 FROM session_participants
 WHERE session_id = $1
 ORDER BY joined_at ASC
 `
@@ -95,6 +126,7 @@ func (q *Queries) ListParticipantsBySession(ctx context.Context, sessionID uuid.
 			&i.CredentialVersion,
 			&i.RevokedAt,
 			&i.RevokedReason,
+			&i.PhoneE164,
 		); err != nil {
 			return nil, err
 		}
@@ -104,6 +136,24 @@ func (q *Queries) ListParticipantsBySession(ctx context.Context, sessionID uuid.
 		return nil, err
 	}
 	return items, nil
+}
+
+const setParticipantHostFlags = `-- name: SetParticipantHostFlags :exec
+UPDATE session_participants
+SET is_host = (id = $2)
+WHERE session_id = $1
+`
+
+type SetParticipantHostFlagsParams struct {
+	SessionID uuid.UUID `json:"session_id"`
+	ID        int64     `json:"id"`
+}
+
+// Sets is_host = true for exactly the new host and false for everyone else in
+// the session, in a single statement. Used for host reassignment.
+func (q *Queries) SetParticipantHostFlags(ctx context.Context, arg SetParticipantHostFlagsParams) error {
+	_, err := q.db.Exec(ctx, setParticipantHostFlags, arg.SessionID, arg.ID)
+	return err
 }
 
 const updateParticipantLastSeen = `-- name: UpdateParticipantLastSeen :exec

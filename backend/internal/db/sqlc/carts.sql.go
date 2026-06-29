@@ -120,6 +120,21 @@ func (q *Queries) GetOrCreateCart(ctx context.Context, arg GetOrCreateCartParams
 	return i, err
 }
 
+const getOrCreateSessionCart = `-- name: GetOrCreateSessionCart :one
+INSERT INTO carts (session_id, participant_id)
+VALUES ($1, NULL)
+ON CONFLICT (session_id) WHERE participant_id IS NULL
+DO UPDATE SET session_id = EXCLUDED.session_id
+RETURNING id, session_id, participant_id
+`
+
+func (q *Queries) GetOrCreateSessionCart(ctx context.Context, sessionID uuid.UUID) (Cart, error) {
+	row := q.db.QueryRow(ctx, getOrCreateSessionCart, sessionID)
+	var i Cart
+	err := row.Scan(&i.ID, &i.SessionID, &i.ParticipantID)
+	return i, err
+}
+
 const listCartItems = `-- name: ListCartItems :many
 SELECT
     ci.id,

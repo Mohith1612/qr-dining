@@ -25,7 +25,7 @@ func TestCreateSession_HappyPath(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	result, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	result, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -69,11 +69,11 @@ func TestCreateSession_AlreadyActive(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	if _, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice"); err != nil {
+	if _, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", ""); err != nil {
 		t.Fatalf("first CreateSession: %v", err)
 	}
 
-	_, err := svc.CreateSession(ctx, f.TableID, "Bob", "fp-bob")
+	_, err := svc.CreateSession(ctx, f.TableID, "Bob", "fp-bob", "")
 	if err == nil {
 		t.Fatal("expected ErrSessionAlreadyActive, got nil")
 	}
@@ -100,7 +100,7 @@ func TestCreateSession_ConcurrentSingleActiveSession(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := svc.CreateSession(ctx, f.TableID, "Guest", "fp")
+			_, err := svc.CreateSession(ctx, f.TableID, "Guest", "fp", "")
 			errs <- err
 		}()
 	}
@@ -148,7 +148,7 @@ func TestCloseSession_OnlyHost(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	result, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	result, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -171,12 +171,12 @@ func TestJoinSession(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	result, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	result, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
-	joiner, err := svc.JoinSession(ctx, result.Session.ID, "Bob", "fp-bob")
+	joiner, err := svc.JoinSession(ctx, result.Session.ID, "Bob", "fp-bob", "")
 	if err != nil {
 		t.Fatalf("JoinSession: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestReactivateSession(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	result, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	result, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestCloseSession_ReleasesTable(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	result, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	result, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}

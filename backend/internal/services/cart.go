@@ -42,7 +42,7 @@ type CartResponse struct {
 }
 
 func (s *CartService) GetCart(ctx context.Context, sessionID uuid.UUID, participantID int64) (CartResponse, error) {
-	cart, err := s.repos.GetOrCreateCart(ctx, sessionID, participantID)
+	cart, err := s.repos.GetOrCreateSessionCart(ctx, sessionID)
 	if err != nil {
 		return CartResponse{}, err
 	}
@@ -87,7 +87,7 @@ func (s *CartService) AddItem(ctx context.Context, req AddItemRequest) (sqlc.Car
 		return sqlc.CartItem{}, fmt.Errorf("marshal modifiers: %w", err)
 	}
 
-	cart, err := s.repos.GetOrCreateCart(ctx, req.SessionID, req.ParticipantID)
+	cart, err := s.repos.GetOrCreateSessionCart(ctx, req.SessionID)
 	if err != nil {
 		return sqlc.CartItem{}, err
 	}
@@ -119,7 +119,7 @@ func (s *CartService) RemoveItem(ctx context.Context, sessionID uuid.UUID, parti
 		return domain.ErrSessionClosed
 	}
 
-	cart, err := s.repos.GetOrCreateCart(ctx, sessionID, participantID)
+	cart, err := s.repos.GetOrCreateSessionCart(ctx, sessionID)
 	if err != nil {
 		return err
 	}

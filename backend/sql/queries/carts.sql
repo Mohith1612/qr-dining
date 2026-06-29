@@ -4,6 +4,13 @@ VALUES ($1, $2)
 ON CONFLICT (session_id, participant_id) DO UPDATE SET session_id = EXCLUDED.session_id
 RETURNING *;
 
+-- name: GetOrCreateSessionCart :one
+INSERT INTO carts (session_id, participant_id)
+VALUES ($1, NULL)
+ON CONFLICT (session_id) WHERE participant_id IS NULL
+DO UPDATE SET session_id = EXCLUDED.session_id
+RETURNING *;
+
 -- name: GetCartByID :one
 SELECT * FROM carts WHERE id = $1;
 

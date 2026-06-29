@@ -92,6 +92,10 @@ func New(
 	platformSvc.SetLockoutStore(lockoutStore)
 	platformSvc.SetMFAEncryptionKey(cfg.Auth.MFAEncryptionKey)
 	paymentSvc := services.NewPaymentService(repos, publisher, metrics, sessionSvc, logger)
+	// Host-controlled ordering: only the session host may submit orders or
+	// initiate payment. The session service is the single host authority.
+	orderSvc.SetHostAuthority(sessionSvc)
+	paymentSvc.SetHostAuthority(sessionSvc)
 	subSvc := services.NewSubscriptionService(repos)
 	analyticsSvc := services.NewAnalyticsService(repos, subSvc, cache)
 	customerSvc := services.NewCustomerService(repos)

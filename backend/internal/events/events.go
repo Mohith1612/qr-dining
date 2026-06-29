@@ -97,6 +97,10 @@ func (p *Publisher) ParticipantLeft(ctx context.Context, sessionID uuid.UUID, pa
 	p.publish(ctx, ws.EventParticipantLeft, sessionID, payload)
 }
 
+func (p *Publisher) HostChanged(ctx context.Context, sessionID uuid.UUID, payload any) {
+	p.publish(ctx, ws.EventHostChanged, sessionID, payload)
+}
+
 func (p *Publisher) CartUpdated(ctx context.Context, sessionID uuid.UUID, payload any) {
 	p.publish(ctx, ws.EventCartUpdated, sessionID, payload)
 }

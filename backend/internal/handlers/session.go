@@ -37,6 +37,7 @@ type createSessionRequest struct {
 	TableID           int64  `json:"table_id" binding:"required"`
 	DisplayName       string `json:"display_name" binding:"required,min=1,max=50"`
 	DeviceFingerprint string `json:"device_fingerprint"`
+	PhoneE164         string `json:"phone_e164"`
 }
 
 func (h *SessionHandler) Create(c *gin.Context) {
@@ -46,7 +47,7 @@ func (h *SessionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	result, err := h.svc.CreateSession(c.Request.Context(), req.TableID, req.DisplayName, req.DeviceFingerprint)
+	result, err := h.svc.CreateSession(c.Request.Context(), req.TableID, req.DisplayName, req.DeviceFingerprint, req.PhoneE164)
 	if err != nil {
 		sessionError(c, err)
 		return
@@ -141,6 +142,7 @@ func (h *SessionHandler) Close(c *gin.Context) {
 type joinSessionRequest struct {
 	DisplayName       string `json:"display_name" binding:"required,min=1,max=50"`
 	DeviceFingerprint string `json:"device_fingerprint"`
+	PhoneE164         string `json:"phone_e164"`
 }
 
 func (h *SessionHandler) Join(c *gin.Context) {
@@ -156,7 +158,7 @@ func (h *SessionHandler) Join(c *gin.Context) {
 		return
 	}
 
-	participant, err := h.svc.JoinSession(c.Request.Context(), id, req.DisplayName, req.DeviceFingerprint)
+	participant, err := h.svc.JoinSession(c.Request.Context(), id, req.DisplayName, req.DeviceFingerprint, req.PhoneE164)
 	if err != nil {
 		sessionError(c, err)
 		return
@@ -293,6 +295,8 @@ func sessionError(c *gin.Context, err error) {
 		respondError(c, http.StatusConflict, CodeSessionAlreadyActive, err.Error())
 	case errors.Is(err, domain.ErrNotSessionHost):
 		respondError(c, http.StatusForbidden, CodeNotSessionHost, err.Error())
+	case errors.Is(err, domain.ErrInvalidPhone):
+		respondError(c, http.StatusBadRequest, CodeInvalidPhone, "Please enter a valid mobile number, or continue without one.")
 	case errors.Is(err, domain.ErrTableNotFound):
 		respondError(c, http.StatusNotFound, CodeSessionNotFound, err.Error())
 	default:

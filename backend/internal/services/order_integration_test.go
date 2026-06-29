@@ -26,7 +26,7 @@ func TestPlaceOrder_HappyPath(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestPlaceOrder_Idempotent(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -119,12 +119,12 @@ func TestPlaceOrder_IdempotencyConflictAndScopedReplay(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	firstSession, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	firstSession, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession first: %v", err)
 	}
 	secondTableID := seedTable(t, pool, f.BranchID, "T2")
-	secondSession, err := sessionSvc.CreateSession(ctx, secondTableID, "Bob", "fp-bob")
+	secondSession, err := sessionSvc.CreateSession(ctx, secondTableID, "Bob", "fp-bob", "")
 	if err != nil {
 		t.Fatalf("CreateSession second: %v", err)
 	}
@@ -169,12 +169,12 @@ func TestPlaceOrder_RejectsCrossBranchMenuAndParticipant(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	otherTableID := seedTable(t, pool, f.BranchID, "T2")
-	otherSess, err := sessionSvc.CreateSession(ctx, otherTableID, "Bob", "fp-bob")
+	otherSess, err := sessionSvc.CreateSession(ctx, otherTableID, "Bob", "fp-bob", "")
 	if err != nil {
 		t.Fatalf("CreateSession other: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestUpdateOrderStatus_InvalidTransition(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}

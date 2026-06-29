@@ -27,7 +27,7 @@ func TestWebhookReplay_Idempotent(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestManualPaymentRequiresStaffSettlementAndRejectsStaleSnapshot(t *testing.
 	})
 
 	ctx := context.Background()
-	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestWebhookRejectsAmountMismatch(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestInitiatePayment_IdempotencyConflictAndReplay(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}

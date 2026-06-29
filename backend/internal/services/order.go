@@ -25,11 +25,17 @@ type OrderService struct {
 	publisher *events.Publisher
 	metrics   *observability.Metrics
 	promoSvc  *PromoService
+	hostAuth  *SessionService
 }
 
 func NewOrderService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics, promoSvc *PromoService) *OrderService {
 	return &OrderService{repos: repos, publisher: publisher, metrics: metrics, promoSvc: promoSvc}
 }
+
+// SetHostAuthority injects the session service used to enforce host-only order
+// submission (and on-demand host reassignment). Wired after construction to
+// avoid a constructor cycle between the order and session services.
+func (s *OrderService) SetHostAuthority(h *SessionService) { s.hostAuth = h }
 
 type OrderItem struct {
 	MenuItemID  int64           `json:"menu_item_id"`
@@ -80,6 +86,22 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	if participant.SessionID != req.SessionID {
 		return PlaceOrderResult{}, domain.ErrParticipantNotInSession
 	}
+
+	// Host-controlled ordering: only the session host may submit the shared cart
+	// to the kitchen. Other participants collaborate on the cart but cannot
+	// finalize. Enforced server-side so a stale client cannot bypass it.
+	if s.hostAuth != nil {
+		authorized, err := s.hostAuth.AuthorizeHostAction(ctx, req.SessionID, req.PlacedByParticipantID)
+		if err != nil {
+			return PlaceOrderResult{}, err
+		}
+		if !authorized {
+			return PlaceOrderResult{}, domain.ErrNotSessionHost
+		}
+	} else if !sess.HostParticipantID.Valid || sess.HostParticipantID.Int64 != req.PlacedByParticipantID {
+		return PlaceOrderResult{}, domain.ErrNotSessionHost
+	}
+
 	if req.PhoneE164 != nil {
 		normalized := NormalizePromoPhone(*req.PhoneE164)
 		req.PhoneE164 = &normalized
@@ -353,9 +375,13 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 		})
 	}
 
-	// Clear the participant's cart after a successful order — best-effort, never blocks the response.
-	if cart, err := s.repos.GetOrCreateCart(ctx, req.SessionID, req.PlacedByParticipantID); err == nil {
+	// Clear the shared session cart after a successful order — best-effort, never blocks the response.
+	if cart, err := s.repos.GetOrCreateSessionCart(ctx, req.SessionID); err == nil {
 		_ = s.repos.ClearCart(ctx, cart.ID)
+		s.publisher.CartUpdated(ctx, req.SessionID, map[string]any{
+			"action":     "clear",
+			"session_id": req.SessionID,
+		})
 	}
 
 	return result, nil

@@ -122,6 +122,9 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		case errors.Is(err, domain.ErrSessionNotActive), errors.Is(err, domain.ErrSessionClosed):
 			respondError(c, http.StatusConflict, CodeSessionClosed,
 				"This session can no longer take a payment.")
+		case errors.Is(err, domain.ErrNotSessionHost):
+			respondError(c, http.StatusForbidden, CodeNotSessionHost,
+				"Only the table host can request the bill.")
 		default:
 			respondInternalError(c)
 		}

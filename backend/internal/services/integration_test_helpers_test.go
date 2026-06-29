@@ -20,7 +20,9 @@ func newTestSessionService(repos *repository.Repos, pub *events.Publisher) *serv
 
 func newTestOrderService(repos *repository.Repos, pub *events.Publisher) *services.OrderService {
 	promoSvc := services.NewPromoService(repos)
-	return services.NewOrderService(repos, pub, testMetrics(), promoSvc)
+	svc := services.NewOrderService(repos, pub, testMetrics(), promoSvc)
+	svc.SetHostAuthority(newTestSessionService(repos, pub))
+	return svc
 }
 
 func newTestAssistanceService(repos *repository.Repos, pub *events.Publisher) *services.AssistanceService {
@@ -28,5 +30,7 @@ func newTestAssistanceService(repos *repository.Repos, pub *events.Publisher) *s
 }
 
 func newTestPaymentService(repos *repository.Repos, pub *events.Publisher, sessionSvc *services.SessionService) *services.PaymentService {
-	return services.NewPaymentService(repos, pub, testMetrics(), sessionSvc, zerolog.Nop())
+	svc := services.NewPaymentService(repos, pub, testMetrics(), sessionSvc, zerolog.Nop())
+	svc.SetHostAuthority(sessionSvc)
+	return svc
 }

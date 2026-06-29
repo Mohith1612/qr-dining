@@ -35,6 +35,10 @@ const (
 	EventSessionClosed            EventType = "SESSION_CLOSED"
 	EventSessionExpiringSoon      EventType = "SESSION_EXPIRING_SOON"
 	EventPromoApplied             EventType = "PROMO_APPLIED"
+	// EventHostChanged tells live participants the session host was reassigned
+	// (the previous host left/was lost). Payload is the new host participant so
+	// clients can update the host badge and re-evaluate host-only affordances.
+	EventHostChanged EventType = "HOST_CHANGED"
 	// EventMenuItemAvailabilityChanged tells live guests a menu item was
 	// enabled/disabled mid-session so they can reconcile their menu and cart
 	// instead of failing an order against a now-unavailable item.

@@ -83,7 +83,9 @@ type Querier interface {
 	GetMenuItemByID(ctx context.Context, id int64) (MenuItem, error)
 	GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]MenuItem, error)
 	GetModifierWithItemBranch(ctx context.Context, id int64) (GetModifierWithItemBranchRow, error)
+	GetOldestActiveParticipant(ctx context.Context, sessionID uuid.UUID) (SessionParticipant, error)
 	GetOrCreateCart(ctx context.Context, arg GetOrCreateCartParams) (Cart, error)
+	GetOrCreateSessionCart(ctx context.Context, sessionID uuid.UUID) (Cart, error)
 	GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error)
 	GetOrderByIdempotencyKey(ctx context.Context, idempotencyKey string) (Order, error)
 	GetOrderByScopedIdempotencyKey(ctx context.Context, arg GetOrderByScopedIdempotencyKeyParams) (Order, error)
@@ -193,6 +195,9 @@ type Querier interface {
 	RevokePlatformSession(ctx context.Context, arg RevokePlatformSessionParams) error
 	RevokeStaffSessionsForStaff(ctx context.Context, staffID int64) error
 	SearchCustomersByPhone(ctx context.Context, arg SearchCustomersByPhoneParams) ([]Customer, error)
+	// Sets is_host = true for exactly the new host and false for everyone else in
+	// the session, in a single statement. Used for host reassignment.
+	SetParticipantHostFlags(ctx context.Context, arg SetParticipantHostFlagsParams) error
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
 	SettlePaymentByStaff(ctx context.Context, arg SettlePaymentByStaffParams) (Payment, error)
 	SumCompletedPaymentsForSession(ctx context.Context, sessionID uuid.UUID) (pgtype.Numeric, error)

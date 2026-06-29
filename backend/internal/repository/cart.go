@@ -19,6 +19,13 @@ func (r *Repos) GetOrCreateCart(ctx context.Context, sessionID uuid.UUID, partic
 	})
 }
 
+// GetOrCreateSessionCart returns the single shared cart for a session (the row
+// with participant_id IS NULL), creating it on first access. This is the
+// collaborative cart that every participant edits.
+func (r *Repos) GetOrCreateSessionCart(ctx context.Context, sessionID uuid.UUID) (sqlc.Cart, error) {
+	return r.q.GetOrCreateSessionCart(ctx, sessionID)
+}
+
 func (r *Repos) GetCartByID(ctx context.Context, id int64) (sqlc.Cart, error) {
 	c, err := r.q.GetCartByID(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {

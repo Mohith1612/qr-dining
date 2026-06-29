@@ -122,6 +122,9 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 			respondError(c, http.StatusConflict, "IDEMPOTENCY_CONFLICT", err.Error())
 		case errors.Is(err, domain.ErrParticipantNotInSession):
 			respondError(c, http.StatusForbidden, CodeForbidden, err.Error())
+		case errors.Is(err, domain.ErrNotSessionHost):
+			respondError(c, http.StatusForbidden, CodeNotSessionHost,
+				"Only the table host can send the order to the kitchen.")
 		default:
 			respondInternalError(c)
 		}

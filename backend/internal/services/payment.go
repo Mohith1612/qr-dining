@@ -33,8 +33,14 @@ type PaymentService struct {
 	publisher     *events.Publisher
 	metrics       *observability.Metrics
 	sessionCloser SessionCloser
+	hostAuth      *SessionService
 	logger        zerolog.Logger
 }
+
+// SetHostAuthority injects the session service used to enforce host-only
+// payment initiation (and on-demand host reassignment). Wired after
+// construction to keep the constructor signature stable.
+func (s *PaymentService) SetHostAuthority(h *SessionService) { s.hostAuth = h }
 
 func NewPaymentService(
 	repos *repository.Repos,
@@ -84,6 +90,21 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 	if actorType == "" {
 		actorType = "guest"
 	}
+
+	// Host-controlled flow: only the session host may initiate the bill/payment.
+	// Checked before any idempotency-key or payment_pending side-effects so a
+	// non-host request cannot freeze the session. Staff-initiated paths (if any)
+	// use a non-participant actor type and are not gated here.
+	if actorType == "participant" && s.hostAuth != nil {
+		authorized, err := s.hostAuth.AuthorizeHostAction(ctx, req.SessionID, req.ActorID)
+		if err != nil {
+			return sqlc.Payment{}, err
+		}
+		if !authorized {
+			return sqlc.Payment{}, domain.ErrNotSessionHost
+		}
+	}
+
 	idemScope := repository.IdempotencyScope{
 		ScopeType: "session",
 		ScopeID:   req.SessionID.String(),

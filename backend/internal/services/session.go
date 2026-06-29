@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/crypto"
@@ -16,6 +17,7 @@ import (
 	ws "github.com/Mohith1612/qr-dining/internal/websocket"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -42,8 +44,13 @@ type CreateSessionResult struct {
 //  3. Inserts the host participant (is_host = true).
 //  4. Sets sessions.host_participant_id (DEFERRABLE FK committed at step 5).
 //  5. Marks the table as occupied.
-func (s *SessionService) CreateSession(ctx context.Context, tableID int64, displayName, deviceFingerprint string) (CreateSessionResult, error) {
+func (s *SessionService) CreateSession(ctx context.Context, tableID int64, displayName, deviceFingerprint, phoneE164 string) (CreateSessionResult, error) {
 	table, err := s.repos.GetTableByID(ctx, tableID)
+	if err != nil {
+		return CreateSessionResult{}, err
+	}
+
+	phone, err := normalizeOptionalPhone(phoneE164)
 	if err != nil {
 		return CreateSessionResult{}, err
 	}
@@ -87,7 +94,7 @@ func (s *SessionService) CreateSession(ctx context.Context, tableID int64, displ
 			return fmt.Errorf("create session: %w", err)
 		}
 
-		participant, err := tx.CreateParticipant(ctx, sess.ID, displayName, deviceFingerprint, true)
+		participant, err := tx.CreateParticipant(ctx, sess.ID, displayName, deviceFingerprint, true, phone)
 		if err != nil {
 			return fmt.Errorf("create host participant: %w", err)
 		}
@@ -110,6 +117,16 @@ func (s *SessionService) CreateSession(ctx context.Context, tableID int64, displ
 	s.publisher.SessionCreated(ctx, result.Session.ID, result)
 	s.repos.LogEvent(ctx, result.Session.ID, result.Session.BranchID, "SESSION_CREATED", "participant", result.Participant.ID, result)
 	return result, nil
+}
+
+// normalizeOptionalPhone normalizes a participant phone number when supplied.
+// An empty string is valid (the "continue without phone" path) and returns "".
+// A non-empty value must be a valid number or ErrInvalidPhone is returned.
+func normalizeOptionalPhone(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+	return normalizePhone(raw)
 }
 
 // GetSession returns the session by ID. Returns ErrSessionNotFound if missing.
@@ -203,8 +220,129 @@ func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, request
 	return nil
 }
 
+// AuthorizeHostAction reports whether actingParticipantID may perform a
+// host-only action (submit an order, initiate the bill/payment) on the session.
+// It is the single authority for host-gated actions, used by the order and
+// payment services.
+//
+// On-demand host reassignment is layered in so a table never deadlocks on a
+// dead host device: if the acting participant is not the host but the current
+// host has no live presence, the acting (active) participant is promoted to
+// host and the action is allowed to proceed.
+func (s *SessionService) AuthorizeHostAction(ctx context.Context, sessionID uuid.UUID, actingParticipantID int64) (bool, error) {
+	sess, err := s.repos.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return false, err
+	}
+	if sess.HostParticipantID.Valid && sess.HostParticipantID.Int64 == actingParticipantID {
+		return true, nil
+	}
+
+	// Acting participant is not the host. Promote them on-demand only when the
+	// current host has no live presence — this unblocks a stranded table
+	// immediately without churning the host during normal browsing.
+	if !s.hostAbsentFromPresence(ctx, sess) {
+		return false, nil
+	}
+	acting, err := s.repos.GetParticipantByID(ctx, actingParticipantID)
+	if err != nil {
+		return false, err
+	}
+	if acting.SessionID != sessionID || acting.RevokedAt.Valid {
+		return false, nil
+	}
+	if err := s.reassignHost(ctx, sess, acting); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// hostAbsentFromPresence reports whether the current host has no live WebSocket
+// presence. Heartbeats are written to the org/branch-scoped key (with a legacy
+// unscoped fallback), so both are checked. A missing host_participant_id counts
+// as absent. When presence cannot be determined (no presence backend), it
+// conservatively reports present so we never strip a host on a false signal.
+func (s *SessionService) hostAbsentFromPresence(ctx context.Context, sess sqlc.Session) bool {
+	if !sess.HostParticipantID.Valid {
+		return true
+	}
+	if s.presence == nil {
+		return false
+	}
+	hostID := sess.HostParticipantID.Int64
+	if org, err := s.repos.GetOrganizationByBranchID(ctx, sess.BranchID); err == nil {
+		if present, err := s.presence.GetPresentScoped(ctx, org.ID, sess.BranchID, sess.ID); err == nil {
+			if _, ok := present[hostID]; ok {
+				return false
+			}
+		}
+	}
+	if present, err := s.presence.GetPresent(ctx, sess.ID); err == nil {
+		if _, ok := present[hostID]; ok {
+			return false
+		}
+	}
+	return true
+}
+
+// reassignHost promotes newHost to session host (persisting host_participant_id
+// and the is_host flags in one transaction) and broadcasts HOST_CHANGED so live
+// participants update their host badge and host-only affordances.
+func (s *SessionService) reassignHost(ctx context.Context, sess sqlc.Session, newHost sqlc.SessionParticipant) error {
+	if err := s.repos.ReassignHost(ctx, sess.ID, newHost.ID); err != nil {
+		return err
+	}
+	newHost.IsHost = true
+	s.publisher.HostChanged(ctx, sess.ID, newHost)
+	s.repos.LogEvent(ctx, sess.ID, sess.BranchID, "HOST_CHANGED", "system", newHost.ID, newHost)
+	return nil
+}
+
+// ensureHostBaseline reassigns the host when it is definitively gone — the
+// host_participant_id is unset or the host participant has been revoked. It
+// promotes the oldest active participant. Evaluated on snapshot (reconnect) so
+// any returning participant heals a host-less session. Returns the (possibly
+// updated) session and participants list reflecting the new host.
+func (s *SessionService) ensureHostBaseline(ctx context.Context, sess sqlc.Session, participants []sqlc.SessionParticipant) (sqlc.Session, []sqlc.SessionParticipant) {
+	hostValid := false
+	if sess.HostParticipantID.Valid {
+		for _, p := range participants {
+			if p.ID == sess.HostParticipantID.Int64 {
+				hostValid = !p.RevokedAt.Valid
+				break
+			}
+		}
+	}
+	if hostValid {
+		return sess, participants
+	}
+
+	// Promote the oldest active participant (list is ordered joined_at ASC).
+	var newHost *sqlc.SessionParticipant
+	for i := range participants {
+		if !participants[i].RevokedAt.Valid {
+			newHost = &participants[i]
+			break
+		}
+	}
+	if newHost == nil {
+		return sess, participants // no active participant to promote
+	}
+	if sess.HostParticipantID.Valid && sess.HostParticipantID.Int64 == newHost.ID {
+		return sess, participants // already the host; nothing to do
+	}
+	if err := s.reassignHost(ctx, sess, *newHost); err != nil {
+		return sess, participants // best-effort; snapshot still returns current state
+	}
+	sess.HostParticipantID = pgtype.Int8{Int64: newHost.ID, Valid: true}
+	for i := range participants {
+		participants[i].IsHost = participants[i].ID == newHost.ID
+	}
+	return sess, participants
+}
+
 // JoinSession adds a participant to an existing active session.
-func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, displayName, deviceFingerprint string) (sqlc.SessionParticipant, error) {
+func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, displayName, deviceFingerprint, phoneE164 string) (sqlc.SessionParticipant, error) {
 	sess, err := s.repos.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return sqlc.SessionParticipant{}, err
@@ -213,7 +351,12 @@ func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, d
 		return sqlc.SessionParticipant{}, domain.ErrSessionClosed
 	}
 
-	participant, err := s.repos.CreateParticipant(ctx, sessionID, displayName, deviceFingerprint, false)
+	phone, err := normalizeOptionalPhone(phoneE164)
+	if err != nil {
+		return sqlc.SessionParticipant{}, err
+	}
+
+	participant, err := s.repos.CreateParticipant(ctx, sessionID, displayName, deviceFingerprint, false, phone)
 	if err != nil {
 		return sqlc.SessionParticipant{}, err
 	}
@@ -349,6 +492,14 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID, l
 
 	if err := g.Wait(); err != nil {
 		return SessionSnapshot{}, err
+	}
+
+	// Heal a host-less session on reconnect: if the host is gone for good
+	// (unset or revoked), promote the oldest active participant. This is the
+	// baseline reassignment path; transient host disconnects are handled
+	// on-demand at action time (AuthorizeHostAction).
+	if !terminal {
+		sess, participants = s.ensureHostBaseline(ctx, sess, participants)
 	}
 
 	snap := SessionSnapshot{

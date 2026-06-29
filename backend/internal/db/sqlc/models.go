@@ -1074,6 +1074,7 @@ type SessionParticipant struct {
 	CredentialVersion int32              `json:"credential_version"`
 	RevokedAt         pgtype.Timestamptz `json:"revoked_at"`
 	RevokedReason     pgtype.Text        `json:"revoked_reason"`
+	PhoneE164         pgtype.Text        `json:"phone_e164"`
 }
 
 type SessionSequence struct {
