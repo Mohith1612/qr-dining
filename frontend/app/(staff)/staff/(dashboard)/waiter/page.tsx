@@ -3,13 +3,15 @@
 import { useEffect, useState, useCallback } from "react"
 import { useStaffStore } from "@/store/staff"
 import { assistanceApi } from "@/lib/api/assistance"
+import { ordersApi } from "@/lib/api/orders"
+import { staffApi } from "@/lib/api/staff"
+import { paymentsApi } from "@/lib/api/payments"
 import { StatusBadge } from "@/components/shared/StatusBadge"
 import { EmptyState } from "@/components/shared/EmptyState"
-import { HospitalityCard } from "@/components/shared/HospitalityCard"
-import { relativeTime } from "@/lib/format"
-import { CheckCircle, Loader2 } from "lucide-react"
+import { relativeTime, formatCurrency } from "@/lib/format"
+import { CheckCircle, Loader2, UtensilsCrossed, BadgeIndianRupee, ConciergeBell } from "lucide-react"
 import { toast } from "sonner"
-import type { AssistanceRequest, AssistanceType } from "@/types/api"
+import type { AssistanceRequest, AssistanceType, KitchenOrder, PendingPayment, PaymentMethod } from "@/types/api"
 
 const TYPE_LABEL: Record<AssistanceType, string> = {
   waiter: "Waiter needed",
@@ -17,14 +19,131 @@ const TYPE_LABEL: Record<AssistanceType, string> = {
   other:  "Other",
 }
 
-const KNOWN_TABLES = [
-  { id: 1, label: "T1" },
-  { id: 2, label: "T2" },
-  { id: 3, label: "T3" },
-]
+const METHOD_LABEL: Record<PaymentMethod, string> = {
+  cash:        "Cash",
+  card:        "Card",
+  card_manual: "Card",
+  upi:         "UPI",
+  digital:     "Digital",
+}
 
 function isUrgent(r: AssistanceRequest) {
   return r.status === "pending" && Date.now() - new Date(r.created_at).getTime() > 5 * 60 * 1000
+}
+
+function orderDisplayId(o: KitchenOrder): string {
+  return o.order_operational_id ?? o.order_number_display ?? o.order_number ?? o.id.slice(0, 8)
+}
+
+function TableChip({ label }: { label: string }) {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: "2px 8px",
+      background: "var(--bg-elev-2)", borderRadius: "var(--rad-pill)",
+      color: "var(--ink-2)", letterSpacing: "0.04em", textTransform: "uppercase",
+    }}>
+      {label}
+    </span>
+  )
+}
+
+function ActionButton({
+  onClick, acting, label, tone, inkColor = "var(--accent-ink)",
+}: {
+  onClick: () => void
+  acting: boolean
+  label: string
+  tone: string
+  inkColor?: string
+}) {
+  return (
+    <button
+      disabled={acting}
+      onClick={onClick}
+      className="press"
+      style={{
+        flex: 1, height: 40, minHeight: 40,
+        background: tone, color: inkColor,
+        border: "none", borderRadius: "var(--rad-md)",
+        fontSize: 12, fontWeight: 600,
+        cursor: acting ? "not-allowed" : "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        opacity: acting ? 0.6 : 1,
+        transition: "opacity var(--dur-fast) var(--ease)",
+      }}
+    >
+      {acting ? <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> : label}
+    </button>
+  )
+}
+
+function ServeCard({
+  order, onServe, acting,
+}: {
+  order: KitchenOrder
+  onServe: (id: string) => void
+  acting: boolean
+}) {
+  const tableLabel = order.table_identifier ?? `Table ${order.id.slice(0, 4)}`
+  return (
+    <div style={{
+      background: "var(--bg-elev-1)", boxShadow: "var(--shadow-1)",
+      border: "1px solid var(--line-1)", borderLeft: "4px solid var(--ok)",
+      borderRadius: "var(--rad-lg)", padding: "14px 16px",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <TableChip label={tableLabel} />
+        <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600 }}>{orderDisplayId(order)}</span>
+        <span style={{ fontSize: 11, color: "var(--ink-4)", marginLeft: "auto" }}>{relativeTime(order.created_at)}</span>
+      </div>
+
+      {order.items?.length > 0 && (
+        <ul style={{ listStyle: "none", margin: "0 0 12px", padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+          {order.items.map((it, i) => (
+            <li key={i} style={{ fontSize: 13, color: "var(--ink-1)", display: "flex", gap: 6 }}>
+              <span className="mono" style={{ color: "var(--ink-3)", fontWeight: 600 }}>{it.quantity}×</span>
+              <span>{it.name}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <ActionButton onClick={() => onServe(order.id)} acting={acting} label="Mark served" tone="var(--ok)" inkColor="white" />
+      </div>
+    </div>
+  )
+}
+
+function PaymentCard({
+  payment, onSettle, acting,
+}: {
+  payment: PendingPayment
+  onSettle: (id: number) => void
+  acting: boolean
+}) {
+  const tableLabel = payment.table_identifier || `Table ${payment.session_number}`
+  return (
+    <div style={{
+      background: "var(--bg-elev-1)", boxShadow: "var(--shadow-1)",
+      border: "1px solid var(--line-1)", borderLeft: "4px solid var(--warn)",
+      borderRadius: "var(--rad-lg)", padding: "14px 16px",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <TableChip label={tableLabel} />
+        <span style={{ fontSize: 13, color: "var(--ink-1)", fontWeight: 500 }}>{METHOD_LABEL[payment.method] ?? payment.method}</span>
+        <span style={{ fontSize: 11, color: "var(--ink-4)", marginLeft: "auto" }}>{relativeTime(payment.initiated_at)}</span>
+      </div>
+
+      <p className="serif" style={{ fontSize: 24, fontWeight: 600, color: "var(--ink-1)", margin: "0 0 12px" }}>
+        {formatCurrency(payment.amount)}
+      </p>
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <ActionButton onClick={() => onSettle(payment.id)} acting={acting} label="Confirm collected" tone="var(--warn)" inkColor="var(--accent-ink)" />
+      </div>
+    </div>
+  )
 }
 
 function RequestCard({
@@ -40,80 +159,56 @@ function RequestCard({
 
   return (
     <div style={{
-      background: "var(--bg-elev-1)",
-      boxShadow: "var(--shadow-1)",
-      border: "1px solid var(--line-1)",
-      borderLeft: `4px solid ${accentColor}`,
-      borderRadius: "var(--rad-lg)",
-      overflow: "hidden",
-      padding: "14px 16px",
+      background: "var(--bg-elev-1)", boxShadow: "var(--shadow-1)",
+      border: "1px solid var(--line-1)", borderLeft: `4px solid ${accentColor}`,
+      borderRadius: "var(--rad-lg)", padding: "14px 16px",
       animation: urgent ? "softPulse 2s ease-in-out infinite" : undefined,
     }}>
-      {urgent && (
-        <p className="eyebrow" style={{ color: "var(--alert)", marginBottom: 8 }}>Urgent</p>
-      )}
+      {urgent && <p className="eyebrow" style={{ color: "var(--alert)", marginBottom: 8 }}>Urgent</p>}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <span style={{
-          fontSize: 10, fontWeight: 700, padding: "2px 8px",
-          background: "var(--bg-elev-2)", borderRadius: "var(--rad-pill)",
-          color: "var(--ink-2)", letterSpacing: "0.04em", textTransform: "uppercase",
-        }}>
-          {tableLabel}
-        </span>
-        <span style={{ fontSize: 13, color: "var(--ink-1)", fontWeight: 500 }}>
-          {TYPE_LABEL[request.type]}
-        </span>
-        <span style={{ fontSize: 11, color: "var(--ink-4)", marginLeft: "auto" }}>
-          {relativeTime(request.created_at)}
-        </span>
+        <TableChip label={tableLabel} />
+        <span style={{ fontSize: 13, color: "var(--ink-1)", fontWeight: 500 }}>{TYPE_LABEL[request.type]}</span>
+        <span style={{ fontSize: 11, color: "var(--ink-4)", marginLeft: "auto" }}>{relativeTime(request.created_at)}</span>
       </div>
       <StatusBadge status={request.status} />
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         {request.status === "pending" && (
-          <button
-            disabled={acting}
-            onClick={() => onAction(request.id, "ack")}
-            className="press"
-            style={{
-              flex: 1, height: 38,
-              background: "var(--accent)", color: "var(--accent-ink)",
-              border: "none", borderRadius: "var(--rad-md)",
-              fontSize: 12, fontWeight: 600,
-              cursor: acting ? "not-allowed" : "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              opacity: acting ? 0.6 : 1,
-              transition: "opacity var(--dur-fast) var(--ease)",
-            }}
-          >
-            {acting
-              ? <Loader2 className="animate-spin" style={{ width: 12, height: 12 }} />
-              : "On my way"
-            }
-          </button>
+          <ActionButton onClick={() => onAction(request.id, "ack")} acting={acting} label="On my way" tone="var(--accent)" />
         )}
         {request.status === "acknowledged" && (
-          <button
-            disabled={acting}
-            onClick={() => onAction(request.id, "resolve")}
-            className="press"
-            style={{
-              flex: 1, height: 38,
-              background: "var(--ok)", color: "white",
-              border: "none", borderRadius: "var(--rad-md)",
-              fontSize: 12, fontWeight: 600,
-              cursor: acting ? "not-allowed" : "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              opacity: acting ? 0.6 : 1,
-              transition: "opacity var(--dur-fast) var(--ease)",
-            }}
-          >
-            {acting
-              ? <Loader2 className="animate-spin" style={{ width: 12, height: 12 }} />
-              : "Done ✓"
-            }
-          </button>
+          <ActionButton onClick={() => onAction(request.id, "resolve")} acting={acting} label="Done ✓" tone="var(--ok)" inkColor="white" />
         )}
       </div>
+    </div>
+  )
+}
+
+function QueueColumn({
+  icon: Icon, title, tone, count, emptyTitle, emptyDescription, children,
+}: {
+  icon: typeof CheckCircle
+  title: string
+  tone: string
+  count: number
+  emptyTitle: string
+  emptyDescription: string
+  children: React.ReactNode
+}) {
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+        <Icon style={{ width: 15, height: 15, color: tone }} />
+        <span className="eyebrow" style={{ color: tone, flexGrow: 1 }}>{title}</span>
+        <span style={{
+          fontSize: 10, fontWeight: 700, padding: "1px 8px",
+          background: "var(--bg-elev-2)", color: tone, borderRadius: "var(--rad-pill)",
+        }}>{count}</span>
+      </div>
+      {count === 0 ? (
+        <EmptyState icon={Icon} title={emptyTitle} description={emptyDescription} />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>
+      )}
     </div>
   )
 }
@@ -121,30 +216,61 @@ function RequestCard({
 export default function WaiterPage() {
   const { branchId, token } = useStaffStore()
   const [requests, setRequests] = useState<AssistanceRequest[]>([])
+  const [readyOrders, setReadyOrders] = useState<KitchenOrder[]>([])
+  const [payments, setPayments] = useState<PendingPayment[]>([])
   const [loading, setLoading] = useState(true)
-  const [acting, setActing] = useState<number | null>(null)
+  const [actingKey, setActingKey] = useState<string | null>(null)
 
-  const fetchRequests = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     if (!branchId || !token) return
-    try {
-      const data = await assistanceApi.getActive(branchId, token)
-      setRequests(data)
-    } catch {
-      // silent refresh — stale data is acceptable
-    } finally {
-      setLoading(false)
-    }
+    const [reqRes, ordersRes, payRes] = await Promise.allSettled([
+      assistanceApi.getActive(branchId, token),
+      staffApi.getActiveOrders(branchId, token),
+      paymentsApi.listPendingForBranch(branchId, token),
+    ])
+    if (reqRes.status === "fulfilled") setRequests(reqRes.value)
+    if (ordersRes.status === "fulfilled") setReadyOrders(ordersRes.value.filter((o) => o.status === "ready"))
+    if (payRes.status === "fulfilled") setPayments(payRes.value)
+    setLoading(false)
   }, [branchId, token])
 
   useEffect(() => {
-    fetchRequests()
-    const interval = setInterval(fetchRequests, 10_000)
+    fetchAll()
+    const interval = setInterval(fetchAll, 8_000)
     return () => clearInterval(interval)
-  }, [fetchRequests])
+  }, [fetchAll])
 
-  async function handleAction(id: number, action: "ack" | "resolve") {
+  async function handleServe(orderId: string) {
     if (!token) return
-    setActing(id)
+    setActingKey(`serve:${orderId}`)
+    try {
+      await ordersApi.updateStatus(orderId, "served", token)
+      setReadyOrders((prev) => prev.filter((o) => o.id !== orderId))
+      toast.success("Marked served")
+    } catch {
+      toast.error("Couldn't mark served. Please try again.")
+    } finally {
+      setActingKey(null)
+    }
+  }
+
+  async function handleSettle(paymentId: number) {
+    if (!token) return
+    setActingKey(`settle:${paymentId}`)
+    try {
+      await paymentsApi.settle(paymentId, token)
+      setPayments((prev) => prev.filter((p) => p.id !== paymentId))
+      toast.success("Payment confirmed")
+    } catch {
+      toast.error("Couldn't confirm payment. Please try again.")
+    } finally {
+      setActingKey(null)
+    }
+  }
+
+  async function handleAssist(id: number, action: "ack" | "resolve") {
+    if (!token) return
+    setActingKey(`assist:${id}`)
     try {
       const updated =
         action === "ack"
@@ -159,13 +285,11 @@ export default function WaiterPage() {
     } catch {
       toast.error("Action failed. Please try again.")
     } finally {
-      setActing(null)
+      setActingKey(null)
     }
   }
 
-  const pending      = requests.filter((r) => r.status === "pending")
-  const acknowledged = requests.filter((r) => r.status === "acknowledged")
-  const tableLabelsWithRequests = new Set(requests.map((r) => r.table_identifier ?? `T${r.table_id}`))
+  const activeRequests = requests.filter((r) => r.status === "pending" || r.status === "acknowledged")
 
   if (loading) {
     return (
@@ -177,22 +301,20 @@ export default function WaiterPage() {
 
   return (
     <div className="screen-enter" style={{ background: "var(--bg-base)", color: "var(--ink-1)", minHeight: "100vh" }}>
-      <div style={{ padding: "24px 20px", maxWidth: 960, margin: "0 auto" }}>
+      <div style={{ padding: "24px 20px", maxWidth: 1100, margin: "0 auto" }}>
         {/* Header */}
         <p className="eyebrow">At your service</p>
         <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 0" }}>
-          <h1 className="display-xl" style={{ margin: 0 }}>
-            Request queue
-          </h1>
+          <h1 className="display-xl" style={{ margin: 0 }}>Service floor</h1>
           <span className="live-dot" />
         </div>
 
         {/* Metrics */}
         <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
           {[
-            { label: "Total",       value: requests.length,     tone: "var(--ink-2)"  },
-            { label: "Pending",     value: pending.length,      tone: "var(--accent)" },
-            { label: "In progress", value: acknowledged.length, tone: "var(--ok)"     },
+            { label: "Ready to serve", value: readyOrders.length,    tone: "var(--ok)"     },
+            { label: "Payments",       value: payments.length,        tone: "var(--warn)"   },
+            { label: "Requests",       value: activeRequests.length,  tone: "var(--accent)" },
           ].map(({ label, value, tone }) => (
             <div key={label} style={{
               background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
@@ -205,71 +327,46 @@ export default function WaiterPage() {
           ))}
         </div>
 
-        {/* 2-col layout */}
-        <div className="grid grid-cols-1 md:grid-cols-[1.1fr_1fr]" style={{ gap: 24, marginTop: 24 }}>
-          {/* Left: request queue */}
-          <div>
-            {requests.length === 0 ? (
-              <EmptyState icon={CheckCircle} title="All clear" description="No active requests right now." />
-            ) : (
-              <div>
-                <p className="eyebrow" style={{ marginBottom: 10 }}>
-                  Needs attention ({requests.length})
-                </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {[...pending, ...acknowledged].map((r) => (
-                    <RequestCard
-                      key={r.id}
-                      request={r}
-                      onAction={handleAction}
-                      acting={acting === r.id}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+        {/* Three operational queues */}
+        <div className="grid grid-cols-1 lg:grid-cols-3" style={{ gap: 24, marginTop: 24 }}>
+          <QueueColumn
+            icon={UtensilsCrossed}
+            title="Ready to serve"
+            tone="var(--ok)"
+            count={readyOrders.length}
+            emptyTitle="Nothing waiting"
+            emptyDescription="Ready orders appear here to be taken out."
+          >
+            {readyOrders.map((o) => (
+              <ServeCard key={o.id} order={o} onServe={handleServe} acting={actingKey === `serve:${o.id}`} />
+            ))}
+          </QueueColumn>
 
-          {/* Right: floor overview */}
-          <div>
-            <p className="eyebrow" style={{ marginBottom: 10 }}>Floor</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 10 }}>
-              {KNOWN_TABLES.map(({ id, label }) => {
-                const hasRequest = tableLabelsWithRequests.has(label)
-                return (
-                  <HospitalityCard key={id} elev={1} style={{ padding: "16px 14px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
-                      <div style={{
-                        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                        background: hasRequest ? "var(--accent)" : "var(--ok-soft)",
-                        boxShadow: hasRequest ? "0 0 0 2px var(--accent-soft)" : "none",
-                        transition: "background var(--dur-fast) var(--ease)",
-                      }} />
-                      <span className="serif" style={{ fontSize: 18, fontWeight: 500, color: "var(--ink-1)" }}>
-                        {label}
-                      </span>
-                    </div>
-                    <span style={{ fontSize: 11, color: "var(--ink-4)" }}>
-                      {hasRequest ? "Active request" : "No requests"}
-                    </span>
-                  </HospitalityCard>
-                )
-              })}
-            </div>
+          <QueueColumn
+            icon={BadgeIndianRupee}
+            title="Payments to collect"
+            tone="var(--warn)"
+            count={payments.length}
+            emptyTitle="No payments due"
+            emptyDescription="Cash/card collections to confirm appear here."
+          >
+            {payments.map((p) => (
+              <PaymentCard key={p.id} payment={p} onSettle={handleSettle} acting={actingKey === `settle:${p.id}`} />
+            ))}
+          </QueueColumn>
 
-            {/* Legend */}
-            <div style={{ display: "flex", gap: 14, marginTop: 14, flexWrap: "wrap" }}>
-              {[
-                { label: "Active request", color: "var(--accent)"  },
-                { label: "No requests",    color: "var(--ok-soft)" },
-              ].map(({ label, color }) => (
-                <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
-                  <span style={{ fontSize: 11, color: "var(--ink-4)" }}>{label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <QueueColumn
+            icon={ConciergeBell}
+            title="Requests"
+            tone="var(--accent)"
+            count={activeRequests.length}
+            emptyTitle="All clear"
+            emptyDescription="No active requests right now."
+          >
+            {activeRequests.map((r) => (
+              <RequestCard key={r.id} request={r} onAction={handleAssist} acting={actingKey === `assist:${r.id}`} />
+            ))}
+          </QueueColumn>
         </div>
       </div>
     </div>

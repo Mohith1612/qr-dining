@@ -185,6 +185,24 @@ export interface Payment {
   settled_at?: string | null
 }
 
+// PendingPayment is a payment awaiting staff action for a branch, as returned by
+// GET /branches/:id/payments (ListPaymentsForBranchByStatus). `amount` arrives as
+// a JSON number from the DB numeric column, so it's typed loosely and coerced.
+export interface PendingPayment {
+  id: number
+  session_id: string
+  order_id: string | null
+  amount: string | number
+  method: PaymentMethod
+  status: PaymentStatus
+  initiated_at: string
+  branch_id: number
+  currency: string
+  payment_reference: string
+  table_identifier: string
+  session_number: string
+}
+
 export type StaffRole = "owner" | "manager" | "kitchen" | "waiter"
 
 export interface Staff {

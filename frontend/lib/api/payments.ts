@@ -1,5 +1,5 @@
 import { api } from "./client"
-import type { Payment, PaymentMethod, BillData } from "@/types/api"
+import type { Payment, PendingPayment, PaymentMethod, BillData } from "@/types/api"
 
 export const paymentsApi = {
   initiate: (
@@ -19,4 +19,12 @@ export const paymentsApi = {
 
   getBill: (sessionId: string, guestToken?: string) =>
     api.get<BillData>(`/sessions/${sessionId}/bill`, { guestToken }),
+
+  // Payments awaiting staff confirmation for a branch (waiter settlement queue).
+  listPendingForBranch: (branchId: number, staffToken: string) =>
+    api.get<PendingPayment[]>(`/branches/${branchId}/payments`, { staffToken }),
+
+  // Waiter/manager/owner confirms a cash/card collection: requires_staff_confirmation -> completed.
+  settle: (paymentId: number, staffToken: string) =>
+    api.patch<Payment>(`/payments/${paymentId}/settle`, {}, { staffToken }),
 }
