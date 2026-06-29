@@ -83,7 +83,7 @@ func New(
 	promoSvc := services.NewPromoService(repos)
 	orderSvc := services.NewOrderService(repos, publisher, metrics, promoSvc)
 	assistanceSvc := services.NewAssistanceService(repos, publisher)
-	menuSvc := services.NewMenuService(repos, cache)
+	menuSvc := services.NewMenuService(repos, cache, publisher)
 	lockoutStore := redisPkg.NewLockoutStore(redis)
 	staffSvc := services.NewStaffService(repos, cache, logger)
 	staffSvc.SetRequireSessionDBRow(cfg.FeatureFlags.AuthStaffSessionDBRequired)

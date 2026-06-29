@@ -8,18 +8,20 @@ import (
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/events"
 	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type MenuService struct {
-	repos *repository.Repos
-	cache *redisPkg.Cache
+	repos     *repository.Repos
+	cache     *redisPkg.Cache
+	publisher *events.Publisher
 }
 
-func NewMenuService(repos *repository.Repos, cache *redisPkg.Cache) *MenuService {
-	return &MenuService{repos: repos, cache: cache}
+func NewMenuService(repos *repository.Repos, cache *redisPkg.Cache, publisher *events.Publisher) *MenuService {
+	return &MenuService{repos: repos, cache: cache, publisher: publisher}
 }
 
 type MenuModifier struct {
@@ -256,7 +258,26 @@ func (s *MenuService) ToggleAvailability(ctx context.Context, itemID, branchID i
 		return err
 	}
 	s.InvalidateMenuCache(ctx, branchID)
+	s.broadcastAvailabilityChange(ctx, itemID, branchID, available)
 	return nil
+}
+
+// broadcastAvailabilityChange notifies every live session in the branch that a
+// menu item's availability changed, so guests reconcile their menu/cart in
+// realtime instead of discovering it only when an order is rejected. Best-effort:
+// fanout failure must not fail the admin's toggle.
+func (s *MenuService) broadcastAvailabilityChange(ctx context.Context, itemID, branchID int64, available bool) {
+	if s.publisher == nil {
+		return
+	}
+	sessions, err := s.repos.ListActiveSessionsForBranch(ctx, branchID)
+	if err != nil {
+		return
+	}
+	payload := map[string]any{"item_id": itemID, "is_available": available}
+	for _, sess := range sessions {
+		s.publisher.MenuItemAvailabilityChanged(ctx, sess.ID, payload)
+	}
 }
 
 // requireOwnerOrManager returns ErrUnauthorized if the role is not owner or manager.

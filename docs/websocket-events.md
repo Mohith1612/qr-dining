@@ -321,6 +321,31 @@ Fired when the payment provider webhook confirms completion.
 
 ---
 
+## Menu Events
+
+### `MENU_ITEM_AVAILABILITY_CHANGED`
+
+Fired to every live session in a branch when an admin enables or disables a menu
+item, so guests reconcile their menu and cart in realtime.
+
+**When:** `PATCH /menu/items/:id/availability` (staff) succeeds.
+
+```json
+{
+  "event": "MENU_ITEM_AVAILABILITY_CHANGED",
+  "session_id": "...",
+  "timestamp": "...",
+  "payload": { "item_id": 42, "is_available": false }
+}
+```
+
+**Frontend handling contract:** update the item's availability in local menu
+state, and if the item is in the cart/ready-to-send list, flag or remove it.
+This event is informational — clients MUST NOT treat it as a session or
+connection error. The authoritative menu remains `GET /branches/:id/menu`.
+
+---
+
 ## System Events
 
 ### `ping` / `pong`

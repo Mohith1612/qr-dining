@@ -140,3 +140,7 @@ func (p *Publisher) SessionExpiringSoon(ctx context.Context, sessionID uuid.UUID
 func (p *Publisher) PromoApplied(ctx context.Context, sessionID uuid.UUID, payload any) {
 	p.publish(ctx, ws.EventPromoApplied, sessionID, payload)
 }
+
+func (p *Publisher) MenuItemAvailabilityChanged(ctx context.Context, sessionID uuid.UUID, payload any) {
+	p.publish(ctx, ws.EventMenuItemAvailabilityChanged, sessionID, payload)
+}

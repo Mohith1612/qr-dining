@@ -35,6 +35,10 @@ const (
 	EventSessionClosed            EventType = "SESSION_CLOSED"
 	EventSessionExpiringSoon      EventType = "SESSION_EXPIRING_SOON"
 	EventPromoApplied             EventType = "PROMO_APPLIED"
+	// EventMenuItemAvailabilityChanged tells live guests a menu item was
+	// enabled/disabled mid-session so they can reconcile their menu and cart
+	// instead of failing an order against a now-unavailable item.
+	EventMenuItemAvailabilityChanged EventType = "MENU_ITEM_AVAILABILITY_CHANGED"
 	EventPing                     EventType = "PING"
 	EventPong                     EventType = "PONG"
 )
