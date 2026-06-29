@@ -14,6 +14,9 @@ export class ApiError extends Error {
 
 const ERROR_MESSAGES: Record<string, string> = {
   SESSION_NOT_FOUND:         "This session has ended.",
+  SESSION_CLOSED:            "Your table session has paused. Please refresh to continue.",
+  PAYMENT_IN_PROGRESS:       "A payment is being processed — ordering is paused until it's settled.",
+  MENU_ITEM_UNAVAILABLE:     "One of your items just became unavailable. Please review your cart.",
   TABLE_OCCUPIED:            "This table already has an active session.",
   PARTICIPANT_UNAUTHORIZED:  "You're not part of this session.",
   CART_EMPTY:                "Your cart is empty.",
