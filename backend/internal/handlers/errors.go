@@ -28,6 +28,7 @@ const (
 	CodeAuthLockedOut            = "AUTH_LOCKED_OUT"
 	CodeMFARequired              = "MFA_REQUIRED"
 	CodeMFAInvalidCode           = "MFA_INVALID_CODE"
+	CodeMFANotConfigured         = "MFA_NOT_CONFIGURED"
 	CodeNotSessionHost           = "NOT_SESSION_HOST"
 	CodeParticipantNotFound      = "PARTICIPANT_NOT_FOUND"
 	CodeMenuItemNotFound         = "MENU_ITEM_NOT_FOUND"

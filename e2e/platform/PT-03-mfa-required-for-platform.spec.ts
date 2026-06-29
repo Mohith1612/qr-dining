@@ -21,7 +21,7 @@ test.describe("PT-03: Platform MFA enforcement", () => {
       },
       body: JSON.stringify({}),
     })
-    expect([200, 201, 400, 401, 404, 409]).toContain(res.status)
+    expect([200, 201, 400, 401, 404, 409, 503]).toContain(res.status)
     expect(res.status).not.toBe(500)
   })
 })

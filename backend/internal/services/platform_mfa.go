@@ -52,7 +52,7 @@ type PlatformMFAChallenge struct {
 // stored unencrypted.
 func (s *PlatformService) mfaKey() (string, error) {
 	if len(s.mfaEncKey) < mfaEncryptionKeyMinLen {
-		return "", errors.New("MFA_ENCRYPTION_KEY is not configured (min length 16)")
+		return "", domain.ErrMFANotConfigured
 	}
 	return s.mfaEncKey, nil
 }

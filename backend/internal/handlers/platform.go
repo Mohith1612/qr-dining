@@ -114,6 +114,10 @@ func (h *PlatformHandler) BeginMFAEnrollment(c *gin.Context) {
 	setup, err := h.svc.BeginMFAEnrollment(c.Request.Context(), session.PlatformUserID)
 	if err != nil {
 		h.logPlatformAudit(c, session.PlatformUserID, "platform.mfa.enroll_failed", "platform_user", strconv.FormatInt(session.PlatformUserID, 10), 0, 0, 0, gin.H{"error": err.Error()})
+		if errors.Is(err, domain.ErrMFANotConfigured) {
+			respondError(c, http.StatusServiceUnavailable, CodeMFANotConfigured, "multi-factor authentication is not available on this server")
+			return
+		}
 		respondInternalError(c)
 		return
 	}
@@ -142,6 +146,10 @@ func (h *PlatformHandler) ConfirmMFAEnrollment(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, domain.ErrMFAInvalidCode) {
 			respondError(c, http.StatusUnauthorized, CodeMFAInvalidCode, "invalid code")
+			return
+		}
+		if errors.Is(err, domain.ErrMFANotConfigured) {
+			respondError(c, http.StatusServiceUnavailable, CodeMFANotConfigured, "multi-factor authentication is not available on this server")
 			return
 		}
 		respondInternalError(c)
