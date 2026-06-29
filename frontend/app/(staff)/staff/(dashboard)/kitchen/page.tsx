@@ -12,18 +12,19 @@ import { KitchenSkeleton } from "@/components/shared/LoadingSkeleton"
 import { toast } from "sonner"
 import type { KitchenOrder, OrderStatus } from "@/types/api"
 
+// Kitchen advances orders only up to "ready". Serving (ready -> served) is a
+// front-of-house action the backend now restricts to waiters/managers/owners,
+// so the kitchen board never offers it.
 const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
   pending:   "confirmed",
   confirmed: "preparing",
   preparing: "ready",
-  ready:     "served",
 }
 
 const NEXT_LABEL: Partial<Record<OrderStatus, string>> = {
   pending:   "Confirm",
   confirmed: "Start cooking",
   preparing: "Mark ready",
-  ready:     "Mark served",
 }
 
 function elapsedMins(iso: string): number {
@@ -157,11 +158,7 @@ export default function KitchenPage() {
     setAdvancing(orderId)
     try {
       const updated = await ordersApi.updateStatus(orderId, next, token)
-      setOrders((prev) =>
-        next === "served"
-          ? prev.filter((o) => o.id !== orderId)
-          : prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o))
-      )
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o)))
     } catch {
       toast.error("Couldn't update status. Please try again.")
     } finally {
