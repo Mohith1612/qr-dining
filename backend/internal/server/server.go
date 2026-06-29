@@ -143,6 +143,7 @@ func New(
 	api.GET("/sessions/:id", sessionH.Get)
 	api.DELETE("/sessions/:id", sessionH.Close)
 	api.POST("/sessions/:id/join", sessionH.Join)
+	api.POST("/sessions/:id/reactivate", sessionH.Reactivate)
 	api.POST("/sessions/:id/ws-ticket",
 		middleware.RateLimitSensitive(rateLimiter, "ws_ticket", 60),
 		middleware.RateLimitByKey(rateLimiter, "ws_ticket_session", 12, func(c *gin.Context) string { return c.Param("id") }),

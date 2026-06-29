@@ -180,6 +180,27 @@ func (h *SessionHandler) Join(c *gin.Context) {
 	})
 }
 
+// Reactivate transitions an awaiting_reactivation session back to active so the
+// guest can resume ordering without a full page refresh. Requires the caller to
+// already be a credentialed member of the session.
+func (h *SessionHandler) Reactivate(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondValidationError(c, "invalid session id")
+		return
+	}
+	if !requireGuestSession(c, h.guestTokens, h.repos, id, h.flags.AuthGuestCredentialsRequired) {
+		return
+	}
+
+	sess, err := h.svc.Reactivate(c.Request.Context(), id)
+	if err != nil {
+		sessionError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, sess)
+}
+
 func (h *SessionHandler) IssueWSTicket(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {

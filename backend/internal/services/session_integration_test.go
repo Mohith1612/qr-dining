@@ -4,6 +4,7 @@ package services_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -195,6 +196,58 @@ func TestJoinSession(t *testing.T) {
 	}
 	if count != 2 {
 		t.Errorf("participant count: got %d, want 2", count)
+	}
+}
+
+func TestReactivateSession(t *testing.T) {
+	pool := testutil.OpenTestDB(t)
+	f := testutil.SeedFixtures(t, pool)
+	repos := testutil.NewTestRepos(pool)
+	pub := events.NewNoopPublisher()
+	svc := newTestSessionService(repos, pub)
+	t.Cleanup(func() {
+		testutil.TruncateTables(t, pool, "sessions", "session_participants")
+	})
+
+	ctx := context.Background()
+	result, err := svc.CreateSession(ctx, f.TableID, "Alice", "fp-alice")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	// Already-active reactivation is a no-op success.
+	if sess, err := svc.Reactivate(ctx, result.Session.ID); err != nil {
+		t.Fatalf("Reactivate(active): %v", err)
+	} else if sess.Status != sqlc.SessionStatusActive {
+		t.Errorf("status after active reactivate: got %q, want active", sess.Status)
+	}
+
+	// Worker put the session into awaiting_reactivation; the guest comes back.
+	if _, err := repos.TransitionSessionToAwaitingReactivation(ctx, result.Session.ID); err != nil {
+		t.Fatalf("TransitionSessionToAwaitingReactivation: %v", err)
+	}
+	sess, err := svc.Reactivate(ctx, result.Session.ID)
+	if err != nil {
+		t.Fatalf("Reactivate(awaiting): %v", err)
+	}
+	if sess.Status != sqlc.SessionStatusActive {
+		t.Errorf("status after reactivate: got %q, want active", sess.Status)
+	}
+
+	persisted, err := repos.GetSessionByID(ctx, result.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSessionByID: %v", err)
+	}
+	if persisted.Status != sqlc.SessionStatusActive {
+		t.Errorf("persisted status: got %q, want active", persisted.Status)
+	}
+
+	// Closed sessions cannot be reactivated.
+	if err := svc.CloseSession(ctx, result.Session.ID, &result.Participant.ID); err != nil {
+		t.Fatalf("CloseSession: %v", err)
+	}
+	if _, err := svc.Reactivate(ctx, result.Session.ID); !errors.Is(err, domain.ErrSessionClosed) {
+		t.Errorf("Reactivate(closed): got %v, want ErrSessionClosed", err)
 	}
 }
 

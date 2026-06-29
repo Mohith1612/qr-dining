@@ -223,6 +223,34 @@ func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, d
 	return participant, nil
 }
 
+// Reactivate transitions an awaiting_reactivation session back to active. It is
+// the explicit counterpart to the snapshot reconnect side-effect: the guest's
+// "still ordering" action calls this so subsequent ordering does not hit a 409.
+// Idempotent for already-active sessions; terminal/frozen sessions return
+// ErrSessionClosed so the caller surfaces a clean 409.
+func (s *SessionService) Reactivate(ctx context.Context, sessionID uuid.UUID) (sqlc.Session, error) {
+	sess, err := s.repos.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return sqlc.Session{}, err
+	}
+	switch sess.Status {
+	case sqlc.SessionStatusActive:
+		return sess, nil
+	case sqlc.SessionStatusAwaitingReactivation:
+		if _, err := s.repos.ReactivateSession(ctx, sessionID); err != nil {
+			// The worker abandoned us between read and update — it's terminal now.
+			return sqlc.Session{}, domain.ErrSessionClosed
+		}
+		sess.Status = sqlc.SessionStatusActive
+		sess.AwaitingReactivationAt.Valid = false
+		s.publisher.SessionCreated(ctx, sessionID, map[string]string{"reason": "reactivated"})
+		s.repos.LogEvent(ctx, sessionID, sess.BranchID, "SESSION_REACTIVATED", "participant", 0, map[string]any{})
+		return sess, nil
+	default:
+		return sqlc.Session{}, domain.ErrSessionClosed
+	}
+}
+
 // SessionSnapshot is the full authoritative state of a session at a point in time.
 // Clients call GET /sessions/:id/snapshot on WebSocket reconnect to reconcile local state.
 type SessionSnapshot struct {
