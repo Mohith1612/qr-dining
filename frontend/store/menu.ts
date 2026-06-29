@@ -20,7 +20,7 @@ interface MenuState {
   setCategories: (categories: MenuCategory[]) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
-  markItemUnavailable: (menuItemId: number) => void
+  setItemAvailability: (menuItemId: number, isAvailable: boolean) => void
   setActiveFilters: (f: Partial<ActiveFilters>) => void
   clearFilters: () => void
   setSearchQuery: (q: string) => void
@@ -54,13 +54,15 @@ export const useMenuStore = create<MenuState>((set) => ({
     set({ error, loading: false })
   },
 
-  markItemUnavailable(menuItemId) {
+  setItemAvailability(menuItemId, isAvailable) {
     set((s) => ({
-      featured: s.featured.filter((item) => item.id !== menuItemId),
+      featured: s.featured.map((item) =>
+        item.id === menuItemId ? { ...item, is_available: isAvailable } : item
+      ),
       categories: s.categories.map((cat) => ({
         ...cat,
         items: cat.items.map((item) =>
-          item.id === menuItemId ? { ...item, is_available: false } : item
+          item.id === menuItemId ? { ...item, is_available: isAvailable } : item
         ),
       })),
     }))

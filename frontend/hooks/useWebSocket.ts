@@ -5,10 +5,12 @@ import { WSConnection } from "@/lib/ws/connection"
 import { reconcileSnapshot } from "@/lib/ws/reconciliation"
 import { useSessionStore } from "@/store/session"
 import { useCartStore } from "@/store/cart"
+import { useMenuStore } from "@/store/menu"
 import { useOrdersStore } from "@/store/orders"
 import { useAssistanceStore } from "@/store/assistance"
 import { useWsStore } from "@/store/ws"
 import { cartApi } from "@/lib/api/cart"
+import { toast } from "sonner"
 import type { WSEventHandlerMap } from "@/types/ws"
 import type { Participant, Order, AssistanceRequest, Payment, SessionSnapshot } from "@/types/api"
 
@@ -36,6 +38,21 @@ export function useWebSocket(sessionId: string) {
       PAYMENT_COMPLETED: (payload) => {
         const payment = payload as Payment
         useSessionStore.getState().setCompletedPayment(payment)
+      },
+
+      // An admin toggled a menu item. Reconcile the menu in realtime; if a
+      // now-unavailable item is in the cart, flag it for the guest. This is an
+      // informational update — never a connection/session error.
+      MENU_ITEM_AVAILABILITY_CHANGED: (payload) => {
+        const p = payload as { item_id?: number; is_available?: boolean } | null
+        if (!p || typeof p.item_id !== "number" || typeof p.is_available !== "boolean") return
+        useMenuStore.getState().setItemAvailability(p.item_id, p.is_available)
+        if (!p.is_available) {
+          const inCart = useCartStore.getState().items.some((i) => i.menu_item_id === p.item_id)
+          if (inCart) {
+            toast.warning("An item in your cart is no longer available. Please review your cart before ordering.")
+          }
+        }
       },
 
       PARTICIPANT_JOINED: (payload) => {
