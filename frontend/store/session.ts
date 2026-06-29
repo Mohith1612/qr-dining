@@ -15,6 +15,7 @@ interface SessionState {
   addParticipant: (p: Participant) => void
   markClosed: () => void
   markPaused: () => void
+  applyReactivated: (session: Session) => void
   setIsReactivating: (val: boolean) => void
   setCompletedPayment: (payment: Payment) => void
   setSessionExpiringAt: (at: Date | null) => void
@@ -59,6 +60,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       session: s.session ? { ...s.session, status: "awaiting_reactivation" } : null,
       isReactivating: true,
     }))
+  },
+
+  applyReactivated(session) {
+    set({ session, isReactivating: false, sessionExpiringAt: null })
   },
 
   setIsReactivating(val) {

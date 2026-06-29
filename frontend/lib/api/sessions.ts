@@ -40,6 +40,9 @@ export const sessionsApi = {
     return api.get<SessionSnapshot>(`/sessions/${id}/snapshot${query}`, { guestToken })
   },
 
+  reactivate: (id: string, guestToken: string) =>
+    api.post<Session>(`/sessions/${id}/reactivate`, {}, { guestToken }),
+
   close: (id: string, guestToken: string) =>
     api.delete<void>(`/sessions/${id}`, { guestToken }),
 }

@@ -7,6 +7,7 @@ import { Timer } from "lucide-react"
 import { toast } from "sonner"
 import { useSessionStore } from "@/store/session"
 import { assistanceApi } from "@/lib/api/assistance"
+import { sessionsApi } from "@/lib/api/sessions"
 
 const prefersReducedMotion =
   typeof window !== "undefined"
@@ -56,6 +57,22 @@ export function SessionTimeoutBanner() {
     ariaMinutes !== lastAnnouncedMinute.current ? `${ariaMinutes} minutes remaining` : undefined
   if (ariaLabel) lastAnnouncedMinute.current = ariaMinutes
 
+  // "We're still ordering" — explicitly reactivate the session so the next
+  // order doesn't 409. Applies the returned (active) session to local state.
+  async function handleStillOrdering() {
+    useSessionStore.getState().setSessionExpiringAt(null)
+    if (!session) return
+    try {
+      const guestToken = sessionStorage.getItem("guest_access_token") ?? ""
+      const active = await sessionsApi.reactivate(session.id, guestToken)
+      useSessionStore.getState().applyReactivated(active)
+      toast.success("You're all set — take your time.")
+    } catch {
+      toast.error("Couldn't keep the table open. Please refresh and try again.")
+    }
+  }
+
+  // Urgent phase — guest asks a waiter to keep the table.
   async function handleExtend() {
     useSessionStore.getState().setSessionExpiringAt(null)
     if (session) {
@@ -148,7 +165,7 @@ export function SessionTimeoutBanner() {
                 Your table will close in about {displayMinutes} minutes.
               </p>
               <BannerButtons
-                primary={{ label: "We’re still ordering", onClick: handleExtend }}
+                primary={{ label: "We’re still ordering", onClick: handleStillOrdering }}
                 secondary={{ label: "Request the bill", onClick: handleBill }}
               />
             </div>
