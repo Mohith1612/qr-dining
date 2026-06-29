@@ -10,7 +10,7 @@ import { relativeTime } from "@/lib/format"
 import { UtensilsCrossed, Loader2 } from "lucide-react"
 import { KitchenSkeleton } from "@/components/shared/LoadingSkeleton"
 import { toast } from "sonner"
-import type { Order, OrderStatus } from "@/types/api"
+import type { KitchenOrder, OrderStatus } from "@/types/api"
 
 const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
   pending:   "confirmed",
@@ -51,7 +51,7 @@ const COLUMNS: { status: OrderStatus; label: string; tone: string; toneSoft: str
 function KitchenCard({
   order, tone, toneSoft, onAdvance, advancing,
 }: {
-  order: Order
+  order: KitchenOrder
   tone: string
   toneSoft: string
   onAdvance: (id: string, next: OrderStatus) => void
@@ -130,7 +130,7 @@ function KitchenCard({
 
 export default function KitchenPage() {
   const { branchId, token } = useStaffStore()
-  const [orders, setOrders] = useState<Order[]>([])
+  const [orders, setOrders] = useState<KitchenOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [advancing, setAdvancing] = useState<string | null>(null)
 
@@ -160,7 +160,7 @@ export default function KitchenPage() {
       setOrders((prev) =>
         next === "served"
           ? prev.filter((o) => o.id !== orderId)
-          : prev.map((o) => (o.id === orderId ? updated : o))
+          : prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o))
       )
     } catch {
       toast.error("Couldn't update status. Please try again.")

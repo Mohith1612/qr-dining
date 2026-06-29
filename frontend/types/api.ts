@@ -122,6 +122,23 @@ export interface OrderItem {
   note: string
 }
 
+// KitchenOrderItem is one line on a kitchen ticket, as returned by the enriched
+// active-orders payload (GET /branches/:id/orders/active).
+export interface KitchenOrderItem {
+  menu_item_id: number
+  name: string
+  quantity: number
+  modifiers: ModifierSnapshot[]
+  note: string
+}
+
+// KitchenOrder is an active order plus the operational item detail the kitchen
+// needs to prepare it. Extends Order — every existing order field is preserved.
+export interface KitchenOrder extends Order {
+  table_identifier?: string
+  items: KitchenOrderItem[]
+}
+
 export type AssistanceType = "waiter" | "bill" | "other"
 export type AssistanceStatus = "pending" | "acknowledged" | "resolved"
 

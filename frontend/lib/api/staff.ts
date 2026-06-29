@@ -4,7 +4,7 @@ import type {
   Staff,
   StaffRole,
   Session,
-  Order,
+  KitchenOrder,
   MenuCategory,
   MenuItem,
   ItemModifier,
@@ -51,7 +51,7 @@ export const staffApi = {
     api.get<Session[]>(`/branches/${branchId}/sessions/active`, { staffToken }),
 
   getActiveOrders: (branchId: number, staffToken: string) =>
-    api.get<Order[]>(`/branches/${branchId}/orders/active`, { staffToken }),
+    api.get<KitchenOrder[]>(`/branches/${branchId}/orders/active`, { staffToken }),
 
   createCategory: (
     branchId: number,
