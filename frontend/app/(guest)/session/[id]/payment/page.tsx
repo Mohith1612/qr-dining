@@ -3,13 +3,14 @@
 import { useState, useEffect } from "react"
 import { useOrdersStore } from "@/store/orders"
 import { useSession } from "@/hooks/useSession"
+import { useSessionStore } from "@/store/session"
 import { paymentsApi } from "@/lib/api/payments"
 import { generateIdempotencyKey } from "@/lib/idempotency"
 import { formatCurrency } from "@/lib/format"
-import { Banknote, CreditCard, Smartphone, CheckCircle, Loader2, ChevronRight } from "lucide-react"
+import { Banknote, CreditCard, Smartphone, CheckCircle, Clock, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
-import type { PaymentMethod, BillData } from "@/types/api"
+import type { PaymentMethod, PaymentStatus, BillData } from "@/types/api"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { CustomerOptIn } from "@/components/shared/CustomerOptIn"
 import { BillBreakdown } from "@/components/shared/BillBreakdown"
@@ -45,13 +46,22 @@ function Row({ label, value }: { label: string; value: string }) {
 export default function PaymentPage() {
   const orders = useOrdersStore((s) => s.orders)
   const { session, participant } = useSession()
+  const completedPayment = useSessionStore((s) => s.completedPayment)
   const [bill, setBill] = useState<BillData | null>(null)
   const [billLoading, setBillLoading] = useState(true)
   const [billError, setBillError] = useState<string | null>(null)
   const [loading, setLoading] = useState<PaymentMethod | null>(null)
-  const [paid, setPaid] = useState<PaymentMethod | null>(null)
+  // The payment we initiated, with its server-assigned status. Cash/card come
+  // back as requires_staff_confirmation — NOT completed — so the UI must show
+  // "awaiting confirmation" until a PAYMENT_COMPLETED event confirms it.
+  const [submitted, setSubmitted] = useState<{ method: PaymentMethod; status: PaymentStatus } | null>(null)
   const [paidTotal, setPaidTotal] = useState(0)
   const [showOptIn, setShowOptIn] = useState(false)
+
+  // Authoritative completion: either the initiate response already said
+  // "completed" (e.g. an instantly-settled flow) or a PAYMENT_COMPLETED event
+  // arrived over the websocket and was stored on the session.
+  const isComplete = submitted?.status === "completed" || completedPayment !== null
 
   // Fetch bill on mount and when orders change (new order placed triggers WS → store update).
   useEffect(() => {
@@ -68,23 +78,26 @@ export default function PaymentPage() {
   }, [session?.id, orders.length])
 
   useEffect(() => {
-    if (!paid) return
+    if (!submitted) return
     const timer = setTimeout(() => setShowOptIn(true), 1500)
     return () => clearTimeout(timer)
-  }, [paid])
+  }, [submitted])
 
   const total = bill?.total ?? 0
 
   async function handlePay(method: PaymentMethod) {
-    if (!session || paid) return
+    if (!session || submitted) return
     const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
     setLoading(method)
     try {
-      // Send amount=0 as a hint; backend computes the authoritative total server-side.
       const payment = await paymentsApi.initiate(session.id, total, method, generateIdempotencyKey(), undefined, guestToken)
       setPaidTotal(total)
-      setPaid(method)
-      toast.success(payment.status === "completed" ? "Payment completed." : "Payment request sent.")
+      setSubmitted({ method, status: payment.status })
+      toast.success(
+        payment.status === "completed"
+          ? "Payment completed."
+          : "Request sent — your server will confirm."
+      )
     } catch (err) {
       toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't process payment. Please try again.")
     } finally {
@@ -92,7 +105,9 @@ export default function PaymentPage() {
     }
   }
 
-  if (paid) {
+  if (submitted) {
+    const tone = isComplete ? "var(--ok)" : "var(--info)"
+    const toneSoft = isComplete ? "var(--ok-soft)" : "var(--info-soft)"
     return (
       <>
       <div
@@ -101,29 +116,36 @@ export default function PaymentPage() {
       >
         <div style={{
           width: 84, height: 84, borderRadius: 999,
-          background: "var(--ok-soft)", border: "1px solid var(--ok)",
+          background: toneSoft, border: `1px solid ${tone}`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 0 0 8px var(--ok-soft), 0 12px 30px -10px rgba(0,0,0,0.4)",
+          boxShadow: `0 0 0 8px ${toneSoft}, 0 12px 30px -10px rgba(0,0,0,0.4)`,
           marginBottom: 18,
         }}>
-          <CheckCircle style={{ width: 36, height: 36, color: "var(--ok)" }} aria-hidden />
+          {isComplete
+            ? <CheckCircle style={{ width: 36, height: 36, color: tone }} aria-hidden />
+            : <Clock style={{ width: 36, height: 36, color: tone }} aria-hidden />}
         </div>
 
-        <p className="eyebrow" style={{ marginBottom: 6 }}>Payment recorded</p>
+        <p className="eyebrow" style={{ marginBottom: 6 }}>
+          {isComplete ? "Payment confirmed" : "Awaiting confirmation"}
+        </p>
         <h2 className="serif" style={{ margin: 0, fontSize: 32, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.02em" }}>
-          Thank you
+          {isComplete ? "Thank you" : "Almost there"}
         </h2>
         <p style={{ margin: "10px 0 22px", color: "var(--ink-2)", fontSize: 14, lineHeight: 1.6, maxWidth: 300 }}>
-          {paid === "cash"
-            ? `A host will be with you shortly to collect ${formatCurrency(paidTotal)}.`
-            : paid === "card"
-            ? `Our team is bringing a card terminal for ${formatCurrency(paidTotal)}. Please remain seated.`
-            : `We're awaiting confirmation of your ${formatCurrency(paidTotal)} UPI transfer.`}
+          {isComplete
+            ? `Your payment of ${formatCurrency(paidTotal)} is confirmed.`
+            : submitted.method === "cash"
+            ? `Your server is on the way to collect ${formatCurrency(paidTotal)}. It'll show as paid once they confirm.`
+            : submitted.method === "card"
+            ? `Your server is bringing a card terminal for ${formatCurrency(paidTotal)}. It'll show as paid once they confirm.`
+            : `We're confirming your ${formatCurrency(paidTotal)} UPI transfer.`}
         </p>
 
         <HospitalityCard elev={1} style={{ padding: "12px 16px", marginBottom: 22, minWidth: 240, textAlign: "left" }}>
-          <Row label="Method" value={METHOD_LABEL[paid]} />
+          <Row label="Method" value={METHOD_LABEL[submitted.method]} />
           <Row label="Amount" value={paidTotal > 0 ? formatCurrency(paidTotal) : "—"} />
+          <Row label="Status" value={isComplete ? "Paid" : "Awaiting confirmation"} />
           {session?.table_identifier && <Row label="Table" value={session.table_identifier} />}
         </HospitalityCard>
 
