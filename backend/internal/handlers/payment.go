@@ -255,6 +255,40 @@ func (h *PaymentHandler) Settle(c *gin.Context) {
 	})
 }
 
+// ListPendingForBranch returns payments awaiting staff action for a branch so a
+// waiter can see which cash/card collections still need confirming. Read-only.
+func (h *PaymentHandler) ListPendingForBranch(c *gin.Context) {
+	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid branch id")
+		return
+	}
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	if staffSession.BranchID != branchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+
+	status := c.DefaultQuery("status", string(sqlc.PaymentStatusRequiresStaffConfirmation))
+	switch sqlc.PaymentStatus(status) {
+	case sqlc.PaymentStatusRequiresStaffConfirmation, sqlc.PaymentStatusProviderPending:
+	default:
+		respondValidationError(c, "unsupported payment status filter")
+		return
+	}
+
+	payments, err := h.svc.ListPendingForBranch(c.Request.Context(), branchID, sqlc.PaymentStatus(status))
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	c.JSON(http.StatusOK, payments)
+}
+
 func billSnapshotInputFromBill(bill *BillResponse) services.BillSnapshotInput {
 	ids := make([]uuid.UUID, 0, len(bill.Orders))
 	for _, order := range bill.Orders {

@@ -255,6 +255,7 @@ func New(
 	branchStaffAPI.GET("/orders/active", orderH.ListActiveForBranch)
 	branchStaffAPI.GET("/sessions/active", sessionH.ListActiveForBranch)
 	branchStaffAPI.GET("/assist/active", assistanceH.ListActiveForBranch)
+	branchStaffAPI.GET("/payments", paymentH.ListPendingForBranch)
 	branchStaffAPI.GET("/menu/full", menuAdminH.GetAdminMenu)
 	branchStaffAPI.POST("/menu/categories", menuAdminH.CreateCategory)
 	branchStaffAPI.POST("/menu/items", menuAdminH.CreateItem)

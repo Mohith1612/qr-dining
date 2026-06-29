@@ -439,6 +439,12 @@ func (s *PaymentService) GetPayment(ctx context.Context, id int64) (sqlc.Payment
 	return s.repos.GetPaymentByID(ctx, id)
 }
 
+// ListPendingForBranch returns payments in a given status for a branch, so staff
+// can see which collections still need confirming. Read-only operational view.
+func (s *PaymentService) ListPendingForBranch(ctx context.Context, branchID int64, status sqlc.PaymentStatus) ([]sqlc.ListPaymentsForBranchByStatusRow, error) {
+	return s.repos.ListPaymentsForBranchByStatus(ctx, branchID, status)
+}
+
 func (s *PaymentService) ListForSession(ctx context.Context, sessionID uuid.UUID) ([]sqlc.Payment, error) {
 	return s.repos.ListPaymentsForSession(ctx, sessionID)
 }

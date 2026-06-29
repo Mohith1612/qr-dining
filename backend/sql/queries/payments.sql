@@ -56,6 +56,17 @@ RETURNING *;
 -- name: ListPaymentsForSession :many
 SELECT * FROM payments WHERE session_id = $1 ORDER BY initiated_at DESC;
 
+-- name: ListPaymentsForBranchByStatus :many
+SELECT
+    p.*,
+    t.identifier AS table_identifier,
+    s.session_number AS session_number
+FROM payments p
+JOIN sessions s ON s.id = p.session_id
+JOIN tables t ON t.id = s.table_id
+WHERE p.branch_id = $1 AND p.status = $2
+ORDER BY p.initiated_at ASC;
+
 -- name: InsertWebhookEvent :one
 INSERT INTO payment_webhook_events (external_event_id, provider, event_type, payload, raw_payload, headers)
 VALUES ($1, $2, $3, $4, $5, $6)

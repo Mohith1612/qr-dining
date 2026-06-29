@@ -126,6 +126,10 @@ func (r *Repos) ListPaymentsForSession(ctx context.Context, sessionID uuid.UUID)
 	return r.q.ListPaymentsForSession(ctx, sessionID)
 }
 
+func (r *Repos) ListPaymentsForBranchByStatus(ctx context.Context, branchID int64, status sqlc.PaymentStatus) ([]sqlc.ListPaymentsForBranchByStatusRow, error) {
+	return r.q.ListPaymentsForBranchByStatus(ctx, sqlc.ListPaymentsForBranchByStatusParams{BranchID: branchID, Status: status})
+}
+
 // InsertWebhookEvent inserts a new webhook event with ON CONFLICT DO NOTHING.
 // Returns (event, true) if inserted, (zero, false) if already existed (idempotent replay).
 func (r *Repos) InsertWebhookEvent(ctx context.Context, externalID, provider, eventType string, payload json.RawMessage, rawPayload string, headers json.RawMessage) (sqlc.PaymentWebhookEvent, bool, error) {

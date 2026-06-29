@@ -164,6 +164,7 @@ type Querier interface {
 	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)
 	ListOrdersForSession(ctx context.Context, sessionID uuid.UUID) ([]Order, error)
 	ListParticipantsBySession(ctx context.Context, sessionID uuid.UUID) ([]SessionParticipant, error)
+	ListPaymentsForBranchByStatus(ctx context.Context, arg ListPaymentsForBranchByStatusParams) ([]ListPaymentsForBranchByStatusRow, error)
 	ListPaymentsForSession(ctx context.Context, sessionID uuid.UUID) ([]Payment, error)
 	ListPlans(ctx context.Context) ([]SubscriptionPlan, error)
 	ListPlatformAuditLog(ctx context.Context, arg ListPlatformAuditLogParams) ([]PlatformAuditLog, error)

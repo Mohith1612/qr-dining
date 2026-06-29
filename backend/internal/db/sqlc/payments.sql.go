@@ -8,6 +8,7 @@ package sqlc
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -304,6 +305,97 @@ func (q *Queries) InsertWebhookEvent(ctx context.Context, arg InsertWebhookEvent
 		&i.Headers,
 	)
 	return i, err
+}
+
+const listPaymentsForBranchByStatus = `-- name: ListPaymentsForBranchByStatus :many
+SELECT
+    p.id, p.session_id, p.order_id, p.amount, p.method, p.status, p.initiated_at, p.completed_at, p.subtotal, p.tax_amount, p.service_charge, p.tip_amount, p.bill_snapshot_id, p.branch_id, p.currency, p.provider, p.provider_payment_ref, p.provider_order_ref, p.settled_by_staff_id, p.settled_at, p.payment_business_date, p.payment_sequence, p.payment_reference,
+    t.identifier AS table_identifier,
+    s.session_number AS session_number
+FROM payments p
+JOIN sessions s ON s.id = p.session_id
+JOIN tables t ON t.id = s.table_id
+WHERE p.branch_id = $1 AND p.status = $2
+ORDER BY p.initiated_at ASC
+`
+
+type ListPaymentsForBranchByStatusParams struct {
+	BranchID int64         `json:"branch_id"`
+	Status   PaymentStatus `json:"status"`
+}
+
+type ListPaymentsForBranchByStatusRow struct {
+	ID                  int64              `json:"id"`
+	SessionID           uuid.UUID          `json:"session_id"`
+	OrderID             pgtype.UUID        `json:"order_id"`
+	Amount              pgtype.Numeric     `json:"amount"`
+	Method              PaymentMethod      `json:"method"`
+	Status              PaymentStatus      `json:"status"`
+	InitiatedAt         time.Time          `json:"initiated_at"`
+	CompletedAt         pgtype.Timestamptz `json:"completed_at"`
+	Subtotal            pgtype.Numeric     `json:"subtotal"`
+	TaxAmount           pgtype.Numeric     `json:"tax_amount"`
+	ServiceCharge       pgtype.Numeric     `json:"service_charge"`
+	TipAmount           pgtype.Numeric     `json:"tip_amount"`
+	BillSnapshotID      pgtype.Int8        `json:"bill_snapshot_id"`
+	BranchID            int64              `json:"branch_id"`
+	Currency            string             `json:"currency"`
+	Provider            pgtype.Text        `json:"provider"`
+	ProviderPaymentRef  pgtype.Text        `json:"provider_payment_ref"`
+	ProviderOrderRef    pgtype.Text        `json:"provider_order_ref"`
+	SettledByStaffID    pgtype.Int8        `json:"settled_by_staff_id"`
+	SettledAt           pgtype.Timestamptz `json:"settled_at"`
+	PaymentBusinessDate pgtype.Date        `json:"payment_business_date"`
+	PaymentSequence     int32              `json:"payment_sequence"`
+	PaymentReference    string             `json:"payment_reference"`
+	TableIdentifier     string             `json:"table_identifier"`
+	SessionNumber       string             `json:"session_number"`
+}
+
+func (q *Queries) ListPaymentsForBranchByStatus(ctx context.Context, arg ListPaymentsForBranchByStatusParams) ([]ListPaymentsForBranchByStatusRow, error) {
+	rows, err := q.db.Query(ctx, listPaymentsForBranchByStatus, arg.BranchID, arg.Status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPaymentsForBranchByStatusRow{}
+	for rows.Next() {
+		var i ListPaymentsForBranchByStatusRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.OrderID,
+			&i.Amount,
+			&i.Method,
+			&i.Status,
+			&i.InitiatedAt,
+			&i.CompletedAt,
+			&i.Subtotal,
+			&i.TaxAmount,
+			&i.ServiceCharge,
+			&i.TipAmount,
+			&i.BillSnapshotID,
+			&i.BranchID,
+			&i.Currency,
+			&i.Provider,
+			&i.ProviderPaymentRef,
+			&i.ProviderOrderRef,
+			&i.SettledByStaffID,
+			&i.SettledAt,
+			&i.PaymentBusinessDate,
+			&i.PaymentSequence,
+			&i.PaymentReference,
+			&i.TableIdentifier,
+			&i.SessionNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listPaymentsForSession = `-- name: ListPaymentsForSession :many
