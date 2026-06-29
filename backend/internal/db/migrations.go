@@ -17,7 +17,11 @@ import (
 // The app always migrates itself — never rely on an external CLI in production.
 func RunMigrations(pool *pgxpool.Pool) error {
 	// Open a standard database/sql connection from the pgxpool for golang-migrate.
+	// Close it when done so its borrowed connections return to the pool — this is
+	// a no-op for the long-lived app pool, but it lets callers that close the pool
+	// (e.g. tests) shut down cleanly instead of blocking on leaked connections.
 	db := pgxstdlib.OpenDBFromPool(pool)
+	defer db.Close()
 
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
@@ -33,6 +37,10 @@ func RunMigrations(pool *pgxpool.Pool) error {
 	if err != nil {
 		return fmt.Errorf("create migrate instance: %w", err)
 	}
+	// Release the dedicated connection golang-migrate pins for the migration
+	// advisory lock back to the pool when done. Without this, a caller that
+	// closes the pool (e.g. tests) blocks forever on the leaked connection.
+	defer m.Close()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("run migrations: %w", err)
