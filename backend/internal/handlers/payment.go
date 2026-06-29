@@ -112,15 +112,19 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		ProviderOrderRef:        req.ProviderOrderRef,
 	})
 	if err != nil {
-		if errors.Is(err, domain.ErrIdempotencyConflict) {
+		switch {
+		case errors.Is(err, domain.ErrIdempotencyConflict):
 			respondError(c, http.StatusConflict, "IDEMPOTENCY_CONFLICT", err.Error())
-			return
-		}
-		if errors.Is(err, domain.ErrIdempotencyInProgress) {
+		case errors.Is(err, domain.ErrIdempotencyInProgress):
 			respondError(c, http.StatusConflict, "IDEMPOTENCY_IN_PROGRESS", err.Error())
-			return
+		case errors.Is(err, domain.ErrSessionNotFound):
+			respondError(c, http.StatusNotFound, CodeSessionNotFound, err.Error())
+		case errors.Is(err, domain.ErrSessionNotActive), errors.Is(err, domain.ErrSessionClosed):
+			respondError(c, http.StatusConflict, CodeSessionClosed,
+				"This session can no longer take a payment.")
+		default:
+			respondInternalError(c)
 		}
-		respondInternalError(c)
 		return
 	}
 	c.JSON(http.StatusCreated, payment)

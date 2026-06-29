@@ -159,6 +159,12 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 		switch sqlc.SessionStatus(sess.Status) {
 		case sqlc.SessionStatusActive:
 			if _, err := tx.TransitionSessionToPaymentPending(ctx, req.SessionID); err != nil {
+				// The session left 'active' between our read and this update
+				// (closed/abandoned concurrently). Surface it as a clean
+				// not-active conflict rather than an opaque 500.
+				if errors.Is(err, pgx.ErrNoRows) {
+					return domain.ErrSessionNotActive
+				}
 				return fmt.Errorf("transition session to payment_pending: %w", err)
 			}
 		case sqlc.SessionStatusPaymentPending:
