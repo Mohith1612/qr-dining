@@ -64,6 +64,14 @@ export default function SessionLandingPage({ params }: Props) {
               <div key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 12px 5px 5px", borderRadius: 999, background: "var(--bg-elev-3)", border: "1px solid var(--line-1)" }}>
                 <Avatar name={p.display_name} size={24} />
                 <span style={{ fontSize: 12.5, color: "var(--ink-1)", fontWeight: 500 }}>{p.display_name}</span>
+                {p.is_host && (
+                  <span
+                    title="Session host — sends orders and settles the bill"
+                    style={{ fontSize: 9.5, color: "var(--accent-ink)", background: "var(--accent)", padding: "2px 6px", borderRadius: 999, letterSpacing: "0.06em", fontWeight: 700, textTransform: "uppercase" }}
+                  >
+                    Host
+                  </span>
+                )}
                 {isYou && <span style={{ fontSize: 10, color: "var(--accent)", letterSpacing: "0.08em", fontWeight: 600 }}>YOU</span>}
               </div>
             )

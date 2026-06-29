@@ -67,6 +67,15 @@ export function useWebSocket(sessionId: string) {
         }))
       },
 
+      HOST_CHANGED: (payload) => {
+        const newHost = payload as Participant
+        const wasHost = useSessionStore.getState().isHost
+        useSessionStore.getState().applyHostChanged(newHost)
+        if (useSessionStore.getState().isHost && !wasHost) {
+          toast.info("You're now the table host — you can send orders and request the bill.")
+        }
+      },
+
       CART_UPDATED: async () => {
         try {
           const guestToken = sessionStorage.getItem("guest_access_token")

@@ -13,18 +13,20 @@ interface WSTicketResponse {
 }
 
 export const sessionsApi = {
-  create: (tableId: number, displayName: string, deviceFingerprint?: string) =>
+  create: (tableId: number, displayName: string, phoneE164?: string, deviceFingerprint?: string) =>
     api.post<CreateSessionResponse>("/sessions", {
       table_id: tableId,
       display_name: displayName,
+      phone_e164: phoneE164 || undefined,
       device_fingerprint: deviceFingerprint,
     }),
 
   get: (id: string, guestToken?: string) => api.get<Session>(`/sessions/${id}`, { guestToken }),
 
-  join: (id: string, displayName: string, deviceFingerprint?: string) =>
+  join: (id: string, displayName: string, phoneE164?: string, deviceFingerprint?: string) =>
     api.post<CreateSessionResponse>(`/sessions/${id}/join`, {
       display_name: displayName,
+      phone_e164: phoneE164 || undefined,
       device_fingerprint: deviceFingerprint,
     }),
 

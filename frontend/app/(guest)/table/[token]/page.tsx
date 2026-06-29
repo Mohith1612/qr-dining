@@ -4,6 +4,7 @@ import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import { menuApi } from "@/lib/api/menu"
 import { sessionsApi } from "@/lib/api/sessions"
+import { ApiError } from "@/lib/api/client"
 import { useSessionStore } from "@/store/session"
 import { UtensilsCrossed } from "lucide-react"
 
@@ -25,6 +26,7 @@ export default function TableEntryPage({ params }: Props) {
   const [tableInfo, setTableInfo] = useState<TableInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState("")
+  const [phone, setPhone] = useState("")
   const [loading, setLoading] = useState(false)
   const [resolving, setResolving] = useState(true)
 
@@ -46,11 +48,12 @@ export default function TableEntryPage({ params }: Props) {
     e.preventDefault()
     if (!tableInfo || !name.trim()) return
     setLoading(true)
+    const trimmedPhone = phone.trim() || undefined
     try {
       let sessionId: string
       if (tableInfo.session_id) {
         // Table has an active session — join it
-        const { session, participant, guest_access_token: guestToken } = await sessionsApi.join(tableInfo.session_id, name.trim())
+        const { session, participant, guest_access_token: guestToken } = await sessionsApi.join(tableInfo.session_id, name.trim(), trimmedPhone)
         useSessionStore.getState().setSession(session, participant)
         sessionStorage.setItem("session_id", session.id)
         sessionStorage.setItem("participant_id", String(participant.id))
@@ -58,7 +61,7 @@ export default function TableEntryPage({ params }: Props) {
         sessionId = session.id
       } else {
         // No active session — create one
-        const { session, participant, guest_access_token: guestToken } = await sessionsApi.create(tableInfo.table_id, name.trim())
+        const { session, participant, guest_access_token: guestToken } = await sessionsApi.create(tableInfo.table_id, name.trim(), trimmedPhone)
         useSessionStore.getState().setSession(session, participant)
         sessionStorage.setItem("session_id", session.id)
         sessionStorage.setItem("participant_id", String(participant.id))
@@ -66,8 +69,10 @@ export default function TableEntryPage({ params }: Props) {
         sessionId = session.id
       }
       router.push(`/session/${sessionId}`)
-    } catch {
-      setError("Something went wrong. Please try again.")
+    } catch (err) {
+      setError(err instanceof ApiError && err.code === "INVALID_PHONE"
+        ? "Please enter a valid mobile number, or leave it blank to continue."
+        : "Something went wrong. Please try again.")
       setLoading(false)
     }
   }
@@ -144,6 +149,25 @@ export default function TableEntryPage({ params }: Props) {
               }}
             />
             <div style={{ height: 1, background: "var(--line-2)", margin: "10px 0 16px" }} />
+
+            {/* Optional phone — low-friction, "continue without phone" by leaving blank */}
+            <label className="eyebrow" style={{ display: "block", marginBottom: 8, fontSize: 10 }}>
+              Phone <span style={{ color: "var(--ink-4)", textTransform: "none", letterSpacing: 0 }}>· optional</span>
+            </label>
+            <input
+              type="tel"
+              inputMode="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="Add a number for receipts (optional)"
+              maxLength={20}
+              style={{
+                width: "100%", border: 0, outline: 0, background: "transparent",
+                fontSize: 15, color: "var(--ink-1)", letterSpacing: "0.01em",
+              }}
+            />
+            <div style={{ height: 1, background: "var(--line-2)", margin: "10px 0 16px" }} />
+
             {error && (
               <p style={{ color: "var(--alert)", fontSize: 12, marginBottom: 12, textAlign: "center" }}>{error}</p>
             )}

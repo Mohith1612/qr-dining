@@ -13,6 +13,7 @@ interface SessionState {
   setSession: (session: Session, participant: Participant) => void
   setFromSnapshot: (session: Session, participants: Participant[]) => void
   addParticipant: (p: Participant) => void
+  applyHostChanged: (newHost: Participant) => void
   markClosed: () => void
   markPaused: () => void
   applyReactivated: (session: Session) => void
@@ -53,6 +54,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   addParticipant(p) {
     set((s) => ({ participants: [...s.participants.filter((x) => x.id !== p.id), p] }))
+  },
+
+  applyHostChanged(newHost) {
+    set((s) => ({
+      participants: s.participants.map((p) => ({ ...p, is_host: p.id === newHost.id })),
+      isHost: s.participant?.id === newHost.id,
+      participant: s.participant
+        ? { ...s.participant, is_host: s.participant.id === newHost.id }
+        : s.participant,
+      session: s.session
+        ? { ...s.session, host_participant_id: newHost.id }
+        : s.session,
+    }))
   },
 
   markPaused() {

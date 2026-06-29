@@ -23,6 +23,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   ORDER_ALREADY_PLACED:      "This order was already placed.",
   INSUFFICIENT_ROLE:         "You don't have permission to do this.",
   INVALID_PHONE:             "Please enter a valid 10-digit mobile number.",
+  NOT_SESSION_HOST:          "Only the table host can do this. Ask the host to send the order or request the bill.",
 }
 
 export function friendlyErrorMessage(code: string): string {

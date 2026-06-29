@@ -45,7 +45,8 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function PaymentPage() {
   const orders = useOrdersStore((s) => s.orders)
-  const { session, participant } = useSession()
+  const { session, participant, participants, isHost } = useSession()
+  const hostName = participants.find((p) => p.is_host)?.display_name
   const completedPayment = useSessionStore((s) => s.completedPayment)
   const [bill, setBill] = useState<BillData | null>(null)
   const [billLoading, setBillLoading] = useState(true)
@@ -192,7 +193,25 @@ export default function PaymentPage() {
         </HospitalityCard>
       </div>
 
-      {/* Payment methods */}
+      {/* Payment methods — host-controlled: only the host requests the bill/payment */}
+      {!isHost ? (
+        <div style={{ padding: "12px 20px 28px" }}>
+          <div
+            style={{
+              borderRadius: "var(--rad-lg)", padding: "16px 18px",
+              background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+              textAlign: "center",
+            }}
+          >
+            <p style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)", marginBottom: 4 }}>
+              {hostName ? `${hostName} settles the bill` : "The table host settles the bill"}
+            </p>
+            <p style={{ fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+              You can review the bill here — only the host requests payment for the table.
+            </p>
+          </div>
+        </div>
+      ) : (
       <div style={{ padding: "12px 20px 28px" }}>
         <span className="eyebrow" style={{ marginBottom: 10, display: "block" }}>Settle up</span>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -241,6 +260,7 @@ export default function PaymentPage() {
           </p>
         )}
       </div>
+      )}
     </div>
   )
 }

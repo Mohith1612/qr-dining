@@ -87,8 +87,10 @@ export default function CartPage({ params }: Props) {
   const router = useRouter()
   const { items, loading, removeItem, refreshCart } = useCart()
   const { placeOrder } = useOrders()
-  const { session, participant } = useSession()
+  const { session, participant, participants, isHost } = useSession()
   const [placing, setPlacing] = useState(false)
+
+  const hostName = participants.find((p) => p.is_host)?.display_name
 
   const [promoCode, setPromoCode] = useState("")
   const [appliedPromo, setAppliedPromo] = useState<ValidatePromoResponse | null>(null)
@@ -329,26 +331,43 @@ export default function CartPage({ params }: Props) {
         </div>
       </div>
 
-      {/* CTA */}
-      <button
-        onClick={handlePlaceOrder}
-        disabled={placing || items.length === 0}
-        className="press"
-        style={{
-          width: "100%", height: 54, borderRadius: 16,
-          background: placing
-            ? "var(--bg-elev-3)"
-            : "linear-gradient(180deg, var(--accent-strong), var(--accent))",
-          color: placing ? "var(--ink-3)" : "var(--accent-ink)",
-          border: placing ? "1px solid var(--line-2)" : "1px solid var(--accent)",
-          boxShadow: placing ? "none" : "var(--shadow-2), inset 0 1px 0 rgba(255,255,255,0.18)",
-          fontSize: 16, fontWeight: 600,
-          cursor: placing ? "not-allowed" : "pointer",
-          transition: "background var(--dur-fast) var(--ease)",
-        }}
-      >
-        {placing ? "Sending to kitchen…" : `Confirm your order · ${formatCurrency(subtotal)}`}
-      </button>
+      {/* CTA — host-controlled: only the table host sends the order to the kitchen */}
+      {isHost ? (
+        <button
+          onClick={handlePlaceOrder}
+          disabled={placing || items.length === 0}
+          className="press"
+          style={{
+            width: "100%", height: 54, borderRadius: 16,
+            background: placing
+              ? "var(--bg-elev-3)"
+              : "linear-gradient(180deg, var(--accent-strong), var(--accent))",
+            color: placing ? "var(--ink-3)" : "var(--accent-ink)",
+            border: placing ? "1px solid var(--line-2)" : "1px solid var(--accent)",
+            boxShadow: placing ? "none" : "var(--shadow-2), inset 0 1px 0 rgba(255,255,255,0.18)",
+            fontSize: 16, fontWeight: 600,
+            cursor: placing ? "not-allowed" : "pointer",
+            transition: "background var(--dur-fast) var(--ease)",
+          }}
+        >
+          {placing ? "Sending to kitchen…" : `Confirm your order · ${formatCurrency(subtotal)}`}
+        </button>
+      ) : (
+        <div
+          style={{
+            width: "100%", borderRadius: 16, padding: "16px 18px",
+            background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+            textAlign: "center",
+          }}
+        >
+          <p style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)", marginBottom: 4 }}>
+            {hostName ? `${hostName} sends the order` : "The table host sends the order"}
+          </p>
+          <p style={{ fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+            You can keep adding to the shared cart — only the host confirms the order to the kitchen.
+          </p>
+        </div>
+      )}
     </div>
   )
 }
