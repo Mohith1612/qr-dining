@@ -120,6 +120,7 @@ func main() {
 	}
 
 	var freePlanID int64
+	planIDByTier := map[string]int64{}
 	for _, p := range plans {
 		var planID int64
 		err = pool.QueryRow(ctx,
@@ -133,8 +134,59 @@ func main() {
 			fatal("insert plan "+p.tier, err)
 		}
 		fmt.Printf("plan id=%d tier=%s price=%s\n", planID, p.tier, p.price)
+		planIDByTier[p.tier] = planID
 		if p.tier == "free" {
 			freePlanID = planID
+		}
+	}
+
+	// ── Plan entitlements ───────────────────────────────────────────────────
+	// Additive mapping that expresses each tier's features_json in the new
+	// capability/limit catalog. The entitlement resolver bridges from
+	// features_json when these rows are absent, so this is bootstrap convenience
+	// only (e.g. the soak DB resolves identically without it).
+	type planEnt struct {
+		key     string
+		limit   any // *int64 value or nil (nil = unlimited / not applicable)
+	}
+	lim := func(v int64) any { return v }
+	planEnts := map[string][]planEnt{
+		"free": {
+			{key: "limit.branches", limit: lim(1)},
+			{key: "limit.tables", limit: lim(10)},
+			{key: "limit.staff", limit: nil},
+		},
+		"standard": {
+			{key: "analytics.basic", limit: nil},
+			{key: "limit.branches", limit: lim(3)},
+			{key: "limit.tables", limit: nil},
+			{key: "limit.staff", limit: nil},
+		},
+		"premium": {
+			{key: "analytics.basic", limit: nil},
+			{key: "analytics.advanced", limit: nil},
+			{key: "multi_branch", limit: nil},
+			{key: "limit.branches", limit: nil},
+			{key: "limit.tables", limit: nil},
+			{key: "limit.staff", limit: nil},
+		},
+	}
+	for tier, ents := range planEnts {
+		planID := planIDByTier[tier]
+		if planID == 0 {
+			continue
+		}
+		for _, e := range ents {
+			_, err = pool.Exec(ctx,
+				`INSERT INTO plan_entitlements (plan_id, entitlement_key, enabled, limit_value)
+				 VALUES ($1, $2, TRUE, $3)
+				 ON CONFLICT (plan_id, entitlement_key)
+				 DO UPDATE SET enabled = EXCLUDED.enabled, limit_value = EXCLUDED.limit_value, updated_at = NOW()`,
+				planID, e.key, e.limit,
+			)
+			if err != nil {
+				fmt.Printf("plan entitlement %s/%s: %v\n", tier, e.key, err)
+			}
 		}
 	}
 
