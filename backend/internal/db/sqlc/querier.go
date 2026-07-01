@@ -40,6 +40,7 @@ type Querier interface {
 	CreateOrganizationMember(ctx context.Context, arg CreateOrganizationMemberParams) (OrganizationMember, error)
 	CreateParticipant(ctx context.Context, arg CreateParticipantParams) (SessionParticipant, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
+	CreatePlan(ctx context.Context, arg CreatePlanParams) (SubscriptionPlan, error)
 	CreatePlatformBranch(ctx context.Context, arg CreatePlatformBranchParams) (Branch, error)
 	CreatePlatformMFAChallenge(ctx context.Context, arg CreatePlatformMFAChallengeParams) (PlatformMfaChallenge, error)
 	CreatePlatformOrganization(ctx context.Context, arg CreatePlatformOrganizationParams) (Organization, error)
@@ -59,6 +60,8 @@ type Querier interface {
 	DeleteItemModifierScoped(ctx context.Context, arg DeleteItemModifierScopedParams) error
 	DeleteMenuCategory(ctx context.Context, arg DeleteMenuCategoryParams) error
 	DeleteMenuItem(ctx context.Context, arg DeleteMenuItemParams) error
+	DeleteOrganizationEntitlementOverride(ctx context.Context, arg DeleteOrganizationEntitlementOverrideParams) error
+	DeletePlanEntitlements(ctx context.Context, planID int64) error
 	DisablePlatformMFA(ctx context.Context, platformUserID int64) error
 	FailIdempotencyKey(ctx context.Context, arg FailIdempotencyKeyParams) error
 	GetActivePlatformSessionByTokenHash(ctx context.Context, tokenHash string) (PlatformSession, error)
@@ -77,6 +80,7 @@ type Querier interface {
 	GetCustomerByPhone(ctx context.Context, arg GetCustomerByPhoneParams) (Customer, error)
 	GetCustomerSessionHistory(ctx context.Context, customerID pgtype.Int8) ([]GetCustomerSessionHistoryRow, error)
 	GetCustomerSessionHistoryScoped(ctx context.Context, arg GetCustomerSessionHistoryScopedParams) ([]GetCustomerSessionHistoryScopedRow, error)
+	GetEntitlement(ctx context.Context, key string) (Entitlement, error)
 	GetEventsBySession(ctx context.Context, sessionID pgtype.UUID) ([]EventLog, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetMenuCategoryByID(ctx context.Context, id int64) (MenuCategory, error)
@@ -100,11 +104,13 @@ type Querier interface {
 	GetOrganizationMembershipForStaff(ctx context.Context, arg GetOrganizationMembershipForStaffParams) (OrganizationMember, error)
 	// Returns daily UTC order count and revenue across an organization.
 	GetOrganizationOrderVolume(ctx context.Context, arg GetOrganizationOrderVolumeParams) ([]GetOrganizationOrderVolumeRow, error)
+	GetOrganizationPlanAssignment(ctx context.Context, organizationID int64) (OrganizationPlanAssignment, error)
 	// Returns the most ordered menu items across an organization within a time window.
 	GetOrganizationTopOrderedItems(ctx context.Context, arg GetOrganizationTopOrderedItemsParams) ([]GetOrganizationTopOrderedItemsRow, error)
 	GetParticipantByID(ctx context.Context, id int64) (SessionParticipant, error)
 	GetPaymentByID(ctx context.Context, id int64) (Payment, error)
 	GetPaymentByProviderRef(ctx context.Context, arg GetPaymentByProviderRefParams) (Payment, error)
+	GetPlanByID(ctx context.Context, id int64) (SubscriptionPlan, error)
 	GetPlanByTier(ctx context.Context, tier PlanTier) (SubscriptionPlan, error)
 	GetPlatformMFA(ctx context.Context, platformUserID int64) (PlatformUserMfa, error)
 	GetPlatformMFAChallengeByHash(ctx context.Context, challengeHash string) (PlatformMfaChallenge, error)
@@ -155,6 +161,7 @@ type Querier interface {
 	ListAuditLogPlatform(ctx context.Context, arg ListAuditLogPlatformParams) ([]AuditLog, error)
 	ListBranchesForOrganization(ctx context.Context, organizationID int64) ([]Branch, error)
 	ListCartItems(ctx context.Context, cartID int64) ([]ListCartItemsRow, error)
+	ListEntitlementCatalog(ctx context.Context) ([]Entitlement, error)
 	// Queries used by background worker routines.
 	// Finds sessions that have exceeded their branch-configured timeout.
 	ListExpiredSessions(ctx context.Context) ([]ListExpiredSessionsRow, error)
@@ -165,9 +172,11 @@ type Querier interface {
 	ListModifiersForItems(ctx context.Context, dollar_1 []int64) ([]ItemModifier, error)
 	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)
 	ListOrdersForSession(ctx context.Context, sessionID uuid.UUID) ([]Order, error)
+	ListOrganizationEntitlementOverrides(ctx context.Context, organizationID int64) ([]OrganizationEntitlementOverride, error)
 	ListParticipantsBySession(ctx context.Context, sessionID uuid.UUID) ([]SessionParticipant, error)
 	ListPaymentsForBranchByStatus(ctx context.Context, arg ListPaymentsForBranchByStatusParams) ([]ListPaymentsForBranchByStatusRow, error)
 	ListPaymentsForSession(ctx context.Context, sessionID uuid.UUID) ([]Payment, error)
+	ListPlanEntitlements(ctx context.Context, planID int64) ([]PlanEntitlement, error)
 	ListPlans(ctx context.Context) ([]SubscriptionPlan, error)
 	ListPlatformAuditLog(ctx context.Context, arg ListPlatformAuditLogParams) ([]PlatformAuditLog, error)
 	ListPlatformOrganizations(ctx context.Context) ([]Organization, error)
@@ -226,10 +235,14 @@ type Querier interface {
 	UpdateParticipantLastSeen(ctx context.Context, id int64) error
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
 	UpdatePaymentStatusExpected(ctx context.Context, arg UpdatePaymentStatusExpectedParams) (Payment, error)
+	UpdatePlan(ctx context.Context, arg UpdatePlanParams) (SubscriptionPlan, error)
 	UpdateRestaurantLogoByBranchID(ctx context.Context, arg UpdateRestaurantLogoByBranchIDParams) error
 	UpdateStaffPIN(ctx context.Context, arg UpdateStaffPINParams) error
 	UpdateTableStatus(ctx context.Context, arg UpdateTableStatusParams) error
 	UpsertCustomer(ctx context.Context, arg UpsertCustomerParams) (Customer, error)
+	UpsertOrganizationEntitlementOverride(ctx context.Context, arg UpsertOrganizationEntitlementOverrideParams) (OrganizationEntitlementOverride, error)
+	UpsertOrganizationPlanAssignment(ctx context.Context, arg UpsertOrganizationPlanAssignmentParams) (OrganizationPlanAssignment, error)
+	UpsertPlanEntitlement(ctx context.Context, arg UpsertPlanEntitlementParams) (PlanEntitlement, error)
 	UpsertPlatformMFAPending(ctx context.Context, arg UpsertPlatformMFAPendingParams) (PlatformUserMfa, error)
 	UpsertPlatformUser(ctx context.Context, arg UpsertPlatformUserParams) (PlatformUser, error)
 	UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) (RestaurantSubscription, error)

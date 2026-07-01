@@ -78,6 +78,12 @@ type Metrics struct {
 	WSTicketConsumeFailedTotal      *prometheus.CounterVec
 	PaymentPendingEscalationsTotal  *prometheus.CounterVec
 
+	// EntitlementEvaluationsTotal counts organization entitlement capability
+	// evaluations by capability and result. Shadow-only: the platform governance
+	// foundation resolves entitlements without enforcing them on operational
+	// paths, so a spike in "deny" here is a pre-enforcement would-break signal.
+	EntitlementEvaluationsTotal *prometheus.CounterVec
+
 	// RateLimiterUnavailableTotal counts requests denied because the rate
 	// limiter backend was unreachable on a fail-closed surface (staff auth,
 	// payment, webhook, ws-ticket).
@@ -294,6 +300,11 @@ func NewMetrics() *Metrics {
 			Name: "payment_pending_escalations_total",
 			Help: "Total stalled payment_pending escalations emitted by the escalation worker, by level.",
 		}, []string{"level"}),
+
+		EntitlementEvaluationsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "entitlement_evaluations_total",
+			Help: "Total organization entitlement capability evaluations by capability and result (allow|deny). Shadow-only; not enforced on operational paths.",
+		}, []string{"capability", "result"}),
 	}
 
 	reg.MustRegister(
@@ -339,6 +350,7 @@ func NewMetrics() *Metrics {
 		m.GuestTokenValidationFailedTotal,
 		m.WSTicketConsumeFailedTotal,
 		m.PaymentPendingEscalationsTotal,
+		m.EntitlementEvaluationsTotal,
 	)
 
 	return m

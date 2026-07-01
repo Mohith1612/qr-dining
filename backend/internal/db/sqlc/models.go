@@ -738,6 +738,13 @@ type Customer struct {
 	CreatedAt    time.Time          `json:"created_at"`
 }
 
+type Entitlement struct {
+	Key         string    `json:"key"`
+	Kind        string    `json:"kind"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type EventLog struct {
 	ID        int64           `json:"id"`
 	SessionID pgtype.UUID     `json:"session_id"`
@@ -851,6 +858,17 @@ type OrganizationBranchMembership struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+type OrganizationEntitlementOverride struct {
+	OrganizationID          int64       `json:"organization_id"`
+	EntitlementKey          string      `json:"entitlement_key"`
+	Enabled                 pgtype.Bool `json:"enabled"`
+	LimitValue              pgtype.Int8 `json:"limit_value"`
+	Reason                  string      `json:"reason"`
+	CreatedByPlatformUserID pgtype.Int8 `json:"created_by_platform_user_id"`
+	CreatedAt               time.Time   `json:"created_at"`
+	UpdatedAt               time.Time   `json:"updated_at"`
+}
+
 type OrganizationMember struct {
 	ID               int64       `json:"id"`
 	OrganizationID   int64       `json:"organization_id"`
@@ -860,6 +878,15 @@ type OrganizationMember struct {
 	InvitedByStaffID pgtype.Int8 `json:"invited_by_staff_id"`
 	CreatedAt        time.Time   `json:"created_at"`
 	UpdatedAt        time.Time   `json:"updated_at"`
+}
+
+type OrganizationPlanAssignment struct {
+	OrganizationID           int64       `json:"organization_id"`
+	PlanID                   int64       `json:"plan_id"`
+	Status                   string      `json:"status"`
+	AssignedByPlatformUserID pgtype.Int8 `json:"assigned_by_platform_user_id"`
+	CreatedAt                time.Time   `json:"created_at"`
+	UpdatedAt                time.Time   `json:"updated_at"`
 }
 
 type Payment struct {
@@ -907,6 +934,15 @@ type PaymentWebhookEvent struct {
 	CreatedAt       time.Time          `json:"created_at"`
 	RawPayload      pgtype.Text        `json:"raw_payload"`
 	Headers         json.RawMessage    `json:"headers"`
+}
+
+type PlanEntitlement struct {
+	PlanID         int64       `json:"plan_id"`
+	EntitlementKey string      `json:"entitlement_key"`
+	Enabled        bool        `json:"enabled"`
+	LimitValue     pgtype.Int8 `json:"limit_value"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
 type PlatformAuditLog struct {

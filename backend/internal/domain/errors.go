@@ -92,8 +92,10 @@ var (
 
 // Subscriptions / Plans
 var (
-	ErrPlanNotFound   = errors.New("subscription plan not found")
-	ErrAnalyticsGated = errors.New("analytics not available on current plan")
+	ErrPlanNotFound        = errors.New("subscription plan not found")
+	ErrAnalyticsGated      = errors.New("analytics not available on current plan")
+	ErrOrgPlanNotAssigned  = errors.New("organization has no plan assignment")
+	ErrEntitlementNotFound = errors.New("entitlement not found in catalog")
 )
 
 // Customers
