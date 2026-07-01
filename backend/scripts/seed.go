@@ -146,8 +146,8 @@ func main() {
 	// features_json when these rows are absent, so this is bootstrap convenience
 	// only (e.g. the soak DB resolves identically without it).
 	type planEnt struct {
-		key     string
-		limit   any // *int64 value or nil (nil = unlimited / not applicable)
+		key   string
+		limit any // *int64 value or nil (nil = unlimited / not applicable)
 	}
 	lim := func(v int64) any { return v }
 	planEnts := map[string][]planEnt{

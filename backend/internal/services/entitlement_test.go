@@ -57,10 +57,10 @@ func TestMergeEntitlements(t *testing.T) {
 			wantLims:  map[string]int64{"limit.branches": 10, "limit.tables": 10},
 		},
 		{
-			name:      "nil plan limit means unlimited",
-			base:      []baseEntitlement{{Key: "limit.branches", Enabled: true, Limit: nil}},
-			wantCaps:  map[string]bool{"analytics.basic": false, "analytics.advanced": false, "multi_branch": false},
-			wantLims:  map[string]int64{"limit.branches": -1, "limit.tables": -1},
+			name:     "nil plan limit means unlimited",
+			base:     []baseEntitlement{{Key: "limit.branches", Enabled: true, Limit: nil}},
+			wantCaps: map[string]bool{"analytics.basic": false, "analytics.advanced": false, "multi_branch": false},
+			wantLims: map[string]int64{"limit.branches": -1, "limit.tables": -1},
 		},
 		{
 			name:      "unknown keys outside the catalog are ignored",
