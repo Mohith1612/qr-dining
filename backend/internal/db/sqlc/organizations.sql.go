@@ -187,6 +187,38 @@ func (q *Queries) ListBranchesForOrganization(ctx context.Context, organizationI
 	return items, nil
 }
 
+const updateBranchStatus = `-- name: UpdateBranchStatus :one
+UPDATE branches
+SET status = $2
+WHERE id = $1
+RETURNING id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes, order_prefix, branch_code, organization_id, status, support_metadata_json
+`
+
+type UpdateBranchStatusParams struct {
+	ID     int64  `json:"id"`
+	Status string `json:"status"`
+}
+
+func (q *Queries) UpdateBranchStatus(ctx context.Context, arg UpdateBranchStatusParams) (Branch, error) {
+	row := q.db.QueryRow(ctx, updateBranchStatus, arg.ID, arg.Status)
+	var i Branch
+	err := row.Scan(
+		&i.ID,
+		&i.RestaurantID,
+		&i.Name,
+		&i.Address,
+		&i.Timezone,
+		&i.CreatedAt,
+		&i.SessionTimeoutMinutes,
+		&i.OrderPrefix,
+		&i.BranchCode,
+		&i.OrganizationID,
+		&i.Status,
+		&i.SupportMetadataJson,
+	)
+	return i, err
+}
+
 const updateOrganizationSettings = `-- name: UpdateOrganizationSettings :one
 UPDATE organizations
 SET
@@ -215,6 +247,35 @@ func (q *Queries) UpdateOrganizationSettings(ctx context.Context, arg UpdateOrga
 		arg.PrimaryContactEmail,
 		arg.SettingsJson,
 	)
+	var i Organization
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.LegalName,
+		&i.Status,
+		&i.PrimaryContactEmail,
+		&i.SettingsJson,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateOrganizationStatus = `-- name: UpdateOrganizationStatus :one
+UPDATE organizations
+SET status = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING id, code, name, legal_name, status, primary_contact_email, settings_json, created_at, updated_at
+`
+
+type UpdateOrganizationStatusParams struct {
+	ID     int64  `json:"id"`
+	Status string `json:"status"`
+}
+
+func (q *Queries) UpdateOrganizationStatus(ctx context.Context, arg UpdateOrganizationStatusParams) (Organization, error) {
+	row := q.db.QueryRow(ctx, updateOrganizationStatus, arg.ID, arg.Status)
 	var i Organization
 	err := row.Scan(
 		&i.ID,

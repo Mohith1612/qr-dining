@@ -220,6 +220,7 @@ type Querier interface {
 	UpdateAssistanceStatusScoped(ctx context.Context, arg UpdateAssistanceStatusScopedParams) (AssistanceRequest, error)
 	UpdateBranchOrderPrefix(ctx context.Context, arg UpdateBranchOrderPrefixParams) error
 	UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error
+	UpdateBranchStatus(ctx context.Context, arg UpdateBranchStatusParams) (Branch, error)
 	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) (CartItem, error)
 	UpdateMenuCategory(ctx context.Context, arg UpdateMenuCategoryParams) (MenuCategory, error)
 	UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) (MenuItem, error)
@@ -232,6 +233,7 @@ type Querier interface {
 	UpdateOrderStatusExpected(ctx context.Context, arg UpdateOrderStatusExpectedParams) (Order, error)
 	UpdateOrderStatusScoped(ctx context.Context, arg UpdateOrderStatusScopedParams) (Order, error)
 	UpdateOrganizationSettings(ctx context.Context, arg UpdateOrganizationSettingsParams) (Organization, error)
+	UpdateOrganizationStatus(ctx context.Context, arg UpdateOrganizationStatusParams) (Organization, error)
 	UpdateParticipantLastSeen(ctx context.Context, id int64) error
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
 	UpdatePaymentStatusExpected(ctx context.Context, arg UpdatePaymentStatusExpectedParams) (Payment, error)

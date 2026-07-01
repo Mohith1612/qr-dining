@@ -253,6 +253,12 @@ func New(
 	platformAPI.PUT("/organizations/:org_id/plan", platformH.AssignOrganizationPlan)
 	platformAPI.PUT("/organizations/:org_id/entitlements/:key", platformH.SetOrganizationEntitlementOverride)
 
+	// Organization & branch lifecycle (status flip + audit; inert until enforcement).
+	platformAPI.POST("/organizations/:org_id/suspend", platformH.SuspendOrganization)
+	platformAPI.POST("/organizations/:org_id/activate", platformH.ActivateOrganization)
+	platformAPI.POST("/branches/:branch_id/suspend", platformH.SuspendBranch)
+	platformAPI.POST("/branches/:branch_id/activate", platformH.ActivateBranch)
+
 	// Staff-protected routes (require valid staff token).
 	staffAPI := r.Group("/")
 	staffAPI.Use(middleware.RateLimit(rateLimiter, cfg.Server.RateLimitRPM))

@@ -71,3 +71,23 @@ func (r *Repos) UpdateOrganizationSettings(ctx context.Context, p sqlc.UpdateOrg
 	}
 	return org, err
 }
+
+// UpdateOrganizationStatus flips an organization's lifecycle status
+// (active|suspended|archived). Maps not-found to domain.ErrTenantNotFound.
+func (r *Repos) UpdateOrganizationStatus(ctx context.Context, id int64, status string) (sqlc.Organization, error) {
+	org, err := r.q.UpdateOrganizationStatus(ctx, sqlc.UpdateOrganizationStatusParams{ID: id, Status: status})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Organization{}, domain.ErrTenantNotFound
+	}
+	return org, err
+}
+
+// UpdateBranchStatus flips a branch's lifecycle status
+// (active|suspended|archived). Maps not-found to domain.ErrTenantNotFound.
+func (r *Repos) UpdateBranchStatus(ctx context.Context, id int64, status string) (sqlc.Branch, error) {
+	branch, err := r.q.UpdateBranchStatus(ctx, sqlc.UpdateBranchStatusParams{ID: id, Status: status})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Branch{}, domain.ErrTenantNotFound
+	}
+	return branch, err
+}
