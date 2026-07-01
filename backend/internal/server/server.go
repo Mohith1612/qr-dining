@@ -98,6 +98,7 @@ func New(
 	paymentSvc.SetHostAuthority(sessionSvc)
 	subSvc := services.NewSubscriptionService(repos)
 	analyticsSvc := services.NewAnalyticsService(repos, subSvc, cache)
+	entitlementSvc := services.NewEntitlementService(repos, subSvc, metrics)
 	customerSvc := services.NewCustomerService(repos)
 
 	// ── Audit writer ─────────────────────────────────────────────────────────
@@ -111,7 +112,7 @@ func New(
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
-	platformH := handlers.NewPlatformHandler(repos, platformSvc, auditWriter)
+	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, auditWriter)
 	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter)
 	wsH := handlers.NewWSHandler(hub, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags)
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc, repos, guestTokens, cfg.FeatureFlags)
@@ -241,6 +242,16 @@ func New(
 	platformAPI.GET("/support/sessions", platformH.ListSupportSessions)
 	platformAPI.GET("/support/sessions/:id", platformH.GetSupportSession)
 	platformAPI.GET("/audit", platformH.ListAudit)
+
+	// Plan & entitlement governance (organization-level; resolve-only/shadow).
+	platformAPI.GET("/entitlements", platformH.ListEntitlements)
+	platformAPI.GET("/plans", platformH.ListPlatformPlans)
+	platformAPI.POST("/plans", platformH.CreatePlan)
+	platformAPI.PATCH("/plans/:plan_id", platformH.UpdatePlan)
+	platformAPI.PUT("/plans/:plan_id/entitlements", platformH.SetPlanEntitlements)
+	platformAPI.GET("/organizations/:org_id/entitlements", platformH.GetOrganizationEntitlements)
+	platformAPI.PUT("/organizations/:org_id/plan", platformH.AssignOrganizationPlan)
+	platformAPI.PUT("/organizations/:org_id/entitlements/:key", platformH.SetOrganizationEntitlementOverride)
 
 	// Staff-protected routes (require valid staff token).
 	staffAPI := r.Group("/")
