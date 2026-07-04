@@ -84,6 +84,11 @@ type Metrics struct {
 	// paths, so a spike in "deny" here is a pre-enforcement would-break signal.
 	EntitlementEvaluationsTotal *prometheus.CounterVec
 
+	// FeatureFlagResolutionsTotal counts platform feature-flag resolution calls by
+	// scope (branch|organization). Observability for the platform flag-targeting
+	// system; distinct from the env-driven strict-rollout flags.
+	FeatureFlagResolutionsTotal *prometheus.CounterVec
+
 	// RateLimiterUnavailableTotal counts requests denied because the rate
 	// limiter backend was unreachable on a fail-closed surface (staff auth,
 	// payment, webhook, ws-ticket).
@@ -305,6 +310,11 @@ func NewMetrics() *Metrics {
 			Name: "entitlement_evaluations_total",
 			Help: "Total organization entitlement capability evaluations by capability and result (allow|deny). Shadow-only; not enforced on operational paths.",
 		}, []string{"capability", "result"}),
+
+		FeatureFlagResolutionsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "feature_flag_resolutions_total",
+			Help: "Total platform feature-flag resolution calls by scope (branch|organization).",
+		}, []string{"scope"}),
 	}
 
 	reg.MustRegister(
@@ -351,6 +361,7 @@ func NewMetrics() *Metrics {
 		m.WSTicketConsumeFailedTotal,
 		m.PaymentPendingEscalationsTotal,
 		m.EntitlementEvaluationsTotal,
+		m.FeatureFlagResolutionsTotal,
 	)
 
 	return m

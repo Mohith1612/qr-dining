@@ -959,6 +959,43 @@ type PlatformAuditLog struct {
 	CreatedAt        time.Time       `json:"created_at"`
 }
 
+type PlatformFeatureFlag struct {
+	Key            string    `json:"key"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description"`
+	DefaultEnabled bool      `json:"default_enabled"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type PlatformFlagBranchOverride struct {
+	BranchID                int64       `json:"branch_id"`
+	FlagKey                 string      `json:"flag_key"`
+	Enabled                 bool        `json:"enabled"`
+	Reason                  string      `json:"reason"`
+	UpdatedByPlatformUserID pgtype.Int8 `json:"updated_by_platform_user_id"`
+	CreatedAt               time.Time   `json:"created_at"`
+	UpdatedAt               time.Time   `json:"updated_at"`
+}
+
+type PlatformFlagGlobalOverride struct {
+	FlagKey                 string      `json:"flag_key"`
+	Enabled                 bool        `json:"enabled"`
+	UpdatedByPlatformUserID pgtype.Int8 `json:"updated_by_platform_user_id"`
+	CreatedAt               time.Time   `json:"created_at"`
+	UpdatedAt               time.Time   `json:"updated_at"`
+}
+
+type PlatformFlagOrganizationOverride struct {
+	OrganizationID          int64       `json:"organization_id"`
+	FlagKey                 string      `json:"flag_key"`
+	Enabled                 bool        `json:"enabled"`
+	Reason                  string      `json:"reason"`
+	UpdatedByPlatformUserID pgtype.Int8 `json:"updated_by_platform_user_id"`
+	CreatedAt               time.Time   `json:"created_at"`
+	UpdatedAt               time.Time   `json:"updated_at"`
+}
+
 type PlatformMfaChallenge struct {
 	ID             uuid.UUID          `json:"id"`
 	PlatformUserID int64              `json:"platform_user_id"`

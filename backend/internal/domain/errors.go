@@ -98,6 +98,13 @@ var (
 	ErrEntitlementNotFound = errors.New("entitlement not found in catalog")
 )
 
+// Platform feature flags / theme
+var (
+	ErrFlagNotFound         = errors.New("feature flag not found")
+	ErrThemePresetNotFound  = errors.New("theme preset not found")
+	ErrCustomThemeNotEntitled = errors.New("custom theme tokens require the custom.theme entitlement")
+)
+
 // Customers
 var (
 	ErrInvalidPhone     = errors.New("invalid phone number")
