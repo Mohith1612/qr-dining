@@ -99,6 +99,7 @@ func New(
 	subSvc := services.NewSubscriptionService(repos)
 	analyticsSvc := services.NewAnalyticsService(repos, subSvc, cache)
 	entitlementSvc := services.NewEntitlementService(repos, subSvc, metrics)
+	flagSvc := services.NewFlagService(repos, metrics)
 	customerSvc := services.NewCustomerService(repos)
 
 	// ── Audit writer ─────────────────────────────────────────────────────────
@@ -112,7 +113,8 @@ func New(
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
-	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, auditWriter)
+	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, auditWriter)
+	flagH := handlers.NewFlagHandler(flagSvc, cache)
 	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter)
 	wsH := handlers.NewWSHandler(hub, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags)
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc, repos, guestTokens, cfg.FeatureFlags)
@@ -200,6 +202,7 @@ func New(
 	branchPublicAPI := api.Group("/branches/:id")
 	branchPublicAPI.Use(middleware.BranchTenantGuard(repos, cfg.FeatureFlags.TenancyOrganizationsEnabled))
 	branchPublicAPI.GET("/menu", menuH.GetMenu)
+	branchPublicAPI.GET("/feature-flags", flagH.ResolveForBranch)
 	api.GET("/tables/by-qr/:token", menuH.GetTableByQR)
 
 	// Reconnect reconciliation — full session state snapshot for WebSocket clients.
@@ -258,6 +261,19 @@ func New(
 	platformAPI.POST("/organizations/:org_id/activate", platformH.ActivateOrganization)
 	platformAPI.POST("/branches/:branch_id/suspend", platformH.SuspendBranch)
 	platformAPI.POST("/branches/:branch_id/activate", platformH.ActivateBranch)
+
+	// Feature-flag targeting (global -> org -> branch; separate from env strict flags).
+	platformAPI.GET("/flags", platformH.ListFlags)
+	platformAPI.POST("/flags", platformH.CreateFlag)
+	platformAPI.PATCH("/flags/:key", platformH.UpdateFlag)
+	platformAPI.PUT("/flags/:key/global", platformH.SetGlobalFlagOverride)
+	platformAPI.DELETE("/flags/:key/global", platformH.ClearGlobalFlagOverride)
+	platformAPI.PUT("/organizations/:org_id/flags/:key", platformH.SetOrganizationFlagOverride)
+	platformAPI.DELETE("/organizations/:org_id/flags/:key", platformH.ClearOrganizationFlagOverride)
+	platformAPI.GET("/organizations/:org_id/flags", platformH.GetOrganizationFlags)
+	platformAPI.PUT("/branches/:branch_id/flags/:key", platformH.SetBranchFlagOverride)
+	platformAPI.DELETE("/branches/:branch_id/flags/:key", platformH.ClearBranchFlagOverride)
+	platformAPI.GET("/branches/:branch_id/flags", platformH.GetBranchFlags)
 
 	// Staff-protected routes (require valid staff token).
 	staffAPI := r.Group("/")

@@ -26,11 +26,12 @@ type PlatformHandler struct {
 	repos *repository.Repos
 	svc   *services.PlatformService
 	ent   *services.EntitlementService
+	flag  *services.FlagService
 	audit *audit.Writer
 }
 
-func NewPlatformHandler(repos *repository.Repos, svc *services.PlatformService, ent *services.EntitlementService, auditWriter *audit.Writer) *PlatformHandler {
-	return &PlatformHandler{repos: repos, svc: svc, ent: ent, audit: auditWriter}
+func NewPlatformHandler(repos *repository.Repos, svc *services.PlatformService, ent *services.EntitlementService, flag *services.FlagService, auditWriter *audit.Writer) *PlatformHandler {
+	return &PlatformHandler{repos: repos, svc: svc, ent: ent, flag: flag, audit: auditWriter}
 }
 
 type platformAuthRequest struct {
