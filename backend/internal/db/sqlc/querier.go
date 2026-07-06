@@ -206,6 +206,21 @@ type Querier interface {
 	NextOrderNumber(ctx context.Context, arg NextOrderNumberParams) (int32, error)
 	NextPaymentNumber(ctx context.Context, arg NextPaymentNumberParams) (int32, error)
 	NextSessionNumber(ctx context.Context, arg NextSessionNumberParams) (int32, error)
+	PlatformActiveBranches(ctx context.Context, arg PlatformActiveBranchesParams) (int64, error)
+	PlatformActiveDiners(ctx context.Context, organizationID pgtype.Int8) (int64, error)
+	PlatformAuthzDenialsPerDay(ctx context.Context, arg PlatformAuthzDenialsPerDayParams) ([]PlatformAuthzDenialsPerDayRow, error)
+	PlatformGMV(ctx context.Context, arg PlatformGMVParams) (string, error)
+	PlatformOrdersPerDay(ctx context.Context, arg PlatformOrdersPerDayParams) ([]PlatformOrdersPerDayRow, error)
+	PlatformParticipantJoinsPerDay(ctx context.Context, arg PlatformParticipantJoinsPerDayParams) ([]PlatformParticipantJoinsPerDayRow, error)
+	PlatformPaymentsPerDay(ctx context.Context, arg PlatformPaymentsPerDayParams) ([]PlatformPaymentsPerDayRow, error)
+	PlatformRevenueByBranch(ctx context.Context, arg PlatformRevenueByBranchParams) ([]PlatformRevenueByBranchRow, error)
+	PlatformRevenueByOrg(ctx context.Context, arg PlatformRevenueByOrgParams) ([]PlatformRevenueByOrgRow, error)
+	PlatformRevenuePerDay(ctx context.Context, arg PlatformRevenuePerDayParams) ([]PlatformRevenuePerDayRow, error)
+	// Platform (cross-tenant) analytics. On-demand aggregation; optional org filter via
+	// sqlc.narg('organization_id') (NULL = platform-wide). UTC day bucketing for cross-tenant
+	// consistency. Operator-facing; not entitlement-gated.
+	PlatformSessionsPerDay(ctx context.Context, arg PlatformSessionsPerDayParams) ([]PlatformSessionsPerDayRow, error)
+	PlatformWebhookFailuresPerDay(ctx context.Context, arg PlatformWebhookFailuresPerDayParams) ([]PlatformWebhookFailuresPerDayRow, error)
 	ReactivateSession(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
