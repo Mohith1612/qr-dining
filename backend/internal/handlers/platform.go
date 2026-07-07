@@ -23,15 +23,16 @@ import (
 )
 
 type PlatformHandler struct {
-	repos *repository.Repos
-	svc   *services.PlatformService
-	ent   *services.EntitlementService
-	flag  *services.FlagService
-	audit *audit.Writer
+	repos     *repository.Repos
+	svc       *services.PlatformService
+	ent       *services.EntitlementService
+	flag      *services.FlagService
+	analytics *services.PlatformAnalyticsService
+	audit     *audit.Writer
 }
 
-func NewPlatformHandler(repos *repository.Repos, svc *services.PlatformService, ent *services.EntitlementService, flag *services.FlagService, auditWriter *audit.Writer) *PlatformHandler {
-	return &PlatformHandler{repos: repos, svc: svc, ent: ent, flag: flag, audit: auditWriter}
+func NewPlatformHandler(repos *repository.Repos, svc *services.PlatformService, ent *services.EntitlementService, flag *services.FlagService, analytics *services.PlatformAnalyticsService, auditWriter *audit.Writer) *PlatformHandler {
+	return &PlatformHandler{repos: repos, svc: svc, ent: ent, flag: flag, analytics: analytics, audit: auditWriter}
 }
 
 type platformAuthRequest struct {

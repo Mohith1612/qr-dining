@@ -169,7 +169,13 @@ func (s *PlatformAnalyticsService) GetRevenue(ctx context.Context, orgID *int64,
 		return RevenueReport{}, err
 	}
 
-	report := RevenueReport{Period: period, GMV: gmv}
+	report := RevenueReport{
+		Period:          period,
+		GMV:             gmv,
+		RevenuePerDay:   make([]DayRevenue, 0, len(perDay)),
+		RevenueByBranch: make([]BranchRevenue, 0, len(byBranch)),
+		RevenueByOrg:    make([]OrgRevenue, 0, len(byOrg)),
+	}
 	for _, r := range perDay {
 		report.RevenuePerDay = append(report.RevenuePerDay, DayRevenue{Day: dayString(r.Day), Count: r.Count, Revenue: r.Revenue})
 	}

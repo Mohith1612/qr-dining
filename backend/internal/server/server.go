@@ -100,6 +100,7 @@ func New(
 	analyticsSvc := services.NewAnalyticsService(repos, subSvc, cache)
 	entitlementSvc := services.NewEntitlementService(repos, subSvc, metrics)
 	flagSvc := services.NewFlagService(repos, metrics)
+	platformAnalyticsSvc := services.NewPlatformAnalyticsService(repos, cache)
 	customerSvc := services.NewCustomerService(repos)
 
 	// ── Audit writer ─────────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ func New(
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
-	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, auditWriter)
+	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, auditWriter)
 	flagH := handlers.NewFlagHandler(flagSvc, cache)
 	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter)
 	wsH := handlers.NewWSHandler(hub, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags)
@@ -274,6 +275,11 @@ func New(
 	platformAPI.PUT("/branches/:branch_id/flags/:key", platformH.SetBranchFlagOverride)
 	platformAPI.DELETE("/branches/:branch_id/flags/:key", platformH.ClearBranchFlagOverride)
 	platformAPI.GET("/branches/:branch_id/flags", platformH.GetBranchFlags)
+
+	// Cross-tenant analytics (operator-facing; optional ?organization_id= filter).
+	platformAPI.GET("/analytics/usage", platformH.GetUsageAnalytics)
+	platformAPI.GET("/analytics/revenue", platformH.GetRevenueAnalytics)
+	platformAPI.GET("/analytics/health", platformH.GetHealthAnalytics)
 
 	// Staff-protected routes (require valid staff token).
 	staffAPI := r.Group("/")
