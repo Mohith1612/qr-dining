@@ -100,9 +100,10 @@ var (
 
 // Platform feature flags / theme
 var (
-	ErrFlagNotFound         = errors.New("feature flag not found")
-	ErrThemePresetNotFound  = errors.New("theme preset not found")
+	ErrFlagNotFound           = errors.New("feature flag not found")
+	ErrThemePresetNotFound    = errors.New("theme preset not found")
 	ErrCustomThemeNotEntitled = errors.New("custom theme tokens require the custom.theme entitlement")
+	ErrInvalidThemeToken      = errors.New("invalid theme token")
 )
 
 // Customers

@@ -138,6 +138,8 @@ type Querier interface {
 	GetSubscriptionByRestaurant(ctx context.Context, restaurantID int64) (GetSubscriptionByRestaurantRow, error)
 	GetTableByID(ctx context.Context, id int64) (Table, error)
 	GetTableByQRToken(ctx context.Context, qrCodeToken string) (Table, error)
+	GetTenantThemeByRestaurant(ctx context.Context, restaurantID int64) (TenantTheme, error)
+	GetThemePreset(ctx context.Context, key string) (ThemePreset, error)
 	// Returns the most ordered menu items for a branch within a time window.
 	GetTopOrderedItems(ctx context.Context, arg GetTopOrderedItemsParams) ([]GetTopOrderedItemsRow, error)
 	HasNonTerminalPaymentForSession(ctx context.Context, sessionID uuid.UUID) (bool, error)
@@ -200,6 +202,7 @@ type Querier interface {
 	ListSessionsExpiringSoon(ctx context.Context) ([]ListSessionsExpiringSoonRow, error)
 	ListStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
 	ListTablesForBranch(ctx context.Context, branchID int64) ([]Table, error)
+	ListThemePresets(ctx context.Context) ([]ThemePreset, error)
 	ListUnprocessedWebhooks(ctx context.Context) ([]PaymentWebhookEvent, error)
 	MarkSessionWarned(ctx context.Context, id uuid.UUID) error
 	MarkWebhookProcessed(ctx context.Context, arg MarkWebhookProcessedParams) error
@@ -276,6 +279,7 @@ type Querier interface {
 	UpsertPlatformMFAPending(ctx context.Context, arg UpsertPlatformMFAPendingParams) (PlatformUserMfa, error)
 	UpsertPlatformUser(ctx context.Context, arg UpsertPlatformUserParams) (PlatformUser, error)
 	UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) (RestaurantSubscription, error)
+	UpsertTenantTheme(ctx context.Context, arg UpsertTenantThemeParams) (TenantTheme, error)
 }
 
 var _ Querier = (*Queries)(nil)

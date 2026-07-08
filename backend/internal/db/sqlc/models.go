@@ -1201,3 +1201,19 @@ type Table struct {
 	Status      TableStatus `json:"status"`
 	CreatedAt   time.Time   `json:"created_at"`
 }
+
+type TenantTheme struct {
+	RestaurantID            int64           `json:"restaurant_id"`
+	Preset                  string          `json:"preset"`
+	TokensJson              json.RawMessage `json:"tokens_json"`
+	UpdatedByPlatformUserID pgtype.Int8     `json:"updated_by_platform_user_id"`
+	CreatedAt               time.Time       `json:"created_at"`
+	UpdatedAt               time.Time       `json:"updated_at"`
+}
+
+type ThemePreset struct {
+	Key         string    `json:"key"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+}
