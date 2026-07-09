@@ -101,6 +101,7 @@ func New(
 	entitlementSvc := services.NewEntitlementService(repos, subSvc, metrics)
 	flagSvc := services.NewFlagService(repos, metrics)
 	platformAnalyticsSvc := services.NewPlatformAnalyticsService(repos, cache)
+	themeSvc := services.NewThemeService(repos, entitlementSvc)
 	customerSvc := services.NewCustomerService(repos)
 
 	// ── Audit writer ─────────────────────────────────────────────────────────
@@ -114,8 +115,9 @@ func New(
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
-	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, auditWriter)
+	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, auditWriter)
 	flagH := handlers.NewFlagHandler(flagSvc, cache)
+	themeH := handlers.NewThemeHandler(themeSvc)
 	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter)
 	wsH := handlers.NewWSHandler(hub, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags)
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc, repos, guestTokens, cfg.FeatureFlags)
@@ -204,6 +206,7 @@ func New(
 	branchPublicAPI.Use(middleware.BranchTenantGuard(repos, cfg.FeatureFlags.TenancyOrganizationsEnabled))
 	branchPublicAPI.GET("/menu", menuH.GetMenu)
 	branchPublicAPI.GET("/feature-flags", flagH.ResolveForBranch)
+	branchPublicAPI.GET("/theme", themeH.ResolveForBranch)
 	api.GET("/tables/by-qr/:token", menuH.GetTableByQR)
 
 	// Reconnect reconciliation — full session state snapshot for WebSocket clients.
@@ -280,6 +283,11 @@ func New(
 	platformAPI.GET("/analytics/usage", platformH.GetUsageAnalytics)
 	platformAPI.GET("/analytics/revenue", platformH.GetRevenueAnalytics)
 	platformAPI.GET("/analytics/health", platformH.GetHealthAnalytics)
+
+	// Structured theme/branding (presets free; custom tokens require custom.theme).
+	platformAPI.GET("/theme/presets", platformH.ListThemePresets)
+	platformAPI.GET("/organizations/:org_id/theme", platformH.GetOrganizationTheme)
+	platformAPI.PUT("/organizations/:org_id/theme", platformH.SetOrganizationTheme)
 
 	// Staff-protected routes (require valid staff token).
 	staffAPI := r.Group("/")
