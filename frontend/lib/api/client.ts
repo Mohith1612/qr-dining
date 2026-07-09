@@ -33,20 +33,23 @@ export function friendlyErrorMessage(code: string): string {
 type RequestOptions = {
   staffToken?: string
   guestToken?: string
+  platformToken?: string
   body?: unknown
   method?: string
 }
 
 async function request<T>(
   path: string,
-  { staffToken, guestToken, body, method = "GET" }: RequestOptions = {}
+  { staffToken, guestToken, platformToken, body, method = "GET" }: RequestOptions = {}
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   }
 
-  if (staffToken || guestToken) {
-    headers["Authorization"] = `Bearer ${staffToken ?? guestToken}`
+  // Platform is a separate trust domain; its token uses the same Bearer scheme
+  // but is never mixed with staff/guest tokens by callers.
+  if (staffToken || guestToken || platformToken) {
+    headers["Authorization"] = `Bearer ${staffToken ?? guestToken ?? platformToken}`
   }
 
   // In local dev, pass tenant slug via header so the backend can identify the tenant
@@ -88,6 +91,9 @@ export const api = {
 
   patch: <T>(path: string, body: unknown, opts?: CallOptions) =>
     request<T>(path, { ...opts, method: "PATCH", body }),
+
+  put: <T>(path: string, body: unknown, opts?: CallOptions) =>
+    request<T>(path, { ...opts, method: "PUT", body }),
 
   delete: <T>(path: string, opts?: CallOptions) =>
     request<T>(path, { ...opts, method: "DELETE" }),
