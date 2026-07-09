@@ -54,13 +54,11 @@ export default function OrganizationDetailPage() {
     setActing(true)
     try {
       if (confirm.kind === "org") {
-        confirm.action === "suspend"
-          ? await platformApi.suspendOrganization(confirm.id, token)
-          : await platformApi.activateOrganization(confirm.id, token)
+        if (confirm.action === "suspend") await platformApi.suspendOrganization(confirm.id, token)
+        else await platformApi.activateOrganization(confirm.id, token)
       } else {
-        confirm.action === "suspend"
-          ? await platformApi.suspendBranch(confirm.id, token)
-          : await platformApi.activateBranch(confirm.id, token)
+        if (confirm.action === "suspend") await platformApi.suspendBranch(confirm.id, token)
+        else await platformApi.activateBranch(confirm.id, token)
       }
       toast.success(`${confirm.label} ${confirm.action === "suspend" ? "suspended" : "activated"}.`)
       setConfirm(null)

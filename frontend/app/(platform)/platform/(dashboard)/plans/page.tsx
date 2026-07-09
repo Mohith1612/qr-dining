@@ -10,10 +10,10 @@ import { PageHeader, PlatformLoading } from "@/components/platform/ui"
 import { ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 
-export function planCapabilities(plan: PlatformPlan): string[] {
+function planCapabilities(plan: PlatformPlan): string[] {
   return plan.entitlements.filter((e) => e.enabled && !e.key.startsWith("limit.")).map((e) => e.key)
 }
-export function planLimits(plan: PlatformPlan): { key: string; value: number | null }[] {
+function planLimits(plan: PlatformPlan): { key: string; value: number | null }[] {
   return plan.entitlements.filter((e) => e.key.startsWith("limit.")).map((e) => ({ key: e.key, value: e.limit_value }))
 }
 
