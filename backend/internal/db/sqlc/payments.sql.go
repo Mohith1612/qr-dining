@@ -486,6 +486,45 @@ func (q *Queries) ListUnprocessedWebhooks(ctx context.Context) ([]PaymentWebhook
 	return items, nil
 }
 
+const listWebhookEventsByPayment = `-- name: ListWebhookEventsByPayment :many
+SELECT id, external_event_id, provider, event_type, payload, processed, processed_at, payment_id, error_message, created_at, raw_payload, headers FROM payment_webhook_events
+WHERE payment_id = $1
+ORDER BY created_at ASC
+`
+
+func (q *Queries) ListWebhookEventsByPayment(ctx context.Context, paymentID pgtype.Int8) ([]PaymentWebhookEvent, error) {
+	rows, err := q.db.Query(ctx, listWebhookEventsByPayment, paymentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PaymentWebhookEvent{}
+	for rows.Next() {
+		var i PaymentWebhookEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExternalEventID,
+			&i.Provider,
+			&i.EventType,
+			&i.Payload,
+			&i.Processed,
+			&i.ProcessedAt,
+			&i.PaymentID,
+			&i.ErrorMessage,
+			&i.CreatedAt,
+			&i.RawPayload,
+			&i.Headers,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markWebhookProcessed = `-- name: MarkWebhookProcessed :exec
 UPDATE payment_webhook_events
 SET processed = TRUE, processed_at = NOW(), payment_id = $2, error_message = $3

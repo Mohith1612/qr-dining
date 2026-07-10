@@ -130,6 +130,12 @@ func (r *Repos) ListPaymentsForBranchByStatus(ctx context.Context, branchID int6
 	return r.q.ListPaymentsForBranchByStatus(ctx, sqlc.ListPaymentsForBranchByStatusParams{BranchID: branchID, Status: status})
 }
 
+// ListWebhookEventsByPayment returns the webhook events recorded against a payment,
+// oldest first — used by the read-only support console payment inspection view.
+func (r *Repos) ListWebhookEventsByPayment(ctx context.Context, paymentID int64) ([]sqlc.PaymentWebhookEvent, error) {
+	return r.q.ListWebhookEventsByPayment(ctx, pgtype.Int8{Int64: paymentID, Valid: true})
+}
+
 // InsertWebhookEvent inserts a new webhook event with ON CONFLICT DO NOTHING.
 // Returns (event, true) if inserted, (zero, false) if already existed (idempotent replay).
 func (r *Repos) InsertWebhookEvent(ctx context.Context, externalID, provider, eventType string, payload json.RawMessage, rawPayload string, headers json.RawMessage) (sqlc.PaymentWebhookEvent, bool, error) {

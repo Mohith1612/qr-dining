@@ -76,6 +76,7 @@ LIMIT 200;
 SELECT * FROM audit_log
 WHERE (sqlc.narg('organization_id')::BIGINT IS NULL OR organization_id = sqlc.narg('organization_id'))
   AND (sqlc.narg('branch_id')::BIGINT IS NULL OR branch_id = sqlc.narg('branch_id'))
+  AND (sqlc.narg('session_id')::UUID IS NULL OR session_id = sqlc.narg('session_id'))
   AND (sqlc.narg('actor_type')::TEXT IS NULL OR actor_type::TEXT = sqlc.narg('actor_type'))
   AND (sqlc.narg('result')::TEXT IS NULL OR result::TEXT = sqlc.narg('result'))
   AND (sqlc.narg('source')::TEXT IS NULL OR source::TEXT = sqlc.narg('source'))

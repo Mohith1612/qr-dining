@@ -43,7 +43,9 @@ func (r *Repos) SearchSupportReferences(ctx context.Context, rawQuery string, li
 	searches := []func(context.Context, string, string, int) ([]SupportSearchResult, error){
 		r.searchOrganizations,
 		r.searchBranches,
+		r.searchTables,
 		r.searchSessions,
+		r.searchParticipants,
 		r.searchOrders,
 		r.searchPayments,
 		r.searchAuditEvents,
@@ -252,6 +254,73 @@ LIMIT $3
 			return nil, err
 		}
 		res.ID = fmt.Sprintf("%d", id)
+		out = append(out, res)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repos) searchTables(ctx context.Context, query, like string, limit int) ([]SupportSearchResult, error) {
+	rows, err := r.db.Query(ctx, `
+SELECT t.id, t.identifier, t.status::text, t.created_at, t.branch_id, b.branch_code, b.organization_id, o.code
+FROM tables t
+JOIN branches b ON b.id = t.branch_id
+JOIN organizations o ON o.id = b.organization_id
+WHERE t.identifier ILIKE $1 OR t.qr_code_token = $2 OR t.id::text = $2
+ORDER BY t.created_at DESC
+LIMIT $3
+`, like, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []SupportSearchResult{}
+	for rows.Next() {
+		var id int64
+		var res SupportSearchResult
+		res.Type = "table"
+		if err := rows.Scan(&id, &res.Reference, &res.Status, &res.CreatedAt, &res.BranchID, &res.BranchCode, &res.OrganizationID, &res.OrganizationCode); err != nil {
+			return nil, err
+		}
+		res.ID = fmt.Sprintf("%d", id)
+		res.Label = "Table " + res.Reference
+		out = append(out, res)
+	}
+	return out, rows.Err()
+}
+
+// searchParticipants matches by display name or phone (PII — callers audit the
+// search). Returns the participant's session as the related entity so an operator
+// can jump straight to the session inspection view.
+func (r *Repos) searchParticipants(ctx context.Context, query, like string, limit int) ([]SupportSearchResult, error) {
+	rows, err := r.db.Query(ctx, `
+SELECT sp.id, sp.display_name, s.status::text, sp.created_at, s.branch_id, b.branch_code,
+       b.organization_id, o.code, s.id, s.session_number
+FROM session_participants sp
+JOIN sessions s ON s.id = sp.session_id
+JOIN branches b ON b.id = s.branch_id
+JOIN organizations o ON o.id = b.organization_id
+WHERE sp.display_name ILIKE $1 OR sp.phone_e164 ILIKE $1 OR sp.id::text = $2
+ORDER BY sp.created_at DESC
+LIMIT $3
+`, like, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []SupportSearchResult{}
+	for rows.Next() {
+		var id int64
+		var sessionID uuid.UUID
+		var res SupportSearchResult
+		res.Type = "participant"
+		if err := rows.Scan(&id, &res.Label, &res.Status, &res.CreatedAt, &res.BranchID, &res.BranchCode, &res.OrganizationID, &res.OrganizationCode, &sessionID, &res.RelatedSessionRef); err != nil {
+			return nil, err
+		}
+		res.ID = fmt.Sprintf("%d", id)
+		res.Reference = res.Label
+		res.RelatedSessionID = sessionID.String()
 		out = append(out, res)
 	}
 	return out, rows.Err()

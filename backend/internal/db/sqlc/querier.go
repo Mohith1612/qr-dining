@@ -204,6 +204,7 @@ type Querier interface {
 	ListTablesForBranch(ctx context.Context, branchID int64) ([]Table, error)
 	ListThemePresets(ctx context.Context) ([]ThemePreset, error)
 	ListUnprocessedWebhooks(ctx context.Context) ([]PaymentWebhookEvent, error)
+	ListWebhookEventsByPayment(ctx context.Context, paymentID pgtype.Int8) ([]PaymentWebhookEvent, error)
 	MarkSessionWarned(ctx context.Context, id uuid.UUID) error
 	MarkWebhookProcessed(ctx context.Context, arg MarkWebhookProcessedParams) error
 	NextOrderNumber(ctx context.Context, arg NextOrderNumberParams) (int32, error)

@@ -113,3 +113,8 @@ SELECT * FROM payment_webhook_events
 WHERE processed = FALSE
 ORDER BY created_at ASC
 LIMIT 50;
+
+-- name: ListWebhookEventsByPayment :many
+SELECT * FROM payment_webhook_events
+WHERE payment_id = $1
+ORDER BY created_at ASC;
