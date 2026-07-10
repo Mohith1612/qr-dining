@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react"
 import { env } from "@/config/env"
+import type { ThemeConfig } from "@/lib/theme/applyTheme"
 
 export type TenantSettings = {
   theme?: string
@@ -14,6 +15,8 @@ export type TenantContext = {
   name: string | null
   slug: string | null
   settings: TenantSettings
+  // Structured theme resolved by the backend (bridges legacy settings.theme).
+  theme: ThemeConfig | null
   ready: boolean
 }
 
@@ -23,6 +26,7 @@ const TenantCtx = createContext<TenantContext>({
   name: null,
   slug: null,
   settings: {},
+  theme: null,
   ready: false,
 })
 
@@ -52,6 +56,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     name: null,
     slug: null,
     settings: {},
+    theme: null,
     ready: false,
   })
 
@@ -74,6 +79,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
           name: data.name,
           slug: data.slug,
           settings: data.settings ?? {},
+          theme: data.theme ?? null,
           ready: true,
         })
       })
