@@ -116,17 +116,39 @@ func (s *ThemeService) SetTheme(ctx context.Context, orgID int64, preset string,
 	return decodeTheme(row.Preset, row.TokensJson), nil
 }
 
-// GetThemeForRestaurant returns the structured theme for a restaurant, falling back
-// to the default preset with no custom tokens when none is set.
+// GetThemeForRestaurant returns the structured theme for a restaurant. When no
+// tenant_themes row exists it bridges to the legacy restaurants.settings_json.theme
+// preset (if a valid catalog preset), else the default — so restaurants configured
+// only via the legacy path never lose their theming when the new system is adopted.
 func (s *ThemeService) GetThemeForRestaurant(ctx context.Context, restaurantID int64) (ThemeConfig, error) {
 	row, err := s.repos.GetTenantThemeByRestaurant(ctx, restaurantID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ThemeConfig{Preset: defaultThemePreset, Tokens: map[string]string{}}, nil
+			return ThemeConfig{Preset: s.legacyPresetFallback(ctx, restaurantID), Tokens: map[string]string{}}, nil
 		}
 		return ThemeConfig{}, err
 	}
 	return decodeTheme(row.Preset, row.TokensJson), nil
+}
+
+// legacyPresetFallback reads the legacy settings_json.theme for a restaurant and
+// returns it when it is a known preset; otherwise the default. Best-effort: any
+// lookup/decode failure degrades to the default preset.
+func (s *ThemeService) legacyPresetFallback(ctx context.Context, restaurantID int64) string {
+	restaurant, err := s.repos.GetRestaurantByID(ctx, restaurantID)
+	if err != nil {
+		return defaultThemePreset
+	}
+	var settings struct {
+		Theme string `json:"theme"`
+	}
+	if err := json.Unmarshal(restaurant.SettingsJson, &settings); err != nil || settings.Theme == "" {
+		return defaultThemePreset
+	}
+	if _, err := s.repos.GetThemePreset(ctx, settings.Theme); err != nil {
+		return defaultThemePreset // not a known preset
+	}
+	return settings.Theme
 }
 
 // GetThemeForBranch resolves the branch's restaurant then returns its theme.
