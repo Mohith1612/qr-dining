@@ -1,9 +1,11 @@
 "use client"
 
-import { ReactNode, useEffect, useState } from "react"
+import { ReactNode, useEffect, useRef, useState } from "react"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import { reconcileSnapshot } from "@/lib/ws/reconciliation"
 import { sessionsApi } from "@/lib/api/sessions"
+import { themeApi } from "@/lib/api/theme"
+import { applyTheme } from "@/lib/theme/applyTheme"
 import { useSessionStore } from "@/store/session"
 import { ReconnectingBanner } from "@/components/shared/ReconnectingBanner"
 import { SessionEndedScreen } from "@/components/shared/SessionEndedScreen"
@@ -26,6 +28,19 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
   const session = useSessionStore((s) => s.session)
   const isReactivating = useSessionStore((s) => s.isReactivating)
   const completedPayment = useSessionStore((s) => s.completedPayment)
+  const themedBranchRef = useRef<number | null>(null)
+
+  // Apply the branch's structured theme once per branch id (covers reloads, fresh
+  // sessions, and reactivation; re-applies on a branch change without refetching
+  // on every render).
+  const branchId = session?.branch_id ?? null
+  useEffect(() => {
+    if (!branchId || themedBranchRef.current === branchId) return
+    themedBranchRef.current = branchId
+    themeApi.resolveForBranch(branchId)
+      .then(r => applyTheme(r.theme))
+      .catch(() => {})
+  }, [branchId])
 
   useEffect(() => {
     let cancelled = false

@@ -4,6 +4,8 @@ import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import { menuApi } from "@/lib/api/menu"
 import { sessionsApi } from "@/lib/api/sessions"
+import { themeApi } from "@/lib/api/theme"
+import { applyTheme } from "@/lib/theme/applyTheme"
 import { ApiError } from "@/lib/api/client"
 import { useSessionStore } from "@/store/session"
 import { UtensilsCrossed } from "lucide-react"
@@ -34,9 +36,14 @@ export default function TableEntryPage({ params }: Props) {
     menuApi.resolveQrToken(token)
       .then(data => {
         setTableInfo(data)
+        // Instant paint from the QR payload's legacy preset, then refine with the
+        // authoritative structured theme (preset + custom tokens) for the branch.
         if (data.branch_theme) {
-          document.documentElement.dataset.theme = data.branch_theme
+          applyTheme({ preset: data.branch_theme, tokens: {} })
         }
+        themeApi.resolveForBranch(data.branch_id)
+          .then(r => applyTheme(r.theme))
+          .catch(() => {})
       })
       .catch(() => setError("This QR code is invalid or has expired."))
       .finally(() => setResolving(false))
