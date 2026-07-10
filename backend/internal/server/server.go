@@ -123,7 +123,7 @@ func New(
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc, repos, guestTokens, cfg.FeatureFlags)
 	menuAdminH := handlers.NewMenuAdminHandler(menuSvc, repos, authorizer, auditWriter)
 	eventLogH := handlers.NewEventLogHandler(repos)
-	tenantH := handlers.NewTenantHandler(repos)
+	tenantH := handlers.NewTenantHandler(repos, themeSvc)
 	subH := handlers.NewSubscriptionHandler(repos, subSvc)
 	analyticsH := handlers.NewAnalyticsHandler(analyticsSvc)
 	orgH := handlers.NewOrganizationHandler(repos, analyticsSvc, cfg.FeatureFlags, authorizer, auditWriter)
