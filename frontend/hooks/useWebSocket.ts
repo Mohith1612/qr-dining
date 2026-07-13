@@ -90,28 +90,36 @@ export function useWebSocket(sessionId: string) {
         useOrdersStore.getState().addOrder(order)
       },
 
+      // Order status events are published wrapped as { order: {...} } (order.go
+      // publishOrderStatusEvent), unlike ORDER_PLACED which is top-level. Unwrap
+      // defensively so the live tracker advances without a page refresh (F-6).
       ORDER_CONFIRMED: (payload) => {
-        const order = payload as Order
+        const order = ((payload as { order?: Order })?.order ?? payload) as Order
+        if (!order?.id) return
         useOrdersStore.getState().updateStatus(order.id, "confirmed")
       },
 
       ORDER_PREPARING: (payload) => {
-        const order = payload as Order
+        const order = ((payload as { order?: Order })?.order ?? payload) as Order
+        if (!order?.id) return
         useOrdersStore.getState().updateStatus(order.id, "preparing")
       },
 
       ORDER_READY: (payload) => {
-        const order = payload as Order
+        const order = ((payload as { order?: Order })?.order ?? payload) as Order
+        if (!order?.id) return
         useOrdersStore.getState().updateStatus(order.id, "ready")
       },
 
       ORDER_SERVED: (payload) => {
-        const order = payload as Order
+        const order = ((payload as { order?: Order })?.order ?? payload) as Order
+        if (!order?.id) return
         useOrdersStore.getState().updateStatus(order.id, "served")
       },
 
       ORDER_CANCELLED: (payload) => {
-        const order = payload as Order
+        const order = ((payload as { order?: Order })?.order ?? payload) as Order
+        if (!order?.id) return
         useOrdersStore.getState().updateStatus(order.id, "cancelled")
       },
 
