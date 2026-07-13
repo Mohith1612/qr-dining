@@ -102,6 +102,7 @@ func New(
 	flagSvc := services.NewFlagService(repos, metrics)
 	platformAnalyticsSvc := services.NewPlatformAnalyticsService(repos, cache)
 	themeSvc := services.NewThemeService(repos, entitlementSvc)
+	supportSvc := services.NewSupportService(repos)
 	customerSvc := services.NewCustomerService(repos)
 
 	// ── Audit writer ─────────────────────────────────────────────────────────
@@ -115,7 +116,7 @@ func New(
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
-	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, auditWriter)
+	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, supportSvc, auditWriter)
 	flagH := handlers.NewFlagHandler(flagSvc, cache)
 	themeH := handlers.NewThemeHandler(themeSvc)
 	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter)
@@ -288,6 +289,11 @@ func New(
 	platformAPI.GET("/theme/presets", platformH.ListThemePresets)
 	platformAPI.GET("/organizations/:org_id/theme", platformH.GetOrganizationTheme)
 	platformAPI.PUT("/organizations/:org_id/theme", platformH.SetOrganizationTheme)
+
+	// Support console — read-only operational inspection (observability, not control).
+	platformAPI.GET("/sessions/:id", platformH.GetSessionDetail)
+	platformAPI.GET("/orders/:id", platformH.GetOrderDetail)
+	platformAPI.GET("/payments/:id", platformH.GetPaymentDetail)
 
 	// Staff-protected routes (require valid staff token).
 	staffAPI := r.Group("/")

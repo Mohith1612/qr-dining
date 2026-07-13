@@ -294,14 +294,14 @@ LIMIT $3
 // can jump straight to the session inspection view.
 func (r *Repos) searchParticipants(ctx context.Context, query, like string, limit int) ([]SupportSearchResult, error) {
 	rows, err := r.db.Query(ctx, `
-SELECT sp.id, sp.display_name, s.status::text, sp.created_at, s.branch_id, b.branch_code,
+SELECT sp.id, sp.display_name, s.status::text, sp.joined_at, s.branch_id, b.branch_code,
        b.organization_id, o.code, s.id, s.session_number
 FROM session_participants sp
 JOIN sessions s ON s.id = sp.session_id
 JOIN branches b ON b.id = s.branch_id
 JOIN organizations o ON o.id = b.organization_id
 WHERE sp.display_name ILIKE $1 OR sp.phone_e164 ILIKE $1 OR sp.id::text = $2
-ORDER BY sp.created_at DESC
+ORDER BY sp.joined_at DESC
 LIMIT $3
 `, like, query, limit)
 	if err != nil {
