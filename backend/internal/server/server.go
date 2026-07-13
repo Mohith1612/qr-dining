@@ -103,6 +103,7 @@ func New(
 	platformAnalyticsSvc := services.NewPlatformAnalyticsService(repos, cache)
 	themeSvc := services.NewThemeService(repos, entitlementSvc)
 	supportSvc := services.NewSupportService(repos)
+	billingSvc := services.NewBillingService(repos)
 	customerSvc := services.NewCustomerService(repos)
 
 	// ── Audit writer ─────────────────────────────────────────────────────────
@@ -116,7 +117,7 @@ func New(
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
-	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, supportSvc, auditWriter)
+	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, supportSvc, billingSvc, auditWriter)
 	flagH := handlers.NewFlagHandler(flagSvc, cache)
 	themeH := handlers.NewThemeHandler(themeSvc)
 	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter)
@@ -260,6 +261,26 @@ func New(
 	platformAPI.GET("/organizations/:org_id/entitlements", platformH.GetOrganizationEntitlements)
 	platformAPI.PUT("/organizations/:org_id/plan", platformH.AssignOrganizationPlan)
 	platformAPI.PUT("/organizations/:org_id/entitlements/:key", platformH.SetOrganizationEntitlementOverride)
+
+	// Subscription & billing foundation (org-level; status recorded/audited, not enforced).
+	// Reads: support/billing/auditor. Mutations: billing_admin (super_admin bypass).
+	platformAPI.GET("/organizations/:org_id/subscription", platformH.GetOrganizationSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/activate", platformH.ActivateSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/suspend", platformH.SuspendSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/renew", platformH.RenewSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/cancel", platformH.CancelSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/extend-trial", platformH.ExtendTrialSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/plan", platformH.ChangeSubscriptionPlan)
+	platformAPI.GET("/organizations/:org_id/billing-profile", platformH.GetBillingProfile)
+	platformAPI.PUT("/organizations/:org_id/billing-profile", platformH.UpdateBillingProfile)
+	platformAPI.GET("/organizations/:org_id/payments", platformH.ListOrganizationPayments)
+	platformAPI.POST("/organizations/:org_id/payments", platformH.RecordOrganizationPayment)
+	platformAPI.GET("/organizations/:org_id/invoices", platformH.ListOrganizationInvoices)
+	platformAPI.POST("/organizations/:org_id/invoices", platformH.CreateOrganizationInvoice)
+	platformAPI.GET("/organizations/:org_id/invoices/:invoice_id", platformH.GetOrganizationInvoice)
+	platformAPI.POST("/organizations/:org_id/invoices/:invoice_id/issue", platformH.IssueOrganizationInvoice)
+	platformAPI.POST("/organizations/:org_id/invoices/:invoice_id/mark-paid", platformH.MarkOrganizationInvoicePaid)
+	platformAPI.POST("/organizations/:org_id/invoices/:invoice_id/cancel", platformH.CancelOrganizationInvoice)
 
 	// Organization & branch lifecycle (status flip + audit; inert until enforcement).
 	platformAPI.POST("/organizations/:org_id/suspend", platformH.SuspendOrganization)
