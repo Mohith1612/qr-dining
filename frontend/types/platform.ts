@@ -160,3 +160,178 @@ export type HealthReport = {
   authz_denials_per_day: DayCount[]
   webhook_failures_per_day: DayCount[]
 }
+
+// ── Support console (read-only inspection) ───────────────────────────────────
+
+export type SupportSearchResult = {
+  type: "organization" | "branch" | "table" | "session" | "participant" | "order" | "payment" | "audit_event"
+  id: string
+  reference: string
+  organization_id: number
+  organization_code: string
+  branch_id: number
+  branch_code: string
+  label: string
+  status: string
+  related_session_id?: string
+  related_session_reference?: string
+  related_order_id?: string
+  related_order_reference?: string
+  related_payment_id?: string
+  related_payment_reference?: string
+  created_at: string
+}
+
+export type SupportOrgRef = { id: number; code: string; name: string }
+export type SupportBranchRef = { id: number; branch_code: string; name: string; timezone: string }
+export type SupportTableRef = { id: number; identifier: string; status: string }
+
+export type SupportSession = {
+  id: string
+  session_number: string
+  status: string
+  host_participant_id: number | null
+  visit_number: number
+  created_at: string
+  closed_at: string | null
+  awaiting_reactivation_at: string | null
+}
+
+export type SupportParticipant = {
+  id: number
+  display_name: string
+  phone_e164?: string
+  is_host: boolean
+  joined_at: string
+  last_seen_at: string
+  revoked_at: string | null
+  revoked_reason?: string
+}
+
+export type SupportOrderItem = {
+  id: number
+  menu_item_id: number
+  quantity: number
+  unit_price: string
+  selected_modifiers_json?: unknown
+  note?: string
+}
+
+export type SupportOrder = {
+  id: string
+  order_operational_id: string
+  order_number_display: string
+  status: string
+  total_amount: string
+  discount_amount: string
+  created_at: string
+  updated_at: string
+  items?: SupportOrderItem[]
+}
+
+export type SupportPayment = {
+  id: number
+  payment_reference: string
+  status: string
+  amount: string
+  currency: string
+  provider?: string
+  provider_payment_ref?: string
+  provider_order_ref?: string
+  bill_snapshot_id: number | null
+  settled_by_staff_id: number | null
+  settled_at: string | null
+  initiated_at: string
+  completed_at: string | null
+}
+
+export type SupportAssistance = {
+  id: number
+  type: string
+  status: string
+  created_at: string
+  resolved_at: string | null
+}
+
+export type SupportEvent = {
+  id: number
+  event_type: string
+  actor_type: string
+  payload?: unknown
+  created_at: string
+}
+
+export type SupportBillSnapshot = {
+  id: number
+  subtotal: string
+  discount_amount: string
+  tax_amount: string
+  service_charge: string
+  tip_amount: string
+  total: string
+  currency: string
+  source_order_ids?: unknown
+  created_by_actor: string
+  created_at: string
+}
+
+export type SupportWebhookEvent = {
+  id: number
+  external_event_id: string
+  provider: string
+  event_type: string
+  processed: boolean
+  processed_at: string | null
+  error_message?: string
+  created_at: string
+}
+
+export type SupportSessionDetail = {
+  session: SupportSession
+  organization: SupportOrgRef
+  branch: SupportBranchRef
+  table: SupportTableRef
+  participants: SupportParticipant[]
+  orders: SupportOrder[]
+  payments: SupportPayment[]
+  assistance: SupportAssistance[]
+  timeline: SupportEvent[]
+}
+
+export type SupportOrderDetail = {
+  order: SupportOrder
+  organization: SupportOrgRef
+  branch: SupportBranchRef
+  session_id: string
+  session_number: string
+}
+
+export type SupportPaymentDetail = {
+  payment: SupportPayment
+  organization: SupportOrgRef
+  branch: SupportBranchRef
+  session_id: string
+  session_number: string
+  bill_snapshot: SupportBillSnapshot | null
+  webhooks: SupportWebhookEvent[]
+}
+
+// audit_log row as returned by GET /platform/audit
+export type AuditEvent = {
+  id: number
+  organization_id: number | null
+  branch_id: number | null
+  session_id: string | null
+  resource_type: string
+  resource_id: string
+  action: string
+  result: string
+  actor_type: string
+  actor_id: string
+  actor_display: string
+  risk_level: string
+  source: string
+  ip: string
+  event_reference: string
+  created_at: string
+}

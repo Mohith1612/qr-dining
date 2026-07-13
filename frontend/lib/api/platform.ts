@@ -15,6 +15,11 @@ import type {
   UsageReport,
   RevenueReport,
   HealthReport,
+  SupportSearchResult,
+  SupportSessionDetail,
+  SupportOrderDetail,
+  SupportPaymentDetail,
+  AuditEvent,
 } from "@/types/platform"
 
 type Period = "daily" | "weekly" | "monthly"
@@ -202,4 +207,34 @@ export const platformApi = {
       { preset, tokens },
       { platformToken: token }
     ),
+
+  // ── Support console (read-only) ──────────────────────────────────────────────
+  supportSearch: (q: string, token: string) =>
+    api.get<{ results: SupportSearchResult[] }>(
+      `/platform/support/search?q=${encodeURIComponent(q)}`,
+      { platformToken: token }
+    ),
+
+  getSupportSession: (sessionId: string, token: string) =>
+    api.get<SupportSessionDetail>(`/platform/sessions/${encodeURIComponent(sessionId)}`, { platformToken: token }),
+
+  getSupportOrder: (orderId: string, token: string) =>
+    api.get<SupportOrderDetail>(`/platform/orders/${encodeURIComponent(orderId)}`, { platformToken: token }),
+
+  getSupportPayment: (paymentId: string, token: string) =>
+    api.get<SupportPaymentDetail>(`/platform/payments/${encodeURIComponent(paymentId)}`, { platformToken: token }),
+
+  listAudit: (
+    filters: { organization_id?: number; branch_id?: number; session_id?: string; result?: string; actor_type?: string },
+    token: string
+  ) => {
+    const p = new URLSearchParams()
+    if (filters.organization_id != null) p.set("organization_id", String(filters.organization_id))
+    if (filters.branch_id != null) p.set("branch_id", String(filters.branch_id))
+    if (filters.session_id) p.set("session_id", filters.session_id)
+    if (filters.result) p.set("result", filters.result)
+    if (filters.actor_type) p.set("actor_type", filters.actor_type)
+    const qs = p.toString()
+    return api.get<{ audit: AuditEvent[] }>(`/platform/audit${qs ? "?" + qs : ""}`, { platformToken: token })
+  },
 }
