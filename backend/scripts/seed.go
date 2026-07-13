@@ -205,6 +205,31 @@ func main() {
 		}
 	}
 
+	// Org-level subscription + billing profile (platform billing foundation).
+	// Trial on the free plan; status is recorded/audited, not enforced.
+	if freePlanID > 0 {
+		_, err = pool.Exec(ctx,
+			`INSERT INTO organization_subscriptions (organization_id, plan_id, status, started_at, trial_ends_at)
+			 VALUES ($1, $2, 'trial', NOW(), NOW() + INTERVAL '30 days')
+			 ON CONFLICT (organization_id) DO NOTHING`,
+			organizationID, freePlanID,
+		)
+		if err != nil {
+			fmt.Printf("org subscription: %v\n", err)
+		} else {
+			fmt.Printf("org subscription: organization %d on free plan (trial, 30 days)\n", organizationID)
+		}
+	}
+	_, err = pool.Exec(ctx,
+		`INSERT INTO organization_billing_profiles (organization_id, business_name, gst_number, billing_email, currency)
+		 VALUES ($1, 'Demo Restaurant Pvt Ltd', '29ABCDE1234F1Z5', 'billing@demo-restaurant.example', 'INR')
+		 ON CONFLICT (organization_id) DO NOTHING`,
+		organizationID,
+	)
+	if err != nil {
+		fmt.Printf("org billing profile: %v\n", err)
+	}
+
 	// ── Branch ────────────────────────────────────────────────────────────────
 	var branchID int64
 	err = pool.QueryRow(ctx,
