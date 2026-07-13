@@ -183,6 +183,8 @@ type Querier interface {
 	ListExpiredSessions(ctx context.Context) ([]ListExpiredSessionsRow, error)
 	ListFeatureFlags(ctx context.Context) ([]PlatformFeatureFlag, error)
 	ListFeaturedMenuItems(ctx context.Context, branchID int64) ([]MenuItem, error)
+	ListFlagCatalogKeys(ctx context.Context) ([]ListFlagCatalogKeysRow, error)
+	ListFlagOverrideCounts(ctx context.Context) ([]ListFlagOverrideCountsRow, error)
 	ListGlobalFlagOverrides(ctx context.Context) ([]PlatformFlagGlobalOverride, error)
 	ListInvoicesByOrg(ctx context.Context, organizationID int64) ([]SubscriptionInvoice, error)
 	ListMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
@@ -191,6 +193,7 @@ type Querier interface {
 	ListModifiersForItems(ctx context.Context, dollar_1 []int64) ([]ItemModifier, error)
 	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)
 	ListOrdersForSession(ctx context.Context, sessionID uuid.UUID) ([]Order, error)
+	ListOrgResourceCounts(ctx context.Context) ([]ListOrgResourceCountsRow, error)
 	ListOrganizationEntitlementOverrides(ctx context.Context, organizationID int64) ([]OrganizationEntitlementOverride, error)
 	ListOrganizationFlagOverrides(ctx context.Context, organizationID int64) ([]PlatformFlagOrganizationOverride, error)
 	ListParticipantsBySession(ctx context.Context, sessionID uuid.UUID) ([]SessionParticipant, error)
@@ -211,6 +214,9 @@ type Querier interface {
 	ListSessionsAwaitingReactivationExpired(ctx context.Context, dollar_1 time.Time) ([]ListSessionsAwaitingReactivationExpiredRow, error)
 	ListSessionsExpiringSoon(ctx context.Context) ([]ListSessionsExpiringSoonRow, error)
 	ListStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
+	// Enforcement observability: read-only aggregates that surface where enforcement
+	// WOULD bite if it were turned on. Observe-only — nothing here gates any path.
+	ListSubscriptionsForObservability(ctx context.Context) ([]ListSubscriptionsForObservabilityRow, error)
 	ListTablesForBranch(ctx context.Context, branchID int64) ([]Table, error)
 	ListThemePresets(ctx context.Context) ([]ThemePreset, error)
 	ListUnprocessedWebhooks(ctx context.Context) ([]PaymentWebhookEvent, error)

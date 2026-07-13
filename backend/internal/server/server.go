@@ -104,6 +104,7 @@ func New(
 	themeSvc := services.NewThemeService(repos, entitlementSvc)
 	supportSvc := services.NewSupportService(repos)
 	billingSvc := services.NewBillingService(repos)
+	enforcementObsSvc := services.NewEnforcementObservabilityService(repos, entitlementSvc, cache)
 	customerSvc := services.NewCustomerService(repos)
 
 	// ── Audit writer ─────────────────────────────────────────────────────────
@@ -117,7 +118,7 @@ func New(
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
-	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, supportSvc, billingSvc, auditWriter)
+	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, supportSvc, billingSvc, enforcementObsSvc, auditWriter)
 	flagH := handlers.NewFlagHandler(flagSvc, cache)
 	themeH := handlers.NewThemeHandler(themeSvc)
 	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter)
@@ -301,6 +302,11 @@ func New(
 	platformAPI.PUT("/branches/:branch_id/flags/:key", platformH.SetBranchFlagOverride)
 	platformAPI.DELETE("/branches/:branch_id/flags/:key", platformH.ClearBranchFlagOverride)
 	platformAPI.GET("/branches/:branch_id/flags", platformH.GetBranchFlags)
+
+	// Enforcement observability (read-only; observe where enforcement would bite).
+	platformAPI.GET("/observability/subscriptions", platformH.GetSubscriptionObservability)
+	platformAPI.GET("/observability/entitlements", platformH.GetEntitlementObservability)
+	platformAPI.GET("/observability/flags", platformH.GetFlagObservability)
 
 	// Cross-tenant analytics (operator-facing; optional ?organization_id= filter).
 	platformAPI.GET("/analytics/usage", platformH.GetUsageAnalytics)

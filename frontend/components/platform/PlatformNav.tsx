@@ -12,6 +12,7 @@ import {
   Palette,
   LifeBuoy,
   Rocket,
+  Gauge,
   type LucideIcon,
 } from "lucide-react"
 
@@ -25,6 +26,7 @@ const NAV: NavItem[] = [
   { href: "/platform/plans", label: "Plans", icon: Package },
   { href: "/platform/entitlements", label: "Entitlements", icon: KeyRound },
   { href: "/platform/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/platform/observability", label: "Observability", icon: Gauge },
   { href: "/platform/feature-flags", label: "Feature Flags", icon: Flag },
   { href: "/platform/themes", label: "Themes", icon: Palette },
 ]

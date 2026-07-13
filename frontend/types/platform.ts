@@ -150,6 +150,33 @@ export type SubscriptionInvoice = {
   updated_at: string
 }
 
+// ── Enforcement observability ────────────────────────────────────────────────
+
+export type SubscriptionAlert = {
+  organization_id: number
+  org_code: string
+  org_name: string
+  status: string
+  plan_tier: string
+  reason: "suspended" | "expired" | "past_due" | "trial_expired" | "trial_ending"
+  trial_ends_at: string | null
+  expires_at: string | null
+}
+export type SubscriptionObservability = { total: number; alerts: SubscriptionAlert[] }
+
+export type LimitBreach = {
+  organization_id: number
+  org_code: string
+  org_name: string
+  key: string
+  limit: number
+  actual: number
+}
+export type EntitlementObservability = { checked: number; breaches: LimitBreach[] }
+
+export type FlagOverrideStat = { key: string; name: string; global: number; org: number; branch: number; total: number }
+export type FlagObservability = { in_use: FlagOverrideStat[]; orphaned: string[] }
+
 // ── Onboarding ───────────────────────────────────────────────────────────────
 
 export type PlatformTable = {

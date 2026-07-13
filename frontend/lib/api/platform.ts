@@ -27,6 +27,9 @@ import type {
   CreateOrgResult,
   CreateBranchResult,
   PlatformTable,
+  SubscriptionObservability,
+  EntitlementObservability,
+  FlagObservability,
 } from "@/types/platform"
 
 type Period = "daily" | "weekly" | "monthly"
@@ -296,6 +299,16 @@ export const platformApi = {
       limit_value: number | null
       reason: string
     }>(`/platform/organizations/${orgId}/entitlements/${key}`, body, { platformToken: token }),
+
+  // ── Enforcement observability (read-only) ────────────────────────────────────
+  getSubscriptionObservability: (token: string) =>
+    api.get<SubscriptionObservability>("/platform/observability/subscriptions", { platformToken: token }),
+
+  getEntitlementObservability: (token: string) =>
+    api.get<EntitlementObservability>("/platform/observability/entitlements", { platformToken: token }),
+
+  getFlagObservability: (token: string) =>
+    api.get<FlagObservability>("/platform/observability/flags", { platformToken: token }),
 
   // ── Feature flags ────────────────────────────────────────────────────────────
   listFlags: (token: string) =>
