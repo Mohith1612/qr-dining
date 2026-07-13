@@ -711,6 +711,14 @@ type Branch struct {
 	SupportMetadataJson   json.RawMessage `json:"support_metadata_json"`
 }
 
+type BranchCollateral struct {
+	BranchID                int64           `json:"branch_id"`
+	ConfigJson              json.RawMessage `json:"config_json"`
+	UpdatedByPlatformUserID pgtype.Int8     `json:"updated_by_platform_user_id"`
+	CreatedAt               time.Time       `json:"created_at"`
+	UpdatedAt               time.Time       `json:"updated_at"`
+}
+
 type Cart struct {
 	ID            int64       `json:"id"`
 	SessionID     uuid.UUID   `json:"session_id"`

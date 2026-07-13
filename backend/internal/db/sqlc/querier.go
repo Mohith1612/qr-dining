@@ -79,6 +79,7 @@ type Querier interface {
 	GetBillingProfile(ctx context.Context, organizationID int64) (OrganizationBillingProfile, error)
 	GetBranchByCode(ctx context.Context, branchCode string) (Branch, error)
 	GetBranchByID(ctx context.Context, id int64) (Branch, error)
+	GetBranchCollateral(ctx context.Context, branchID int64) (BranchCollateral, error)
 	// Returns order count per hour-of-day (0–23) in the branch's configured timezone.
 	GetBusyHours(ctx context.Context, arg GetBusyHoursParams) ([]GetBusyHoursRow, error)
 	GetCartByID(ctx context.Context, id int64) (Cart, error)
@@ -290,6 +291,7 @@ type Querier interface {
 	UpdateStaffPIN(ctx context.Context, arg UpdateStaffPINParams) error
 	UpdateTableStatus(ctx context.Context, arg UpdateTableStatusParams) error
 	UpsertBillingProfile(ctx context.Context, arg UpsertBillingProfileParams) (OrganizationBillingProfile, error)
+	UpsertBranchCollateral(ctx context.Context, arg UpsertBranchCollateralParams) (BranchCollateral, error)
 	UpsertBranchFlagOverride(ctx context.Context, arg UpsertBranchFlagOverrideParams) (PlatformFlagBranchOverride, error)
 	UpsertCustomer(ctx context.Context, arg UpsertCustomerParams) (Customer, error)
 	UpsertGlobalFlagOverride(ctx context.Context, arg UpsertGlobalFlagOverrideParams) (PlatformFlagGlobalOverride, error)
