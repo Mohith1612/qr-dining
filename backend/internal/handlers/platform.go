@@ -19,6 +19,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -1005,6 +1006,14 @@ func auditV2PlatformFilters(c *gin.Context) (sqlc.ListAuditLogPlatformParams, bo
 			return p, false
 		}
 		p.BranchID = pgtype.Int8{Int64: id, Valid: true}
+	}
+	if raw := strings.TrimSpace(c.Query("session_id")); raw != "" {
+		parsed, err := uuid.Parse(raw)
+		if err != nil {
+			respondValidationError(c, "invalid session_id")
+			return p, false
+		}
+		p.SessionID = pgtype.UUID{Bytes: parsed, Valid: true}
 	}
 	if actorType := strings.TrimSpace(c.Query("actor_type")); actorType != "" {
 		p.ActorType = pgtype.Text{String: actorType, Valid: true}
