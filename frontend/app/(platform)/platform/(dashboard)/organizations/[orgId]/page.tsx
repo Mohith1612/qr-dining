@@ -123,9 +123,14 @@ export default function OrganizationDetailPage() {
               ))}
             </div>
           </div>
-          <Link href={`/platform/entitlements?org=${org.id}`} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>
-            Manage entitlements →
-          </Link>
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+            <Link href={`/platform/entitlements?org=${org.id}`} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>
+              Manage entitlements →
+            </Link>
+            <Link href={`/platform/organizations/${org.id}/billing`} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>
+              Billing & subscription →
+            </Link>
+          </div>
         </HospitalityCard>
       </Section>
 

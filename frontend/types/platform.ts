@@ -89,6 +89,84 @@ export type EffectiveEntitlements = {
   source: "org_assignment" | "restaurant_bridge" | "free_default"
 }
 
+// ── Subscription & billing ───────────────────────────────────────────────────
+
+export type SubscriptionStatus =
+  | "trial"
+  | "active"
+  | "suspended"
+  | "cancelled"
+  | "expired"
+  | "past_due"
+
+export type OrganizationSubscription = {
+  id: number
+  organization_id: number
+  plan_id: number
+  status: SubscriptionStatus
+  provider_type: "manual" | "razorpay" | "stripe"
+  provider_subscription_id: string
+  provider_customer_id: string
+  started_at: string | null
+  trial_ends_at: string | null
+  expires_at: string | null
+  renewed_at: string | null
+  cancelled_at: string | null
+  suspended_at: string | null
+  cancellation_reason: string
+  created_at: string
+  updated_at: string
+  plan_name?: string
+  plan_tier?: PlanTier
+  plan_price_monthly?: string
+}
+
+export type BillingProfile = {
+  organization_id: number
+  business_name: string
+  gst_number: string
+  tax_identifier: string
+  billing_email: string
+  billing_contact: string
+  billing_address: string
+  currency: string
+}
+
+export type InvoiceStatus = "draft" | "issued" | "paid" | "cancelled"
+
+export type SubscriptionInvoice = {
+  id: number
+  organization_id: number
+  subscription_id: number | null
+  invoice_number: string
+  status: InvoiceStatus
+  amount: string
+  currency: string
+  issue_date: string | null
+  due_date: string | null
+  paid_at: string | null
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export type PaymentMethod = "upi" | "bank_transfer" | "cash" | "cheque" | "other"
+
+export type SubscriptionPayment = {
+  id: number
+  organization_id: number
+  subscription_id: number | null
+  invoice_id: number | null
+  provider_type: "manual" | "razorpay" | "stripe"
+  method: PaymentMethod
+  amount: string
+  currency: string
+  reference_number: string
+  notes: string
+  received_at: string
+  created_at: string
+}
+
 export type FeatureFlag = {
   key: string
   name: string

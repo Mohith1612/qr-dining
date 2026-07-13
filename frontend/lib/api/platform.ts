@@ -20,6 +20,10 @@ import type {
   SupportOrderDetail,
   SupportPaymentDetail,
   AuditEvent,
+  OrganizationSubscription,
+  BillingProfile,
+  SubscriptionInvoice,
+  SubscriptionPayment,
 } from "@/types/platform"
 
 type Period = "daily" | "weekly" | "monthly"
@@ -100,6 +104,139 @@ export const platformApi = {
   getOrganizationEntitlements: (orgId: number, token: string) =>
     api.get<{ entitlements: EffectiveEntitlements }>(
       `/platform/organizations/${orgId}/entitlements`,
+      { platformToken: token }
+    ),
+
+  // ── Subscription & billing ───────────────────────────────────────────────────
+  getSubscription: (orgId: number, token: string) =>
+    api.get<{ subscription: OrganizationSubscription | null }>(
+      `/platform/organizations/${orgId}/subscription`,
+      { platformToken: token }
+    ),
+
+  activateSubscription: (
+    orgId: number,
+    body: { plan_id?: number; expires_at?: string },
+    token: string
+  ) =>
+    api.post<{ subscription: OrganizationSubscription }>(
+      `/platform/organizations/${orgId}/subscription/activate`,
+      body,
+      { platformToken: token }
+    ),
+
+  suspendSubscription: (orgId: number, token: string) =>
+    api.post<{ subscription: OrganizationSubscription }>(
+      `/platform/organizations/${orgId}/subscription/suspend`,
+      {},
+      { platformToken: token }
+    ),
+
+  renewSubscription: (orgId: number, expiresAt: string | undefined, token: string) =>
+    api.post<{ subscription: OrganizationSubscription }>(
+      `/platform/organizations/${orgId}/subscription/renew`,
+      { expires_at: expiresAt },
+      { platformToken: token }
+    ),
+
+  cancelSubscription: (orgId: number, reason: string, token: string) =>
+    api.post<{ subscription: OrganizationSubscription }>(
+      `/platform/organizations/${orgId}/subscription/cancel`,
+      { reason },
+      { platformToken: token }
+    ),
+
+  extendTrial: (
+    orgId: number,
+    body: { plan_id?: number; trial_ends_at: string },
+    token: string
+  ) =>
+    api.post<{ subscription: OrganizationSubscription }>(
+      `/platform/organizations/${orgId}/subscription/extend-trial`,
+      body,
+      { platformToken: token }
+    ),
+
+  changeSubscriptionPlan: (orgId: number, planId: number, token: string) =>
+    api.post<{ subscription: OrganizationSubscription }>(
+      `/platform/organizations/${orgId}/subscription/plan`,
+      { plan_id: planId },
+      { platformToken: token }
+    ),
+
+  getBillingProfile: (orgId: number, token: string) =>
+    api.get<{ billing_profile: BillingProfile }>(
+      `/platform/organizations/${orgId}/billing-profile`,
+      { platformToken: token }
+    ),
+
+  updateBillingProfile: (orgId: number, profile: Partial<BillingProfile>, token: string) =>
+    api.put<{ billing_profile: BillingProfile }>(
+      `/platform/organizations/${orgId}/billing-profile`,
+      profile,
+      { platformToken: token }
+    ),
+
+  listPayments: (orgId: number, token: string) =>
+    api.get<{ payments: SubscriptionPayment[] }>(
+      `/platform/organizations/${orgId}/payments`,
+      { platformToken: token }
+    ),
+
+  recordPayment: (
+    orgId: number,
+    body: {
+      method: string
+      amount: string
+      currency?: string
+      reference_number?: string
+      notes?: string
+      received_at?: string
+      invoice_id?: number
+    },
+    token: string
+  ) =>
+    api.post<{ payment: SubscriptionPayment }>(
+      `/platform/organizations/${orgId}/payments`,
+      body,
+      { platformToken: token }
+    ),
+
+  listInvoices: (orgId: number, token: string) =>
+    api.get<{ invoices: SubscriptionInvoice[] }>(
+      `/platform/organizations/${orgId}/invoices`,
+      { platformToken: token }
+    ),
+
+  createInvoice: (
+    orgId: number,
+    body: { amount: string; currency?: string; due_date?: string; notes?: string },
+    token: string
+  ) =>
+    api.post<{ invoice: SubscriptionInvoice }>(
+      `/platform/organizations/${orgId}/invoices`,
+      body,
+      { platformToken: token }
+    ),
+
+  issueInvoice: (orgId: number, invoiceId: number, token: string) =>
+    api.post<{ invoice: SubscriptionInvoice }>(
+      `/platform/organizations/${orgId}/invoices/${invoiceId}/issue`,
+      {},
+      { platformToken: token }
+    ),
+
+  markInvoicePaid: (orgId: number, invoiceId: number, token: string) =>
+    api.post<{ invoice: SubscriptionInvoice }>(
+      `/platform/organizations/${orgId}/invoices/${invoiceId}/mark-paid`,
+      {},
+      { platformToken: token }
+    ),
+
+  cancelInvoice: (orgId: number, invoiceId: number, token: string) =>
+    api.post<{ invoice: SubscriptionInvoice }>(
+      `/platform/organizations/${orgId}/invoices/${invoiceId}/cancel`,
+      {},
       { platformToken: token }
     ),
 
