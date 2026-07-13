@@ -130,7 +130,7 @@ func New(
 	analyticsH := handlers.NewAnalyticsHandler(analyticsSvc)
 	orgH := handlers.NewOrganizationHandler(repos, analyticsSvc, cfg.FeatureFlags, authorizer, auditWriter)
 	tableH := handlers.NewTableHandler(repos, auditWriter)
-	branchH := handlers.NewBranchHandler(repos, auditWriter)
+	branchH := handlers.NewBranchHandler(repos, themeSvc, auditWriter)
 	customerH := handlers.NewCustomerHandler(customerSvc, repos, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	uploadH := handlers.NewUploadHandler(storage.NewR2Client(cfg.R2), repos)
 	billingH := handlers.NewBillingHandler(repos, guestTokens, cfg.FeatureFlags)

@@ -11,16 +11,18 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/repository"
+	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
 type BranchHandler struct {
 	repos *repository.Repos
+	theme *services.ThemeService
 	audit *audit.Writer
 }
 
-func NewBranchHandler(repos *repository.Repos, auditWriter *audit.Writer) *BranchHandler {
-	return &BranchHandler{repos: repos, audit: auditWriter}
+func NewBranchHandler(repos *repository.Repos, themeSvc *services.ThemeService, auditWriter *audit.Writer) *BranchHandler {
+	return &BranchHandler{repos: repos, theme: themeSvc, audit: auditWriter}
 }
 
 type updateBranchRequest struct {
@@ -154,6 +156,20 @@ func (h *BranchHandler) UpdateBranch(c *gin.Context) {
 	if req.Theme != nil {
 		if !validThemes[*req.Theme] {
 			respondValidationError(c, "theme must be one of: dark-luxury, modern-minimal")
+			return
+		}
+		// Unified write-path: the structured tenant_themes row is the authoritative
+		// source (preset only → no custom tokens → no entitlement gate). We write it
+		// first so the read path (which prefers tenant_themes) always reflects the
+		// operator's choice; the legacy settings_json.theme write below is preserved
+		// for backward compatibility.
+		restaurant, err := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID)
+		if err != nil {
+			respondInternalError(c)
+			return
+		}
+		if _, err := h.theme.SetTheme(c.Request.Context(), restaurant.OrganizationID, *req.Theme, nil, nil); err != nil {
+			respondInternalError(c)
 			return
 		}
 		if err := h.repos.UpdateRestaurantThemeByBranchID(c.Request.Context(), branchID, *req.Theme); err != nil {
