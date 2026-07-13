@@ -11,6 +11,7 @@ import {
   Flag,
   Palette,
   LifeBuoy,
+  Rocket,
   type LucideIcon,
 } from "lucide-react"
 
@@ -18,6 +19,7 @@ type NavItem = { href: string; label: string; icon: LucideIcon }
 
 const NAV: NavItem[] = [
   { href: "/platform", label: "Overview", icon: LayoutDashboard },
+  { href: "/platform/onboarding", label: "Onboard", icon: Rocket },
   { href: "/platform/support", label: "Support", icon: LifeBuoy },
   { href: "/platform/organizations", label: "Organizations", icon: Building2 },
   { href: "/platform/plans", label: "Plans", icon: Package },

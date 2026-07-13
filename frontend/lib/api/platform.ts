@@ -24,6 +24,9 @@ import type {
   BillingProfile,
   SubscriptionInvoice,
   SubscriptionPayment,
+  CreateOrgResult,
+  CreateBranchResult,
+  PlatformTable,
 } from "@/types/platform"
 
 type Period = "daily" | "weekly" | "monthly"
@@ -60,6 +63,39 @@ export const platformApi = {
 
   getOrganization: (orgId: number, token: string) =>
     api.get<Organization>(`/platform/organizations/${orgId}`, { platformToken: token }),
+
+  // ── Onboarding (operator-driven tenant creation) ────────────────────────────
+  createOrganization: (
+    body: {
+      code: string
+      name: string
+      legal_name?: string
+      primary_contact_email?: string
+      restaurant_slug: string
+      restaurant_name?: string
+    },
+    token: string
+  ) => api.post<CreateOrgResult>("/platform/organizations", body, { platformToken: token }),
+
+  createBranch: (
+    orgId: number,
+    body: {
+      name: string
+      address?: string
+      timezone?: string
+      branch_code?: string
+      order_prefix?: string
+      initial_tables?: { identifier: string; capacity?: number }[]
+      initial_owner?: { name: string; staff_code: string; pin: string }
+    },
+    token: string
+  ) => api.post<CreateBranchResult>(`/platform/organizations/${orgId}/branches`, body, { platformToken: token }),
+
+  createBranchTables: (
+    branchId: number,
+    body: { count?: number; capacity?: number; identifiers?: string[] },
+    token: string
+  ) => api.post<{ tables: PlatformTable[] }>(`/platform/branches/${branchId}/tables`, body, { platformToken: token }),
 
   suspendOrganization: (orgId: number, token: string) =>
     api.post<Organization>(`/platform/organizations/${orgId}/suspend`, {}, { platformToken: token }),

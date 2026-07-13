@@ -150,6 +150,28 @@ export type SubscriptionInvoice = {
   updated_at: string
 }
 
+// ── Onboarding ───────────────────────────────────────────────────────────────
+
+export type PlatformTable = {
+  id: number
+  branch_id: number
+  identifier: string
+  capacity: number
+  qr_code_token: string
+  status: string
+}
+
+export type CreateOrgResult = {
+  organization: Organization
+  restaurant: { id: number; organization_id: number; name: string; slug: string }
+}
+
+export type CreateBranchResult = {
+  branch: Branch
+  tables: PlatformTable[]
+  initial_owner: { id: number; name: string; role: string; staff_code: string } | null
+}
+
 export type PaymentMethod = "upi" | "bank_transfer" | "cash" | "cheque" | "other"
 
 export type SubscriptionPayment = {
