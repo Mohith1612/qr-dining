@@ -33,12 +33,14 @@ type Querier interface {
 	CreateBillSnapshot(ctx context.Context, arg CreateBillSnapshotParams) (BillSnapshot, error)
 	CreateFeatureFlag(ctx context.Context, arg CreateFeatureFlagParams) (PlatformFeatureFlag, error)
 	CreateIdempotencyKey(ctx context.Context, arg CreateIdempotencyKeyParams) (IdempotencyKey, error)
+	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (SubscriptionInvoice, error)
 	CreateItemModifier(ctx context.Context, arg CreateItemModifierParams) (ItemModifier, error)
 	CreateItemModifierScoped(ctx context.Context, arg CreateItemModifierScopedParams) (ItemModifier, error)
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
 	CreateOrganizationBranchMembership(ctx context.Context, arg CreateOrganizationBranchMembershipParams) error
 	CreateOrganizationMember(ctx context.Context, arg CreateOrganizationMemberParams) (OrganizationMember, error)
+	CreateOrganizationSubscription(ctx context.Context, arg CreateOrganizationSubscriptionParams) (OrganizationSubscription, error)
 	CreateParticipant(ctx context.Context, arg CreateParticipantParams) (SessionParticipant, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
 	CreatePlan(ctx context.Context, arg CreatePlanParams) (SubscriptionPlan, error)
@@ -53,6 +55,7 @@ type Querier interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff, error)
 	CreateStaffSession(ctx context.Context, arg CreateStaffSessionParams) (StaffSession, error)
+	CreateSubscriptionPayment(ctx context.Context, arg CreateSubscriptionPaymentParams) (SubscriptionPayment, error)
 	CreateTable(ctx context.Context, arg CreateTableParams) (Table, error)
 	DeactivatePromo(ctx context.Context, arg DeactivatePromoParams) error
 	DeactivateStaff(ctx context.Context, id int64) error
@@ -73,6 +76,7 @@ type Querier interface {
 	GetActiveStaffSessionByTokenHash(ctx context.Context, tokenHash string) (StaffSession, error)
 	GetAssistanceRequestByID(ctx context.Context, id int64) (AssistanceRequest, error)
 	GetBillSnapshotByID(ctx context.Context, id int64) (BillSnapshot, error)
+	GetBillingProfile(ctx context.Context, organizationID int64) (OrganizationBillingProfile, error)
 	GetBranchByCode(ctx context.Context, branchCode string) (Branch, error)
 	GetBranchByID(ctx context.Context, id int64) (Branch, error)
 	// Returns order count per hour-of-day (0–23) in the branch's configured timezone.
@@ -88,6 +92,7 @@ type Querier interface {
 	GetEventsBySession(ctx context.Context, sessionID pgtype.UUID) ([]EventLog, error)
 	GetFeatureFlag(ctx context.Context, key string) (PlatformFeatureFlag, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
+	GetInvoiceByID(ctx context.Context, id int64) (SubscriptionInvoice, error)
 	GetMenuCategoryByID(ctx context.Context, id int64) (MenuCategory, error)
 	GetMenuItemByID(ctx context.Context, id int64) (MenuItem, error)
 	GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]MenuItem, error)
@@ -135,6 +140,9 @@ type Querier interface {
 	GetSessionParticipantByID(ctx context.Context, id int64) (SessionParticipant, error)
 	GetStaffByBranchAndCode(ctx context.Context, arg GetStaffByBranchAndCodeParams) (Staff, error)
 	GetStaffByID(ctx context.Context, id int64) (Staff, error)
+	// Org-level subscription lifecycle + billing foundation queries.
+	// Mutations are driven by BillingService; status is recorded/audited, not enforced.
+	GetSubscriptionByOrg(ctx context.Context, organizationID int64) (OrganizationSubscription, error)
 	GetSubscriptionByRestaurant(ctx context.Context, restaurantID int64) (GetSubscriptionByRestaurantRow, error)
 	GetTableByID(ctx context.Context, id int64) (Table, error)
 	GetTableByQRToken(ctx context.Context, qrCodeToken string) (Table, error)
@@ -176,6 +184,7 @@ type Querier interface {
 	ListFeatureFlags(ctx context.Context) ([]PlatformFeatureFlag, error)
 	ListFeaturedMenuItems(ctx context.Context, branchID int64) ([]MenuItem, error)
 	ListGlobalFlagOverrides(ctx context.Context) ([]PlatformFlagGlobalOverride, error)
+	ListInvoicesByOrg(ctx context.Context, organizationID int64) ([]SubscriptionInvoice, error)
 	ListMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
 	ListMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error)
 	ListModifiersForItem(ctx context.Context, itemID int64) ([]ItemModifier, error)
@@ -185,6 +194,7 @@ type Querier interface {
 	ListOrganizationEntitlementOverrides(ctx context.Context, organizationID int64) ([]OrganizationEntitlementOverride, error)
 	ListOrganizationFlagOverrides(ctx context.Context, organizationID int64) ([]PlatformFlagOrganizationOverride, error)
 	ListParticipantsBySession(ctx context.Context, sessionID uuid.UUID) ([]SessionParticipant, error)
+	ListPaymentsByOrg(ctx context.Context, organizationID int64) ([]SubscriptionPayment, error)
 	ListPaymentsForBranchByStatus(ctx context.Context, arg ListPaymentsForBranchByStatusParams) ([]ListPaymentsForBranchByStatusRow, error)
 	ListPaymentsForSession(ctx context.Context, sessionID uuid.UUID) ([]Payment, error)
 	ListPlanEntitlements(ctx context.Context, planID int64) ([]PlanEntitlement, error)
@@ -207,6 +217,7 @@ type Querier interface {
 	ListWebhookEventsByPayment(ctx context.Context, paymentID pgtype.Int8) ([]PaymentWebhookEvent, error)
 	MarkSessionWarned(ctx context.Context, id uuid.UUID) error
 	MarkWebhookProcessed(ctx context.Context, arg MarkWebhookProcessedParams) error
+	NextInvoiceNumber(ctx context.Context) (int64, error)
 	NextOrderNumber(ctx context.Context, arg NextOrderNumberParams) (int32, error)
 	NextPaymentNumber(ctx context.Context, arg NextPaymentNumberParams) (int32, error)
 	NextSessionNumber(ctx context.Context, arg NextSessionNumberParams) (int32, error)
@@ -251,6 +262,7 @@ type Querier interface {
 	UpdateBranchStatus(ctx context.Context, arg UpdateBranchStatusParams) (Branch, error)
 	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) (CartItem, error)
 	UpdateFeatureFlag(ctx context.Context, arg UpdateFeatureFlagParams) (PlatformFeatureFlag, error)
+	UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStatusParams) (SubscriptionInvoice, error)
 	UpdateMenuCategory(ctx context.Context, arg UpdateMenuCategoryParams) (MenuCategory, error)
 	UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) (MenuItem, error)
 	UpdateMenuItemAvailability(ctx context.Context, arg UpdateMenuItemAvailabilityParams) error
@@ -263,6 +275,7 @@ type Querier interface {
 	UpdateOrderStatusScoped(ctx context.Context, arg UpdateOrderStatusScopedParams) (Order, error)
 	UpdateOrganizationSettings(ctx context.Context, arg UpdateOrganizationSettingsParams) (Organization, error)
 	UpdateOrganizationStatus(ctx context.Context, arg UpdateOrganizationStatusParams) (Organization, error)
+	UpdateOrganizationSubscription(ctx context.Context, arg UpdateOrganizationSubscriptionParams) (OrganizationSubscription, error)
 	UpdateParticipantLastSeen(ctx context.Context, id int64) error
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
 	UpdatePaymentStatusExpected(ctx context.Context, arg UpdatePaymentStatusExpectedParams) (Payment, error)
@@ -270,6 +283,7 @@ type Querier interface {
 	UpdateRestaurantLogoByBranchID(ctx context.Context, arg UpdateRestaurantLogoByBranchIDParams) error
 	UpdateStaffPIN(ctx context.Context, arg UpdateStaffPINParams) error
 	UpdateTableStatus(ctx context.Context, arg UpdateTableStatusParams) error
+	UpsertBillingProfile(ctx context.Context, arg UpsertBillingProfileParams) (OrganizationBillingProfile, error)
 	UpsertBranchFlagOverride(ctx context.Context, arg UpsertBranchFlagOverrideParams) (PlatformFlagBranchOverride, error)
 	UpsertCustomer(ctx context.Context, arg UpsertCustomerParams) (Customer, error)
 	UpsertGlobalFlagOverride(ctx context.Context, arg UpsertGlobalFlagOverrideParams) (PlatformFlagGlobalOverride, error)

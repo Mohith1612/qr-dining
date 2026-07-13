@@ -98,6 +98,14 @@ var (
 	ErrEntitlementNotFound = errors.New("entitlement not found in catalog")
 )
 
+// Billing (org-level subscription lifecycle, invoices)
+var (
+	ErrSubscriptionNotFound        = errors.New("organization subscription not found")
+	ErrInvalidSubscriptionTransition = errors.New("invalid subscription status transition")
+	ErrInvoiceNotFound             = errors.New("invoice not found")
+	ErrInvalidInvoiceTransition    = errors.New("invalid invoice status transition")
+)
+
 // Platform feature flags / theme
 var (
 	ErrFlagNotFound           = errors.New("feature flag not found")

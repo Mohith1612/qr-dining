@@ -851,6 +851,20 @@ type Organization struct {
 	UpdatedAt           time.Time       `json:"updated_at"`
 }
 
+type OrganizationBillingProfile struct {
+	OrganizationID int64           `json:"organization_id"`
+	BusinessName   string          `json:"business_name"`
+	GstNumber      string          `json:"gst_number"`
+	TaxIdentifier  string          `json:"tax_identifier"`
+	BillingEmail   string          `json:"billing_email"`
+	BillingContact string          `json:"billing_contact"`
+	BillingAddress string          `json:"billing_address"`
+	Currency       string          `json:"currency"`
+	MetadataJson   json.RawMessage `json:"metadata_json"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+}
+
 type OrganizationBranchMembership struct {
 	ID             int64     `json:"id"`
 	OrganizationID int64     `json:"organization_id"`
@@ -887,6 +901,26 @@ type OrganizationPlanAssignment struct {
 	AssignedByPlatformUserID pgtype.Int8 `json:"assigned_by_platform_user_id"`
 	CreatedAt                time.Time   `json:"created_at"`
 	UpdatedAt                time.Time   `json:"updated_at"`
+}
+
+type OrganizationSubscription struct {
+	ID                     int64              `json:"id"`
+	OrganizationID         int64              `json:"organization_id"`
+	PlanID                 int64              `json:"plan_id"`
+	Status                 string             `json:"status"`
+	ProviderType           string             `json:"provider_type"`
+	ProviderSubscriptionID string             `json:"provider_subscription_id"`
+	ProviderCustomerID     string             `json:"provider_customer_id"`
+	StartedAt              pgtype.Timestamptz `json:"started_at"`
+	TrialEndsAt            pgtype.Timestamptz `json:"trial_ends_at"`
+	ExpiresAt              pgtype.Timestamptz `json:"expires_at"`
+	RenewedAt              pgtype.Timestamptz `json:"renewed_at"`
+	CancelledAt            pgtype.Timestamptz `json:"cancelled_at"`
+	SuspendedAt            pgtype.Timestamptz `json:"suspended_at"`
+	CancellationReason     string             `json:"cancellation_reason"`
+	MetadataJson           json.RawMessage    `json:"metadata_json"`
+	CreatedAt              time.Time          `json:"created_at"`
+	UpdatedAt              time.Time          `json:"updated_at"`
 }
 
 type Payment struct {
@@ -1181,6 +1215,42 @@ type StaffSession struct {
 	LastSeenAt   time.Time          `json:"last_seen_at"`
 	ExpiresAt    time.Time          `json:"expires_at"`
 	RevokedAt    pgtype.Timestamptz `json:"revoked_at"`
+}
+
+type SubscriptionInvoice struct {
+	ID                      int64              `json:"id"`
+	OrganizationID          int64              `json:"organization_id"`
+	SubscriptionID          pgtype.Int8        `json:"subscription_id"`
+	InvoiceNumber           string             `json:"invoice_number"`
+	Status                  string             `json:"status"`
+	Amount                  pgtype.Numeric     `json:"amount"`
+	Currency                string             `json:"currency"`
+	IssueDate               pgtype.Timestamptz `json:"issue_date"`
+	DueDate                 pgtype.Timestamptz `json:"due_date"`
+	PaidAt                  pgtype.Timestamptz `json:"paid_at"`
+	Notes                   string             `json:"notes"`
+	MetadataJson            json.RawMessage    `json:"metadata_json"`
+	CreatedByPlatformUserID pgtype.Int8        `json:"created_by_platform_user_id"`
+	CreatedAt               time.Time          `json:"created_at"`
+	UpdatedAt               time.Time          `json:"updated_at"`
+}
+
+type SubscriptionPayment struct {
+	ID                       int64           `json:"id"`
+	OrganizationID           int64           `json:"organization_id"`
+	SubscriptionID           pgtype.Int8     `json:"subscription_id"`
+	InvoiceID                pgtype.Int8     `json:"invoice_id"`
+	ProviderType             string          `json:"provider_type"`
+	Method                   string          `json:"method"`
+	Amount                   pgtype.Numeric  `json:"amount"`
+	Currency                 string          `json:"currency"`
+	ReferenceNumber          string          `json:"reference_number"`
+	ProviderPaymentID        string          `json:"provider_payment_id"`
+	Notes                    string          `json:"notes"`
+	ReceivedAt               time.Time       `json:"received_at"`
+	RecordedByPlatformUserID pgtype.Int8     `json:"recorded_by_platform_user_id"`
+	MetadataJson             json.RawMessage `json:"metadata_json"`
+	CreatedAt                time.Time       `json:"created_at"`
 }
 
 type SubscriptionPlan struct {
