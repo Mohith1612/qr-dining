@@ -41,7 +41,11 @@ export class WSConnection {
       const res = await sessionsApi.wsTicket(this.sessionId, guestToken, this.lastSequence)
       ticket = res.ticket
     } catch {
-      useWsStore.getState().setStatus("failed")
+      // ws-ticket fails (409) when the session has idled into
+      // awaiting_reactivation. Don't dead-end on "Connection lost": route through
+      // the existing reconnect() path, whose snapshot call reactivates the session
+      // server-side and then retries the connection. Bounded by MAX_ATTEMPTS (F-1).
+      if (!this.stopped) this.scheduleReconnect()
       return
     }
 
