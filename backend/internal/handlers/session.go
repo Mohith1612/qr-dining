@@ -72,7 +72,7 @@ func (h *SessionHandler) Create(c *gin.Context) {
 		RiskLevel:    audit.RiskLow,
 	})
 	c.JSON(http.StatusCreated, gin.H{
-		"session":            result.Session,
+		"session":            guestSafeSession(result.Session),
 		"participant":        result.Participant,
 		"guest_access_token": token,
 	})
@@ -94,7 +94,7 @@ func (h *SessionHandler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, sess)
+	c.JSON(http.StatusOK, guestSafeSession(sess))
 }
 
 type closeSessionRequest struct {
@@ -176,7 +176,7 @@ func (h *SessionHandler) Join(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"session":            sess,
+		"session":            guestSafeSession(sess),
 		"participant":        participant,
 		"guest_access_token": token,
 	})
@@ -200,7 +200,7 @@ func (h *SessionHandler) Reactivate(c *gin.Context) {
 		sessionError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, sess)
+	c.JSON(http.StatusOK, guestSafeSession(sess))
 }
 
 func (h *SessionHandler) IssueWSTicket(c *gin.Context) {

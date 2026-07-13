@@ -6,10 +6,21 @@ import (
 	"strings"
 
 	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// guestSafeSession returns a copy of the session with the guest credential
+// (session_token) cleared. Guests authenticate with their HMAC guest_access_token
+// and never need session_token, so it must never be serialized to a guest. This is
+// permanent and independent of the AUTH_GUEST_CREDENTIALS_REQUIRED (R6) rollout flag.
+// sqlc.Session is a value type, so the cleared copy never touches the DB row.
+func guestSafeSession(s sqlc.Session) sqlc.Session {
+	s.SessionToken = ""
+	return s
+}
 
 func guestTokenFromHeader(c *gin.Context) string {
 	authHeader := c.GetHeader("Authorization")

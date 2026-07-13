@@ -57,5 +57,10 @@ func (h *SnapshotHandler) GetSnapshot(c *gin.Context) {
 		return
 	}
 
+	// Never serialize the guest credential (session_token) in the snapshot. With
+	// AUTH_GUEST_CREDENTIALS_REQUIRED=false this endpoint is reachable without a
+	// token, so stripping it here is the permanent, flag-independent fix (F-8).
+	snapshot.Session = guestSafeSession(snapshot.Session)
+
 	c.JSON(http.StatusOK, snapshot)
 }
