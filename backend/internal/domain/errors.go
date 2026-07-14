@@ -114,6 +114,11 @@ var (
 	ErrInvalidThemeToken      = errors.New("invalid theme token")
 )
 
+// QR collateral
+var (
+	ErrInvalidCollateralConfig = errors.New("invalid collateral config")
+)
+
 // Customers
 var (
 	ErrInvalidPhone     = errors.New("invalid phone number")
