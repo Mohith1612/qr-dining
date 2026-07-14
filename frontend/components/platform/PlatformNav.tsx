@@ -13,6 +13,7 @@ import {
   LifeBuoy,
   Rocket,
   Gauge,
+  QrCode,
   type LucideIcon,
 } from "lucide-react"
 
@@ -29,6 +30,7 @@ const NAV: NavItem[] = [
   { href: "/platform/observability", label: "Observability", icon: Gauge },
   { href: "/platform/feature-flags", label: "Feature Flags", icon: Flag },
   { href: "/platform/themes", label: "Themes", icon: Palette },
+  { href: "/platform/collateral", label: "Collateral", icon: QrCode },
 ]
 
 function isActive(pathname: string, href: string): boolean {
