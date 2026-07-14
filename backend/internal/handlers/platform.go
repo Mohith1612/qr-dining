@@ -30,14 +30,15 @@ type PlatformHandler struct {
 	flag      *services.FlagService
 	analytics *services.PlatformAnalyticsService
 	theme     *services.ThemeService
-	support   *services.SupportService
-	billing   *services.BillingService
-	obs       *services.EnforcementObservabilityService
-	audit     *audit.Writer
+	support    *services.SupportService
+	billing    *services.BillingService
+	obs        *services.EnforcementObservabilityService
+	collateral *services.CollateralService
+	audit      *audit.Writer
 }
 
-func NewPlatformHandler(repos *repository.Repos, svc *services.PlatformService, ent *services.EntitlementService, flag *services.FlagService, analytics *services.PlatformAnalyticsService, theme *services.ThemeService, support *services.SupportService, billing *services.BillingService, obs *services.EnforcementObservabilityService, auditWriter *audit.Writer) *PlatformHandler {
-	return &PlatformHandler{repos: repos, svc: svc, ent: ent, flag: flag, analytics: analytics, theme: theme, support: support, billing: billing, obs: obs, audit: auditWriter}
+func NewPlatformHandler(repos *repository.Repos, svc *services.PlatformService, ent *services.EntitlementService, flag *services.FlagService, analytics *services.PlatformAnalyticsService, theme *services.ThemeService, support *services.SupportService, billing *services.BillingService, obs *services.EnforcementObservabilityService, collateral *services.CollateralService, auditWriter *audit.Writer) *PlatformHandler {
+	return &PlatformHandler{repos: repos, svc: svc, ent: ent, flag: flag, analytics: analytics, theme: theme, support: support, billing: billing, obs: obs, collateral: collateral, audit: auditWriter}
 }
 
 type platformAuthRequest struct {
@@ -561,8 +562,15 @@ func (h *PlatformHandler) GetBranch(c *gin.Context) {
 		respondError(c, http.StatusNotFound, CodeTenantNotFound, "branch not found")
 		return
 	}
+	resp := platformBranchResponse(branch)
+	// Surface restaurant name + logo for collateral/branding consumers (additive).
+	if restaurant, rerr := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID); rerr == nil {
+		resp["restaurant_name"] = restaurant.Name
+		resp["restaurant_slug"] = restaurant.Slug
+		resp["logo_url"] = textOrEmpty(restaurant.LogoUrl)
+	}
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.branches.read", "branch", strconv.FormatInt(branch.ID, 10), branch.OrganizationID, branch.ID, 0, gin.H{})
-	c.JSON(http.StatusOK, platformBranchResponse(branch))
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *PlatformHandler) SearchSupport(c *gin.Context) {
@@ -819,6 +827,14 @@ func restaurantResponse(restaurant sqlc.Restaurant) gin.H {
 		"settings":        restaurant.SettingsJson,
 		"created_at":      restaurant.CreatedAt,
 	}
+}
+
+// textOrEmpty returns the string value of a nullable pgtype.Text, or "" when null.
+func textOrEmpty(t pgtype.Text) string {
+	if t.Valid {
+		return t.String
+	}
+	return ""
 }
 
 func platformBranchResponse(branch sqlc.Branch) gin.H {
