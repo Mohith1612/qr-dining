@@ -11,6 +11,7 @@ import type {
   DietaryFlag,
   ItemBadge,
 } from "@/types/api"
+import type { CollateralConfig } from "@/types/collateral"
 
 export const staffApi = {
   auth: (branchCode: string, staffCode: string, pin: string) =>
@@ -136,6 +137,7 @@ export const staffApi = {
   getBranch: (branchId: number, staffToken: string) =>
     api.get<{
       id: number
+      name: string
       organization_id: number
       branch_code: string
       status: string
@@ -146,7 +148,18 @@ export const staffApi = {
       tax_rate: number
       service_charge_rate: number
       include_tax_in_price: boolean
+      restaurant_name: string
+      logo_url: string
     }>(`/branches/${branchId}`, { staffToken }),
+
+  getCollateral: (branchId: number, staffToken: string) =>
+    api.get<{ collateral: CollateralConfig; formats: string[] }>(
+      `/branches/${branchId}/collateral`,
+      { staffToken }
+    ),
+
+  setCollateral: (branchId: number, config: CollateralConfig, staffToken: string) =>
+    api.put<{ collateral: CollateralConfig }>(`/branches/${branchId}/collateral`, config, { staffToken }),
 
   getAdminMenu: (branchId: number, staffToken: string) =>
     api.get<{ branch_id: number; categories: MenuCategory[] }>(`/branches/${branchId}/menu/full`, { staffToken }),

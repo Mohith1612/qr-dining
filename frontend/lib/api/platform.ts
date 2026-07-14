@@ -30,7 +30,9 @@ import type {
   SubscriptionObservability,
   EntitlementObservability,
   FlagObservability,
+  PlatformBranchDetail,
 } from "@/types/platform"
+import type { CollateralConfig } from "@/types/collateral"
 
 type Period = "daily" | "weekly" | "monthly"
 
@@ -391,6 +393,26 @@ export const platformApi = {
     api.put<{ theme: ThemeConfig }>(
       `/platform/organizations/${orgId}/theme`,
       { preset, tokens },
+      { platformToken: token }
+    ),
+
+  // ── QR collateral ────────────────────────────────────────────────────────────
+  getBranchDetail: (branchId: number, token: string) =>
+    api.get<PlatformBranchDetail>(`/platform/branches/${branchId}`, { platformToken: token }),
+
+  listBranchTables: (branchId: number, token: string) =>
+    api.get<{ tables: PlatformTable[] }>(`/platform/branches/${branchId}/tables`, { platformToken: token }),
+
+  getBranchCollateral: (branchId: number, token: string) =>
+    api.get<{ collateral: CollateralConfig; formats: string[] }>(
+      `/platform/branches/${branchId}/collateral`,
+      { platformToken: token }
+    ),
+
+  setBranchCollateral: (branchId: number, config: CollateralConfig, token: string) =>
+    api.put<{ collateral: CollateralConfig }>(
+      `/platform/branches/${branchId}/collateral`,
+      config,
       { platformToken: token }
     ),
 

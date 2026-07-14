@@ -58,6 +58,14 @@ export type Branch = {
   created_at: string
 }
 
+// Branch read with restaurant branding surfaced (GET /platform/branches/:id) — used by
+// the QR collateral studio to compose Theme + Branch metadata + Collateral config.
+export type PlatformBranchDetail = Branch & {
+  restaurant_name?: string
+  restaurant_slug?: string
+  logo_url?: string
+}
+
 export type PlanTier = "free" | "standard" | "premium"
 
 export type PlanEntitlement = {
