@@ -1,19 +1,39 @@
 openapi: "3.1.0"
 info:
   title: qr-dining API
-  version: "1.0.0"
+  version: "2.0.0"
   description: |
-    Realtime dine-in OS — session lifecycle, cart, orders, payments, assistance requests,
-    staff management, menu management, and WebSocket reconnect reconciliation.
+    Realtime, session-centric dine-in operating system plus its SaaS control plane.
+    Covers the guest dining loop (session lifecycle, shared cart, orders, payments, assistance,
+    snapshot reconnect), the staff operational surface (kitchen/waiter/admin), and the platform
+    governance layer (organizations, branches, plans, entitlements, feature flags, analytics,
+    themes, support console, billing, subscriptions, premium QR collateral).
 
-    **Auth**
-    - Guest endpoints: no auth required
-    - Staff endpoints: `Authorization: Bearer <token>` obtained from `POST /staff/auth`
-    - Participant-scoped endpoints: `X-Participant-ID: <int64>` header
+    ## Trust domains & auth
+    Every authenticated request uses `Authorization: Bearer <token>`. There are **three distinct,
+    non-interchangeable token types**, one per trust domain:
 
-    **Error Shape**
-    All non-2xx responses use the `APIError` schema: `{"code":"...", "message":"..."}`.
-    Frontend clients MUST key on `code`; `message` is human-readable and may change.
+    - **Public** — no auth (`/health`, menu read, QR resolve, tenant resolve, plans, webhooks).
+    - **Guest** (`GuestBearer`) — a stateless HMAC session token issued by `POST /sessions` /
+      `POST /sessions/{id}/join`. Enforcement is gated by the `AUTH_GUEST_CREDENTIALS_REQUIRED`
+      (R6) rollout flag; independent of that flag, a *present-but-invalid* token is always rejected
+      (401/403), never failed-open. `X-Participant-ID` is still sent on some guest mutations as a
+      **participant identifier, not a credential**.
+    - **Staff** (`StaffBearer`) — opaque token from `POST /staff/auth` (also accepted as an HttpOnly
+      cookie when `AUTH_STAFF_COOKIE_ENABLED`). Roles: `owner`, `manager`, `waiter`, `kitchen`.
+    - **Platform** (`PlatformBearer`) — a separate super-admin trust domain from `POST /platform/auth`
+      (+ `POST /platform/auth/mfa` when TOTP MFA is enrolled). **Staff/guest tokens are rejected on
+      `/platform/*`.** Platform RBAC: `super_admin` (bypass) > `support_admin` > `billing_admin` >
+      `read_only_auditor`.
+
+    ## Conventions
+    - **Error shape.** All non-2xx responses use `APIError`: `{"code":"...", "message":"..."}`.
+      Clients MUST key on the stable `code`; `message` is human-readable and may change.
+    - **Money** is serialized as a decimal **string** (e.g. `"12.50"`), never a float.
+    - **Shadow/inert surfaces.** Entitlements & feature flags are *resolve-only* (computed, not yet
+      enforced); org/branch suspend/activate flips a status column no operational path reads yet.
+      Such endpoints are annotated in their descriptions.
+    - No global `/api/v1` prefix — paths are root-relative.
 
 servers:
   - url: http://localhost:8080
@@ -21,15 +41,33 @@ servers:
 
 components:
   securitySchemes:
+    GuestBearer:
+      type: http
+      scheme: bearer
+      description: |
+        Guest session HMAC token (`guest_access_token`) returned by `POST /sessions` and
+        `POST /sessions/{id}/join`. Carries session/branch/table/participant/role + credential
+        version + expiry (default TTL 2h). Enforcement is gated by `AUTH_GUEST_CREDENTIALS_REQUIRED`
+        (R6); a present-but-invalid token is always rejected regardless of the flag.
     StaffBearer:
       type: http
       scheme: bearer
-      description: Staff token returned by POST /staff/auth
+      description: Staff token returned by `POST /staff/auth` (or HttpOnly cookie when `AUTH_STAFF_COOKIE_ENABLED`).
+    PlatformBearer:
+      type: http
+      scheme: bearer
+      description: |
+        Platform operator token returned by `POST /platform/auth` (+ `POST /platform/auth/mfa` when
+        MFA is enrolled). Separate trust domain — staff/guest tokens are rejected on `/platform/*`.
+        Per-operation RBAC roles are noted in each endpoint description.
     ParticipantID:
       type: apiKey
       in: header
       name: X-Participant-ID
-      description: Participant ID returned when joining or creating a session
+      description: |
+        Participant identifier (int64) returned when creating or joining a session. This is an
+        **identifier, not an auth credential** — the guest `Authorization: Bearer` token is the
+        credential. Sent on guest mutations to attribute the acting participant.
 
   schemas:
     APIError:
@@ -47,10 +85,17 @@ components:
 
     Session:
       type: object
+      description: |
+        A table dining session. **The guest credential `session_token` is intentionally never
+        returned** — it is stripped from every guest-facing response by `guestSafeSession()`
+        (remediation F-8), independent of the R6 flag.
       properties:
         id:
           type: string
           format: uuid
+        session_number:
+          type: string
+          description: Human-readable operational reference
         branch_id:
           type: integer
         table_id:
@@ -60,13 +105,16 @@ components:
           nullable: true
         status:
           type: string
-          enum: [active, closed, abandoned]
-        session_token:
-          type: string
+          description: 6-state lifecycle (migration 000023)
+          enum: [active, payment_pending, awaiting_reactivation, abandoned, expired, closed]
         created_at:
           type: string
           format: date-time
         closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        awaiting_reactivation_at:
           type: string
           format: date-time
           nullable: true
@@ -422,6 +470,24 @@ components:
           example:
             code: RATE_LIMITED
             message: rate limit exceeded
+    Conflict:
+      description: State conflict (e.g. invalid lifecycle transition, duplicate key)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: INVALID_TRANSITION
+            message: invalid state transition
+    ServiceUnavailable:
+      description: A required dependency is unconfigured or unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: MFA_NOT_CONFIGURED
+            message: MFA is not configured on this server
 
 paths:
   # ── Infrastructure ────────────────────────────────────────────────────────
@@ -1144,7 +1210,7 @@ paths:
       summary: Staff-settle a manual payment
       tags: [Payments]
       security:
-        - StaffAuth: []
+        - StaffBearer: []
       parameters:
         - name: id
           in: path
@@ -1731,3 +1797,41 @@ tags:
     description: Audit trail — session timeline and branch recent events
   - name: WebSocket
     description: Realtime event streaming
+  - name: Tenancy
+    description: Public tenant resolution used by the frontend to bootstrap context
+  - name: Promos
+    description: Promo validation (guest) and promo management (staff)
+  - name: Customers
+    description: Customer opt-in (guest) and customer history/erasure (staff)
+  - name: Branches
+    description: Branch detail/update (staff) and platform branch read/lifecycle
+  - name: Tables
+    description: Table management and QR token lifecycle
+  - name: Analytics
+    description: Branch- and org-scoped operational analytics (staff)
+  - name: Uploads
+    description: Presigned image upload URLs (Cloudflare R2)
+  - name: Platform Auth
+    description: Platform operator authentication, MFA, and logout
+  - name: Platform Users
+    description: Platform operator directory (read-only)
+  - name: Organizations
+    description: Organization governance — CRUD and lifecycle (platform)
+  - name: Plans & Entitlements
+    description: Plan catalog, entitlement catalog, and org plan/entitlement assignment (resolve-only)
+  - name: Feature Flags
+    description: Product feature-flag catalog and global/org/branch targeting (resolve-only)
+  - name: Platform Analytics
+    description: Cross-tenant usage/revenue/health aggregation (platform)
+  - name: Enforcement Observability
+    description: Read-only views of where entitlement/flag/subscription enforcement would bite
+  - name: Themes
+    description: Structured theme presets and design tokens (platform write, public read)
+  - name: Support Console
+    description: Read-only operator inspection plus audited support-session grants
+  - name: Billing
+    description: Org billing profile, recorded payments, and invoice lifecycle (platform)
+  - name: Subscriptions
+    description: Plan subscription lifecycle (platform) and restaurant subscription read (staff)
+  - name: Collateral
+    description: Premium QR print collateral configuration (platform + staff, one shared row)
