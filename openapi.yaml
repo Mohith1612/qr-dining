@@ -102,6 +102,13 @@ components:
       required: true
       schema:
         type: integer
+    FlagKeyPath:
+      name: key
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Feature-flag key
     PeriodQuery:
       name: period
       in: query
@@ -548,6 +555,27 @@ components:
         wifiPassword: { type: string, maxLength: 64 }
         instagram: { type: string, maxLength: 120 }
         website: { type: string, maxLength: 200 }
+
+    FlagOverrideRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        reason:
+          type: string
+
+    FlagState:
+      type: object
+      description: Resolved feature-flag state (precedence branch > org > global > catalog default)
+      properties:
+        key:
+          type: string
+        enabled:
+          type: boolean
+        source:
+          type: string
+          enum: [branch_override, org_override, global_override, default]
 
   responses:
     NotFound:
@@ -1762,13 +1790,13 @@ paths:
             type: integer
       responses:
         "200":
-          description: Resolved flags
+          description: "Resolved flags as a map of key to enabled boolean"
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  flags:
+                  feature_flags:
                     type: object
                     additionalProperties:
                       type: boolean
@@ -3762,6 +3790,543 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Platform: plans & entitlements (resolve-only/shadow) ────────────────────
+  /platform/entitlements:
+    get:
+      summary: List the entitlement catalog (capabilities + limits)
+      description: |
+        Roles support_admin | billing_admin | read_only_auditor. Capability keys include
+        analytics.basic, analytics.advanced, custom.theme, multi_branch, advanced.audit,
+        support.priority, api.access; limit keys limit.branches/staff/tables (-1 = unlimited).
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entitlements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        kind: { type: string, enum: [capability, limit] }
+                        description: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/plans:
+    get:
+      summary: List plans with their entitlement defaults
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a plan (super_admin)
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, tier]
+              properties:
+                name: { type: string }
+                tier:
+                  type: string
+                  enum: [free, standard, premium]
+                price_monthly:
+                  type: string
+                  description: Numeric string; defaults to "0"
+                features:
+                  type: object
+      responses:
+        "201":
+          description: Plan created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: A plan for this tier already exists (PLAN_TIER_EXISTS)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/plans/{plan_id}:
+    patch:
+      summary: Update a plan's name/price/features (billing_admin)
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: plan_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                price_monthly: { type: string, description: Numeric string }
+                features: { type: object }
+      responses:
+        "200":
+          description: Updated plan
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/plans/{plan_id}/entitlements:
+    put:
+      summary: Replace a plan's entitlement defaults (super_admin)
+      description: Every key must exist in the entitlement catalog, else 400.
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: plan_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entitlements:
+                  type: array
+                  items:
+                    type: object
+                    required: [key]
+                    properties:
+                      key: { type: string }
+                      enabled: { type: boolean, default: true }
+                      limit_value: { type: [integer, "null"] }
+      responses:
+        "200":
+          description: Updated plan entitlements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan_id: { type: integer }
+                  entitlements: { type: array, items: { type: object } }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/entitlements:
+    get:
+      summary: Resolve effective entitlements for an organization
+      description: |
+        Precedence org override > org plan assignment → plan defaults > restaurant-subscription
+        bridge > free default. **Resolve-only** — not enforced on operational paths yet.
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Resolved entitlements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entitlements: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/plan:
+    put:
+      summary: Assign (or reassign) a plan to an organization (billing_admin)
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_id]
+              properties:
+                plan_id: { type: integer }
+                status:
+                  type: string
+                  enum: [trial, active, suspended, cancelled]
+                  default: active
+      responses:
+        "200":
+          description: Plan assigned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization_id: { type: integer }
+                  plan_id: { type: integer }
+                  status: { type: string }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/entitlements/{key}:
+    put:
+      summary: Set an org-level override for one entitlement key (super_admin)
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: [boolean, "null"] }
+                limit_value: { type: [integer, "null"] }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Override set
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Organization or entitlement key not found (ENTITLEMENT_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  # ── Platform: feature-flag targeting (resolve-only) ─────────────────────────
+  /platform/flags:
+    get:
+      summary: List the feature-flag catalog (with global overrides)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flags:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        name: { type: string }
+                        description: { type: string }
+                        default_enabled: { type: boolean }
+                        global_override: { type: [boolean, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a feature flag (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, name]
+              properties:
+                key: { type: string }
+                name: { type: string }
+                description: { type: string }
+                default_enabled: { type: boolean, default: false }
+      responses:
+        "201":
+          description: Flag created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: A flag with this key already exists (FLAG_EXISTS)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/flags/{key}:
+    patch:
+      summary: Update a flag's name/description/default (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/FlagKeyPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                default_enabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated flag
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Flag not found (FLAG_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/flags/{key}/global:
+    put:
+      summary: Set the global override for a flag (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/FlagKeyPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlagOverrideRequest"
+      responses:
+        "200":
+          description: Override set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flag_key: { type: string }
+                  scope: { type: string, example: global }
+                  enabled: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Flag not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+    delete:
+      summary: Clear the global override for a flag (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/FlagKeyPath"
+      responses:
+        "204":
+          description: Override cleared
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/organizations/{org_id}/flags:
+    get:
+      summary: Resolve flags for an organization
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Resolved flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization_id: { type: integer }
+                  flags:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FlagState"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/flags/{key}:
+    put:
+      summary: Set an org-level flag override (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/FlagKeyPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlagOverrideRequest"
+      responses:
+        "200":
+          description: Override set
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      summary: Clear an org-level flag override (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/FlagKeyPath"
+      responses:
+        "204":
+          description: Override cleared
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/branches/{branch_id}/flags:
+    get:
+      summary: Resolve flags for a branch
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200":
+          description: Resolved flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branch_id: { type: integer }
+                  flags:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FlagState"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/branches/{branch_id}/flags/{key}:
+    put:
+      summary: Set a branch-level flag override (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+        - $ref: "#/components/parameters/FlagKeyPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlagOverrideRequest"
+      responses:
+        "200":
+          description: Override set
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      summary: Clear a branch-level flag override (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+        - $ref: "#/components/parameters/FlagKeyPath"
+      responses:
+        "204":
+          description: Override cleared
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   # ── WebSocket ─────────────────────────────────────────────────────────────
   /ws:
