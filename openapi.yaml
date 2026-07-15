@@ -74,6 +74,51 @@ components:
         **identifier, not an auth credential** — the guest `Authorization: Bearer` token is the
         credential. Sent on guest mutations to attribute the acting participant.
 
+  parameters:
+    BranchIdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Branch id
+    OrgIdPath:
+      name: org_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Organization id
+    BranchIdParam:
+      name: branch_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Branch id (platform path segment `:branch_id`)
+    IntIdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    PeriodQuery:
+      name: period
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [daily, weekly, monthly]
+        default: weekly
+      description: Aggregation period
+    OrganizationIdQuery:
+      name: organization_id
+      in: query
+      required: false
+      schema:
+        type: integer
+      description: Optional org filter for cross-tenant analytics
+
   schemas:
     APIError:
       type: object
@@ -480,6 +525,30 @@ components:
           additionalProperties:
             type: string
 
+    CollateralConfig:
+      type: object
+      description: |
+        Branch-scoped premium QR print collateral config. Strictly validated — unknown JSON keys
+        are rejected (400). Consumes the theme for colour/typography; owns only the physical concern.
+      additionalProperties: false
+      properties:
+        format:
+          type: string
+          enum: [standing_card, table_tent, sticker, square_card, bulk_sheet]
+        showLogo: { type: boolean }
+        showBranch: { type: boolean }
+        showWifi: { type: boolean }
+        showFooter: { type: boolean }
+        welcomeMessage: { type: string, maxLength: 120 }
+        subtitle: { type: string, maxLength: 160 }
+        footerNote: { type: string, maxLength: 160 }
+        branchDisplay: { type: string, maxLength: 60 }
+        tagline: { type: string, maxLength: 120 }
+        wifiName: { type: string, maxLength: 64 }
+        wifiPassword: { type: string, maxLength: 64 }
+        instagram: { type: string, maxLength: 120 }
+        website: { type: string, maxLength: 200 }
+
   responses:
     NotFound:
       description: Resource not found
@@ -558,6 +627,26 @@ components:
           example:
             code: MFA_NOT_CONFIGURED
             message: MFA is not configured on this server
+    AnalyticsResult:
+      description: Analytics result (shape varies by endpoint; includes the requested period)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              period:
+                type: string
+                enum: [daily, weekly, monthly]
+            additionalProperties: true
+    AnalyticsForbidden:
+      description: Access denied, or analytics not available on the current plan
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: ANALYTICS_GATED
+            message: analytics is not available on your current plan
 
 paths:
   # ── Infrastructure ────────────────────────────────────────────────────────
@@ -1868,6 +1957,20 @@ paths:
                   default: true
                 position:
                   type: integer
+                dietary_flags:
+                  type: array
+                  items:
+                    type: string
+                    enum: [vegetarian, vegan, jain, egg, non-veg]
+                item_badges:
+                  type: array
+                  items:
+                    type: string
+                    enum: [chef-special, bestseller, seasonal, new]
+                spice_level:
+                  type: integer
+                  minimum: 0
+                  maximum: 3
       responses:
         "201":
           description: Item created
@@ -1904,14 +2007,37 @@ paths:
               properties:
                 name:
                   type: string
+                  minLength: 1
+                  maxLength: 100
                 description:
                   type: string
                 price:
                   type: number
+                  minimum: 0
                 position:
                   type: integer
                 branch_id:
                   type: integer
+                dietary_flags:
+                  type: array
+                  items:
+                    type: string
+                    enum: [vegetarian, vegan, jain, egg, non-veg]
+                item_badges:
+                  type: array
+                  items:
+                    type: string
+                    enum: [chef-special, bestseller, seasonal, new]
+                spice_level:
+                  type: integer
+                  minimum: 0
+                  maximum: 3
+                category_id:
+                  type: [integer, "null"]
+                  description: Optional — move item to a different category
+                image_url:
+                  type: [string, "null"]
+                  description: Optional — set/update item image
       responses:
         "200":
           description: Item updated
@@ -1921,6 +2047,22 @@ paths:
                 $ref: "#/components/schemas/MenuItem"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Delete a menu item (owner/manager)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "204":
+          description: Item deleted
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1965,7 +2107,11 @@ paths:
   # ── Staff Auth ────────────────────────────────────────────────────────────
   /staff/auth:
     post:
-      summary: Authenticate staff with branch ID and PIN (10 RPM limit)
+      summary: Authenticate staff (10 RPM limit, fail-closed)
+      description: |
+        Authenticate with PIN plus either a numeric `branch_id` or a `branch_code`+`staff_code`.
+        When `AUTH_STAFF_CODE_REQUIRED` (R4) is on, `branch_code`+`staff_code` are required.
+        Repeated failures trigger a lockout (423).
       tags: [Staff]
       requestBody:
         required: true
@@ -1973,14 +2119,23 @@ paths:
           application/json:
             schema:
               type: object
-              required: [branch_id, pin]
+              required: [pin]
               properties:
                 branch_id:
                   type: integer
+                  description: Numeric branch id (legacy identifier path)
+                branch_code:
+                  type: string
+                  description: Branch code (required with staff_code under R4)
+                staff_code:
+                  type: string
+                  description: Per-staff code (required under R4)
                 pin:
                   type: string
                   minLength: 4
-                  maxLength: 6
+                  maxLength: 8
+                device_name:
+                  type: string
             example:
               branch_id: 1
               pin: "1234"
@@ -2002,6 +2157,15 @@ paths:
               example:
                 code: UNAUTHORIZED
                 message: invalid credentials
+        "423":
+          description: Locked out after too many failed attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: AUTH_LOCKED_OUT
+                message: too many failed attempts; try again later
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -2033,6 +2197,9 @@ paths:
                 role:
                   type: string
                   enum: [owner, manager, kitchen, waiter]
+                staff_code:
+                  type: string
+                  description: Per-staff login code (used under R4 AUTH_STAFF_CODE_REQUIRED)
                 pin:
                   type: string
                   minLength: 4
@@ -2242,6 +2409,827 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+
+  # ── Staff: session / operational ──────────────────────────────────────────
+  /staff/logout:
+    post:
+      summary: Invalidate the current staff token
+      tags: [Staff]
+      security:
+        - StaffBearer: []
+      responses:
+        "204":
+          description: Logged out
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /branches/{id}/payments:
+    get:
+      summary: List pending payments for a branch (waiter settlement queue)
+      tags: [Staff Dashboard]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Pending payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Payment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/menu/full:
+    get:
+      summary: Full admin menu (includes unavailable items)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Admin menu
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuCategory"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/tables:
+    get:
+      summary: List tables for a branch
+      tags: [Tables]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Tables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      summary: Create a table
+      tags: [Tables]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier]
+              properties:
+                identifier:
+                  type: string
+                capacity:
+                  type: integer
+      responses:
+        "201":
+          description: Table created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Duplicate table identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /branches/{id}/collateral:
+    get:
+      summary: Get the branch's QR collateral config (staff)
+      description: Owner/manager. Reads the single shared `branch_collateral` row (same row the platform studio writes).
+      tags: [Collateral]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Collateral config + available formats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collateral:
+                    $ref: "#/components/schemas/CollateralConfig"
+                  formats:
+                    type: array
+                    items:
+                      type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      summary: Update the branch's QR collateral config (staff)
+      description: Owner/manager only. Strict validation — unknown keys / bad format / oversized text → 400.
+      tags: [Collateral]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollateralConfig"
+      responses:
+        "200":
+          description: Updated config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collateral:
+                    $ref: "#/components/schemas/CollateralConfig"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}:
+    get:
+      summary: Get branch detail (staff)
+      description: Includes `logo_url` and `restaurant_name` for collateral/branding.
+      tags: [Branches]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Branch detail
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    patch:
+      summary: Update branch settings (owner/manager)
+      tags: [Branches]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_timeout_minutes: { type: integer }
+                logo_url: { type: string }
+                order_prefix: { type: string }
+                theme:
+                  type: string
+                  enum: [dark-luxury, modern-minimal]
+                  description: Legacy settings_json.theme write path (read path is theme-bridged)
+                tax_rate: { type: number }
+                service_charge_rate: { type: number }
+                include_tax_in_price: { type: boolean }
+      responses:
+        "200":
+          description: Updated branch
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/customers:
+    get:
+      summary: Search customers by phone prefix (staff)
+      tags: [Customers]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Partial phone prefix
+      responses:
+        "200":
+          description: Matching customers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customers:
+                    type: array
+                    items:
+                      type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/audit:
+    get:
+      summary: Branch-scoped audit log (staff)
+      tags: [Event Log]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Audit rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  audit_log:
+                    type: array
+                    items:
+                      type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/analytics/top-items:
+    get:
+      summary: Top-selling items (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  /branches/{id}/analytics/busy-hours:
+    get:
+      summary: Busy-hours distribution (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  /branches/{id}/analytics/order-volume:
+    get:
+      summary: Order volume per day (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  # ── Staff: organization governance (staff-auth, feature-flagged) ────────────
+  /orgs/{org_id}:
+    get:
+      summary: Get organization (staff)
+      description: Requires org tenancy; org-owner scoped. Returns 404 FEATURE_DISABLED when TENANCY_ORGANIZATIONS_ENABLED is off.
+      tags: [Organizations]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Organization
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Update organization (staff, org owner)
+      tags: [Organizations]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Updated organization
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{org_id}/branches:
+    get:
+      summary: List branches in the organization (staff)
+      tags: [Organizations]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Branches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branches:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{org_id}/analytics/top-items:
+    get:
+      summary: Org-aggregated top items (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  /orgs/{org_id}/analytics/busy-hours:
+    get:
+      summary: Org-aggregated busy hours (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  /orgs/{org_id}/analytics/order-volume:
+    get:
+      summary: Org-aggregated order volume (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  /orgs/{org_id}/audit:
+    get:
+      summary: Org-scoped audit log (staff)
+      tags: [Event Log]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Audit rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  audit_log:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ── Staff: promos ───────────────────────────────────────────────────────────
+  /branches/{id}/promos:
+    get:
+      summary: List promos for a branch (staff)
+      tags: [Promos]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Promos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a promo (staff)
+      tags: [Promos]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, type, value, valid_from, valid_until]
+              properties:
+                code: { type: string }
+                type:
+                  type: string
+                  enum: [flat_amount, percentage]
+                value: { type: number }
+                min_order_amount: { type: number }
+                max_uses: { type: [integer, "null"] }
+                uses_per_phone: { type: integer, default: 1 }
+                valid_from: { type: string, format: date-time }
+                valid_until: { type: string, format: date-time }
+                time_window_start: { type: string, description: "HH:MM" }
+                time_window_end: { type: string, description: "HH:MM" }
+                description: { type: string }
+      responses:
+        "201":
+          description: Promo created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Duplicate promo code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /branches/{id}/promos/{promo_id}:
+    delete:
+      summary: Deactivate (soft-delete) a promo (staff)
+      tags: [Promos]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: promo_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Promo deactivated
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Staff: item-scoped menu admin ───────────────────────────────────────────
+  /menu/items/{id}/featured:
+    patch:
+      summary: Toggle item featured flag (owner/manager)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_featured, branch_id]
+              properties:
+                is_featured: { type: boolean }
+                featured_sort_order: { type: integer }
+                branch_id: { type: integer }
+      responses:
+        "204":
+          description: Featured flag updated
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /menu/items/{id}/modifiers:
+    post:
+      summary: Add a modifier to an item (owner/manager)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, branch_id]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                price_delta: { type: number }
+                is_required: { type: boolean }
+                modifier_group: { type: string }
+                branch_id: { type: integer }
+      responses:
+        "201":
+          description: Modifier created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /menu/categories/{id}:
+    patch:
+      summary: Update a menu category (owner/manager)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, branch_id]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                position: { type: integer }
+                is_active: { type: boolean }
+                branch_id: { type: integer }
+      responses:
+        "200":
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      summary: Delete a menu category (owner/manager)
+      description: Returns 409 CATEGORY_NOT_EMPTY if the category still has items.
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "204":
+          description: Category deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Category not empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /menu/modifiers/{id}:
+    delete:
+      summary: Delete an item modifier (owner/manager)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "204":
+          description: Modifier deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Staff: uploads, tables QR, subscription, customers ──────────────────────
+  /upload/menu-item-image:
+    post:
+      summary: Presign a menu-item image upload (staff)
+      description: Returns 503 if Cloudflare R2 image storage is not configured.
+      tags: [Uploads]
+      security:
+        - StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [item_id, content_type, file_size]
+              properties:
+                item_id: { type: integer }
+                content_type: { type: string }
+                file_size: { type: integer }
+      responses:
+        "200":
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_url: { type: string }
+                  public_url: { type: string }
+                  expires_in: { type: integer }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /upload/restaurant-logo:
+    post:
+      summary: Presign a restaurant-logo upload (staff)
+      description: Returns 503 if Cloudflare R2 image storage is not configured.
+      tags: [Uploads]
+      security:
+        - StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_type, file_size]
+              properties:
+                content_type: { type: string }
+                file_size: { type: integer }
+      responses:
+        "200":
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_url: { type: string }
+                  public_url: { type: string }
+                  expires_in: { type: integer }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /tables/{id}/qr-refresh:
+    patch:
+      summary: Rotate a table's QR token (staff; branch ownership verified)
+      tags: [Tables]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: New QR token issued
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /restaurants/{id}/subscription:
+    get:
+      summary: Get the restaurant's subscription + plan features (staff)
+      tags: [Subscriptions]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: Subscription + features
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscription: { type: object }
+                  features: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /customers/{id}/history:
+    get:
+      summary: Customer order history (staff)
+      tags: [Customers]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: History
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  history:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /customers/{id}:
+    delete:
+      summary: Delete (erase) a customer (owner/manager)
+      tags: [Customers]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "204":
+          description: Customer deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   # ── WebSocket ─────────────────────────────────────────────────────────────
   /ws:
