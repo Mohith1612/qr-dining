@@ -2,8 +2,10 @@
 
 import { Divider, Eyebrow, Logo, QrChip, RendererProps, tableUrl, TableNumber, Wordmark } from "./shared"
 
-// table_tent — folded double-sided tent. Front and back mirror the same content (logo,
-// restaurant, QR, table, tagline) so the tent reads correctly from both sides of the table.
+// table_tent — folded double-sided tent. The card folds with the centre crease as the top
+// ridge and both panels hang down to the table. So each face's head (logo/brand) must sit at
+// the fold and content flow outward toward the free edge: the TOP panel is rotated 180° so
+// that, once folded, both sides read upright (brand at the ridge, table number at the base).
 function TentFace({ config, branding, table }: RendererProps) {
   return (
     <div
@@ -43,12 +45,13 @@ export function TableTent({ config, branding, table }: RendererProps) {
         overflow: "hidden",
       }}
     >
-      <TentFace config={config} branding={branding} table={table} />
-      {/* Fold line between the two mirrored faces. */}
-      <div style={{ height: 0, borderTop: "1px dashed var(--line-3)" }} />
+      {/* Top panel rotated 180° so its head meets the ridge — reads upright once folded. */}
       <div style={{ flex: 1, transform: "rotate(180deg)", display: "flex" }}>
         <TentFace config={config} branding={branding} table={table} />
       </div>
+      {/* Centre crease = the tent ridge. Both heads meet here so the text reads outward. */}
+      <div style={{ height: 0, borderTop: "1px dashed var(--line-3)" }} />
+      <TentFace config={config} branding={branding} table={table} />
     </div>
   )
 }
