@@ -3231,6 +3231,538 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ══ PLATFORM ════════════════════════════════════════════════════════════════
+  # Separate trust domain. Auth endpoints are public; everything else needs a
+  # PlatformBearer token. Per-operation platform RBAC roles are noted in descriptions
+  # (super_admin always bypasses).
+
+  # ── Platform: authentication & MFA ──────────────────────────────────────────
+  /platform/auth:
+    post:
+      summary: Authenticate a platform operator
+      description: |
+        Email + password. Returns a full session, or an MFA challenge (`mfa_required: true`) when the
+        operator has TOTP enrolled — complete it via `POST /platform/auth/mfa`. 10 RPM, fail-closed;
+        repeated failures lock out (423).
+      tags: [Platform Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                device_name: { type: string }
+      responses:
+        "200":
+          description: Session issued, or an MFA challenge
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    description: Full session
+                  - type: object
+                    properties:
+                      mfa_required: { type: boolean }
+                      mfa_challenge: { type: string }
+                      mfa_expires_at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "423":
+          description: Locked out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /platform/auth/mfa:
+    post:
+      summary: Complete an MFA login challenge
+      tags: [Platform Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfa_challenge, mfa_code]
+              properties:
+                mfa_challenge: { type: string }
+                mfa_code: { type: string, description: TOTP or recovery code }
+                device_name: { type: string }
+      responses:
+        "200":
+          description: Full platform session
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: Invalid challenge or code (MFA_INVALID_CODE)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /platform/auth/logout:
+    post:
+      summary: Invalidate the current platform token
+      tags: [Platform Auth]
+      security:
+        - PlatformBearer: []
+      responses:
+        "204":
+          description: Logged out
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /platform/mfa/enroll:
+    post:
+      summary: Begin TOTP MFA enrollment
+      description: Returns the secret + otpauth URI (shown once). 503 MFA_NOT_CONFIGURED if the server has no MFA encryption key.
+      tags: [Platform Auth]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Enrollment setup
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /platform/mfa/confirm:
+    post:
+      summary: Confirm TOTP enrollment with the first code
+      description: Returns recovery codes (shown once). 503 MFA_NOT_CONFIGURED when MFA is unavailable.
+      tags: [Platform Auth]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        "200":
+          description: Enrolled — recovery codes returned
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Invalid code (MFA_INVALID_CODE) or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /platform/mfa/disable:
+    post:
+      summary: Disable MFA (requires a current TOTP or recovery code)
+      tags: [Platform Auth]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        "204":
+          description: MFA disabled
+        "401":
+          description: Invalid code or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  # ── Platform: users ─────────────────────────────────────────────────────────
+  /platform/users:
+    get:
+      summary: List platform operators
+      description: Role read_only_auditor (super_admin bypass).
+      tags: [Platform Users]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/users/{id}:
+    get:
+      summary: Get a platform operator
+      tags: [Platform Users]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Platform: organizations ───────────────────────────────────────────────
+  /platform/organizations:
+    get:
+      summary: List organizations
+      description: Roles support_admin | billing_admin | read_only_auditor (super_admin bypass).
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Organizations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organizations:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create an organization (+ its restaurant)
+      description: super_admin only. Creates the org and its backing restaurant in one transaction.
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, restaurant_slug]
+              properties:
+                code: { type: string, minLength: 2, maxLength: 64 }
+                name: { type: string, minLength: 1, maxLength: 120 }
+                legal_name: { type: string }
+                primary_contact_email: { type: string, format: email }
+                settings: { type: object, description: Optional JSON object }
+                restaurant_slug: { type: string, minLength: 2, maxLength: 80 }
+                restaurant_name: { type: string, description: Defaults to name if empty }
+      responses:
+        "201":
+          description: Organization + restaurant created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization: { type: object }
+                  restaurant: { type: object }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/organizations/{org_id}:
+    get:
+      summary: Get an organization
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Organization
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Update an organization (super_admin)
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                legal_name: { type: string }
+                primary_contact_email: { type: string, format: email }
+                settings: { type: object }
+      responses:
+        "200":
+          description: Updated organization
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/branches:
+    get:
+      summary: List branches in an organization (platform)
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Branches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branches:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a branch (super_admin)
+      description: |
+        Creates a branch under the org's restaurant, optionally seeding `initial_tables` and an
+        `initial_owner` staff member, all in one transaction.
+      tags: [Branches]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+                address: { type: string }
+                timezone: { type: string, default: UTC }
+                branch_code: { type: string, description: Auto-generated if empty }
+                order_prefix: { type: string, default: OR }
+                initial_tables:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      identifier: { type: string }
+                      capacity: { type: integer, default: 4 }
+                initial_owner:
+                  type: object
+                  required: [name, staff_code, pin]
+                  properties:
+                    name: { type: string, minLength: 1, maxLength: 100 }
+                    staff_code: { type: string, minLength: 2, maxLength: 32 }
+                    pin: { type: string, minLength: 4, maxLength: 8 }
+      responses:
+        "201":
+          description: Branch (+ tables, initial owner) created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branch: { type: object }
+                  tables: { type: array, items: { type: object } }
+                  initial_owner: { type: [object, "null"] }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Platform: branches (read + onboarding) ──────────────────────────────────
+  /platform/branches/{branch_id}:
+    get:
+      summary: Get a branch (platform; includes restaurant name/slug/logo)
+      tags: [Branches]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200":
+          description: Branch detail
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/branches/{branch_id}/tables:
+    get:
+      summary: List a branch's tables (incl. QR tokens) for collateral generation
+      tags: [Tables]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200":
+          description: Tables
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tables:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Batch-create tables on a branch (super_admin, onboarding)
+      description: Provide an explicit `identifiers` list or a positive `count` (auto-named T{n}). Max 200 per request.
+      tags: [Tables]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                count: { type: integer, maximum: 200 }
+                capacity: { type: integer, default: 4 }
+                identifiers:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "201":
+          description: Tables created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tables:
+                    type: array
+                    items:
+                      type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Duplicate table identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  # ── Platform: organization & branch lifecycle (status-only, inert) ──────────
+  /platform/organizations/{org_id}/suspend:
+    post:
+      summary: Suspend an organization (super_admin)
+      description: Flips status to `suspended`. **Inert** — no operational path reads org status yet.
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200": { description: Organization (suspended), content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/activate:
+    post:
+      summary: Activate an organization (super_admin)
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200": { description: Organization (active), content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/branches/{branch_id}/suspend:
+    post:
+      summary: Suspend a branch (super_admin)
+      description: Flips status to `suspended`. **Inert** — no operational path reads branch status yet.
+      tags: [Branches]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200": { description: Branch (suspended), content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/branches/{branch_id}/activate:
+    post:
+      summary: Activate a branch (super_admin)
+      tags: [Branches]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200": { description: Branch (active), content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ── WebSocket ─────────────────────────────────────────────────────────────
   /ws:
     get:
