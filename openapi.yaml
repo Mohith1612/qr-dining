@@ -39,6 +39,11 @@ servers:
   - url: http://localhost:8080
     description: Local development
 
+# Public-by-default: most guest/menu/webhook/tenant endpoints require no auth. Authenticated
+# operations (guest/staff/platform) override this with their own `security` block. An empty
+# array means "no authentication required".
+security: []
+
 components:
   securitySchemes:
     GuestBearer:
@@ -101,8 +106,7 @@ components:
         table_id:
           type: integer
         host_participant_id:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         status:
           type: string
           description: 6-state lifecycle (migration 000023)
@@ -111,13 +115,11 @@ components:
           type: string
           format: date-time
         closed_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
         awaiting_reactivation_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
 
     Participant:
       type: object
@@ -138,8 +140,7 @@ components:
           type: string
           format: date-time
         device_fingerprint:
-          type: string
-          nullable: true
+          type: [string, "null"]
 
     ModifierSnapshot:
       type: object
@@ -316,9 +317,8 @@ components:
           type: string
           format: uuid
         order_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
         amount:
           type: string
         method:
@@ -331,15 +331,13 @@ components:
           type: string
           format: date-time
         bill_snapshot_id:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         branch_id:
           type: integer
         currency:
           type: string
         provider_payment_ref:
-          type: string
-          nullable: true
+          type: [string, "null"]
 
     Staff:
       type: object
@@ -368,10 +366,18 @@ components:
 
     SessionSnapshot:
       type: object
-      description: Full authoritative session state for WebSocket reconnect reconciliation
+      description: |
+        Full authoritative session state for WebSocket reconnect reconciliation. The embedded
+        `session` is guest-safe (no `session_token`, F-8). Reconcile semantics:
+        - if `snapshot_authoritative: true`, replace local state wholesale (no incremental basis,
+          or the requested gap could not be replayed contiguously);
+        - otherwise replay `missed_events` (contiguous from `last_sequence`) then reconcile.
+        The shared cart is NOT included here — refetch it via `GET /sessions/{id}/cart`.
       properties:
         session:
           $ref: "#/components/schemas/Session"
+        table_identifier:
+          type: string
         participants:
           type: array
           items:
@@ -384,6 +390,19 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssistanceRequest"
+        missed_events:
+          type: array
+          description: Contiguous events since `last_sequence`; omitted when authoritative
+          items:
+            type: object
+            additionalProperties: true
+        snapshot_authoritative:
+          type: boolean
+          description: When true, this snapshot is the whole truth — replace local state
+        session_ended:
+          type: boolean
+        close_reason:
+          type: string
         snapshot_at:
           type: string
           format: date-time
@@ -409,6 +428,57 @@ components:
         created_at:
           type: string
           format: date-time
+
+    Bill:
+      type: object
+      description: Itemized bill for a session. Money fields are numbers (₹); currency defaults to INR.
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        orders:
+          type: array
+          items:
+            type: object
+            properties:
+              order_id: { type: string, format: uuid }
+              order_number: { type: string }
+              placed_at: { type: string, format: date-time }
+              order_total: { type: number }
+              items:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name: { type: string }
+                    quantity: { type: integer }
+                    unit_price: { type: number }
+                    modifiers: { type: array, items: { type: string } }
+                    line_total: { type: number }
+        subtotal: { type: number }
+        tax_rate: { type: number }
+        tax_amount: { type: number }
+        service_charge_rate: { type: number }
+        service_charge: { type: number }
+        discount_amount: { type: number }
+        tip_amount: { type: number }
+        total: { type: number }
+        currency:
+          type: string
+          example: INR
+
+    ThemeConfig:
+      type: object
+      description: Resolved theme — a preset key plus allowlisted hex design tokens.
+      properties:
+        preset:
+          type: string
+          enum: [dark-luxury, modern-minimal, warm-cafe, vibrant]
+        tokens:
+          type: object
+          description: Map of allowlisted token key → hex colour (#RRGGBB or #RRGGBBAA)
+          additionalProperties:
+            type: string
 
   responses:
     NotFound:
@@ -537,6 +607,10 @@ paths:
   /sessions:
     post:
       summary: Create a new dining session
+      description: |
+        Creates a session for a table and inserts the caller as the **host** participant.
+        Returns the guest credential (`guest_access_token`) used as the `GuestBearer` token on all
+        subsequent session calls. No auth required to call this endpoint.
       tags: [Sessions]
       requestBody:
         required: true
@@ -556,12 +630,15 @@ paths:
                   example: Alice
                 device_fingerprint:
                   type: string
+                phone_e164:
+                  type: string
+                  description: Optional E.164 phone; invalid values → 400 INVALID_PHONE
             example:
               table_id: 1
               display_name: Alice
       responses:
         "201":
-          description: Session created
+          description: Session created (caller is host)
           content:
             application/json:
               schema:
@@ -571,8 +648,17 @@ paths:
                     $ref: "#/components/schemas/Session"
                   participant:
                     $ref: "#/components/schemas/Participant"
+                  guest_access_token:
+                    type: string
+                    description: "Guest credential — use as the Authorization Bearer token on session calls"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "404":
+          description: Table not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
         "409":
           description: Table already has an active session
           content:
@@ -590,7 +676,10 @@ paths:
   /sessions/{id}:
     get:
       summary: Get session by ID
+      description: Guest-safe — the `session_token` credential is never returned (F-8).
       tags: [Sessions]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -607,15 +696,23 @@ paths:
                 $ref: "#/components/schemas/Session"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
     delete:
       summary: Close a session (host only)
+      description: |
+        Closes the session; host only. The acting participant is identified by the
+        `X-Participant-ID` header (legacy) or the `GuestBearer` token. Frees the table and
+        revokes guest credentials.
       tags: [Sessions]
       security:
-        - ParticipantID: []
+        - GuestBearer: []
+          ParticipantID: []
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -674,15 +771,26 @@ paths:
                   maxLength: 50
                 device_fingerprint:
                   type: string
+                phone_e164:
+                  type: string
+                  description: Optional E.164 phone; invalid values → 400 INVALID_PHONE
             example:
               display_name: Bob
       responses:
         "201":
-          description: Joined session
+          description: Joined session — returns the new participant's guest credential
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Participant"
+                type: object
+                properties:
+                  session:
+                    $ref: "#/components/schemas/Session"
+                  participant:
+                    $ref: "#/components/schemas/Participant"
+                  guest_access_token:
+                    type: string
+                    description: Guest credential for this participant
         "400":
           $ref: "#/components/responses/ValidationError"
         "404":
@@ -697,14 +805,15 @@ paths:
                 code: SESSION_CLOSED
                 message: session is already closed
 
-  /sessions/{id}/snapshot:
-    get:
-      summary: Full session state snapshot for WebSocket reconnect reconciliation
+  /sessions/{id}/reactivate:
+    post:
+      summary: Reactivate an awaiting_reactivation session
       description: |
-        Returns the full authoritative current state of the session.
-        Call this endpoint on WebSocket reconnect, diff local state against the snapshot,
-        then re-establish the WebSocket connection.
-      tags: [Sessions, WebSocket]
+        Transitions a session in `awaiting_reactivation` back to `active` so a returning guest can
+        resume ordering without a full refresh. Requires a credentialed member of the session.
+      tags: [Sessions]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -714,6 +823,98 @@ paths:
             format: uuid
       responses:
         "200":
+          description: Session reactivated (guest-safe)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /sessions/{id}/ws-ticket:
+    post:
+      summary: Issue an ephemeral WebSocket ticket
+      description: |
+        Exchanges the guest credential for a short-lived (~30s) single-use ticket consumed by
+        `GET /ws?ticket=…`. Requires a valid `GuestBearer` token belonging to this **active**
+        session. Rate limited: sensitive 60/min per IP + 12/min per session.
+      tags: [Sessions, WebSocket]
+      security:
+        - GuestBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Ticket issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket:
+                    type: string
+                  expires_in:
+                    type: integer
+                    example: 30
+        "401":
+          description: Missing/invalid/revoked guest credential
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "403":
+          description: Credential does not belong to this session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "409":
+          description: Session is not active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /sessions/{id}/snapshot:
+    get:
+      summary: Full session state snapshot for WebSocket reconnect reconciliation
+      description: |
+        Returns the full authoritative current state of the session. Call this on WebSocket
+        reconnect and either replay `missed_events` or replace local state when
+        `snapshot_authoritative` is true. The shared cart is fetched separately. Terminal sessions
+        remain readable for 60 minutes after close; afterward this returns 410.
+      tags: [Sessions, WebSocket]
+      security:
+        - GuestBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: last_sequence
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+          description: Highest event sequence the client already has; drives missed-event replay
+      responses:
+        "200":
           description: Full session snapshot
           content:
             application/json:
@@ -721,18 +922,32 @@ paths:
                 $ref: "#/components/schemas/SessionSnapshot"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "410":
+          description: Terminal-session read window (60 min) has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: SESSION_ENDED
+                message: session read window expired
         "429":
           $ref: "#/components/responses/RateLimited"
 
   # ── Cart ──────────────────────────────────────────────────────────────────
   /sessions/{id}/cart:
     get:
-      summary: Get participant cart
+      summary: Get the shared session cart
+      description: One shared cart per session — all participants see the same items (`participant_id` is null on shared-cart rows).
       tags: [Cart]
       security:
-        - ParticipantID: []
+        - GuestBearer: []
+          ParticipantID: []
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -759,7 +974,9 @@ paths:
       summary: Add item to cart
       tags: [Cart]
       security:
-        - ParticipantID: []
+        - GuestBearer: []
+          ParticipantID: []
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -820,7 +1037,9 @@ paths:
       summary: Remove item from cart
       tags: [Cart]
       security:
-        - ParticipantID: []
+        - GuestBearer: []
+          ParticipantID: []
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -853,9 +1072,12 @@ paths:
     post:
       summary: Place an order (idempotent)
       description: |
-        Places a new order for the session. If `idempotency_key` was already used,
-        returns the existing order with HTTP 201 (no error) — idempotent replay.
+        Places a new order for the session. **Host-gated** server-side — only the session host may
+        submit (an absent host is reassigned on-demand). Idempotent: a repeated `idempotency_key`
+        returns the original order with HTTP 201. Rate limited to 12/min per session.
       tags: [Orders]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -911,6 +1133,17 @@ paths:
                       $ref: "#/components/schemas/OrderItem"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller is not the session host
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: NOT_SESSION_HOST
+                message: only the session host can place orders
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -920,7 +1153,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/APIError"
         "422":
-          description: Menu item unavailable
+          description: Menu item unavailable or zero-quantity item
           content:
             application/json:
               schema:
@@ -928,6 +1161,8 @@ paths:
     get:
       summary: List all orders for a session
       tags: [Orders]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -994,7 +1229,10 @@ paths:
   /sessions/{id}/assist:
     post:
       summary: Request waiter assistance
+      description: Rate limited to 6/min per session.
       tags: [Assistance]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -1104,7 +1342,15 @@ paths:
   /sessions/{id}/payments:
     post:
       summary: Initiate a payment
+      description: |
+        **Host-gated** — only the session host may initiate. Freezes the cart (`payment_pending`)
+        and captures an immutable bill snapshot. Provider methods go `provider_pending` (resolved by
+        webhook); cash/manual go `requires_staff_confirmation` (resolved by staff settle). No fake
+        success — the guest waits for a real `PAYMENT_COMPLETED`. Rate limited: sensitive 30/min per
+        IP + 6/min per session.
       tags: [Payments]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -1121,9 +1367,8 @@ paths:
               required: [amount, method, idempotency_key]
               properties:
                 order_id:
-                  type: string
+                  type: [string, "null"]
                   format: uuid
-                  nullable: true
                   description: Omit for session-level payments
                 amount:
                   type: number
@@ -1146,6 +1391,17 @@ paths:
                 $ref: "#/components/schemas/Payment"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller is not the session host
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: NOT_SESSION_HOST
+                message: only the session host can initiate payment
         "404":
           description: Session not found
           content:
@@ -1155,6 +1411,12 @@ paths:
               example:
                 code: SESSION_NOT_FOUND
                 message: session not found
+        "409":
+          description: Cart already frozen / payment in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
 
   /webhooks/payments/{provider}:
     post:
@@ -1231,6 +1493,147 @@ paths:
         "409":
           description: Payment is not awaiting staff confirmation or the bill snapshot is stale
 
+  /sessions/{id}/bill:
+    get:
+      summary: Get the itemized bill for a session
+      tags: [Payments]
+      security:
+        - GuestBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Itemized bill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bill"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /sessions/{id}/customer:
+    post:
+      summary: Link a customer (guest opt-in)
+      description: Optional post-payment opt-in linking a phone to the session for loyalty/CRM. Returns 404 FEATURE_DISABLED if the feature is off for the tenant.
+      tags: [Customers]
+      security:
+        - GuestBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  description: E.164 phone number
+                display_name:
+                  type: string
+      responses:
+        "200":
+          description: Customer linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: Invalid phone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: INVALID_PHONE
+                message: invalid phone number
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Session not found or customer opt-in feature disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /sessions/{id}/promos/validate:
+    post:
+      summary: Validate a promo code (preview)
+      description: Previews whether a promo code is currently valid for the session's branch. Min-order check is skipped in preview.
+      tags: [Promos]
+      security:
+        - GuestBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        "200":
+          description: Promo is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  promo_id: { type: integer }
+                  discount_amount: { type: number }
+                  description: { type: string }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Promo or session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: PROMO_NOT_FOUND
+                message: This promo code isn't valid right now.
+        "409":
+          description: Promo exhausted or already used by this guest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "422":
+          description: Minimum order amount not met
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
   # ── Menu ──────────────────────────────────────────────────────────────────
   /branches/{id}/menu:
     get:
@@ -1254,6 +1657,62 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /branches/{id}/feature-flags:
+    get:
+      summary: Resolve product feature flags for a branch (public, cached)
+      description: |
+        Returns the resolved boolean state of product feature flags for the branch
+        (precedence branch > org > global > catalog default). Redis-cached. Separate from the
+        nine env strict-rollout flags. Tenant-guarded when `TENANCY_ORGANIZATIONS_ENABLED`.
+      tags: [Feature Flags]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Resolved flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flags:
+                    type: object
+                    additionalProperties:
+                      type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /branches/{id}/theme:
+    get:
+      summary: Resolve the theme for a branch (public)
+      description: |
+        Returns the structured theme (preset + tokens) used to brand the guest UI. Falls back
+        through structured `tenant_themes` → legacy `settings.theme` → `dark-luxury`.
+        Tenant-guarded when `TENANCY_ORGANIZATIONS_ENABLED`.
+      tags: [Themes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Resolved theme
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  theme:
+                    $ref: "#/components/schemas/ThemeConfig"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /tables/by-qr/{token}:
     get:
       summary: Resolve a QR code token to table metadata
@@ -1276,6 +1735,61 @@ paths:
               example:
                 code: SESSION_NOT_FOUND
                 message: table not found
+
+  # ── Tenancy & Plans (public) ──────────────────────────────────────────────
+  /tenants/by-slug/{slug}:
+    get:
+      summary: Resolve a restaurant by URL slug (bootstraps frontend tenant context)
+      tags: [Tenancy]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tenant context (includes additive structured theme)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  organization_id: { type: integer }
+                  name: { type: string }
+                  slug: { type: string }
+                  settings:
+                    type: object
+                    description: Legacy settings_json (unchanged, back-compat)
+                  theme:
+                    $ref: "#/components/schemas/ThemeConfig"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: TENANT_NOT_FOUND
+                message: restaurant not found
+
+  /plans:
+    get:
+      summary: List subscription plans (public)
+      tags: [Subscriptions]
+      responses:
+        "200":
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      type: object
 
   # ── Menu Management (staff) ───────────────────────────────────────────────
   /branches/{id}/menu/categories:
@@ -1734,39 +2248,28 @@ paths:
     get:
       summary: Upgrade to WebSocket connection
       description: |
-        Establishes a WebSocket connection for realtime session events.
-        The response includes an `X-Reconnect-Endpoint` header pointing to
-        the snapshot URL for use on reconnect.
+        Establishes a WebSocket connection for realtime session events. Authenticate by passing a
+        `ticket` obtained from `POST /sessions/{id}/ws-ticket` (preferred). A legacy guest token is
+        still accepted in the handler until R5/R6 strict enforcement. Tickets are single-use and
+        short-lived (~30s).
 
-        **Query parameters** (required):
-        - `session_id` (UUID): The session to subscribe to
-        - `participant_id` (int64): The authenticated participant
-
-        **On reconnect:** call `GET /sessions/{id}/snapshot` to reconcile state,
-        then reconnect here to resume realtime updates.
+        **On reconnect:** call `GET /sessions/{id}/snapshot?last_sequence=N` to reconcile, then
+        reissue a ticket and reconnect here.
       tags: [WebSocket]
       parameters:
-        - name: session_id
+        - name: ticket
           in: query
           required: true
           schema:
             type: string
-            format: uuid
-        - name: participant_id
-          in: query
-          required: true
-          schema:
-            type: integer
+          description: Ephemeral WS ticket from POST /sessions/{id}/ws-ticket
       responses:
         "101":
           description: WebSocket upgrade successful
-          headers:
-            X-Reconnect-Endpoint:
-              schema:
-                type: string
-              description: URL of the snapshot endpoint for reconnect reconciliation
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
