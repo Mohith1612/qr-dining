@@ -109,6 +109,13 @@ components:
       schema:
         type: string
       description: Feature-flag key
+    InvoiceIdPath:
+      name: invoice_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Invoice id
     PeriodQuery:
       name: period
       in: query
@@ -675,6 +682,24 @@ components:
           example:
             code: ANALYTICS_GATED
             message: analytics is not available on your current plan
+    SubscriptionResult:
+      description: The organization subscription after the operation
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              subscription:
+                type: object
+    InvoiceResult:
+      description: The invoice after the lifecycle transition
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              invoice:
+                type: object
 
 paths:
   # ── Infrastructure ────────────────────────────────────────────────────────
@@ -4327,6 +4352,580 @@ paths:
           description: Override cleared
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ── Platform: subscriptions (status recorded/audited, not enforced) ─────────
+  /platform/organizations/{org_id}/subscription:
+    get:
+      summary: Get an organization's subscription (or null)
+      description: Reads support_admin | billing_admin | read_only_auditor. **Status is recorded/audited, not enforced.**
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: "Subscription object, or subscription=null when none is set"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscription:
+                    type: [object, "null"]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/subscription/activate:
+    post:
+      summary: Activate (or create) the subscription (billing_admin)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plan_id: { type: [integer, "null"] }
+                expires_at: { type: [string, "null"], format: date-time }
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /platform/organizations/{org_id}/subscription/suspend:
+    post:
+      summary: Suspend the subscription (billing_admin)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No subscription exists (SUBSCRIPTION_NOT_FOUND) or org not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /platform/organizations/{org_id}/subscription/renew:
+    post:
+      summary: Renew the subscription / extend expiry (billing_admin)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expires_at: { type: [string, "null"], format: date-time }
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /platform/organizations/{org_id}/subscription/cancel:
+    post:
+      summary: Cancel the subscription (billing_admin)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /platform/organizations/{org_id}/subscription/extend-trial:
+    post:
+      summary: Create or extend a trial subscription (billing_admin)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trial_ends_at]
+              properties:
+                plan_id: { type: [integer, "null"] }
+                trial_ends_at: { type: string, format: date-time }
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /platform/organizations/{org_id}/subscription/plan:
+    post:
+      summary: Change the subscription plan (billing_admin; syncs the entitlement resolver)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_id]
+              properties:
+                plan_id: { type: integer }
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ── Platform: billing profile, payments, invoices ───────────────────────────
+  /platform/organizations/{org_id}/billing-profile:
+    get:
+      summary: Get the org billing profile (empty defaults if unset)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Billing profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  billing_profile:
+                    type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      summary: Upsert the org billing profile (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                business_name: { type: string }
+                gst_number: { type: string }
+                tax_identifier: { type: string }
+                billing_email: { type: string }
+                billing_contact: { type: string }
+                billing_address: { type: string }
+                currency: { type: string }
+      responses:
+        "200":
+          description: Updated billing profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  billing_profile:
+                    type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/payments:
+    get:
+      summary: List recorded manual payments (billing bookkeeping)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Payments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payments:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Record a manual payment (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method, amount]
+              properties:
+                method:
+                  type: string
+                  enum: [upi, bank_transfer, cash, cheque, other]
+                amount: { type: string, description: Numeric string }
+                currency: { type: string }
+                reference_number: { type: string }
+                notes: { type: string }
+                received_at: { type: [string, "null"], format: date-time }
+                invoice_id: { type: [integer, "null"] }
+      responses:
+        "201":
+          description: Payment recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment:
+                    type: object
+        "400":
+          description: Invalid amount or method
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Organization or referenced invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/organizations/{org_id}/invoices:
+    get:
+      summary: List the org's invoices
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Invoices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoices:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Create a draft invoice (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: string, description: Numeric string }
+                currency: { type: string }
+                due_date: { type: [string, "null"], format: date-time }
+                notes: { type: string }
+      responses:
+        "201":
+          description: Draft invoice created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoice:
+                    type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/invoices/{invoice_id}:
+    get:
+      summary: Get an invoice
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/InvoiceIdPath"
+      responses:
+        "200":
+          description: Invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoice:
+                    type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Invoice not found (INVOICE_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/organizations/{org_id}/invoices/{invoice_id}/issue:
+    post:
+      summary: Issue a draft invoice (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/InvoiceIdPath"
+      responses:
+        "200": { $ref: "#/components/responses/InvoiceResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "409":
+          description: Invalid invoice status transition (INVALID_TRANSITION)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/organizations/{org_id}/invoices/{invoice_id}/mark-paid:
+    post:
+      summary: Mark an issued invoice paid (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/InvoiceIdPath"
+      responses:
+        "200": { $ref: "#/components/responses/InvoiceResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "409":
+          description: Invalid invoice status transition (INVALID_TRANSITION)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/organizations/{org_id}/invoices/{invoice_id}/cancel:
+    post:
+      summary: Cancel a draft/issued invoice (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/InvoiceIdPath"
+      responses:
+        "200": { $ref: "#/components/responses/InvoiceResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "409":
+          description: Invalid invoice status transition (INVALID_TRANSITION)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  # ── Platform: enforcement observability (read-only) ─────────────────────────
+  /platform/observability/subscriptions:
+    get:
+      summary: Subscriptions that enforcement would affect (read-only)
+      tags: [Enforcement Observability]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Observability report
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/observability/entitlements:
+    get:
+      summary: Tenants over their resolved entitlement limits (read-only)
+      tags: [Enforcement Observability]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Observability report
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/observability/flags:
+    get:
+      summary: Feature-flag override usage and orphaned catalog flags (read-only)
+      tags: [Enforcement Observability]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Observability report
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ── Platform: cross-tenant analytics (Postgres aggregation) ─────────────────
+  /platform/analytics/usage:
+    get:
+      summary: Cross-tenant usage analytics
+      description: |
+        Sessions/orders/payments/participant-joins per period, active branches, active diners.
+        NOT entitlement-gated (operator surface). Optional `organization_id` filter.
+      tags: [Platform Analytics]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationIdQuery"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Usage report
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/analytics/revenue:
+    get:
+      summary: Cross-tenant revenue analytics (GMV from completed payments)
+      tags: [Platform Analytics]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationIdQuery"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Revenue report
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/analytics/health:
+    get:
+      summary: Cross-tenant health analytics (authz denials, webhook failures)
+      tags: [Platform Analytics]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationIdQuery"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Health report
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   # ── WebSocket ─────────────────────────────────────────────────────────────
   /ws:
