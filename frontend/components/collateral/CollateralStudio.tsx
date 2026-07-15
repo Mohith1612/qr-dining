@@ -19,12 +19,15 @@ const QRCodeSVG = dynamic(() => import("qrcode.react").then((m) => m.QRCodeSVG),
 
 // CollateralStudio is the surface-agnostic orchestrator: config form + live theme-aware
 // preview + export bar. Mounted by both the platform operator page and the staff admin
-// section. Persistence is delegated to onSave (each surface uses its own trust domain).
+// section. It is a *controlled* component — the parent owns the config state (and reloads
+// it per branch), so the form never goes stale when the selected branch changes.
+// Persistence is delegated to onSave (each surface uses its own trust domain).
 export function CollateralStudio({
   branding,
   theme,
   tables,
-  config: initial,
+  config,
+  onConfigChange,
   onSave,
   canManage = true,
 }: {
@@ -32,10 +35,10 @@ export function CollateralStudio({
   theme: ThemeConfig | null
   tables: CollateralTable[]
   config: CollateralConfig
+  onConfigChange: (config: CollateralConfig) => void
   onSave?: (config: CollateralConfig) => Promise<void>
   canManage?: boolean
 }) {
-  const [config, setConfig] = useState<CollateralConfig>(initial)
   const [previewIdx, setPreviewIdx] = useState(0)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -95,7 +98,7 @@ export function CollateralStudio({
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 360px) 1fr", gap: 28, alignItems: "start" }}>
       {/* Left: configuration */}
       <div>
-        <CollateralConfigForm config={config} onChange={setConfig} disabled={!canManage} />
+        <CollateralConfigForm config={config} onChange={onConfigChange} disabled={!canManage} />
       </div>
 
       {/* Right: preview + actions */}

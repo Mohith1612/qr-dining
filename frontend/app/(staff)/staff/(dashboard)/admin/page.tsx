@@ -1932,6 +1932,7 @@ function CollateralTab() {
       theme={theme}
       tables={tables}
       config={config}
+      onConfigChange={setConfig}
       onSave={handleSave}
       canManage={canManage}
     />
