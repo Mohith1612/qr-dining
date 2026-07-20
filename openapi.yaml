@@ -4927,6 +4927,406 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ── Platform: themes ─────────────────────────────────────────────────────
+  /platform/theme/presets:
+    get:
+      summary: List theme presets + the allowlisted custom-token keys
+      tags: [Themes]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Presets + allowed token keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  presets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        name: { type: string }
+                        description: { type: string }
+                  allowed_token_keys:
+                    type: array
+                    items:
+                      type: string
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/organizations/{org_id}/theme:
+    get:
+      summary: Get the resolved structured theme for an organization
+      tags: [Themes]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Theme
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  theme:
+                    $ref: "#/components/schemas/ThemeConfig"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      summary: Set the structured theme for an organization (super_admin)
+      description: |
+        Preset is required and must exist (404 THEME_PRESET_NOT_FOUND). Custom `tokens` (hex-only,
+        allowlisted keys) require the org's `custom.theme` entitlement (403); invalid token key/value → 400.
+      tags: [Themes]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [preset]
+              properties:
+                preset:
+                  type: string
+                  enum: [dark-luxury, modern-minimal, warm-cafe, vibrant]
+                tokens:
+                  type: object
+                  additionalProperties:
+                    type: string
+                    description: Hex colour (#RRGGBB or #RRGGBBAA)
+      responses:
+        "200":
+          description: Theme set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  theme:
+                    $ref: "#/components/schemas/ThemeConfig"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Custom tokens require the custom.theme entitlement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "404":
+          description: Organization or preset not found (THEME_PRESET_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  # ── Platform: support console (read-only inspection + audited grants) ───────
+  /platform/support/search:
+    get:
+      summary: Search across tenants for support references
+      description: |
+        Roles support_admin | read_only_auditor. Searches 8 categories (orgs, branches, sessions,
+        orders, payments, customers, tables, participants). Every search writes an internal audit row.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching references
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/sessions/{id}:
+    get:
+      summary: Inspect a session (read-only, sanitized)
+      description: |
+        Roles support_admin | read_only_auditor. Returns a **sanitized** aggregate (session, org,
+        branch, participants, orders, payments, assistance, lifecycle timeline). The guest credential
+        `session_token` and participant `device_fingerprint` are **omitted**. Emits a tenant-visible
+        critical-risk audit row (persisted only when AUDIT_LOG_V2_ENABLED).
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Sanitized session detail
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/orders/{id}:
+    get:
+      summary: Inspect an order (read-only, sanitized)
+      description: Roles support_admin | read_only_auditor. Money stringified; internal audit only.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Sanitized order detail
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/payments/{id}:
+    get:
+      summary: Inspect a payment (read-only, sanitized; includes bill snapshot + webhook history)
+      description: |
+        Roles support_admin | read_only_auditor. Money stringified. Emits a tenant-visible
+        critical-risk audit row (persisted only when AUDIT_LOG_V2_ENABLED).
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: Sanitized payment detail
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/support/sessions:
+    get:
+      summary: List support-session grants
+      description: Roles support_admin | read_only_auditor.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Support sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  support_sessions:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create an audited support-session grant (support_admin)
+      description: |
+        Records a time-boxed support window for an org (optionally a branch). Reason 8–500 chars,
+        `expires_at` required and after start. Soft cap 4h → 422 SUPPORT_DURATION_EXCEEDS_SOFT_CAP;
+        hard cap 24h → 400. Emits a tenant-visible critical-risk audit row.
+        **Note:** the read endpoints above do not yet *require* an active grant — grants are recorded
+        but not enforced on reads.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organization_id, reason, expires_at]
+              properties:
+                organization_id: { type: integer }
+                branch_id: { type: [integer, "null"] }
+                reason: { type: string, minLength: 8, maxLength: 500 }
+                approved_by_platform_user_id: { type: [integer, "null"] }
+                starts_at: { type: [string, "null"], format: date-time }
+                expires_at: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Support session created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Validation error or exceeds 24h hard cap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "422":
+          description: Exceeds 4h soft cap (SUPPORT_DURATION_EXCEEDS_SOFT_CAP)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/support/sessions/{id}:
+    get:
+      summary: Get a support-session grant
+      description: Roles support_admin | read_only_auditor. Expired grants return 410 (treated as not-found to prevent enumeration). Emits a tenant-visible audit row.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: Support session
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "410":
+          description: Support session expired (SUPPORT_SESSION_EXPIRED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/audit:
+    get:
+      summary: Query the platform-wide audit log
+      description: Role read_only_auditor. Supports filters incl. an optional `session_id`.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: session_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional filter to a single session's audit rows
+      responses:
+        "200":
+          description: Audit rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  audit:
+                    type: array
+                    items:
+                      type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ── Platform: premium QR collateral ─────────────────────────────────────────
+  /platform/branches/{branch_id}/collateral:
+    get:
+      summary: Get a branch's QR collateral config (platform)
+      description: Reads support_admin | billing_admin | read_only_auditor. Same shared `branch_collateral` row the staff tab writes.
+      tags: [Collateral]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200":
+          description: Collateral config + available formats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collateral:
+                    $ref: "#/components/schemas/CollateralConfig"
+                  formats:
+                    type: array
+                    items:
+                      type: string
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      summary: Set a branch's QR collateral config (super_admin)
+      description: Strict validation — unknown JSON keys, bad format, or oversized text → 400 (INVALID_COLLATERAL_CONFIG).
+      tags: [Collateral]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollateralConfig"
+      responses:
+        "200":
+          description: Updated config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collateral:
+                    $ref: "#/components/schemas/CollateralConfig"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ── WebSocket ─────────────────────────────────────────────────────────────
   /ws:
     get:
