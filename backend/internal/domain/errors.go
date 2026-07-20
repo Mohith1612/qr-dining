@@ -122,6 +122,15 @@ var (
 	ErrInvalidCollateralConfig = errors.New("invalid collateral config")
 )
 
+// Staff performance analytics / loyalty (entitlement + platform-flag gated)
+var (
+	ErrStaffAnalyticsDisabled    = errors.New("staff performance analytics is not enabled for this organization")
+	ErrLoyaltyDisabled           = errors.New("loyalty is not enabled for this organization")
+	ErrLoyaltyProgramInactive    = errors.New("loyalty program is not active for this organization")
+	ErrLoyaltyInsufficientPoints = errors.New("insufficient loyalty points")
+	ErrLoyaltyAccountNotFound    = errors.New("loyalty account not found")
+)
+
 // Customers
 var (
 	ErrInvalidPhone     = errors.New("invalid phone number")

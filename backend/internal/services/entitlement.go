@@ -23,6 +23,14 @@ const (
 	EntitlementLimitBranches = "limit.branches"
 	EntitlementLimitStaff    = "limit.staff"
 	EntitlementLimitTables   = "limit.tables"
+
+	// Seeded in migrations 000034 (staff analytics) and 000035 (loyalty).
+	// Granted to no plan by default — resolve true only via an explicit
+	// plan grant or org override.
+	EntitlementStaffPerformanceAnalytics = "analytics.staff_performance"
+	EntitlementLoyaltyEnabled            = "loyalty.enabled"
+	EntitlementLoyaltyRedeem             = "loyalty.redeem"
+	EntitlementLoyaltyManualAdjustment   = "loyalty.manual_adjustment"
 )
 
 // LimitUnlimited is the sentinel for "no ceiling".

@@ -108,6 +108,35 @@ func (s *FlagService) ResolveForOrganization(ctx context.Context, orgID int64) (
 	return out, nil
 }
 
+// ResolveOneForBranch resolves a single catalog flag for a branch. A key
+// missing from the catalog resolves disabled (source "default").
+func (s *FlagService) ResolveOneForBranch(ctx context.Context, branchID int64, key string) (FlagState, error) {
+	states, err := s.ResolveForBranch(ctx, branchID)
+	if err != nil {
+		return FlagState{}, err
+	}
+	return pickFlagState(states, key), nil
+}
+
+// ResolveOneForOrganization resolves a single catalog flag for an org. A key
+// missing from the catalog resolves disabled (source "default").
+func (s *FlagService) ResolveOneForOrganization(ctx context.Context, orgID int64, key string) (FlagState, error) {
+	states, err := s.ResolveForOrganization(ctx, orgID)
+	if err != nil {
+		return FlagState{}, err
+	}
+	return pickFlagState(states, key), nil
+}
+
+func pickFlagState(states []FlagState, key string) FlagState {
+	for _, st := range states {
+		if st.Key == key {
+			return st
+		}
+	}
+	return FlagState{Key: key, Enabled: false, Source: flagSourceDefault}
+}
+
 func (s *FlagService) globalMap(ctx context.Context) (map[string]bool, error) {
 	rows, err := s.repos.ListGlobalFlagOverrides(ctx)
 	if err != nil {

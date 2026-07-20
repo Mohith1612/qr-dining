@@ -62,6 +62,11 @@ const (
 	CodePromoExhausted           = "PROMO_EXHAUSTED"
 	CodePromoAlreadyUsed         = "PROMO_ALREADY_USED"
 	CodePromoPhoneRequired       = "PROMO_PHONE_REQUIRED"
+
+	CodeStaffAnalyticsDisabled    = "STAFF_ANALYTICS_DISABLED"
+	CodeLoyaltyDisabled           = "LOYALTY_DISABLED"
+	CodeLoyaltyInsufficientPoints = "LOYALTY_INSUFFICIENT_POINTS"
+	CodeLoyaltyAccountNotFound    = "LOYALTY_ACCOUNT_NOT_FOUND"
 )
 
 // respondError writes a structured API error response.
