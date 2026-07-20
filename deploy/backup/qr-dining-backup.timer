@@ -1,0 +1,11 @@
+[Unit]
+Description=Run qr-dining nightly backup at 02:30 (server time)
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+# If the machine was off at 02:30, run as soon as it is back up.
+Persistent=true
+Unit=qr-dining-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=qr-dining nightly PostgreSQL backup to object storage
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Environment with DATABASE_URL + provider creds. Keep this file root-only (chmod 600).
+EnvironmentFile=/etc/qr-dining/backup.env
+ExecStart=/opt/qr-dining/backend/scripts/nightly-backup.sh
+# A non-zero exit (missed backup) is surfaced to the journal and node_exporter's
+# systemd collector, which the BackupFailed alert watches (see alerting-setup.md).
+Nice=10
