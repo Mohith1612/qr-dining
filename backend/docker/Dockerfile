@@ -36,7 +36,12 @@ USER appuser
 
 EXPOSE 8080
 
+# Container health = readiness: /readyz pings Postgres and Redis and returns 503
+# when either is unreachable, so the container only reports "healthy" when it can
+# actually serve traffic (this is what compose depends_on and any LB key on).
+# /health remains the pure liveness endpoint (process alive) for an external
+# orchestrator's livenessProbe.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=5 \
-    CMD wget -qO- http://localhost:8080/health || exit 1
+    CMD wget -qO- http://localhost:8080/readyz || exit 1
 
 ENTRYPOINT ["/app/qr-dining"]
