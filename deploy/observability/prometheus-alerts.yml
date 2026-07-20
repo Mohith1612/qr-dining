@@ -246,3 +246,40 @@ groups:
         annotations:
           summary: "Payment settlement stalled (critical)"
           description: "A session has been in payment_pending past the critical threshold with a non-terminal payment. Staff must settle or cancel — the table cannot free until resolved. Escalation is alert-only; no automatic state change occurs."
+
+  - name: qr-dining-readyz-probe
+    rules:
+      # Authoritative datastore-outage page: /readyz returns 503 when Postgres OR
+      # Redis is unreachable, so probe_success==0 means a dependency is down and the
+      # app cannot serve. Pairs with prometheus.yml job qr-dining-readyz + blackbox.
+      - alert: ReadyzProbeFailing
+        expr: probe_success{job="qr-dining-readyz"} == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "/readyz probe failing — Postgres or Redis unavailable"
+          description: "The app is not ready: /readyz returned non-200, meaning Postgres or Redis is down (the JSON body names which). This is the authoritative dependency-outage page (Phase D F-1)."
+
+  - name: qr-dining-backup
+    rules:
+      # Backup metrics are written by nightly-backup.sh to the node_exporter
+      # textfile collector (set NODE_EXPORTER_TEXTFILE_DIR). The absent() guard
+      # also fires if the metric never appears (collector/script misconfigured).
+      - alert: BackupFailed
+        expr: qr_dining_backup_last_run_status != 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Nightly backup failed"
+          description: "The last qr-dining backup run exited non-zero. Check the backup log/journal and re-run nightly-backup.sh; the DB is unprotected until a backup succeeds."
+
+      - alert: BackupTooOld
+        expr: absent(qr_dining_backup_last_success_timestamp_seconds) or (time() - qr_dining_backup_last_success_timestamp_seconds) > 129600
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "No successful backup in >36h"
+          description: "No successful qr-dining backup has completed in over 36 hours (or the backup metric is missing). The nightly timer/cron may be broken — verify the schedule and storage credentials."

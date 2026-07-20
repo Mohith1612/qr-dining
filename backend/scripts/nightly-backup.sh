@@ -34,6 +34,30 @@ RETENTION_DAYS="${RETENTION_DAYS:-14}"
 BACKUP_WORKDIR="${BACKUP_WORKDIR:-./backups}"
 mkdir -p "$BACKUP_WORKDIR"
 
+# Emit Prometheus metrics for the node_exporter textfile collector so the
+# BackupFailed / BackupTooOld alerts have a signal. No-op if the dir is unset.
+# Status and last-success are separate files so a failure (trap) does not erase
+# the last successful timestamp.
+write_status_metric() { # $1=status(0|1)
+  [ -n "${NODE_EXPORTER_TEXTFILE_DIR:-}" ] || return 0
+  local f="$NODE_EXPORTER_TEXTFILE_DIR/qr_dining_backup_status.prom"
+  {
+    echo "# HELP qr_dining_backup_last_run_status Last backup run status (0=ok,1=failed)."
+    echo "# TYPE qr_dining_backup_last_run_status gauge"
+    echo "qr_dining_backup_last_run_status $1"
+  } > "$f.tmp" && mv "$f.tmp" "$f"
+}
+write_success_metric() {
+  [ -n "${NODE_EXPORTER_TEXTFILE_DIR:-}" ] || return 0
+  local f="$NODE_EXPORTER_TEXTFILE_DIR/qr_dining_backup_success.prom"
+  {
+    echo "# HELP qr_dining_backup_last_success_timestamp_seconds Unix time of last successful backup."
+    echo "# TYPE qr_dining_backup_last_success_timestamp_seconds gauge"
+    echo "qr_dining_backup_last_success_timestamp_seconds $(date +%s)"
+  } > "$f.tmp" && mv "$f.tmp" "$f"
+}
+trap 'write_status_metric 1' ERR
+
 storage_init
 
 TIMESTAMP="$(date -u +%Y%m%d_%H%M%S)"
@@ -86,4 +110,6 @@ done < <(storage_list "$BACKUP_PREFIX/")
 find "$BACKUP_WORKDIR" -name 'backup_*.dump' -mtime +"$RETENTION_DAYS" -print -delete 2>/dev/null | sed 's/^/      pruned local: /' || true
 echo "      remote pruned: $PRUNED"
 
+write_status_metric 0
+write_success_metric
 echo "OK: backup complete -> $REMOTE_KEY ($BYTES bytes)"

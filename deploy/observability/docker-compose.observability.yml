@@ -1,0 +1,61 @@
+# Runnable observability stack: Prometheus + Alertmanager + blackbox + node_exporter.
+#
+# Attach to the same network as the app so `app:8080` resolves. Example:
+#   docker compose -f docker-compose.yml -f deploy/observability/docker-compose.observability.yml up -d
+# or set OBS_NETWORK to an existing external network.
+#
+# node_exporter reads the backup textfile metric from a shared volume that the
+# nightly backup writes to (NODE_EXPORTER_TEXTFILE_DIR=/var/lib/node_exporter/textfile).
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [observability]
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    networks: [observability]
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks: [observability]
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    command:
+      - --collector.textfile.directory=/var/lib/node_exporter/textfile
+    volumes:
+      - backup_textfile:/var/lib/node_exporter/textfile:ro
+    networks: [observability]
+
+volumes:
+  prometheus_data:
+  # Shared with the backup job (mount the same volume / host path there).
+  backup_textfile:
+
+networks:
+  observability:
+    driver: bridge
