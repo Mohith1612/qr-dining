@@ -107,6 +107,19 @@ type FeatureFlags struct {
 	StrictBranchScopedMutations    bool
 }
 
+const (
+	// devGuestTokenSecret is the insecure development default for GUEST_TOKEN_SECRET.
+	// Release mode refuses to start while this value is in use.
+	devGuestTokenSecret = "dev-only-guest-token-secret"
+	// minGuestTokenSecretLen is the minimum acceptable HMAC secret length in release mode.
+	minGuestTokenSecretLen = 32
+	// minMFAEncryptionKeyLen mirrors services.mfaEncryptionKeyMinLen: a set-but-too-short
+	// key is a misconfiguration we refuse in release mode (empty is allowed — MFA fails closed).
+	minMFAEncryptionKeyLen = 16
+	// minWebhookSecretLen guards against trivially weak provider webhook secrets when set.
+	minWebhookSecretLen = 16
+)
+
 func Load() (*Config, error) {
 	// Load .env if present — no-op in production where env vars are injected directly.
 	_ = godotenv.Overload()
@@ -176,7 +189,7 @@ func Load() (*Config, error) {
 	cfg.CORS.AllowedOrigins = splitComma("CORS_ALLOWED_ORIGINS", "")
 
 	// Auth
-	cfg.Auth.GuestTokenSecret = getenv("GUEST_TOKEN_SECRET", "dev-only-guest-token-secret")
+	cfg.Auth.GuestTokenSecret = getenv("GUEST_TOKEN_SECRET", devGuestTokenSecret)
 	cfg.Auth.GuestTokenTTL = parseDuration("GUEST_TOKEN_TTL", 2*time.Hour)
 	cfg.Auth.MFAEncryptionKey = getenv("MFA_ENCRYPTION_KEY", "")
 	cfg.Auth.StaffCookieEnable = parseBool("AUTH_STAFF_COOKIE_ENABLED", false)
@@ -228,15 +241,40 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
 
-	// Warn (non-fatal) when CORS origins are unconfigured in production.
-	if len(cfg.CORS.AllowedOrigins) == 0 && cfg.Server.GinMode == "release" {
-		fmt.Fprintf(os.Stderr, "warn: CORS_ALLOWED_ORIGINS is empty in release mode — all WebSocket origins will be accepted\n")
-	}
-	if cfg.Auth.GuestTokenSecret == "dev-only-guest-token-secret" && cfg.Server.GinMode == "release" {
-		fmt.Fprintf(os.Stderr, "warn: GUEST_TOKEN_SECRET is using the development default in release mode\n")
+	// In release mode, refuse to start on insecure secret/origin defaults. Non-release
+	// modes (debug/test) stay permissive so local development boots with defaults.
+	if cfg.Server.GinMode == "release" {
+		if err := cfg.validateReleaseSecurity(); err != nil {
+			return nil, fmt.Errorf("config security validation: %w", err)
+		}
 	}
 
 	return cfg, nil
+}
+
+// validateReleaseSecurity enforces production-safe secrets and origins. It is only
+// called when GIN_MODE=release. Every failure names the offending env var and how to
+// fix it, so a misconfigured deploy fails fast with an actionable message instead of
+// booting insecurely.
+func (c *Config) validateReleaseSecurity() error {
+	if c.Auth.GuestTokenSecret == devGuestTokenSecret {
+		return fmt.Errorf("GUEST_TOKEN_SECRET is the insecure development default in release mode — set GUEST_TOKEN_SECRET to a strong random value (>= %d chars, e.g. `openssl rand -hex 32`)", minGuestTokenSecretLen)
+	}
+	if len(c.Auth.GuestTokenSecret) < minGuestTokenSecretLen {
+		return fmt.Errorf("GUEST_TOKEN_SECRET is too short (%d chars) in release mode — use at least %d random chars (e.g. `openssl rand -hex 32`)", len(c.Auth.GuestTokenSecret), minGuestTokenSecretLen)
+	}
+	if len(c.CORS.AllowedOrigins) == 0 {
+		return fmt.Errorf("CORS_ALLOWED_ORIGINS is empty in release mode — set it to your frontend origin(s) (comma-separated); an empty list accepts all WebSocket origins")
+	}
+	if c.Auth.MFAEncryptionKey != "" && len(c.Auth.MFAEncryptionKey) < minMFAEncryptionKeyLen {
+		return fmt.Errorf("MFA_ENCRYPTION_KEY is set but too short (%d chars) — use at least %d chars, or unset it if platform MFA is unused", len(c.Auth.MFAEncryptionKey), minMFAEncryptionKeyLen)
+	}
+	for provider, secret := range c.Payment.WebhookSecrets {
+		if len(secret) < minWebhookSecretLen {
+			return fmt.Errorf("PAYMENT_WEBHOOK_SECRET_%s is too short (%d chars) in release mode — use at least %d chars", strings.ToUpper(provider), len(secret), minWebhookSecretLen)
+		}
+	}
+	return nil
 }
 
 func (c *Config) validate() error {
