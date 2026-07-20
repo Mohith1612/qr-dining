@@ -2,9 +2,13 @@
 
 import Link from "next/link"
 import { use } from "react"
+import { toast } from "sonner"
 import { useSession } from "@/hooks/useSession"
+import { sessionsApi } from "@/lib/api/sessions"
+import { ApiError } from "@/lib/api/client"
 import { Avatar } from "@/components/shared/Avatar"
-import { UtensilsCrossed, ClipboardList, Bell, CreditCard, ChevronRight } from "lucide-react"
+import type { Participant } from "@/types/api"
+import { UtensilsCrossed, ClipboardList, Bell, CreditCard, ChevronRight, Crown } from "lucide-react"
 
 interface Props {
   params: Promise<{ id: string }>
@@ -19,7 +23,27 @@ const TILE_TONES: Record<string, { bg: string; fg: string }> = {
 
 export default function SessionLandingPage({ params }: Props) {
   const { id } = use(params)
-  const { session, participant, participants } = useSession()
+  const { session, participant, participants, isHost } = useSession()
+
+  // Host only: hand the host role to another participant. HOST_CHANGED (WS)
+  // updates every client's badges and host-only controls.
+  async function makeHost(target: Participant) {
+    if (!session) return
+    if (!window.confirm(`Make ${target.display_name} the host? They'll be able to send orders and pay the bill.`)) return
+    const guestToken = sessionStorage.getItem("guest_access_token") ?? ""
+    try {
+      await sessionsApi.transferHost(session.id, target.id, guestToken)
+      toast.success(`${target.display_name} is now the host.`)
+    } catch (e) {
+      const code = e instanceof ApiError ? e.code : ""
+      toast.error(
+        code === "HOST_TRANSFER_LOCKED" ? "You can't change host while a payment is in progress."
+        : code === "NOT_SESSION_HOST" ? "Only the current host can do that."
+        : code === "VALIDATION_ERROR" ? "That guest is no longer at the table."
+        : "Couldn't transfer host. Please try again."
+      )
+    }
+  }
 
   const actions = [
     { href: `/session/${id}/menu`,    label: "View Menu",  sub: "Tonight's offerings",            icon: UtensilsCrossed, tone: "accent"  },
@@ -73,6 +97,24 @@ export default function SessionLandingPage({ params }: Props) {
                   </span>
                 )}
                 {isYou && <span style={{ fontSize: 10, color: "var(--accent)", letterSpacing: "0.08em", fontWeight: 600 }}>YOU</span>}
+                {isHost && !p.is_host && !isYou && (
+                  <button
+                    onClick={() => makeHost(p)}
+                    title={`Make ${p.display_name} the host`}
+                    aria-label={`Make ${p.display_name} the host`}
+                    className="press"
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      marginLeft: 2, padding: "3px 8px", borderRadius: 999,
+                      background: "transparent", border: "1px solid var(--line-2)",
+                      color: "var(--ink-3)", fontSize: 10.5, fontWeight: 600,
+                      letterSpacing: "0.04em", cursor: "pointer",
+                    }}
+                  >
+                    <Crown size={11} aria-hidden />
+                    Make host
+                  </button>
+                )}
               </div>
             )
           })}

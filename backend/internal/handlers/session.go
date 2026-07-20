@@ -203,6 +203,42 @@ func (h *SessionHandler) Reactivate(c *gin.Context) {
 	c.JSON(http.StatusOK, guestSafeSession(sess))
 }
 
+type transferHostRequest struct {
+	ParticipantID int64 `json:"participant_id" binding:"required"`
+}
+
+// TransferHost hands the host role to another active participant in the session.
+// Host-only: the acting participant (from the guest token) must be the current
+// host. The HOST_CHANGED broadcast (from the service) updates every client.
+func (h *SessionHandler) TransferHost(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondValidationError(c, "invalid session id")
+		return
+	}
+
+	var req transferHostRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+
+	actingID, ok := guestParticipantID(c, h.guestTokens, h.repos, id, 0, h.flags.AuthGuestCredentialsRequired)
+	if !ok {
+		return
+	}
+	if actingID == 0 {
+		respondValidationError(c, "guest participant required")
+		return
+	}
+
+	if err := h.svc.TransferHost(c.Request.Context(), id, actingID, req.ParticipantID); err != nil {
+		sessionError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "host_participant_id": req.ParticipantID})
+}
+
 func (h *SessionHandler) IssueWSTicket(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -295,6 +331,12 @@ func sessionError(c *gin.Context, err error) {
 		respondError(c, http.StatusConflict, CodeSessionAlreadyActive, err.Error())
 	case errors.Is(err, domain.ErrNotSessionHost):
 		respondError(c, http.StatusForbidden, CodeNotSessionHost, err.Error())
+	case errors.Is(err, domain.ErrHostTransferDuringPayment):
+		respondError(c, http.StatusConflict, CodeHostTransferLocked, err.Error())
+	case errors.Is(err, domain.ErrParticipantNotInSession):
+		respondError(c, http.StatusBadRequest, CodeValidationError, "that guest is not part of this table")
+	case errors.Is(err, domain.ErrParticipantNotFound):
+		respondError(c, http.StatusNotFound, CodeParticipantNotFound, err.Error())
 	case errors.Is(err, domain.ErrInvalidPhone):
 		respondError(c, http.StatusBadRequest, CodeInvalidPhone, "Please enter a valid mobile number, or continue without one.")
 	case errors.Is(err, domain.ErrTableNotFound):

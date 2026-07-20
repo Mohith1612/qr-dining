@@ -45,6 +45,15 @@ export const sessionsApi = {
   reactivate: (id: string, guestToken: string) =>
     api.post<Session>(`/sessions/${id}/reactivate`, {}, { guestToken }),
 
+  // Host hands the host role to another participant. The HOST_CHANGED WS event
+  // updates every client (badges + host-only controls).
+  transferHost: (id: string, participantId: number, guestToken: string) =>
+    api.post<{ ok: boolean; host_participant_id: number }>(
+      `/sessions/${id}/host`,
+      { participant_id: participantId },
+      { guestToken }
+    ),
+
   close: (id: string, guestToken: string) =>
     api.delete<void>(`/sessions/${id}`, { guestToken }),
 }

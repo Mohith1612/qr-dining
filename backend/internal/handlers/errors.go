@@ -30,6 +30,7 @@ const (
 	CodeMFAInvalidCode           = "MFA_INVALID_CODE"
 	CodeMFANotConfigured         = "MFA_NOT_CONFIGURED"
 	CodeNotSessionHost           = "NOT_SESSION_HOST"
+	CodeHostTransferLocked       = "HOST_TRANSFER_LOCKED"
 	CodeParticipantNotFound      = "PARTICIPANT_NOT_FOUND"
 	CodeMenuItemNotFound         = "MENU_ITEM_NOT_FOUND"
 	CodeMenuItemUnavailable      = "MENU_ITEM_UNAVAILABLE"

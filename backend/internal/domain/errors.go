@@ -19,6 +19,9 @@ var (
 	ErrParticipantUnauthorized = errors.New("participant not authorized for this action")
 	ErrNotSessionHost          = errors.New("only the session host can perform this action")
 	ErrParticipantNotInSession = errors.New("participant does not belong to this session")
+	// ErrHostTransferDuringPayment guards a manual host handoff while the host
+	// owns an in-flight bill (session in payment_pending).
+	ErrHostTransferDuringPayment = errors.New("cannot transfer host while a payment is pending")
 )
 
 // Orders

@@ -158,6 +158,12 @@ func New(
 	api.DELETE("/sessions/:id", sessionH.Close)
 	api.POST("/sessions/:id/join", sessionH.Join)
 	api.POST("/sessions/:id/reactivate", sessionH.Reactivate)
+	// Host transfer — the current host hands off to another participant. Low
+	// per-session cap; a normal table changes host rarely.
+	api.POST("/sessions/:id/host",
+		middleware.RateLimitByKey(rateLimiter, "host_transfer_session", 6, func(c *gin.Context) string { return c.Param("id") }),
+		sessionH.TransferHost,
+	)
 	api.POST("/sessions/:id/ws-ticket",
 		middleware.RateLimitSensitive(rateLimiter, "ws_ticket", 60),
 		middleware.RateLimitByKey(rateLimiter, "ws_ticket_session", 12, func(c *gin.Context) string { return c.Param("id") }),

@@ -257,6 +257,36 @@ func (s *SessionService) AuthorizeHostAction(ctx context.Context, sessionID uuid
 	return true, nil
 }
 
+// TransferHost hands the host role from the current host to another active
+// participant in the same session. It is guest-initiated and host-only: the
+// caller (actingParticipantID, resolved from the guest token) must currently be
+// the host. The host owns the bill, so a transfer is refused while a payment is
+// in flight (payment_pending). Reuses reassignHost, which persists the change and
+// broadcasts HOST_CHANGED so every client updates badges and host-only controls.
+func (s *SessionService) TransferHost(ctx context.Context, sessionID uuid.UUID, actingParticipantID, targetParticipantID int64) error {
+	sess, err := s.repos.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if !sess.HostParticipantID.Valid || sess.HostParticipantID.Int64 != actingParticipantID {
+		return domain.ErrNotSessionHost
+	}
+	if sess.Status == sqlc.SessionStatusPaymentPending {
+		return domain.ErrHostTransferDuringPayment
+	}
+	if targetParticipantID == actingParticipantID {
+		return nil // already host — no-op
+	}
+	target, err := s.repos.GetParticipantByID(ctx, targetParticipantID)
+	if err != nil {
+		return err // ErrParticipantNotFound for an unknown id
+	}
+	if target.SessionID != sessionID || target.RevokedAt.Valid {
+		return domain.ErrParticipantNotInSession
+	}
+	return s.reassignHost(ctx, sess, target)
+}
+
 // hostAbsentFromPresence reports whether the current host has no live WebSocket
 // presence. Heartbeats are written to the org/branch-scoped key (with a legacy
 // unscoped fallback), so both are checked. A missing host_participant_id counts
