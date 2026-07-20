@@ -44,6 +44,12 @@ func (s *PromoService) ValidatePromo(ctx context.Context, repos *repository.Repo
 		req.PhoneE164 = &normalized
 	}
 
+	// A per-phone usage limit is only enforceable with a phone. Refuse to apply
+	// such a promo without one so the limit can't be silently bypassed.
+	if promo.UsesPerPhone > 0 && req.PhoneE164 == nil {
+		return ValidatePromoResult{}, domain.ErrPromoPhoneRequired
+	}
+
 	// Check minimum order amount.
 	minF, _ := promo.MinOrderAmount.Float64Value()
 	if minF.Valid && req.OrderTotal < minF.Float64 {

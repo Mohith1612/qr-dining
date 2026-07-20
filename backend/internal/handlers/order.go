@@ -112,6 +112,8 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 			respondError(c, http.StatusUnprocessableEntity, CodeMenuItemUnavailable, err.Error())
 		case errors.Is(err, domain.ErrPromoNotFound):
 			respondError(c, http.StatusNotFound, CodePromoNotFound, "This promo code isn't valid right now.")
+		case errors.Is(err, domain.ErrPromoPhoneRequired):
+			respondError(c, http.StatusUnprocessableEntity, CodePromoPhoneRequired, "Add your phone number to use this offer.")
 		case errors.Is(err, domain.ErrMinOrderNotMet):
 			respondError(c, http.StatusUnprocessableEntity, CodeMinOrderNotMet, err.Error())
 		case errors.Is(err, domain.ErrPromoExhausted):

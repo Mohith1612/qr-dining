@@ -45,7 +45,9 @@ func (h *PromoHandler) ValidatePromo(c *gin.Context) {
 	}
 
 	var req struct {
-		Code string `json:"code" binding:"required"`
+		Code       string  `json:"code" binding:"required"`
+		OrderTotal float64 `json:"order_total"`
+		PhoneE164  *string `json:"phone_e164"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondValidationError(c, err.Error())
@@ -65,12 +67,15 @@ func (h *PromoHandler) ValidatePromo(c *gin.Context) {
 	result, err := h.svc.ValidatePromo(c.Request.Context(), h.repos, services.ValidatePromoRequest{
 		BranchID:   sess.BranchID,
 		Code:       req.Code,
-		OrderTotal: 0, // validate endpoint doesn't know cart total; min-order check skipped for preview
+		OrderTotal: req.OrderTotal,
+		PhoneE164:  req.PhoneE164,
 	})
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrPromoNotFound):
 			respondError(c, http.StatusNotFound, CodePromoNotFound, "This promo code isn't valid right now.")
+		case errors.Is(err, domain.ErrPromoPhoneRequired):
+			respondError(c, http.StatusUnprocessableEntity, CodePromoPhoneRequired, "Add your phone number to use this offer.")
 		case errors.Is(err, domain.ErrMinOrderNotMet):
 			respondError(c, http.StatusUnprocessableEntity, CodeMinOrderNotMet, err.Error())
 		case errors.Is(err, domain.ErrPromoExhausted):
@@ -128,7 +133,7 @@ type createPromoRequest struct {
 	Value           float64 `json:"value" binding:"required"`
 	MinOrderAmount  float64 `json:"min_order_amount"`
 	MaxUses         *int32  `json:"max_uses"`
-	UsesPerPhone    int32   `json:"uses_per_phone"`
+	UsesPerPhone    *int32  `json:"uses_per_phone"`
 	ValidFrom       string  `json:"valid_from" binding:"required"`
 	ValidUntil      string  `json:"valid_until" binding:"required"`
 	TimeWindowStart *string `json:"time_window_start"` // "HH:MM" format
@@ -171,8 +176,14 @@ func (h *PromoHandler) CreatePromo(c *gin.Context) {
 		respondValidationError(c, "type must be flat_amount or percentage")
 		return
 	}
-	if req.UsesPerPhone == 0 {
-		req.UsesPerPhone = 1
+	// Per-guest limit: default to once-per-guest when the field is omitted, but
+	// honor an explicit 0 (unlimited / no phone required). Clamp negatives.
+	usesPerPhone := int32(1)
+	if req.UsesPerPhone != nil {
+		usesPerPhone = *req.UsesPerPhone
+		if usesPerPhone < 0 {
+			usesPerPhone = 0
+		}
 	}
 
 	validFrom, err := time.Parse(time.RFC3339, req.ValidFrom)
@@ -193,7 +204,7 @@ func (h *PromoHandler) CreatePromo(c *gin.Context) {
 		Value:          req.Value,
 		MinOrderAmount: req.MinOrderAmount,
 		MaxUses:        req.MaxUses,
-		UsesPerPhone:   req.UsesPerPhone,
+		UsesPerPhone:   usesPerPhone,
 		ValidFrom:      validFrom,
 		ValidUntil:     validUntil,
 		Description:    req.Description,

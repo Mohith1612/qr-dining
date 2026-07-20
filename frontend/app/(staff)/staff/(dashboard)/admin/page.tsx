@@ -1607,6 +1607,7 @@ function PromosTab() {
   const [value, setValue] = useState("")
   const [minOrder, setMinOrder] = useState("")
   const [maxUses, setMaxUses] = useState("")
+  const [usesPerPhone, setUsesPerPhone] = useState("1")
   const [validFrom, setValidFrom] = useState("")
   const [validUntil, setValidUntil] = useState("")
   const [windowStart, setWindowStart] = useState("")
@@ -1642,7 +1643,7 @@ function PromosTab() {
         value: parseFloat(value),
         min_order_amount: minOrder ? parseFloat(minOrder) : 0,
         max_uses: maxUses ? parseInt(maxUses) : null,
-        uses_per_phone: 1,
+        uses_per_phone: usesPerPhone ? parseInt(usesPerPhone) : 0,
         valid_from: new Date(validFrom).toISOString(),
         valid_until: new Date(validUntil).toISOString(),
         time_window_start: windowStart || null,
@@ -1651,7 +1652,7 @@ function PromosTab() {
       }, token)
       toast.success("Promo created.")
       setShowCreate(false)
-      setCode(""); setValue(""); setMinOrder(""); setMaxUses("")
+      setCode(""); setValue(""); setMinOrder(""); setMaxUses(""); setUsesPerPhone("1")
       setValidFrom(""); setValidUntil(""); setWindowStart(""); setWindowEnd(""); setDescription("")
       fetchPromos()
     } catch {
@@ -1747,10 +1748,17 @@ function PromosTab() {
               <Input type="number" value={minOrder} onChange={(e) => setMinOrder(e.target.value)} placeholder="0" />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, color: "var(--ink-3)", display: "block", marginBottom: 4 }}>Max uses</label>
+              <label style={{ fontSize: 11, color: "var(--ink-3)", display: "block", marginBottom: 4 }}>Max total uses</label>
               <Input type="number" value={maxUses} onChange={(e) => setMaxUses(e.target.value)} placeholder="∞" />
             </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 11, color: "var(--ink-3)", display: "block", marginBottom: 4 }}>Uses per guest</label>
+              <Input type="number" min={0} value={usesPerPhone} onChange={(e) => setUsesPerPhone(e.target.value)} placeholder="1" />
+            </div>
           </div>
+          <p style={{ fontSize: 11, color: "var(--ink-4)", marginTop: -4 }}>
+            Uses per guest &gt; 0 requires guests to enter their phone number to redeem (the offer is tracked per number). Set 0 for unlimited / no phone.
+          </p>
 
           <div style={{ display: "flex", gap: 8 }}>
             <div style={{ flex: 1 }}>

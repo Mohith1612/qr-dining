@@ -61,6 +61,7 @@ const (
 	CodeMinOrderNotMet           = "MIN_ORDER_NOT_MET"
 	CodePromoExhausted           = "PROMO_EXHAUSTED"
 	CodePromoAlreadyUsed         = "PROMO_ALREADY_USED"
+	CodePromoPhoneRequired       = "PROMO_PHONE_REQUIRED"
 )
 
 // respondError writes a structured API error response.

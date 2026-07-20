@@ -16,10 +16,10 @@ interface CreatePromoRequest {
 }
 
 export const promosApi = {
-  validate: (sessionId: string, code: string, guestToken?: string) =>
+  validate: (sessionId: string, code: string, orderTotal?: number, phoneE164?: string, guestToken?: string) =>
     api.post<ValidatePromoResponse>(
       `/sessions/${sessionId}/promos/validate`,
-      { code },
+      { code, order_total: orderTotal ?? 0, phone_e164: phoneE164 || undefined },
       { guestToken }
     ),
 

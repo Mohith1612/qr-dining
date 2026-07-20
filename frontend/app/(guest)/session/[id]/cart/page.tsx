@@ -97,6 +97,12 @@ export default function CartPage({ params }: Props) {
   const [appliedPromoCode, setAppliedPromoCode] = useState<string>("")
   const [promoLoading, setPromoLoading] = useState(false)
   const [promoError, setPromoError] = useState<string | null>(null)
+  // Phone gate: promos with a per-guest limit require the phone (the offer is
+  // tracked per number). Reveal a field on PROMO_PHONE_REQUIRED and carry the
+  // phone used into order placement so the redemption records against it.
+  const [promoPhone, setPromoPhone] = useState("")
+  const [phoneRequired, setPhoneRequired] = useState(false)
+  const [appliedPromoPhone, setAppliedPromoPhone] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     refreshCart()
@@ -118,19 +124,27 @@ export default function CartPage({ params }: Props) {
     try {
       const code = promoCode.trim().toUpperCase()
       const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
-      const result = await promosApi.validate(session.id, code, guestToken)
+      const phone = promoPhone.trim() ? "+91" + promoPhone.trim() : undefined
+      const result = await promosApi.validate(session.id, code, subtotal, phone, guestToken)
       setAppliedPromo(result)
       setAppliedPromoCode(code)
+      setAppliedPromoPhone(phone)
       setPromoCode("")
+      setPhoneRequired(false)
     } catch (err) {
       if (err instanceof ApiError) {
-        const msgs: Record<string, string> = {
-          PROMO_NOT_FOUND:    "This promo code isn't valid right now.",
-          MIN_ORDER_NOT_MET:  "Your order total doesn't meet this promo's minimum.",
-          PROMO_EXHAUSTED:    "This offer has been claimed by too many guests.",
-          PROMO_ALREADY_USED: "You've already used this offer.",
+        if (err.code === "PROMO_PHONE_REQUIRED") {
+          setPhoneRequired(true)
+          setPromoError("Add your phone number to use this offer.")
+        } else {
+          const msgs: Record<string, string> = {
+            PROMO_NOT_FOUND:    "This promo code isn't valid right now.",
+            MIN_ORDER_NOT_MET:  "Your order total doesn't meet this promo's minimum.",
+            PROMO_EXHAUSTED:    "This offer has been claimed by too many guests.",
+            PROMO_ALREADY_USED: "You've already used this offer.",
+          }
+          setPromoError(msgs[err.code] ?? "This promo code couldn't be applied.")
         }
-        setPromoError(msgs[err.code] ?? "This promo code couldn't be applied.")
       } else {
         setPromoError("Couldn't validate the promo code. Please try again.")
       }
@@ -142,6 +156,9 @@ export default function CartPage({ params }: Props) {
   function handleRemovePromo() {
     setAppliedPromo(null)
     setAppliedPromoCode("")
+    setAppliedPromoPhone(undefined)
+    setPhoneRequired(false)
+    setPromoPhone("")
     setPromoError(null)
   }
 
@@ -156,7 +173,8 @@ export default function CartPage({ params }: Props) {
           modifier_ids: item.selected_modifiers?.map((m) => m.id),
           note: item.note || undefined,
         })),
-        appliedPromo ? appliedPromoCode : undefined
+        appliedPromo ? appliedPromoCode : undefined,
+        appliedPromo ? appliedPromoPhone : undefined
       )
       useCartStore.getState().clear()
       toast.success("Order placed!")
@@ -290,6 +308,47 @@ export default function CartPage({ params }: Props) {
                 }
               </button>
             </div>
+            {phoneRequired && (
+              <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+                <div style={{
+                  height: 42, padding: "0 12px", borderRadius: "var(--rad-md)",
+                  background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
+                  display: "flex", alignItems: "center", fontSize: 13, color: "var(--ink-2)",
+                  flexShrink: 0,
+                }}>🇮🇳 +91</div>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={promoPhone}
+                  onChange={(e) => { setPromoPhone(e.target.value.replace(/\D/g, "")); setPromoError(null) }}
+                  onKeyDown={(e) => e.key === "Enter" && promoPhone.length === 10 && handleApplyPromo()}
+                  placeholder="Phone number for this offer"
+                  style={{
+                    flex: 1, height: 42, borderRadius: "var(--rad-md)",
+                    background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
+                    padding: "0 12px", fontSize: 13, color: "var(--ink-1)", outline: "none",
+                  }}
+                  aria-label="Phone number for this offer"
+                  autoFocus
+                />
+                <button
+                  onClick={handleApplyPromo}
+                  disabled={promoLoading || promoPhone.length !== 10}
+                  className="press"
+                  style={{
+                    height: 42, padding: "0 16px", borderRadius: "var(--rad-md)",
+                    background: "var(--accent)", color: "var(--accent-ink)",
+                    border: "1px solid var(--accent)", fontSize: 13, fontWeight: 500,
+                    opacity: promoLoading || promoPhone.length !== 10 ? 0.5 : 1,
+                    cursor: promoLoading || promoPhone.length !== 10 ? "not-allowed" : "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  Use
+                </button>
+              </div>
+            )}
             {promoError && (
               <p style={{ marginTop: 6, fontSize: 12, color: "var(--err, #e05252)", lineHeight: 1.4 }}>
                 {promoError}

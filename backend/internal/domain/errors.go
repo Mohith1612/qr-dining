@@ -135,6 +135,9 @@ var (
 	ErrMinOrderNotMet   = errors.New("order total does not meet promo minimum")
 	ErrPromoExhausted   = errors.New("promo has reached its maximum redemption limit")
 	ErrPromoAlreadyUsed = errors.New("promo already used by this customer")
+	// ErrPromoPhoneRequired is returned when a promo has a per-phone usage limit
+	// but no phone was supplied, so the limit cannot be enforced.
+	ErrPromoPhoneRequired = errors.New("phone number required to use this promo")
 )
 
 // Generic
