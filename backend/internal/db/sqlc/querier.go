@@ -97,6 +97,11 @@ type Querier interface {
 	GetFeatureFlag(ctx context.Context, key string) (PlatformFeatureFlag, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetInvoiceByID(ctx context.Context, id int64) (SubscriptionInvoice, error)
+	GetKitchenPeakThroughput(ctx context.Context, arg GetKitchenPeakThroughputParams) ([]GetKitchenPeakThroughputRow, error)
+	// Orders whose 'preparing' transition predates the window are excluded from
+	// avg_prep_seconds (prep_started_at is NULL inside the window) but still count
+	// in orders_completed.
+	GetKitchenPerformance(ctx context.Context, arg GetKitchenPerformanceParams) ([]GetKitchenPerformanceRow, error)
 	GetMenuCategoryByID(ctx context.Context, id int64) (MenuCategory, error)
 	GetMenuItemByID(ctx context.Context, id int64) (MenuItem, error)
 	GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]MenuItem, error)
@@ -142,8 +147,21 @@ type Querier interface {
 	GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionByToken(ctx context.Context, sessionToken string) (Session, error)
 	GetSessionParticipantByID(ctx context.Context, id int64) (SessionParticipant, error)
+	GetStaffAssistanceStats(ctx context.Context, arg GetStaffAssistanceStatsParams) ([]GetStaffAssistanceStatsRow, error)
 	GetStaffByBranchAndCode(ctx context.Context, arg GetStaffByBranchAndCodeParams) (Staff, error)
 	GetStaffByID(ctx context.Context, id int64) (Staff, error)
+	GetStaffDailyActivity(ctx context.Context, arg GetStaffDailyActivityParams) ([]GetStaffDailyActivityRow, error)
+	GetStaffLoginStats(ctx context.Context, arg GetStaffLoginStatsParams) ([]GetStaffLoginStatsRow, error)
+	// Staff performance analytics. Read-only aggregation over EXISTING sources:
+	// event_log (ORDER_STATUS_CHANGED / ASSISTANCE_* rows already carry staff
+	// actor_id), payments (settled_by_staff_id / settled_at), and staff_sessions
+	// (created_at = login moment, last_seen_at/revoked_at = activity bounds).
+	// No new event capture; windows are UTC, matching the existing analytics queries.
+	//
+	// event_log.actor_id is TEXT; staff joins go through a guarded CASE cast so a
+	// non-numeric legacy/system actor_id can never abort the query.
+	GetStaffOrderActivity(ctx context.Context, arg GetStaffOrderActivityParams) ([]GetStaffOrderActivityRow, error)
+	GetStaffSettlementStats(ctx context.Context, arg GetStaffSettlementStatsParams) ([]GetStaffSettlementStatsRow, error)
 	// Org-level subscription lifecycle + billing foundation queries.
 	// Mutations are driven by BillingService; status is recorded/audited, not enforced.
 	GetSubscriptionByOrg(ctx context.Context, organizationID int64) (OrganizationSubscription, error)
