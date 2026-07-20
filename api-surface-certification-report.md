@@ -240,8 +240,57 @@ Areas deserving special attention in the upcoming pass, ranked by risk/novelty:
 
 ## 7. Validation Results
 
-_To be completed in Commit 9 (`npx @redocly/cli lint openapi.yaml`)._
+Tooling: `npx @redocly/cli lint` (v2.x), config committed as `redocly.yaml` (extends the
+`recommended` ruleset; structural-correctness rules remain **errors**). Also sanity-parsed with
+PyYAML.
+
+```
+$ npx @redocly/cli lint
+Woohoo! Your API description is valid. 🎉
+You have 9 warnings.
+```
+
+- **0 errors.** All broken-reference / duplicate-schema / missing-schema / invalid-3.1 issues from
+  the pre-audit spec are resolved (incl. converting 3.0-style `nullable: true` → 3.1
+  `type: [..., "null"]`, the undefined `StaffAuth` security scheme, and the leaked `session_token`).
+- **9 warnings, all `operation-4xx-response`** — purely informational, on operations that
+  legitimately return only success codes (`/health`, `/readyz`, `/metrics`, `/plans`,
+  `/staff/logout`, `/platform/auth/logout`, MFA disable (204), etc.). Kept as warnings (non-blocking)
+  rather than suppressed.
+- Three opinionated rules are intentionally disabled in `redocly.yaml` with rationale: `info-license`
+  (internal contract), `no-server-example.com` (the `localhost:8080` dev URL is the real target),
+  `operation-2xx-response` (the `/ws` upgrade returns 101 by design), `no-ambiguous-paths` (the
+  `/tables/by-qr/{token}` vs `/tables/{id}/qr-refresh` overlap is faithful to the real Gin routes),
+  and `operation-operationId` (hand-authored contract).
 
 ## 8. Final Coverage
 
-_To be completed in Commit 9: documented-vs-actual route count and any intentional omissions._
+Automated cross-check (extract every `:param` route from `server.go`, resolve router-group
+prefixes, normalize `:p`↔`{p}`, diff against documented operations):
+
+```
+server.go routes:   157
+spec operations:    157
+in code, not spec:    0
+in spec, not code:    0
+```
+
+**100% route coverage, exact 1:1.** Every production-intended route in `server.go` is documented,
+and the spec contains no phantom operations. (133 path items × multiple methods = 157 operations.)
+No intentional omissions.
+
+### Spec-vs-code accuracy notes (carried into the spec, not bugs to fix)
+- **R-4 (support-session grants).** Documented as implemented: `POST /platform/support/sessions`
+  with 4h soft cap (422) / 24h hard cap (400), `GET /support/sessions[/:id]` (410 when expired). The
+  spec notes that the support **detail reads** do not yet require an active grant — grants are
+  recorded/audited but not enforced on reads. (Contradicts the master-context "deferred" note; the
+  code is authoritative.)
+- **Resolve-only / inert surfaces** (entitlements, feature flags, org/branch suspend-activate,
+  subscription status) are documented with explicit "not enforced yet" annotations so manual testers
+  don't expect enforcement.
+- **F-8** is enforced in the schema: no guest/support response advertises `session_token`; support
+  detail DTOs also omit `device_fingerprint`.
+
+This satisfies the success criteria: every production-intended route exists in OpenAPI; auth
+requirements, request/response schemas, and validation rules trace to source; and the spec validates
+clean — OpenAPI is now a reliable source of truth for the comprehensive manual-testing phase.
