@@ -124,6 +124,10 @@ WHERE branch_id = $1 AND status = 'active'
 ORDER BY created_at DESC;
 
 -- name: GetActiveSessionForTable :one
+-- Returns the table's in-progress session. Must match the non-terminal statuses
+-- the one-active-per-table unique index blocks, so a QR scan of an occupied table
+-- resolves the joinable session instead of falling through to a blocked create.
 SELECT * FROM sessions
-WHERE table_id = $1 AND status = 'active'
+WHERE table_id = $1 AND status IN ('active', 'payment_pending', 'awaiting_reactivation')
+ORDER BY created_at DESC
 LIMIT 1;

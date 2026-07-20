@@ -102,10 +102,14 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 
 const getActiveSessionForTable = `-- name: GetActiveSessionForTable :one
 SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number, awaiting_reactivation_at FROM sessions
-WHERE table_id = $1 AND status = 'active'
+WHERE table_id = $1 AND status IN ('active', 'payment_pending', 'awaiting_reactivation')
+ORDER BY created_at DESC
 LIMIT 1
 `
 
+// Returns the table's in-progress session. Must match the non-terminal statuses
+// the one-active-per-table unique index blocks, so a QR scan of an occupied table
+// resolves the joinable session instead of falling through to a blocked create.
 func (q *Queries) GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error) {
 	row := q.db.QueryRow(ctx, getActiveSessionForTable, tableID)
 	var i Session

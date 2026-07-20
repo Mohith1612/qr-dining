@@ -347,7 +347,22 @@ func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, d
 	if err != nil {
 		return sqlc.SessionParticipant{}, err
 	}
-	if sess.Status != sqlc.SessionStatusActive {
+	switch sess.Status {
+	case sqlc.SessionStatusActive, sqlc.SessionStatusPaymentPending:
+		// Joinable as-is. A guest scanning a table whose party is mid-payment can
+		// still join (be present); the frozen cart and host-only payment are
+		// unaffected.
+	case sqlc.SessionStatusAwaitingReactivation:
+		// The table idled and lost presence. A returning or newly-arriving guest
+		// scanning the QR resumes it instead of hitting a dead-end create.
+		if _, err := s.repos.ReactivateSession(ctx, sessionID); err != nil {
+			// The reactivation worker abandoned it between our read and update.
+			return sqlc.SessionParticipant{}, domain.ErrSessionClosed
+		}
+		s.publisher.SessionCreated(ctx, sessionID, map[string]string{"reason": "reactivated"})
+		s.repos.LogEvent(ctx, sessionID, sess.BranchID, "SESSION_REACTIVATED", "participant", 0, map[string]any{})
+	default:
+		// closed / abandoned / expired
 		return sqlc.SessionParticipant{}, domain.ErrSessionClosed
 	}
 

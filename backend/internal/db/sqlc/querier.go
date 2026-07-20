@@ -72,6 +72,9 @@ type Querier interface {
 	DisablePlatformMFA(ctx context.Context, platformUserID int64) error
 	FailIdempotencyKey(ctx context.Context, arg FailIdempotencyKeyParams) error
 	GetActivePlatformSessionByTokenHash(ctx context.Context, tokenHash string) (PlatformSession, error)
+	// Returns the table's in-progress session. Must match the non-terminal statuses
+	// the one-active-per-table unique index blocks, so a QR scan of an occupied table
+	// resolves the joinable session instead of falling through to a blocked create.
 	GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error)
 	GetActiveStaffSessionByTokenHash(ctx context.Context, tokenHash string) (StaffSession, error)
 	GetAssistanceRequestByID(ctx context.Context, id int64) (AssistanceRequest, error)
