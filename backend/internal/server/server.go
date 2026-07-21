@@ -107,6 +107,9 @@ func New(
 	billingSvc := services.NewBillingService(repos)
 	enforcementObsSvc := services.NewEnforcementObservabilityService(repos, entitlementSvc, cache)
 	customerSvc := services.NewCustomerService(repos)
+	// Gated features (entitlement + platform flag, both default off).
+	featureGate := services.NewFeatureGate(entitlementSvc, flagSvc, repos, cache)
+	staffAnalyticsSvc := services.NewStaffAnalyticsService(repos, featureGate, cache)
 
 	// ── Audit writer ─────────────────────────────────────────────────────────
 	auditWriter := audit.NewWriter(dbsqlc.New(db), cfg.FeatureFlags.AuditLogV2Enabled, logger, metrics.AuditWriteFailuresTotal)
@@ -130,6 +133,7 @@ func New(
 	tenantH := handlers.NewTenantHandler(repos, themeSvc)
 	subH := handlers.NewSubscriptionHandler(repos, subSvc)
 	analyticsH := handlers.NewAnalyticsHandler(analyticsSvc)
+	staffAnalyticsH := handlers.NewStaffAnalyticsHandler(staffAnalyticsSvc)
 	orgH := handlers.NewOrganizationHandler(repos, analyticsSvc, cfg.FeatureFlags, authorizer, auditWriter)
 	tableH := handlers.NewTableHandler(repos, auditWriter)
 	branchH := handlers.NewBranchHandler(repos, themeSvc, collateralSvc, auditWriter)
@@ -359,6 +363,9 @@ func New(
 	branchStaffAPI.GET("/analytics/top-items", analyticsH.GetTopItems)
 	branchStaffAPI.GET("/analytics/busy-hours", analyticsH.GetBusyHours)
 	branchStaffAPI.GET("/analytics/order-volume", analyticsH.GetOrderVolume)
+	branchStaffAPI.GET("/analytics/staff/waiters", staffAnalyticsH.GetWaiterPerformance)
+	branchStaffAPI.GET("/analytics/staff/kitchen", staffAnalyticsH.GetKitchenPerformance)
+	branchStaffAPI.GET("/analytics/staff/summary", staffAnalyticsH.GetStaffSummary)
 	branchStaffAPI.GET("/tables", tableH.ListTables)
 	branchStaffAPI.POST("/tables", tableH.CreateTable)
 	branchStaffAPI.GET("/collateral", branchH.GetCollateral)
