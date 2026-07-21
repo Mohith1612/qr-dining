@@ -108,6 +108,35 @@ func (h *PlatformHandler) GetHealthAnalytics(c *gin.Context) {
 	c.JSON(http.StatusOK, report)
 }
 
+// GetStaffPerformanceAnalytics — GET /platform/analytics/staff-performance?branch_id=&period=
+// Operator observability for a single branch's staff activity. Like the other
+// platform analytics reads it is NOT tenant-entitlement-gated; the
+// tenant-facing /branches/:id/analytics/staff/* surface stays gated.
+func (h *PlatformHandler) GetStaffPerformanceAnalytics(c *gin.Context) {
+	session, ok := h.requireAnyPlatformRole(c, services.PlatformRoleSupportAdmin, services.PlatformRoleBillingAdmin, services.PlatformRoleReadOnlyAuditor)
+	if !ok {
+		return
+	}
+	branchID, err := strconv.ParseInt(strings.TrimSpace(c.Query("branch_id")), 10, 64)
+	if err != nil {
+		respondValidationError(c, "branch_id must be an integer")
+		return
+	}
+	branch, err := h.repos.GetBranchByID(c.Request.Context(), branchID)
+	if err != nil {
+		respondError(c, http.StatusNotFound, CodeTenantNotFound, "branch not found")
+		return
+	}
+	period := services.NormalizePeriod(c.Query("period"))
+	report, err := h.staffPerf.GetBranchPerformanceForPlatform(c.Request.Context(), branchID, period)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	h.logPlatformAudit(c, session.PlatformUserID, "platform.analytics.read", "analytics", "staff-performance", branch.OrganizationID, branchID, 0, gin.H{"metric": "staff-performance", "period": period, "branch_id": branchID})
+	c.JSON(http.StatusOK, report)
+}
+
 func orgIDValue(orgID *int64) int64 {
 	if orgID == nil {
 		return 0

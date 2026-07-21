@@ -122,7 +122,7 @@ func New(
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
-	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, supportSvc, billingSvc, enforcementObsSvc, collateralSvc, auditWriter)
+	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, supportSvc, billingSvc, enforcementObsSvc, collateralSvc, staffAnalyticsSvc, auditWriter)
 	flagH := handlers.NewFlagHandler(flagSvc, cache)
 	themeH := handlers.NewThemeHandler(themeSvc)
 	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter)
@@ -326,6 +326,7 @@ func New(
 	platformAPI.GET("/analytics/usage", platformH.GetUsageAnalytics)
 	platformAPI.GET("/analytics/revenue", platformH.GetRevenueAnalytics)
 	platformAPI.GET("/analytics/health", platformH.GetHealthAnalytics)
+	platformAPI.GET("/analytics/staff-performance", platformH.GetStaffPerformanceAnalytics)
 
 	// Structured theme/branding (presets free; custom tokens require custom.theme).
 	platformAPI.GET("/theme/presets", platformH.ListThemePresets)

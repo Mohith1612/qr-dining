@@ -34,11 +34,12 @@ type PlatformHandler struct {
 	billing    *services.BillingService
 	obs        *services.EnforcementObservabilityService
 	collateral *services.CollateralService
+	staffPerf  *services.StaffAnalyticsService
 	audit      *audit.Writer
 }
 
-func NewPlatformHandler(repos *repository.Repos, svc *services.PlatformService, ent *services.EntitlementService, flag *services.FlagService, analytics *services.PlatformAnalyticsService, theme *services.ThemeService, support *services.SupportService, billing *services.BillingService, obs *services.EnforcementObservabilityService, collateral *services.CollateralService, auditWriter *audit.Writer) *PlatformHandler {
-	return &PlatformHandler{repos: repos, svc: svc, ent: ent, flag: flag, analytics: analytics, theme: theme, support: support, billing: billing, obs: obs, collateral: collateral, audit: auditWriter}
+func NewPlatformHandler(repos *repository.Repos, svc *services.PlatformService, ent *services.EntitlementService, flag *services.FlagService, analytics *services.PlatformAnalyticsService, theme *services.ThemeService, support *services.SupportService, billing *services.BillingService, obs *services.EnforcementObservabilityService, collateral *services.CollateralService, staffPerf *services.StaffAnalyticsService, auditWriter *audit.Writer) *PlatformHandler {
+	return &PlatformHandler{repos: repos, svc: svc, ent: ent, flag: flag, analytics: analytics, theme: theme, support: support, billing: billing, obs: obs, collateral: collateral, staffPerf: staffPerf, audit: auditWriter}
 }
 
 type platformAuthRequest struct {
