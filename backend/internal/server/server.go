@@ -110,6 +110,10 @@ func New(
 	// Gated features (entitlement + platform flag, both default off).
 	featureGate := services.NewFeatureGate(entitlementSvc, flagSvc, repos, cache)
 	staffAnalyticsSvc := services.NewStaffAnalyticsService(repos, featureGate, cache)
+	loyaltySvc := services.NewLoyaltyService(repos, featureGate, cache, logger, metrics)
+	// Loyalty earn rides payment completion but is nil-safe and error-isolated;
+	// it never alters payment semantics.
+	paymentSvc.SetLoyaltyAccrual(loyaltySvc)
 
 	// ── Audit writer ─────────────────────────────────────────────────────────
 	auditWriter := audit.NewWriter(dbsqlc.New(db), cfg.FeatureFlags.AuditLogV2Enabled, logger, metrics.AuditWriteFailuresTotal)

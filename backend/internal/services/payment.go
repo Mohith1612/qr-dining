@@ -34,6 +34,7 @@ type PaymentService struct {
 	metrics       *observability.Metrics
 	sessionCloser SessionCloser
 	hostAuth      *SessionService
+	loyalty       loyaltyAccrual
 	logger        zerolog.Logger
 }
 
@@ -41,6 +42,17 @@ type PaymentService struct {
 // payment initiation (and on-demand host reassignment). Wired after
 // construction to keep the constructor signature stable.
 func (s *PaymentService) SetHostAuthority(h *SessionService) { s.hostAuth = h }
+
+// loyaltyAccrual is the optional loyalty earn hook. Implementations must be
+// fully error-isolated: the call is fire-and-forget after a payment is already
+// terminal and must never affect payment semantics.
+type loyaltyAccrual interface {
+	AccruePointsForPayment(ctx context.Context, payment sqlc.Payment)
+}
+
+// SetLoyaltyAccrual injects the loyalty earn hook (nil-safe; wired after
+// construction like SetHostAuthority).
+func (s *PaymentService) SetLoyaltyAccrual(l loyaltyAccrual) { s.loyalty = l }
 
 func NewPaymentService(
 	repos *repository.Repos,
@@ -357,6 +369,9 @@ func (s *PaymentService) ProcessWebhook(ctx context.Context, req ProcessWebhookR
 		s.publisher.PaymentCompleted(ctx, payment.SessionID, updated)
 		sess, _ := s.repos.GetSessionByID(ctx, payment.SessionID)
 		s.repos.LogEvent(ctx, payment.SessionID, sess.BranchID, "PAYMENT_COMPLETED", "system", 0, updated)
+		if s.loyalty != nil {
+			s.loyalty.AccruePointsForPayment(ctx, updated)
+		}
 
 		if err := s.maybeCloseSettledSession(ctx, payment.SessionID); err != nil {
 			s.logger.Warn().Err(err).Str("session_id", payment.SessionID.String()).Msg("auto-close session after payment failed")
@@ -450,6 +465,9 @@ func (s *PaymentService) SettlePaymentByStaff(ctx context.Context, paymentID, st
 	}
 	s.publisher.PaymentCompleted(ctx, payment.SessionID, updated)
 	s.repos.LogEvent(ctx, payment.SessionID, payment.BranchID, "PAYMENT_COMPLETED", "staff", staffID, updated)
+	if s.loyalty != nil {
+		s.loyalty.AccruePointsForPayment(ctx, updated)
+	}
 	if err := s.maybeCloseSettledSession(ctx, payment.SessionID); err != nil {
 		s.logger.Warn().Err(err).Str("session_id", payment.SessionID.String()).Msg("auto-close session after staff payment failed")
 	}
