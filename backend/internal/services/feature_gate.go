@@ -45,7 +45,7 @@ func gateDecision(hasCapability, flagEnabled bool) bool {
 
 // BranchEnabled resolves the gate for a branch scope.
 func (g *FeatureGate) BranchEnabled(ctx context.Context, branchID int64, entKey, flagKey string) (bool, error) {
-	cacheKey := fmt.Sprintf("featgate:branch:%d:%s", branchID, flagKey)
+	cacheKey := fmt.Sprintf("featgate:branch:%d:%s:%s", branchID, entKey, flagKey)
 	if hit, enabled := g.cacheGet(ctx, cacheKey); hit {
 		return enabled, nil
 	}
@@ -68,7 +68,7 @@ func (g *FeatureGate) BranchEnabled(ctx context.Context, branchID int64, entKey,
 
 // OrganizationEnabled resolves the gate for an org scope (no branch override layer).
 func (g *FeatureGate) OrganizationEnabled(ctx context.Context, orgID int64, entKey, flagKey string) (bool, error) {
-	cacheKey := fmt.Sprintf("featgate:org:%d:%s", orgID, flagKey)
+	cacheKey := fmt.Sprintf("featgate:org:%d:%s:%s", orgID, entKey, flagKey)
 	if hit, enabled := g.cacheGet(ctx, cacheKey); hit {
 		return enabled, nil
 	}
