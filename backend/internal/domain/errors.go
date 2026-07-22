@@ -129,6 +129,7 @@ var (
 	ErrLoyaltyProgramInactive    = errors.New("loyalty program is not active for this organization")
 	ErrLoyaltyInsufficientPoints = errors.New("insufficient loyalty points")
 	ErrLoyaltyAccountNotFound    = errors.New("loyalty account not found")
+	ErrInvalidLoyaltyRequest     = errors.New("invalid loyalty request")
 )
 
 // Customers

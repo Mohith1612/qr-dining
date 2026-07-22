@@ -57,6 +57,10 @@ type Metrics struct {
 	// Audit
 	AuditWriteFailuresTotal *prometheus.CounterVec
 
+	// LoyaltyAccrualFailuresTotal counts loyalty earn-accrual errors swallowed
+	// on the payment-completion path (the payment itself is never failed).
+	LoyaltyAccrualFailuresTotal prometheus.Counter
+
 	// LegacyAuthzBypassTotal counts policy denials that were allowed through
 	// because AUTHZ_CENTRAL_POLICY_ENFORCE was off. A spike here right before
 	// the cutover means the strict flip will break legitimate traffic.
@@ -266,6 +270,11 @@ func NewMetrics() *Metrics {
 			Help: "Total audit_log write failures by action and error class.",
 		}, []string{"action", "error_class"}),
 
+		LoyaltyAccrualFailuresTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loyalty_accrual_failures_total",
+			Help: "Total loyalty earn-accrual errors swallowed on payment completion.",
+		}),
+
 		LegacyAuthzBypassTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "legacy_authz_bypass_total",
 			Help: "Total policy denials allowed through because AUTHZ_CENTRAL_POLICY_ENFORCE was off.",
@@ -352,6 +361,7 @@ func NewMetrics() *Metrics {
 		m.WorkerRunsTotal,
 		m.WorkerPanicsTotal,
 		m.AuditWriteFailuresTotal,
+		m.LoyaltyAccrualFailuresTotal,
 		m.LegacyAuthzBypassTotal,
 		m.RateLimiterUnavailableTotal,
 		m.AuthzDeniedTotal,
