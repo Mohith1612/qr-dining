@@ -166,23 +166,15 @@ func computeEarnPoints(amount, rateAmount pgtype.Numeric, ratePoints int64) int6
 
 // ── Gating ───────────────────────────────────────────────────────────────────
 
-func (s *LoyaltyService) checkOrgGate(ctx context.Context, orgID int64, entKey string) error {
-	enabled, err := s.gate.OrganizationEnabled(ctx, orgID, entKey, FlagLoyalty)
-	if err != nil {
-		return err
-	}
-	if !enabled {
-		return domain.ErrLoyaltyDisabled
-	}
-	return nil
-}
-
-func (s *LoyaltyService) checkBranchGate(ctx context.Context, branchID int64) (orgID int64, err error) {
+// checkBranchGate resolves the branch's org and enforces the given loyalty
+// capability + the loyalty flag at branch scope (so branch-level flag
+// overrides behave consistently across every loyalty surface).
+func (s *LoyaltyService) checkBranchGate(ctx context.Context, branchID int64, entKey string) (orgID int64, err error) {
 	branch, err := s.repos.GetBranchByID(ctx, branchID)
 	if err != nil {
 		return 0, err
 	}
-	enabled, err := s.gate.BranchEnabled(ctx, branchID, EntitlementLoyaltyEnabled, FlagLoyalty)
+	enabled, err := s.gate.BranchEnabled(ctx, branchID, entKey, FlagLoyalty)
 	if err != nil {
 		return 0, err
 	}
@@ -204,8 +196,9 @@ type LoyaltyProgramDTO struct {
 	Configured     bool   `json:"configured"` // false = defaults, no row yet
 }
 
-func (s *LoyaltyService) GetProgram(ctx context.Context, orgID int64) (LoyaltyProgramDTO, error) {
-	if err := s.checkOrgGate(ctx, orgID, EntitlementLoyaltyEnabled); err != nil {
+func (s *LoyaltyService) GetProgram(ctx context.Context, branchID int64) (LoyaltyProgramDTO, error) {
+	orgID, err := s.checkBranchGate(ctx, branchID, EntitlementLoyaltyEnabled)
+	if err != nil {
 		return LoyaltyProgramDTO{}, err
 	}
 	program, err := s.repos.GetLoyaltyProgram(ctx, orgID)
@@ -218,8 +211,9 @@ func (s *LoyaltyService) GetProgram(ctx context.Context, orgID int64) (LoyaltyPr
 	return programDTO(program), nil
 }
 
-func (s *LoyaltyService) PutProgram(ctx context.Context, orgID int64, isActive bool, earnRatePoints int64, earnRateAmount string, staffID int64) (LoyaltyProgramDTO, error) {
-	if err := s.checkOrgGate(ctx, orgID, EntitlementLoyaltyEnabled); err != nil {
+func (s *LoyaltyService) PutProgram(ctx context.Context, branchID int64, isActive bool, earnRatePoints int64, earnRateAmount string, staffID int64) (LoyaltyProgramDTO, error) {
+	orgID, err := s.checkBranchGate(ctx, branchID, EntitlementLoyaltyEnabled)
+	if err != nil {
 		return LoyaltyProgramDTO{}, err
 	}
 	if earnRatePoints <= 0 {
@@ -284,7 +278,7 @@ type LoyaltyTransactionDTO struct {
 // LookupCustomer finds a customer by phone within the branch's restaurant and
 // attaches the loyalty account when one exists.
 func (s *LoyaltyService) LookupCustomer(ctx context.Context, branchID int64, phone string) (LoyaltyCustomerLookup, error) {
-	orgID, err := s.checkBranchGate(ctx, branchID)
+	orgID, err := s.checkBranchGate(ctx, branchID, EntitlementLoyaltyEnabled)
 	if err != nil {
 		return LoyaltyCustomerLookup{}, err
 	}
@@ -316,7 +310,7 @@ func (s *LoyaltyService) LookupCustomer(ctx context.Context, branchID int64, pho
 
 // ListTransactions returns the ledger for an account (org-isolated).
 func (s *LoyaltyService) ListTransactions(ctx context.Context, branchID, accountID int64, limit, offset int32) ([]LoyaltyTransactionDTO, error) {
-	orgID, err := s.checkBranchGate(ctx, branchID)
+	orgID, err := s.checkBranchGate(ctx, branchID, EntitlementLoyaltyEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -383,11 +377,11 @@ func transactionDTO(t sqlc.CustomerLoyaltyTransaction) LoyaltyTransactionDTO {
 // Redeem records a staff-witnessed points deduction. It does NOT touch any
 // bill or payment — the corresponding discount (if any) is applied off-system.
 func (s *LoyaltyService) Redeem(ctx context.Context, branchID, accountID, points int64, reason string, staffID int64) (LoyaltyAccountDTO, error) {
-	orgID, err := s.checkBranchGate(ctx, branchID)
+	orgID, err := s.checkBranchGate(ctx, branchID, EntitlementLoyaltyEnabled)
 	if err != nil {
 		return LoyaltyAccountDTO{}, err
 	}
-	if err := s.checkOrgGate(ctx, orgID, EntitlementLoyaltyRedeem); err != nil {
+	if _, err := s.checkBranchGate(ctx, branchID, EntitlementLoyaltyRedeem); err != nil {
 		return LoyaltyAccountDTO{}, err
 	}
 	if points <= 0 {
@@ -430,11 +424,11 @@ func (s *LoyaltyService) Redeem(ctx context.Context, branchID, accountID, points
 // Adjust records a signed manual correction (owner/manager only at the API
 // layer, gated by loyalty.manual_adjustment). Floors at zero balance.
 func (s *LoyaltyService) Adjust(ctx context.Context, branchID, accountID, pointsDelta int64, reason string, staffID int64) (LoyaltyAccountDTO, error) {
-	orgID, err := s.checkBranchGate(ctx, branchID)
+	orgID, err := s.checkBranchGate(ctx, branchID, EntitlementLoyaltyEnabled)
 	if err != nil {
 		return LoyaltyAccountDTO{}, err
 	}
-	if err := s.checkOrgGate(ctx, orgID, EntitlementLoyaltyManualAdjustment); err != nil {
+	if _, err := s.checkBranchGate(ctx, branchID, EntitlementLoyaltyManualAdjustment); err != nil {
 		return LoyaltyAccountDTO{}, err
 	}
 	if pointsDelta == 0 || reason == "" {
@@ -501,9 +495,11 @@ type LoyaltyAnalytics struct {
 }
 
 // GetLoyaltyAnalytics returns org-level participation, points issued/redeemed,
-// and top customers for the window.
-func (s *LoyaltyService) GetLoyaltyAnalytics(ctx context.Context, orgID int64, period string) (LoyaltyAnalytics, error) {
-	if err := s.checkOrgGate(ctx, orgID, EntitlementLoyaltyEnabled); err != nil {
+// and top customers for the window (accounts are org-scoped; the branch is the
+// access scope).
+func (s *LoyaltyService) GetLoyaltyAnalytics(ctx context.Context, branchID int64, period string) (LoyaltyAnalytics, error) {
+	orgID, err := s.checkBranchGate(ctx, branchID, EntitlementLoyaltyEnabled)
+	if err != nil {
 		return LoyaltyAnalytics{}, err
 	}
 	key := orgCacheKey(orgID, period, "loyalty")
