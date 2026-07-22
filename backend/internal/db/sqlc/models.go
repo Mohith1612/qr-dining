@@ -746,6 +746,33 @@ type Customer struct {
 	CreatedAt    time.Time          `json:"created_at"`
 }
 
+type CustomerLoyaltyAccount struct {
+	ID                     int64          `json:"id"`
+	CustomerID             int64          `json:"customer_id"`
+	OrganizationID         int64          `json:"organization_id"`
+	PointsBalance          int64          `json:"points_balance"`
+	LifetimePointsEarned   int64          `json:"lifetime_points_earned"`
+	LifetimePointsRedeemed int64          `json:"lifetime_points_redeemed"`
+	VisitCount             int64          `json:"visit_count"`
+	LifetimeSpend          pgtype.Numeric `json:"lifetime_spend"`
+	CreatedAt              time.Time      `json:"created_at"`
+	UpdatedAt              time.Time      `json:"updated_at"`
+}
+
+type CustomerLoyaltyTransaction struct {
+	ID                   int64          `json:"id"`
+	AccountID            int64          `json:"account_id"`
+	Type                 string         `json:"type"`
+	Points               int64          `json:"points"`
+	Amount               pgtype.Numeric `json:"amount"`
+	PaymentID            pgtype.Int8    `json:"payment_id"`
+	SessionID            pgtype.UUID    `json:"session_id"`
+	PerformedByActorType string         `json:"performed_by_actor_type"`
+	PerformedByStaffID   pgtype.Int8    `json:"performed_by_staff_id"`
+	Reason               string         `json:"reason"`
+	CreatedAt            time.Time      `json:"created_at"`
+}
+
 type Entitlement struct {
 	Key         string    `json:"key"`
 	Kind        string    `json:"kind"`
@@ -889,6 +916,16 @@ type OrganizationEntitlementOverride struct {
 	CreatedByPlatformUserID pgtype.Int8 `json:"created_by_platform_user_id"`
 	CreatedAt               time.Time   `json:"created_at"`
 	UpdatedAt               time.Time   `json:"updated_at"`
+}
+
+type OrganizationLoyaltyProgram struct {
+	OrganizationID   int64          `json:"organization_id"`
+	IsActive         bool           `json:"is_active"`
+	EarnRatePoints   int64          `json:"earn_rate_points"`
+	EarnRateAmount   pgtype.Numeric `json:"earn_rate_amount"`
+	UpdatedByStaffID pgtype.Int8    `json:"updated_by_staff_id"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
 }
 
 type OrganizationMember struct {

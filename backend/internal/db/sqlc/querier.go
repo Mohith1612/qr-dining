@@ -20,13 +20,18 @@ type Querier interface {
 	ActivatePlatformMFA(ctx context.Context, arg ActivatePlatformMFAParams) (PlatformUserMfa, error)
 	AddCartItem(ctx context.Context, arg AddCartItemParams) (CartItem, error)
 	AddPlatformUserRole(ctx context.Context, arg AddPlatformUserRoleParams) error
+	// Signed manual adjustment; floors at zero. Positive part counts as earned,
+	// negative part as redeemed so balance = earned - redeemed stays invariant.
+	AdjustLoyaltyPoints(ctx context.Context, arg AdjustLoyaltyPointsParams) (CustomerLoyaltyAccount, error)
 	BumpAllParticipantCredentialVersions(ctx context.Context, sessionID uuid.UUID) error
 	ClearCart(ctx context.Context, cartID int64) error
 	CloseSessionIfActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
 	ConsumePlatformMFAChallenge(ctx context.Context, challengeHash string) error
 	ConsumeRecoveryCodes(ctx context.Context, arg ConsumeRecoveryCodesParams) error
+	CountEarnTransactionsForAccountSession(ctx context.Context, arg CountEarnTransactionsForAccountSessionParams) (int64, error)
 	CountItemsInCategory(ctx context.Context, categoryID int64) (int64, error)
+	CountLoyaltyAccounts(ctx context.Context, organizationID int64) (int64, error)
 	CountPromoRedemptions(ctx context.Context, promoID int64) (int64, error)
 	CountPromoRedemptionsByPhone(ctx context.Context, arg CountPromoRedemptionsByPhoneParams) (int64, error)
 	CreateAssistanceRequest(ctx context.Context, arg CreateAssistanceRequestParams) (AssistanceRequest, error)
@@ -59,6 +64,10 @@ type Querier interface {
 	CreateTable(ctx context.Context, arg CreateTableParams) (Table, error)
 	DeactivatePromo(ctx context.Context, arg DeactivatePromoParams) error
 	DeactivateStaff(ctx context.Context, id int64) error
+	// Guarded deduction: returns no row when the balance is insufficient. The row
+	// lock serializes concurrent redeems; the points_balance >= 0 CHECK is the
+	// backstop.
+	DeductLoyaltyPoints(ctx context.Context, arg DeductLoyaltyPointsParams) (CustomerLoyaltyAccount, error)
 	DeleteBranchFlagOverride(ctx context.Context, arg DeleteBranchFlagOverrideParams) error
 	DeleteCustomer(ctx context.Context, arg DeleteCustomerParams) error
 	DeleteGlobalFlagOverride(ctx context.Context, flagKey string) error
@@ -102,6 +111,13 @@ type Querier interface {
 	// avg_prep_seconds (prep_started_at is NULL inside the window) but still count
 	// in orders_completed.
 	GetKitchenPerformance(ctx context.Context, arg GetKitchenPerformanceParams) ([]GetKitchenPerformanceRow, error)
+	GetLoyaltyAccountByCustomer(ctx context.Context, arg GetLoyaltyAccountByCustomerParams) (CustomerLoyaltyAccount, error)
+	GetLoyaltyAccountByID(ctx context.Context, arg GetLoyaltyAccountByIDParams) (CustomerLoyaltyAccount, error)
+	// Participation: sessions in the window that produced a loyalty earn vs all
+	// sessions, org-scoped via branches.
+	GetLoyaltyParticipation(ctx context.Context, arg GetLoyaltyParticipationParams) (GetLoyaltyParticipationRow, error)
+	GetLoyaltyPointsSummary(ctx context.Context, arg GetLoyaltyPointsSummaryParams) (GetLoyaltyPointsSummaryRow, error)
+	GetLoyaltyProgram(ctx context.Context, organizationID int64) (OrganizationLoyaltyProgram, error)
 	GetMenuCategoryByID(ctx context.Context, id int64) (MenuCategory, error)
 	GetMenuItemByID(ctx context.Context, id int64) (MenuItem, error)
 	GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]MenuItem, error)
@@ -170,12 +186,14 @@ type Querier interface {
 	GetTableByQRToken(ctx context.Context, qrCodeToken string) (Table, error)
 	GetTenantThemeByRestaurant(ctx context.Context, restaurantID int64) (TenantTheme, error)
 	GetThemePreset(ctx context.Context, key string) (ThemePreset, error)
+	GetTopLoyaltyCustomers(ctx context.Context, organizationID int64) ([]GetTopLoyaltyCustomersRow, error)
 	// Returns the most ordered menu items for a branch within a time window.
 	GetTopOrderedItems(ctx context.Context, arg GetTopOrderedItemsParams) ([]GetTopOrderedItemsRow, error)
 	HasNonTerminalPaymentForSession(ctx context.Context, sessionID uuid.UUID) (bool, error)
 	IncrementPromoRedemptionCount(ctx context.Context, id int64) error
 	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error
 	InsertEventLog(ctx context.Context, arg InsertEventLogParams) error
+	InsertLoyaltyTransaction(ctx context.Context, arg InsertLoyaltyTransactionParams) (CustomerLoyaltyTransaction, error)
 	InsertMenuCategory(ctx context.Context, arg InsertMenuCategoryParams) (MenuCategory, error)
 	InsertMenuItem(ctx context.Context, arg InsertMenuItemParams) (MenuItem, error)
 	InsertPlatformAuditLog(ctx context.Context, arg InsertPlatformAuditLogParams) error
@@ -209,6 +227,7 @@ type Querier interface {
 	ListFlagOverrideCounts(ctx context.Context) ([]ListFlagOverrideCountsRow, error)
 	ListGlobalFlagOverrides(ctx context.Context) ([]PlatformFlagGlobalOverride, error)
 	ListInvoicesByOrg(ctx context.Context, organizationID int64) ([]SubscriptionInvoice, error)
+	ListLoyaltyTransactions(ctx context.Context, arg ListLoyaltyTransactionsParams) ([]CustomerLoyaltyTransaction, error)
 	ListMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
 	ListMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error)
 	ListModifiersForItem(ctx context.Context, itemID int64) ([]ItemModifier, error)
@@ -316,6 +335,12 @@ type Querier interface {
 	UpsertBranchFlagOverride(ctx context.Context, arg UpsertBranchFlagOverrideParams) (PlatformFlagBranchOverride, error)
 	UpsertCustomer(ctx context.Context, arg UpsertCustomerParams) (Customer, error)
 	UpsertGlobalFlagOverride(ctx context.Context, arg UpsertGlobalFlagOverrideParams) (PlatformFlagGlobalOverride, error)
+	// Accrual upsert: creates the account on first earn, otherwise adds points,
+	// spend, and (first earn per session only — caller decides) a visit.
+	UpsertLoyaltyAccountForEarn(ctx context.Context, arg UpsertLoyaltyAccountForEarnParams) (CustomerLoyaltyAccount, error)
+	// Customer loyalty (migration 000035). Accounts are org-scoped; the
+	// transactions table is an append-only signed points ledger.
+	UpsertLoyaltyProgram(ctx context.Context, arg UpsertLoyaltyProgramParams) (OrganizationLoyaltyProgram, error)
 	UpsertOrganizationEntitlementOverride(ctx context.Context, arg UpsertOrganizationEntitlementOverrideParams) (OrganizationEntitlementOverride, error)
 	UpsertOrganizationFlagOverride(ctx context.Context, arg UpsertOrganizationFlagOverrideParams) (PlatformFlagOrganizationOverride, error)
 	UpsertOrganizationPlanAssignment(ctx context.Context, arg UpsertOrganizationPlanAssignmentParams) (OrganizationPlanAssignment, error)
