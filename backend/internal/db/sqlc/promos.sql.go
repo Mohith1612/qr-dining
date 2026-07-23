@@ -9,7 +9,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -108,12 +107,12 @@ func (q *Queries) CreatePromo(ctx context.Context, arg CreatePromoParams) (Promo
 
 const createPromoRedemption = `-- name: CreatePromoRedemption :one
 INSERT INTO promo_redemptions (promo_id, order_id, phone_e164)
-VALUES ($1, $2, $3) RETURNING id, promo_id, order_id, phone_e164, redeemed_at
+VALUES ($1, $2, $3) RETURNING id, promo_id, order_id, phone_e164, redeemed_at, payment_id
 `
 
 type CreatePromoRedemptionParams struct {
 	PromoID   int64       `json:"promo_id"`
-	OrderID   uuid.UUID   `json:"order_id"`
+	OrderID   pgtype.UUID `json:"order_id"`
 	PhoneE164 pgtype.Text `json:"phone_e164"`
 }
 
@@ -126,6 +125,32 @@ func (q *Queries) CreatePromoRedemption(ctx context.Context, arg CreatePromoRede
 		&i.OrderID,
 		&i.PhoneE164,
 		&i.RedeemedAt,
+		&i.PaymentID,
+	)
+	return i, err
+}
+
+const createPromoRedemptionForPayment = `-- name: CreatePromoRedemptionForPayment :one
+INSERT INTO promo_redemptions (promo_id, payment_id, phone_e164)
+VALUES ($1, $2, $3) RETURNING id, promo_id, order_id, phone_e164, redeemed_at, payment_id
+`
+
+type CreatePromoRedemptionForPaymentParams struct {
+	PromoID   int64       `json:"promo_id"`
+	PaymentID pgtype.Int8 `json:"payment_id"`
+	PhoneE164 pgtype.Text `json:"phone_e164"`
+}
+
+func (q *Queries) CreatePromoRedemptionForPayment(ctx context.Context, arg CreatePromoRedemptionForPaymentParams) (PromoRedemption, error) {
+	row := q.db.QueryRow(ctx, createPromoRedemptionForPayment, arg.PromoID, arg.PaymentID, arg.PhoneE164)
+	var i PromoRedemption
+	err := row.Scan(
+		&i.ID,
+		&i.PromoID,
+		&i.OrderID,
+		&i.PhoneE164,
+		&i.RedeemedAt,
+		&i.PaymentID,
 	)
 	return i, err
 }

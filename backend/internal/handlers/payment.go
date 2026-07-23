@@ -33,10 +33,30 @@ type PaymentHandler struct {
 	paymentCfg  config.PaymentConfig
 	authz       *authz.Authorizer
 	audit       *audit.Writer
+	promoSvc    *services.PromoService
 }
 
-func NewPaymentHandler(svc *services.PaymentService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, paymentCfg config.PaymentConfig, authorizer *authz.Authorizer, auditWriter *audit.Writer) *PaymentHandler {
-	return &PaymentHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags, paymentCfg: paymentCfg, authz: authorizer, audit: auditWriter}
+func NewPaymentHandler(svc *services.PaymentService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, paymentCfg config.PaymentConfig, authorizer *authz.Authorizer, auditWriter *audit.Writer, promoSvc *services.PromoService) *PaymentHandler {
+	return &PaymentHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags, paymentCfg: paymentCfg, authz: authorizer, audit: auditWriter, promoSvc: promoSvc}
+}
+
+// respondPromoError maps promo validation failures to stable client codes
+// (shared by the order and payment surfaces).
+func respondPromoError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, domain.ErrPromoNotFound):
+		respondError(c, http.StatusNotFound, CodePromoNotFound, "This promo code isn't valid right now.")
+	case errors.Is(err, domain.ErrPromoPhoneRequired):
+		respondError(c, http.StatusUnprocessableEntity, CodePromoPhoneRequired, "Add your phone number to use this offer.")
+	case errors.Is(err, domain.ErrMinOrderNotMet):
+		respondError(c, http.StatusUnprocessableEntity, CodeMinOrderNotMet, err.Error())
+	case errors.Is(err, domain.ErrPromoExhausted):
+		respondError(c, http.StatusConflict, CodePromoExhausted, "This offer has been claimed by too many guests.")
+	case errors.Is(err, domain.ErrPromoAlreadyUsed):
+		respondError(c, http.StatusConflict, CodePromoAlreadyUsed, "You've already used this offer.")
+	default:
+		respondInternalError(c)
+	}
 }
 
 type initiatePaymentRequest struct {
@@ -46,6 +66,10 @@ type initiatePaymentRequest struct {
 	IdempotencyKey     string     `json:"idempotency_key" binding:"required"`
 	ProviderPaymentRef string     `json:"provider_payment_ref"`
 	ProviderOrderRef   string     `json:"provider_order_ref"`
+	// Promo applied at the bill (optional). PhoneE164 is required only when the
+	// promo enforces a per-guest limit.
+	PromoCode *string `json:"promo_code"`
+	PhoneE164 *string `json:"phone_e164"`
 }
 
 func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
@@ -84,17 +108,43 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
-	// Settlement bound: a payment may not exceed the authoritative bill total.
-	// There is no tip field in this flow, so any overage is an overpayment.
-	// epsilon absorbs float rounding in the computed total.
-	if req.Amount > bill.Total+0.01 {
-		respondError(c, http.StatusUnprocessableEntity, CodePaymentAmountInvalid,
-			"payment amount exceeds the bill total")
-		return
-	}
 	sess, err := h.repos.GetSessionByID(c.Request.Context(), sessionID)
 	if err != nil {
 		sessionError(c, err)
+		return
+	}
+
+	billInput := billSnapshotInputFromBill(bill)
+
+	// Apply a promo at the bill (optional). Validated here, BEFORE any
+	// idempotency key or session-state mutation, so a bad code can't freeze the
+	// session or burn the idempotency key. The discount is folded into the
+	// snapshot the service captures; the service re-validates and records the
+	// redemption under a row lock.
+	if req.PromoCode != nil && *req.PromoCode != "" {
+		pr, perr := h.promoSvc.ValidatePromo(c.Request.Context(), h.repos, services.ValidatePromoRequest{
+			BranchID:   sess.BranchID,
+			Code:       *req.PromoCode,
+			OrderTotal: bill.Total,
+			PhoneE164:  req.PhoneE164,
+		})
+		if perr != nil {
+			respondPromoError(c, perr)
+			return
+		}
+		billInput.DiscountAmount += pr.DiscountAmount
+		billInput.Total -= pr.DiscountAmount
+		if billInput.Total < 0 {
+			billInput.Total = 0
+		}
+	}
+
+	// Settlement bound: a payment may not exceed the (discounted) bill total.
+	// There is no tip field in this flow, so any overage is an overpayment.
+	// epsilon absorbs float rounding in the computed total.
+	if req.Amount > billInput.Total+0.01 {
+		respondError(c, http.StatusUnprocessableEntity, CodePaymentAmountInvalid,
+			"payment amount exceeds the bill total")
 		return
 	}
 
@@ -103,13 +153,15 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		BranchID:                sess.BranchID,
 		OrderID:                 req.OrderID,
 		Method:                  method,
-		Bill:                    billSnapshotInputFromBill(bill),
+		Bill:                    billInput,
 		StaffSettlementRequired: h.flags.PaymentStaffSettlementRequired,
 		IdempotencyKey:          req.IdempotencyKey,
 		ActorType:               "participant",
 		ActorID:                 participantID,
 		ProviderPaymentRef:      req.ProviderPaymentRef,
 		ProviderOrderRef:        req.ProviderOrderRef,
+		PromoCode:               req.PromoCode,
+		PromoPhone:              req.PhoneE164,
 	})
 	if err != nil {
 		switch {

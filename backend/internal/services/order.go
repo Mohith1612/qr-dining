@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
@@ -24,12 +23,13 @@ type OrderService struct {
 	repos     *repository.Repos
 	publisher *events.Publisher
 	metrics   *observability.Metrics
-	promoSvc  *PromoService
 	hostAuth  *SessionService
 }
 
-func NewOrderService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics, promoSvc *PromoService) *OrderService {
-	return &OrderService{repos: repos, publisher: publisher, metrics: metrics, promoSvc: promoSvc}
+// NewOrderService — promoSvc is accepted for call-site compatibility but no
+// longer used: promos moved to payment initiation.
+func NewOrderService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics, _ *PromoService) *OrderService {
+	return &OrderService{repos: repos, publisher: publisher, metrics: metrics}
 }
 
 // SetHostAuthority injects the session service used to enforce host-only order
@@ -51,8 +51,8 @@ type PlaceOrderRequest struct {
 	PlacedByParticipantID int64
 	IdempotencyKey        string
 	Items                 []OrderItem
-	PromoCode             *string
-	PhoneE164             *string
+	// Promo is no longer applied at order time — it is applied at payment
+	// initiation (the discount lands in the immutable bill snapshot).
 }
 
 type PlaceOrderResult struct {
@@ -100,11 +100,6 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 		}
 	} else if !sess.HostParticipantID.Valid || sess.HostParticipantID.Int64 != req.PlacedByParticipantID {
 		return PlaceOrderResult{}, domain.ErrNotSessionHost
-	}
-
-	if req.PhoneE164 != nil {
-		normalized := NormalizePromoPhone(*req.PhoneE164)
-		req.PhoneE164 = &normalized
 	}
 
 	idemScope := repository.IdempotencyScope{
@@ -218,37 +213,17 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	}
 
 	var result PlaceOrderResult
-	var appliedPromoID *int64
-	var discountAmount float64
-	var promoFailure error
 
 	txErr := s.repos.WithTx(ctx, func(tx *repository.Repos) error {
-		// Validate and apply promo inside transaction for atomicity.
-		finalTotal := totalFloat
-		if req.PromoCode != nil && s.promoSvc != nil {
-			promoResult, err := s.promoSvc.ValidatePromo(ctx, tx, ValidatePromoRequest{
-				BranchID:   req.BranchID,
-				Code:       *req.PromoCode,
-				OrderTotal: finalTotal,
-				PhoneE164:  req.PhoneE164,
-			})
-			if err != nil {
-				promoFailure = err
-				return err
-			}
-			discountAmount = promoResult.DiscountAmount
-			finalTotal -= discountAmount
-			promoIDVal := promoResult.PromoID
-			appliedPromoID = &promoIDVal
-		}
-
+		// Promo discounts are applied at payment initiation, not order time —
+		// the order total is the undiscounted items total.
 		var totalAmount pgtype.Numeric
-		if err := totalAmount.Scan(fmt.Sprintf("%.2f", finalTotal)); err != nil {
+		if err := totalAmount.Scan(fmt.Sprintf("%.2f", totalFloat)); err != nil {
 			return fmt.Errorf("encode total amount: %w", err)
 		}
 
 		var discountNumeric pgtype.Numeric
-		if err := discountNumeric.Scan(fmt.Sprintf("%.2f", discountAmount)); err != nil {
+		if err := discountNumeric.Scan("0.00"); err != nil {
 			return fmt.Errorf("encode discount amount: %w", err)
 		}
 
@@ -281,7 +256,7 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 			OrderBusinessDate:     businessDate,
 			OrderNumberDisplay:    orderNumber,
 			OrderOperationalID:    operationalID,
-			PromoID:               appliedPromoID,
+			PromoID:               nil,
 			DiscountAmount:        discountNumeric,
 		})
 		if err != nil {
@@ -307,18 +282,6 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 			orderItems = append(orderItems, oi)
 		}
 
-		// Record promo redemption within the same transaction.
-		if appliedPromoID != nil {
-			if _, err := tx.CreatePromoRedemption(ctx, *appliedPromoID, order.ID, req.PhoneE164); err != nil {
-				promoFailure = err
-				return fmt.Errorf("create promo redemption: %w", err)
-			}
-			if err := tx.IncrementPromoRedemptionCount(ctx, *appliedPromoID); err != nil {
-				promoFailure = err
-				return fmt.Errorf("increment promo redemption count: %w", err)
-			}
-		}
-
 		result = PlaceOrderResult{Order: order, OrderItems: orderItems}
 		if err := tx.CompleteIdempotencyKey(ctx, idemScope, "order", order.ID.String()); err != nil {
 			return fmt.Errorf("complete idempotency key: %w", err)
@@ -327,53 +290,11 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	})
 	if txErr != nil {
 		_ = s.repos.FailIdempotencyKey(ctx, idemScope)
-		if req.PromoCode != nil && promoFailure != nil {
-			s.repos.LogAuditV2(ctx, audit.AuditEvent{
-				BranchID:       req.BranchID,
-				SessionID:      req.SessionID,
-				ResourceType:   audit.ResourcePromo,
-				Action:         audit.ActionPromoRedeem,
-				Result:         audit.ResultFailure,
-				ActorType:      audit.ActorTypeGuest,
-				ActorID:        strconv.FormatInt(req.PlacedByParticipantID, 10),
-				IdempotencyKey: req.IdempotencyKey,
-				RiskLevel:      audit.RiskMedium,
-				Metadata: map[string]any{
-					"promo_code": *req.PromoCode,
-					"reason":     promoFailure.Error(),
-				},
-			})
-		}
 		return PlaceOrderResult{}, txErr
 	}
 
 	s.publisher.OrderPlaced(ctx, req.SessionID, result.Order)
 	s.repos.LogEvent(ctx, req.SessionID, req.BranchID, "ORDER_PLACED", "participant", req.PlacedByParticipantID, result.Order)
-
-	if appliedPromoID != nil && req.PromoCode != nil {
-		s.repos.LogAuditV2(ctx, audit.AuditEvent{
-			BranchID:       req.BranchID,
-			SessionID:      req.SessionID,
-			ResourceType:   audit.ResourcePromo,
-			ResourceID:     strconv.FormatInt(*appliedPromoID, 10),
-			Action:         audit.ActionPromoRedeem,
-			Result:         audit.ResultSuccess,
-			ActorType:      audit.ActorTypeGuest,
-			ActorID:        strconv.FormatInt(req.PlacedByParticipantID, 10),
-			IdempotencyKey: req.IdempotencyKey,
-			RiskLevel:      audit.RiskMedium,
-			Metadata: map[string]any{
-				"order_id":        result.Order.ID.String(),
-				"promo_code":      *req.PromoCode,
-				"discount_amount": discountAmount,
-			},
-		})
-		s.publisher.PromoApplied(ctx, req.SessionID, map[string]any{
-			"order_id":        result.Order.ID,
-			"promo_code":      *req.PromoCode,
-			"discount_amount": discountAmount,
-		})
-	}
 
 	// Clear the shared session cart after a successful order — best-effort, never blocks the response.
 	if cart, err := s.repos.GetOrCreateSessionCart(ctx, req.SessionID); err == nil {
@@ -409,14 +330,10 @@ func hashOrderRequest(req PlaceOrderRequest) string {
 		SessionID     string     `json:"session_id"`
 		ParticipantID int64      `json:"participant_id"`
 		Items         []hashItem `json:"items"`
-		PromoCode     *string    `json:"promo_code,omitempty"`
-		PhoneE164     *string    `json:"phone_e164,omitempty"`
 	}{
 		SessionID:     req.SessionID.String(),
 		ParticipantID: req.PlacedByParticipantID,
 		Items:         items,
-		PromoCode:     req.PromoCode,
-		PhoneE164:     req.PhoneE164,
 	}
 	b, _ := json.Marshal(payload)
 	sum := sha256.Sum256(b)

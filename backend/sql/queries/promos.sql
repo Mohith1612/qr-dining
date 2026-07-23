@@ -53,6 +53,10 @@ UPDATE promos
 SET redeemed_count = redeemed_count + 1
 WHERE id = $1;
 
+-- name: CreatePromoRedemptionForPayment :one
+INSERT INTO promo_redemptions (promo_id, payment_id, phone_e164)
+VALUES ($1, $2, $3) RETURNING *;
+
 -- name: CreatePromo :one
 INSERT INTO promos (
   branch_id, code, type, value, min_order_amount,

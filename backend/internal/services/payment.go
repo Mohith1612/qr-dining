@@ -35,6 +35,7 @@ type PaymentService struct {
 	sessionCloser SessionCloser
 	hostAuth      *SessionService
 	loyalty       loyaltyAccrual
+	promoSvc      *PromoService
 	logger        zerolog.Logger
 }
 
@@ -42,6 +43,10 @@ type PaymentService struct {
 // payment initiation (and on-demand host reassignment). Wired after
 // construction to keep the constructor signature stable.
 func (s *PaymentService) SetHostAuthority(h *SessionService) { s.hostAuth = h }
+
+// SetPromoService injects the promo validator used to re-validate and record a
+// promo redemption when a promo is applied at payment initiation.
+func (s *PaymentService) SetPromoService(p *PromoService) { s.promoSvc = p }
 
 // loyaltyAccrual is the optional loyalty earn hook. Implementations must be
 // fully error-isolated: the call is fire-and-forget after a payment is already
@@ -83,6 +88,12 @@ type InitiatePaymentRequest struct {
 	IdempotencyKey          string
 	ActorType               string
 	ActorID                 int64
+	// Promo, if applied at payment initiation. The handler has already folded
+	// the discount into Bill (Total reduced, DiscountAmount set); the service
+	// re-validates under a row lock inside the tx and records the redemption
+	// against the payment. PromoCode nil ⇒ no promo.
+	PromoCode  *string
+	PromoPhone *string
 }
 
 type BillSnapshotInput struct {
@@ -179,6 +190,7 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 	}
 
 	var payment sqlc.Payment
+	var appliedPromoID int64
 	err := s.repos.WithTx(ctx, func(tx *repository.Repos) error {
 		// Move the session into payment_pending inside this transaction so cart
 		// and order mutations are frozen for the duration of the payment. The
@@ -239,6 +251,31 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 		if err != nil {
 			return err
 		}
+		// Record the promo redemption against this payment, inside the tx so it
+		// rolls back with the snapshot/payment/transition on any failure. The
+		// FOR UPDATE lock in ValidatePromo serializes concurrent redemptions of
+		// the same promo, closing the per-phone/global cap race; the
+		// (promo_id, payment_id) unique index guards idempotent replays.
+		if req.PromoCode != nil && s.promoSvc != nil {
+			preDiscountTotal := req.Bill.Total + req.Bill.DiscountAmount
+			vr, perr := s.promoSvc.ValidatePromo(ctx, tx, ValidatePromoRequest{
+				BranchID:   req.BranchID,
+				Code:       *req.PromoCode,
+				OrderTotal: preDiscountTotal,
+				PhoneE164:  req.PromoPhone,
+			})
+			if perr != nil {
+				return perr
+			}
+			if _, perr := tx.CreatePromoRedemptionForPayment(ctx, vr.PromoID, payment.ID, req.PromoPhone); perr != nil {
+				return fmt.Errorf("create promo redemption: %w", perr)
+			}
+			if perr := tx.IncrementPromoRedemptionCount(ctx, vr.PromoID); perr != nil {
+				return fmt.Errorf("increment promo redemption count: %w", perr)
+			}
+			appliedPromoID = vr.PromoID
+		}
+
 		if req.IdempotencyKey != "" {
 			if err := tx.CompleteIdempotencyKey(ctx, idemScope, "payment", strconv.FormatInt(payment.ID, 10)); err != nil {
 				return fmt.Errorf("complete payment idempotency key: %w", err)
@@ -251,6 +288,13 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 	}
 	if err == nil {
 		s.publisher.PaymentInitiated(ctx, req.SessionID, payment)
+		if appliedPromoID != 0 && req.PromoCode != nil {
+			s.publisher.PromoApplied(ctx, req.SessionID, map[string]any{
+				"payment_id":      payment.ID,
+				"promo_code":      *req.PromoCode,
+				"discount_amount": req.Bill.DiscountAmount,
+			})
+		}
 		if payment.Status == sqlc.PaymentStatusCompleted {
 			if closeErr := s.maybeCloseSettledSession(ctx, payment.SessionID); closeErr != nil {
 				s.logger.Warn().Err(closeErr).Str("session_id", payment.SessionID.String()).Msg("auto-close session after payment failed")
@@ -258,6 +302,13 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 		}
 	}
 	return payment, err
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func hashPaymentRequest(req InitiatePaymentRequest) string {
@@ -281,6 +332,7 @@ func hashPaymentRequest(req InitiatePaymentRequest) string {
 		Provider           string   `json:"provider,omitempty"`
 		ProviderPaymentRef string   `json:"provider_payment_ref,omitempty"`
 		ProviderOrderRef   string   `json:"provider_order_ref,omitempty"`
+		PromoCode          string   `json:"promo_code,omitempty"`
 		SourceOrderIDs     []string `json:"source_order_ids"`
 	}{
 		SessionID:          req.SessionID.String(),
@@ -292,6 +344,7 @@ func hashPaymentRequest(req InitiatePaymentRequest) string {
 		Provider:           req.Provider,
 		ProviderPaymentRef: req.ProviderPaymentRef,
 		ProviderOrderRef:   req.ProviderOrderRef,
+		PromoCode:          derefStr(req.PromoCode),
 		SourceOrderIDs:     sourceOrderIDs,
 	}
 	if req.OrderID != nil {

@@ -9,7 +9,6 @@ import (
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -71,15 +70,17 @@ func (r *Repos) CountPromoRedemptionsByPhone(ctx context.Context, promoID int64,
 	})
 }
 
-func (r *Repos) CreatePromoRedemption(ctx context.Context, promoID int64, orderID uuid.UUID, phone *string) (sqlc.PromoRedemption, error) {
-	p := sqlc.CreatePromoRedemptionParams{
-		PromoID: promoID,
-		OrderID: orderID,
+// CreatePromoRedemptionForPayment records a redemption tied to a payment
+// (promo applied at payment initiation rather than order placement).
+func (r *Repos) CreatePromoRedemptionForPayment(ctx context.Context, promoID, paymentID int64, phone *string) (sqlc.PromoRedemption, error) {
+	p := sqlc.CreatePromoRedemptionForPaymentParams{
+		PromoID:   promoID,
+		PaymentID: pgtype.Int8{Int64: paymentID, Valid: true},
 	}
 	if phone != nil {
 		p.PhoneE164 = pgtype.Text{String: *phone, Valid: true}
 	}
-	return r.q.CreatePromoRedemption(ctx, p)
+	return r.q.CreatePromoRedemptionForPayment(ctx, p)
 }
 
 func (r *Repos) IncrementPromoRedemptionCount(ctx context.Context, promoID int64) error {

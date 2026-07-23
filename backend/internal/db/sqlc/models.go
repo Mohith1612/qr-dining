@@ -1160,9 +1160,10 @@ type Promo struct {
 type PromoRedemption struct {
 	ID         int64       `json:"id"`
 	PromoID    int64       `json:"promo_id"`
-	OrderID    uuid.UUID   `json:"order_id"`
+	OrderID    pgtype.UUID `json:"order_id"`
 	PhoneE164  pgtype.Text `json:"phone_e164"`
 	RedeemedAt time.Time   `json:"redeemed_at"`
+	PaymentID  pgtype.Int8 `json:"payment_id"`
 }
 
 type Restaurant struct {

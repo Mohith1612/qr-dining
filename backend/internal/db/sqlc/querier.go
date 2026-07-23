@@ -57,6 +57,7 @@ type Querier interface {
 	CreatePlatformSupportSession(ctx context.Context, arg CreatePlatformSupportSessionParams) (PlatformSupportSession, error)
 	CreatePromo(ctx context.Context, arg CreatePromoParams) (Promo, error)
 	CreatePromoRedemption(ctx context.Context, arg CreatePromoRedemptionParams) (PromoRedemption, error)
+	CreatePromoRedemptionForPayment(ctx context.Context, arg CreatePromoRedemptionForPaymentParams) (PromoRedemption, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff, error)
 	CreateStaffSession(ctx context.Context, arg CreateStaffSessionParams) (StaffSession, error)
