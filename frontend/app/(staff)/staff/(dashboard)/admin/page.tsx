@@ -35,6 +35,8 @@ import { normalizeCollateralConfig, DEFAULT_COLLATERAL } from "@/types/collatera
 import { BottomSheet } from "@/components/shared/BottomSheet"
 import { MenuItemModal } from "@/components/admin/MenuItemModal"
 import { StatsSkeleton, TablesSkeleton } from "@/components/shared/LoadingSkeleton"
+import { PerformanceTab } from "@/components/staff-performance/PerformanceTab"
+import { LoyaltyTab } from "@/components/loyalty/LoyaltyTab"
 
 // ─── Sessions Tab ───────────────────────────────────────────────────────────
 
@@ -1950,16 +1952,18 @@ function CollateralTab() {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: "sessions",   label: "Sessions"   },
-  { id: "menu",       label: "Menu"       },
-  { id: "tables",     label: "Tables"     },
-  { id: "collateral", label: "Collateral" },
-  { id: "staff",      label: "Staff"      },
-  { id: "stats",      label: "Stats"      },
-  { id: "plan",       label: "Plan"       },
-  { id: "promos",     label: "Promos"     },
-  { id: "appearance", label: "Appearance" },
-  { id: "settings",   label: "Settings"   },
+  { id: "sessions",    label: "Sessions"    },
+  { id: "menu",        label: "Menu"        },
+  { id: "tables",      label: "Tables"      },
+  { id: "collateral",  label: "Collateral"  },
+  { id: "staff",       label: "Staff"       },
+  { id: "stats",       label: "Stats"       },
+  { id: "performance", label: "Performance" },
+  { id: "loyalty",     label: "Loyalty"     },
+  { id: "plan",        label: "Plan"        },
+  { id: "promos",      label: "Promos"      },
+  { id: "appearance",  label: "Appearance"  },
+  { id: "settings",    label: "Settings"    },
 ]
 
 export default function AdminPage() {
@@ -1999,6 +2003,8 @@ export default function AdminPage() {
         {activeTab === "collateral" && <CollateralTab />}
         {activeTab === "staff"      && <StaffTab />}
         {activeTab === "stats"      && <StatsTab />}
+        {activeTab === "performance" && <PerformanceTab />}
+        {activeTab === "loyalty"    && <LoyaltyTab />}
         {activeTab === "plan"       && <PlanTab />}
         {activeTab === "promos"     && <PromosTab />}
         {activeTab === "appearance" && <AppearanceTab />}
