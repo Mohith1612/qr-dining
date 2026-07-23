@@ -1,7 +1,7 @@
 openapi: "3.1.0"
 info:
   title: qr-dining API
-  version: "2.0.0"
+  version: "2.1.0"
   description: |
     Realtime, session-centric dine-in operating system plus its SaaS control plane.
     Covers the guest dining loop (session lifecycle, shared cart, orders, payments, assistance,
@@ -584,6 +584,146 @@ components:
           type: string
           enum: [branch_override, org_override, global_override, default]
 
+    WaiterPerformanceRow:
+      type: object
+      description: |
+        Per-staff front-of-house activity derived from existing operational data
+        (event_log, payments, staff_sessions). "sessions_handled" means distinct
+        sessions the staff member touched (served/settled/assisted) — there is
+        no waiter↔session assignment concept.
+      properties:
+        staff_id: { type: integer, format: int64 }
+        staff_name: { type: string }
+        staff_role: { type: string, enum: [owner, manager, waiter, kitchen] }
+        sessions_handled: { type: integer, format: int64 }
+        tables_served: { type: integer, format: int64 }
+        orders_assisted: { type: integer, format: int64 }
+        orders_served: { type: integer, format: int64 }
+        assistance_accepted: { type: integer, format: int64 }
+        assistance_resolved: { type: integer, format: int64 }
+        avg_response_seconds: { type: number, format: double }
+        payments_settled: { type: integer, format: int64 }
+        avg_settlement_seconds: { type: number, format: double }
+        login_count: { type: integer, format: int64 }
+        active_seconds: { type: number, format: double }
+
+    KitchenPerformanceRow:
+      type: object
+      description: Per-staff kitchen throughput, attributed to whoever marked the order ready (shared kitchen logins blur attribution).
+      properties:
+        staff_id: { type: integer, format: int64 }
+        staff_name: { type: string }
+        orders_completed: { type: integer, format: int64 }
+        avg_prep_seconds:
+          type: number
+          format: double
+          description: Mean preparing→ready duration; orders whose preparing event predates the window are excluded from the average.
+        peak_orders_per_hour: { type: integer, format: int64 }
+
+    StaffDailyActivityRow:
+      type: object
+      description: Manager utilization summary — one row per staff member per UTC day with activity.
+      properties:
+        staff_id: { type: integer, format: int64 }
+        staff_name: { type: string }
+        staff_role: { type: string }
+        day: { type: string, description: "YYYY-MM-DD (UTC)" }
+        event_count: { type: integer, format: int64 }
+        login_count: { type: integer, format: int64 }
+        active_seconds: { type: number, format: double }
+
+    BranchStaffPerformance:
+      type: object
+      description: Bundled staff-performance report (platform operator read).
+      properties:
+        branch_id: { type: integer, format: int64 }
+        period: { type: string }
+        waiters:
+          type: array
+          items: { $ref: "#/components/schemas/WaiterPerformanceRow" }
+        kitchen:
+          type: array
+          items: { $ref: "#/components/schemas/KitchenPerformanceRow" }
+        summary:
+          type: array
+          items: { $ref: "#/components/schemas/StaffDailyActivityRow" }
+
+    LoyaltyProgram:
+      type: object
+      description: Org-level earning rule — earn_rate_points per earn_rate_amount of spend (e.g. 1 point per ₹100).
+      properties:
+        organization_id: { type: integer, format: int64 }
+        is_active: { type: boolean }
+        earn_rate_points: { type: integer, format: int64 }
+        earn_rate_amount: { type: string, description: "Decimal string, e.g. \"100.00\"" }
+        configured:
+          type: boolean
+          description: false when no program row exists yet (defaults shown)
+
+    LoyaltyAccount:
+      type: object
+      properties:
+        account_id: { type: integer, format: int64 }
+        customer_id: { type: integer, format: int64 }
+        points_balance: { type: integer, format: int64 }
+        lifetime_points_earned: { type: integer, format: int64 }
+        lifetime_points_redeemed: { type: integer, format: int64 }
+        visit_count: { type: integer, format: int64 }
+        lifetime_spend: { type: string, description: Decimal string }
+
+    LoyaltyCustomerLookup:
+      type: object
+      properties:
+        customer_id: { type: integer, format: int64 }
+        display_name: { type: string }
+        phone_e164: { type: string }
+        account:
+          oneOf:
+            - $ref: "#/components/schemas/LoyaltyAccount"
+            - type: "null"
+          description: null when the customer has no loyalty activity yet
+
+    LoyaltyTransaction:
+      type: object
+      description: Append-only points-ledger row; points is signed (earn > 0, redeem < 0, adjustment either).
+      properties:
+        id: { type: integer, format: int64 }
+        type: { type: string, enum: [earn, redeem, adjustment] }
+        points: { type: integer, format: int64 }
+        amount: { type: string, description: "Spend that produced an earn (\"0\" otherwise)" }
+        payment_id: { type: integer, format: int64 }
+        session_id: { type: string, format: uuid }
+        performed_by_actor_type: { type: string, enum: [system, staff] }
+        performed_by_staff_id: { type: integer, format: int64 }
+        reason: { type: string }
+        created_at: { type: string, format: date-time }
+
+    LoyaltyAnalytics:
+      type: object
+      properties:
+        period: { type: string }
+        points_issued: { type: integer, format: int64 }
+        points_redeemed: { type: integer, format: int64 }
+        earn_count: { type: integer, format: int64 }
+        redeem_count: { type: integer, format: int64 }
+        active_customers: { type: integer, format: int64 }
+        total_accounts: { type: integer, format: int64 }
+        total_sessions: { type: integer, format: int64 }
+        loyalty_sessions: { type: integer, format: int64 }
+        top_customers:
+          type: array
+          items:
+            type: object
+            properties:
+              account_id: { type: integer, format: int64 }
+              customer_id: { type: integer, format: int64 }
+              display_name: { type: string }
+              phone_e164: { type: string }
+              points_balance: { type: integer, format: int64 }
+              lifetime_points_earned: { type: integer, format: int64 }
+              visit_count: { type: integer, format: int64 }
+              lifetime_spend: { type: string }
+
   responses:
     NotFound:
       description: Resource not found
@@ -682,6 +822,24 @@ components:
           example:
             code: ANALYTICS_GATED
             message: analytics is not available on your current plan
+    StaffAnalyticsForbidden:
+      description: Access denied (role), or the staff-performance gate (analytics.staff_performance entitlement + staff_performance_analytics flag) is off
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: STAFF_ANALYTICS_DISABLED
+            message: staff performance analytics is not enabled for this organization
+    LoyaltyForbidden:
+      description: Access denied (role), or the loyalty gate (loyalty.* entitlement + loyalty flag) is off
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: LOYALTY_DISABLED
+            message: loyalty is not enabled for this organization
     SubscriptionResult:
       description: The organization subscription after the operation
       content:
@@ -2793,6 +2951,300 @@ paths:
         "200": { $ref: "#/components/responses/AnalyticsResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  # ── Staff: staff performance analytics (owner/manager; entitlement+flag gated) ──
+  /branches/{id}/analytics/staff/waiters:
+    get:
+      summary: Per-staff front-of-house performance (owner/manager)
+      description: |
+        Derived from existing operational data (event_log order/assistance events,
+        payment settlements, staff logins) — no new event capture. Gated by the
+        analytics.staff_performance entitlement AND the staff_performance_analytics
+        platform flag (both default off → 403 STAFF_ANALYTICS_DISABLED).
+      tags: [Staff Performance]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Per-staff rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  period: { type: string }
+                  waiters:
+                    type: array
+                    items: { $ref: "#/components/schemas/WaiterPerformanceRow" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/StaffAnalyticsForbidden" }
+
+  /branches/{id}/analytics/staff/kitchen:
+    get:
+      summary: Per-staff kitchen performance (owner/manager)
+      tags: [Staff Performance]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Per-staff kitchen rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  period: { type: string }
+                  kitchen:
+                    type: array
+                    items: { $ref: "#/components/schemas/KitchenPerformanceRow" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/StaffAnalyticsForbidden" }
+
+  /branches/{id}/analytics/staff/summary:
+    get:
+      summary: Per-staff daily activity summary (owner/manager)
+      tags: [Staff Performance]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Daily activity rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  period: { type: string }
+                  summary:
+                    type: array
+                    items: { $ref: "#/components/schemas/StaffDailyActivityRow" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/StaffAnalyticsForbidden" }
+
+  # ── Staff: customer loyalty (branch-scoped; entitlement+flag gated; ledger-only redemption) ──
+  /branches/{id}/analytics/loyalty:
+    get:
+      summary: Loyalty participation and points analytics (owner/manager)
+      description: Org-level loyalty analytics accessed via the branch scope. Gated by loyalty.enabled + the loyalty flag (403 LOYALTY_DISABLED when off).
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Loyalty analytics
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyAnalytics" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+
+  /branches/{id}/loyalty/program:
+    get:
+      summary: Get the org loyalty earning rule (owner/manager)
+      description: Returns defaults with configured=false when no program row exists yet.
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Loyalty program
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyProgram" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+    put:
+      summary: Upsert the org loyalty earning rule (owner/manager)
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [earn_rate_points, earn_rate_amount]
+              properties:
+                is_active: { type: boolean }
+                earn_rate_points: { type: integer, format: int64, minimum: 1 }
+                earn_rate_amount: { type: string, description: "Positive decimal string, e.g. \"100.00\"" }
+      responses:
+        "200":
+          description: Saved program
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyProgram" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+
+  /branches/{id}/loyalty/customers:
+    get:
+      summary: Look up a loyalty member by phone (staff; kitchen excluded)
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: phone
+          in: query
+          required: true
+          schema: { type: string }
+          description: Customer phone (E.164 or 10-digit Indian mobile)
+      responses:
+        "200":
+          description: Customer with optional loyalty account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyCustomerLookup" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /branches/{id}/loyalty/accounts/{account_id}/transactions:
+    get:
+      summary: Loyalty points ledger for an account (staff; kitchen excluded)
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: account_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: Ledger rows, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items: { $ref: "#/components/schemas/LoyaltyTransaction" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /branches/{id}/loyalty/accounts/{account_id}/redeem:
+    post:
+      summary: Record a points redemption (owner/manager/waiter)
+      description: |
+        LEDGER-ONLY — records a staff-witnessed points deduction; any discount is
+        applied off-system. Never touches bill/payment math. Additionally gated by
+        the loyalty.redeem entitlement. Concurrent redemptions are serialized; an
+        over-redemption returns 409 LOYALTY_INSUFFICIENT_POINTS.
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: account_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [points]
+              properties:
+                points: { type: integer, format: int64, minimum: 1 }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Updated account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyAccount" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Insufficient points
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: LOYALTY_INSUFFICIENT_POINTS
+                message: insufficient loyalty points
+
+  /branches/{id}/loyalty/accounts/{account_id}/adjust:
+    post:
+      summary: Record a manual points adjustment (owner/manager)
+      description: Signed correction gated by loyalty.manual_adjustment; reason required; balance floors at zero (409 when it would go negative).
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: account_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [points_delta, reason]
+              properties:
+                points_delta: { type: integer, format: int64, description: "Signed, non-zero" }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Updated account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyAccount" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Adjustment would take the balance below zero
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: LOYALTY_INSUFFICIENT_POINTS
+                message: insufficient loyalty points
 
   # ── Staff: organization governance (staff-auth, feature-flagged) ────────────
   /orgs/{org_id}:
@@ -4927,6 +5379,34 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /platform/analytics/staff-performance:
+    get:
+      summary: Branch staff-performance report (operator read)
+      description: |
+        Bundled waiter/kitchen/summary staff-performance views for one branch.
+        Like the other platform analytics reads this is operator observability and
+        is NOT tenant-entitlement-gated; the tenant-facing
+        /branches/{id}/analytics/staff/* surface stays gated. Platform-audited.
+      tags: [Platform Analytics]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: branch_id
+          in: query
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Staff performance report
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BranchStaffPerformance" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ── Platform: themes ─────────────────────────────────────────────────────
   /platform/theme/presets:
     get:
@@ -5396,6 +5876,10 @@ tags:
     description: Table management and QR token lifecycle
   - name: Analytics
     description: Branch- and org-scoped operational analytics (staff)
+  - name: Staff Performance
+    description: Per-staff performance analytics derived from existing operational events (owner/manager; analytics.staff_performance entitlement + staff_performance_analytics flag, both default off)
+  - name: Loyalty
+    description: Customer loyalty foundation — spend→points accrual, ledger-only redemption, manual adjustments (loyalty.* entitlements + loyalty flag, all default off)
   - name: Uploads
     description: Presigned image upload URLs (Cloudflare R2)
   - name: Platform Auth
