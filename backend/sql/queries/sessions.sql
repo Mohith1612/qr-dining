@@ -65,9 +65,12 @@ WHERE id = $1 AND status = 'active'
 RETURNING id;
 
 -- name: ReactivateSession :one
+-- warned_at is cleared so a recovered session can be warned again by the
+-- expiry warner before its (unchanged) timeout.
 UPDATE sessions
 SET status = 'active',
-    awaiting_reactivation_at = NULL
+    awaiting_reactivation_at = NULL,
+    warned_at = NULL
 WHERE id = $1 AND status = 'awaiting_reactivation'
 RETURNING id;
 

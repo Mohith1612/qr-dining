@@ -426,11 +426,14 @@ func (q *Queries) NextSessionNumber(ctx context.Context, arg NextSessionNumberPa
 const reactivateSession = `-- name: ReactivateSession :one
 UPDATE sessions
 SET status = 'active',
-    awaiting_reactivation_at = NULL
+    awaiting_reactivation_at = NULL,
+    warned_at = NULL
 WHERE id = $1 AND status = 'awaiting_reactivation'
 RETURNING id
 `
 
+// warned_at is cleared so a recovered session can be warned again by the
+// expiry warner before its (unchanged) timeout.
 func (q *Queries) ReactivateSession(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, reactivateSession, id)
 	var id_2 uuid.UUID

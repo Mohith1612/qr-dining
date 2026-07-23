@@ -93,6 +93,17 @@ func (p *Presence) GetPresentScoped(ctx context.Context, organizationID, branchI
 	return result, nil
 }
 
+// TryThrottle returns true when the caller has won the throttle window for
+// key (SETNX with ttl). Fail-open: a Redis error also returns true so the
+// throttled action (e.g. a DB last_seen write) still happens.
+func (p *Presence) TryThrottle(ctx context.Context, key string, ttl time.Duration) bool {
+	ok, err := p.client.SetNX(ctx, key, "", ttl).Result()
+	if err != nil {
+		return true
+	}
+	return ok
+}
+
 // Remove deletes a participant from the presence hash on disconnect.
 func (p *Presence) Remove(ctx context.Context, sessionID uuid.UUID, participantID int64) error {
 	field := strconv.FormatInt(participantID, 10)

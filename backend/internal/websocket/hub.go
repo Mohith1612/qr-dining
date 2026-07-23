@@ -13,19 +13,41 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// PresenceRefresher refreshes guest presence for a connected client. Injected
+// post-construction (server.New) so the websocket package stays free of a
+// services dependency — same pattern as the payment service's SetHostAuthority.
+type PresenceRefresher func(ctx context.Context, sessionID uuid.UUID, participantID int64)
+
 // Hub is the central WebSocket connection registry.
 // A single goroutine (Run) owns all mutations to the rooms map — no mutex needed.
 // The broadcast channel receives messages from the Redis subscriber goroutine
 // and delivers them to the correct room without blocking the subscriber.
 type Hub struct {
-	rooms      map[string]map[string]*Client // session_id → client_id → *Client
-	register   chan *Client
-	unregister chan *Client
-	broadcast  chan redisPkg.Message
-	pubsub     *redisPkg.PubSub
-	metrics    *observability.Metrics
-	logger     zerolog.Logger
-	upgrader   websocket.Upgrader // per-Hub so CheckOrigin captures the origin set by value
+	rooms             map[string]map[string]*Client // session_id → client_id → *Client
+	register          chan *Client
+	unregister        chan *Client
+	broadcast         chan redisPkg.Message
+	pubsub            *redisPkg.PubSub
+	metrics           *observability.Metrics
+	logger            zerolog.Logger
+	upgrader          websocket.Upgrader // per-Hub so CheckOrigin captures the origin set by value
+	presenceRefresher PresenceRefresher
+}
+
+// SetPresenceRefresher wires the presence heartbeat. Must be called before the
+// HTTP server accepts traffic (no locking — write-once at boot).
+func (h *Hub) SetPresenceRefresher(fn PresenceRefresher) { h.presenceRefresher = fn }
+
+// refreshPresence invokes the injected presence refresher with a bounded
+// timeout. Called from per-connection goroutines (Upgrade handler, readPump) —
+// never from the Hub Run goroutine, which must not block on I/O.
+func (h *Hub) refreshPresence(sessionID uuid.UUID, participantID int64) {
+	if h.presenceRefresher == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	h.presenceRefresher(ctx, sessionID, participantID)
 }
 
 func NewHub(pubsub *redisPkg.PubSub, metrics *observability.Metrics, logger zerolog.Logger, allowedOrigins []string) *Hub {
@@ -95,6 +117,10 @@ func (h *Hub) Upgrade(w http.ResponseWriter, r *http.Request, sessionID uuid.UUI
 		return err
 	}
 	client := newClient(sessionID, participantID, conn, h, h.logger)
+	// Presence exists from t=0: without this, a freshly seated guest is
+	// "absent" until their first client PING and the reactivation pipeline
+	// may pause a live session.
+	h.refreshPresence(sessionID, participantID)
 	h.register <- client
 	go client.writePump()
 	go client.readPump()

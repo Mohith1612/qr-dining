@@ -19,6 +19,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/Mohith1612/qr-dining/internal/storage"
 	ws "github.com/Mohith1612/qr-dining/internal/websocket"
+	"github.com/google/uuid"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -79,6 +80,13 @@ func New(
 	// ── Services ─────────────────────────────────────────────────────────────
 	sessionSvc := services.NewSessionService(repos, publisher, metrics, presence)
 	participantSvc := services.NewParticipantService(repos, publisher, presence)
+	// Client WS PINGs double as the presence heartbeat: without this, presence
+	// is never refreshed and the reactivation pipeline pauses live tables.
+	hub.SetPresenceRefresher(func(ctx context.Context, sessionID uuid.UUID, participantID int64) {
+		if err := participantSvc.UpdatePresenceThrottled(ctx, sessionID, participantID); err != nil {
+			logger.Debug().Err(err).Str("session_id", sessionID.String()).Msg("presence refresh failed")
+		}
+	})
 	cartSvc := services.NewCartService(repos, publisher)
 	promoSvc := services.NewPromoService(repos)
 	orderSvc := services.NewOrderService(repos, publisher, metrics, promoSvc)
