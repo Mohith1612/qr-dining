@@ -71,6 +71,33 @@ function KitchenCard({
         <span className="mono" style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600 }}>{displayId}</span>
         <span style={{ fontSize: 10, color: "var(--ink-4)" }}>{relativeTime(order.created_at)}</span>
       </div>
+      {order.table_identifier && (
+        <p className="serif" style={{ fontSize: 18, fontWeight: 600, margin: "0 0 8px" }}>
+          Table {order.table_identifier}
+        </p>
+      )}
+
+      {/* Items — what the kitchen actually has to prepare */}
+      {order.items?.length > 0 && (
+        <ul style={{ listStyle: "none", margin: "0 0 10px", padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+          {order.items.map((item, i) => (
+            <li key={`${item.menu_item_id}-${i}`} style={{ fontSize: 13, lineHeight: 1.35 }}>
+              <span style={{ fontWeight: 700, color: "var(--ink-1)" }}>{item.quantity}×</span>{" "}
+              <span style={{ color: "var(--ink-1)" }}>{item.name}</span>
+              {item.modifiers?.length > 0 && (
+                <p style={{ margin: "1px 0 0 18px", fontSize: 11, color: "var(--ink-3)" }}>
+                  {item.modifiers.map((m) => m.name).join(" · ")}
+                </p>
+              )}
+              {item.note && (
+                <p style={{ margin: "1px 0 0 18px", fontSize: 11, fontStyle: "italic", color: "var(--warn)" }}>
+                  “{item.note}”
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Elapsed time */}
       <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 10 }}>
