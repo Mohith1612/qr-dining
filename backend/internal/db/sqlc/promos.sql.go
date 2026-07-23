@@ -145,6 +145,7 @@ func (q *Queries) DeactivatePromo(ctx context.Context, arg DeactivatePromoParams
 }
 
 const getPromoByCode = `-- name: GetPromoByCode :one
+
 SELECT id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at, redeemed_count FROM promos
 WHERE branch_id = $1
   AND LOWER(code) = LOWER($2)
@@ -153,7 +154,10 @@ WHERE branch_id = $1
   AND valid_until >= now()
   AND (
     time_window_start IS NULL
-    OR (time_window_start <= LOCALTIME AND LOCALTIME <= time_window_end)
+    OR (
+      time_window_start <= (NOW() AT TIME ZONE (SELECT b.timezone FROM branches b WHERE b.id = promos.branch_id))::time
+      AND (NOW() AT TIME ZONE (SELECT b.timezone FROM branches b WHERE b.id = promos.branch_id))::time <= time_window_end
+    )
   )
 `
 
@@ -162,6 +166,10 @@ type GetPromoByCodeParams struct {
 	Lower    string `json:"lower"`
 }
 
+// Daily time windows are owner-entered wall-clock times for the BRANCH, so
+// they are compared against branch-local time, not the DB server's LOCALTIME
+// (UTC in production — a lunch-hour promo would silently never match at
+// Indian lunch hours).
 func (q *Queries) GetPromoByCode(ctx context.Context, arg GetPromoByCodeParams) (Promo, error) {
 	row := q.db.QueryRow(ctx, getPromoByCode, arg.BranchID, arg.Lower)
 	var i Promo
@@ -196,7 +204,10 @@ WHERE branch_id = $1
   AND valid_until >= now()
   AND (
     time_window_start IS NULL
-    OR (time_window_start <= LOCALTIME AND LOCALTIME <= time_window_end)
+    OR (
+      time_window_start <= (NOW() AT TIME ZONE (SELECT b.timezone FROM branches b WHERE b.id = promos.branch_id))::time
+      AND (NOW() AT TIME ZONE (SELECT b.timezone FROM branches b WHERE b.id = promos.branch_id))::time <= time_window_end
+    )
   )
 FOR UPDATE
 `

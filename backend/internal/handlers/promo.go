@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type PromoHandler struct {
@@ -124,7 +126,64 @@ func (h *PromoHandler) ListPromos(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
-	c.JSON(http.StatusOK, promos)
+	out := make([]promoResponse, 0, len(promos))
+	for _, p := range promos {
+		out = append(out, toPromoResponse(p))
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// promoResponse mirrors sqlc.Promo but serializes the daily time window as
+// "HH:MM" strings — pgtype.Time marshals as a struct, which clients can't
+// render (it showed up as "[object Object]" in the admin promo list).
+type promoResponse struct {
+	ID              int64          `json:"id"`
+	BranchID        int64          `json:"branch_id"`
+	Code            string         `json:"code"`
+	Type            sqlc.PromoType `json:"type"`
+	Value           pgtype.Numeric `json:"value"`
+	MinOrderAmount  pgtype.Numeric `json:"min_order_amount"`
+	MaxUses         pgtype.Int4    `json:"max_uses"`
+	UsesPerPhone    int32          `json:"uses_per_phone"`
+	ValidFrom       time.Time      `json:"valid_from"`
+	ValidUntil      time.Time      `json:"valid_until"`
+	TimeWindowStart *string        `json:"time_window_start"`
+	TimeWindowEnd   *string        `json:"time_window_end"`
+	IsActive        bool           `json:"is_active"`
+	Description     pgtype.Text    `json:"description"`
+	CreatedAt       time.Time      `json:"created_at"`
+	RedeemedCount   int32          `json:"redeemed_count"`
+}
+
+func toPromoResponse(p sqlc.Promo) promoResponse {
+	return promoResponse{
+		ID:              p.ID,
+		BranchID:        p.BranchID,
+		Code:            p.Code,
+		Type:            p.Type,
+		Value:           p.Value,
+		MinOrderAmount:  p.MinOrderAmount,
+		MaxUses:         p.MaxUses,
+		UsesPerPhone:    p.UsesPerPhone,
+		ValidFrom:       p.ValidFrom,
+		ValidUntil:      p.ValidUntil,
+		TimeWindowStart: formatTimeOfDay(p.TimeWindowStart),
+		TimeWindowEnd:   formatTimeOfDay(p.TimeWindowEnd),
+		IsActive:        p.IsActive,
+		Description:     p.Description,
+		CreatedAt:       p.CreatedAt,
+		RedeemedCount:   p.RedeemedCount,
+	}
+}
+
+// formatTimeOfDay renders a pgtype.Time (microseconds since midnight) as "HH:MM".
+func formatTimeOfDay(t pgtype.Time) *string {
+	if !t.Valid {
+		return nil
+	}
+	totalMinutes := t.Microseconds / 1_000_000 / 60
+	s := fmt.Sprintf("%02d:%02d", totalMinutes/60, totalMinutes%60)
+	return &s
 }
 
 type createPromoRequest struct {

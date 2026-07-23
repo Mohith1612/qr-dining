@@ -1,3 +1,8 @@
+-- Daily time windows are owner-entered wall-clock times for the BRANCH, so
+-- they are compared against branch-local time, not the DB server's LOCALTIME
+-- (UTC in production — a lunch-hour promo would silently never match at
+-- Indian lunch hours).
+
 -- name: GetPromoByCode :one
 SELECT * FROM promos
 WHERE branch_id = $1
@@ -7,7 +12,10 @@ WHERE branch_id = $1
   AND valid_until >= now()
   AND (
     time_window_start IS NULL
-    OR (time_window_start <= LOCALTIME AND LOCALTIME <= time_window_end)
+    OR (
+      time_window_start <= (NOW() AT TIME ZONE (SELECT b.timezone FROM branches b WHERE b.id = promos.branch_id))::time
+      AND (NOW() AT TIME ZONE (SELECT b.timezone FROM branches b WHERE b.id = promos.branch_id))::time <= time_window_end
+    )
   );
 
 -- name: GetPromoByCodeForUpdate :one
@@ -19,7 +27,10 @@ WHERE branch_id = $1
   AND valid_until >= now()
   AND (
     time_window_start IS NULL
-    OR (time_window_start <= LOCALTIME AND LOCALTIME <= time_window_end)
+    OR (
+      time_window_start <= (NOW() AT TIME ZONE (SELECT b.timezone FROM branches b WHERE b.id = promos.branch_id))::time
+      AND (NOW() AT TIME ZONE (SELECT b.timezone FROM branches b WHERE b.id = promos.branch_id))::time <= time_window_end
+    )
   )
 FOR UPDATE;
 

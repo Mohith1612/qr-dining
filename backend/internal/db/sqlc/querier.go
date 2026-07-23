@@ -152,6 +152,10 @@ type Querier interface {
 	GetPlatformSupportSessionByID(ctx context.Context, id int64) (PlatformSupportSession, error)
 	GetPlatformUserByEmail(ctx context.Context, email string) (PlatformUser, error)
 	GetPlatformUserByID(ctx context.Context, id int64) (PlatformUser, error)
+	// Daily time windows are owner-entered wall-clock times for the BRANCH, so
+	// they are compared against branch-local time, not the DB server's LOCALTIME
+	// (UTC in production — a lunch-hour promo would silently never match at
+	// Indian lunch hours).
 	GetPromoByCode(ctx context.Context, arg GetPromoByCodeParams) (Promo, error)
 	GetPromoByCodeForUpdate(ctx context.Context, arg GetPromoByCodeForUpdateParams) (Promo, error)
 	GetPromoByID(ctx context.Context, id int64) (Promo, error)
@@ -283,6 +287,8 @@ type Querier interface {
 	// consistency. Operator-facing; not entitlement-gated.
 	PlatformSessionsPerDay(ctx context.Context, arg PlatformSessionsPerDayParams) ([]PlatformSessionsPerDayRow, error)
 	PlatformWebhookFailuresPerDay(ctx context.Context, arg PlatformWebhookFailuresPerDayParams) ([]PlatformWebhookFailuresPerDayRow, error)
+	// warned_at is cleared so a recovered session can be warned again by the
+	// expiry warner before its (unchanged) timeout.
 	ReactivateSession(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
