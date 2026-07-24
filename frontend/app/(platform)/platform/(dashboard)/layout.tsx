@@ -16,6 +16,13 @@ export default function PlatformDashboardLayout({ children }: { children: React.
     }
   }, [token, _hydrated, router])
 
+  // Platform is a fixed "platform" surface, not tenant-branded. Set it on <html>
+  // too so portaled toasts/sheets inherit platform tokens; clear on unmount.
+  useEffect(() => {
+    document.documentElement.setAttribute("data-surface", "platform")
+    return () => document.documentElement.removeAttribute("data-surface")
+  }, [])
+
   if (!_hydrated || !token) return null
 
   async function handleSignOut() {

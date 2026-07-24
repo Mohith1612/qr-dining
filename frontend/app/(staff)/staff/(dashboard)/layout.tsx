@@ -16,6 +16,13 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
     }
   }, [token, _hydrated, router])
 
+  // Staff is a fixed "ops" surface, not tenant-branded. Set it on <html> too so
+  // portaled toasts/sheets inherit ops tokens; clear on unmount.
+  useEffect(() => {
+    document.documentElement.setAttribute("data-surface", "ops")
+    return () => document.documentElement.removeAttribute("data-surface")
+  }, [])
+
   if (!_hydrated || !token) return null
 
   async function handleSignOut() {
@@ -27,7 +34,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-base)", color: "var(--ink-1)" }}>
+    <div data-surface="ops" className="min-h-screen flex flex-col" style={{ background: "var(--bg-base)", color: "var(--ink-1)" }}>
       <StaffBar onSignOut={handleSignOut} />
       <main className="flex-1">{children}</main>
     </div>

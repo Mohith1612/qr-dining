@@ -75,6 +75,7 @@ export default function PlatformLoginPage() {
 
   return (
     <div
+      data-surface="platform"
       className="atmos min-h-screen flex items-center justify-center px-6"
       style={{ background: "var(--bg-base)", color: "var(--ink-1)", backgroundImage: "var(--glow-warm)" }}
     >

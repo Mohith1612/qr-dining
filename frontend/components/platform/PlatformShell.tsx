@@ -16,7 +16,7 @@ export function PlatformShell({ children, onSignOut }: Props) {
   const primaryRole = roles[0]
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-base)", color: "var(--ink-1)" }}>
+    <div data-surface="platform" style={{ display: "flex", minHeight: "100vh", background: "var(--bg-base)", color: "var(--ink-1)" }}>
       {/* Sidebar */}
       <aside
         style={{
