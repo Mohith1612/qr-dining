@@ -30,6 +30,8 @@ export function CollateralPrintContainer({
         @media print {
           body > *:not(#collateral-print-root) { display: none !important; }
           #collateral-print-root { display: block !important; }
+          /* Preserve themed backgrounds + colours in print/PDF (else cards collapse to plain text). */
+          #collateral-print-root, #collateral-print-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .collateral-print-page { break-after: page; page-break-after: always; }
           .collateral-print-page:last-child { break-after: auto; page-break-after: auto; }
         }

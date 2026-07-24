@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic"
 import { buildQRUrl } from "@/lib/qr"
+import { useTenant } from "@/providers/TenantProvider"
 import type { Table } from "@/types/api"
 
 const QRCodeSVG = dynamic(() => import("qrcode.react").then((m) => m.QRCodeSVG), { ssr: false })
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function PrintTemplate({ table, tenantSlug }: Props) {
+  const { name: restaurantName } = useTenant()
   const url = buildQRUrl(table.qr_code_token, tenantSlug)
 
   return (
@@ -20,6 +22,9 @@ export function PrintTemplate({ table, tenantSlug }: Props) {
         @media print {
           body > *:not(#print-template) { display: none !important; }
           #print-template { display: flex !important; }
+          /* Preserve the dark card + brass colours when printing/saving PDF — without this
+             the backgrounds are dropped and the cream QR prints near-invisible on white. */
+          #print-template, #print-template * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
         @page {
           size: A5;
@@ -77,7 +82,7 @@ export function PrintTemplate({ table, tenantSlug }: Props) {
               textTransform: "uppercase",
             }}
           >
-            Maison Saffron
+            {restaurantName || "Restaurant"}
           </div>
 
           <div style={{ width: "60%", height: 1, background: "#5C5340", margin: "2mm 0" }} />
