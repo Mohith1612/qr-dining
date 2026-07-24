@@ -1,0 +1,25 @@
+/* Ops / Platform surface tokens.
+ *
+ * Staff and platform pages are NOT tenant-branded. Instead of the guest
+ * [data-theme] system (applyTheme), they set a static [data-surface] on the
+ * shell and inherit fixed "ops" tokens — this structurally prevents the staff
+ * theme from resetting on refresh.
+ *
+ * These blocks RE-MAP the same governed theme keys that themes.css defines
+ * (--bg-base, --bg-elev-1/2, --bg-sunken, --ink-1..4, --accent*, --ok/--warn/
+ * --alert/--info, --line-1..3, --shadow-1..3, --rad-*), plus ops-only --font-*
+ * vars. Imported AFTER themes.css so [data-surface] wins over [data-theme].
+ *
+ * VALUES ARE FILLED BY THE OPS/PLATFORM TRACK (commit B1). Until then these are
+ * intentionally empty: staff/platform fall back to :root, preserving the current
+ * look while the refresh-reset bug is already fixed by the static attribute.
+ */
+
+[data-surface="ops"] {
+  /* Track B (B1): cool-slate canvas + amber accent + Inter Tight / Instrument
+     Serif / JetBrains Mono. Re-map every governed key here. */
+}
+
+[data-surface="platform"] {
+  /* Track B (B1): near-black canvas + electric-purple accent. */
+}
