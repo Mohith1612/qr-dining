@@ -5,8 +5,10 @@ package services_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
+	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/Mohith1612/qr-dining/internal/testutil"
@@ -106,5 +108,57 @@ func TestCart_ModifierSnapshot(t *testing.T) {
 	}
 	if _, ok := mods[0]["price_delta"]; !ok {
 		t.Error("modifier snapshot missing price_delta field")
+	}
+}
+
+// A single-select modifier group accepts at most one option per group.
+func TestCart_SingleSelectModifierConflict(t *testing.T) {
+	pool := testutil.OpenTestDB(t)
+	f := testutil.SeedFixtures(t, pool)
+	repos := testutil.NewTestRepos(pool)
+	pub := events.NewNoopPublisher()
+	sessionSvc := newTestSessionService(repos, pub)
+	cartSvc := services.NewCartService(repos, pub)
+	t.Cleanup(func() {
+		testutil.TruncateTables(t, pool, "sessions", "session_participants", "carts", "cart_items", "item_modifiers")
+	})
+	ctx := context.Background()
+
+	// Two options in one single-select group "flavour".
+	var sweetID, saltyID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group, single_select)
+		VALUES ($1, 'Sweet', 0, false, 'flavour', true) RETURNING id`, f.MenuItemID).Scan(&sweetID); err != nil {
+		t.Fatalf("seed sweet: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group, single_select)
+		VALUES ($1, 'Salty', 0, false, 'flavour', true) RETURNING id`, f.MenuItemID).Scan(&saltyID); err != nil {
+		t.Fatalf("seed salty: %v", err)
+	}
+
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	// Picking both sweet AND salty from the single-select group is rejected.
+	if _, err := cartSvc.AddItem(ctx, services.AddItemRequest{
+		SessionID:     sess.Session.ID,
+		ParticipantID: sess.Participant.ID,
+		MenuItemID:    f.MenuItemID,
+		Quantity:      1,
+		ModifierIDs:   []int64{sweetID, saltyID},
+	}); !errors.Is(err, domain.ErrModifierConflict) {
+		t.Fatalf("two single-select options: err = %v, want ErrModifierConflict", err)
+	}
+
+	// Exactly one is fine.
+	if _, err := cartSvc.AddItem(ctx, services.AddItemRequest{
+		SessionID:     sess.Session.ID,
+		ParticipantID: sess.Participant.ID,
+		MenuItemID:    f.MenuItemID,
+		Quantity:      1,
+		ModifierIDs:   []int64{sweetID},
+	}); err != nil {
+		t.Fatalf("single option should succeed: %v", err)
 	}
 }

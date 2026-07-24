@@ -813,6 +813,7 @@ type ItemModifier struct {
 	PriceDelta    pgtype.Numeric `json:"price_delta"`
 	IsRequired    bool           `json:"is_required"`
 	ModifierGroup string         `json:"modifier_group"`
+	SingleSelect  bool           `json:"single_select"`
 }
 
 type MenuCategory struct {

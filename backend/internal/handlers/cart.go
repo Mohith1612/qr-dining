@@ -100,6 +100,8 @@ func (h *CartHandler) AddItem(c *gin.Context) {
 			respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
 		case errors.Is(err, domain.ErrModifierNotFound):
 			respondError(c, http.StatusNotFound, CodeMenuItemNotFound, err.Error())
+		case errors.Is(err, domain.ErrModifierConflict):
+			respondError(c, http.StatusUnprocessableEntity, CodeModifierConflict, "Only one option may be chosen from this group.")
 		case errors.Is(err, domain.ErrMenuItemUnavailable):
 			respondError(c, http.StatusUnprocessableEntity, CodeMenuItemUnavailable, err.Error())
 		case errors.Is(err, domain.ErrPaymentInProgress):

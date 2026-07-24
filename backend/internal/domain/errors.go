@@ -40,6 +40,7 @@ var (
 	ErrMenuItemUnavailable = errors.New("menu item is not available")
 	ErrMenuItemNotFound    = errors.New("menu item not found")
 	ErrModifierNotFound    = errors.New("modifier not found for menu item")
+	ErrModifierConflict    = errors.New("only one option may be chosen from this group")
 )
 
 // Assistance

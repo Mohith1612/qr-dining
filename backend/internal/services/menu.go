@@ -30,6 +30,7 @@ type MenuModifier struct {
 	PriceDelta    float64 `json:"price_delta"`
 	IsRequired    bool    `json:"is_required"`
 	ModifierGroup string  `json:"modifier_group"`
+	SingleSelect  bool    `json:"single_select"`
 }
 
 type MenuItemWithModifiers struct {
@@ -327,6 +328,7 @@ func (s *MenuService) buildMenu(ctx context.Context, branchID int64) (FullMenu, 
 					PriceDelta:    delta.Float64,
 					IsRequired:    m.IsRequired,
 					ModifierGroup: m.ModifierGroup,
+					SingleSelect:  m.SingleSelect,
 				})
 			}
 			categoryItems = append(categoryItems, MenuItemWithModifiers{
@@ -358,10 +360,12 @@ func (s *MenuService) buildMenu(ctx context.Context, branchID int64) (FullMenu, 
 				return FullMenu{}, fmt.Errorf("convert modifier price for id %d: %w", m.ID, err)
 			}
 			snapMods = append(snapMods, MenuModifier{
-				ID:         m.ID,
-				Name:       m.Name,
-				PriceDelta: delta.Float64,
-				IsRequired: m.IsRequired,
+				ID:            m.ID,
+				Name:          m.Name,
+				PriceDelta:    delta.Float64,
+				IsRequired:    m.IsRequired,
+				ModifierGroup: m.ModifierGroup,
+				SingleSelect:  m.SingleSelect,
 			})
 		}
 		result.Featured = append(result.Featured, MenuItemWithModifiers{MenuItem: item, Modifiers: snapMods})
@@ -419,6 +423,7 @@ func (s *MenuService) buildAdminMenu(ctx context.Context, branchID int64) (FullM
 					PriceDelta:    delta.Float64,
 					IsRequired:    m.IsRequired,
 					ModifierGroup: m.ModifierGroup,
+					SingleSelect:  m.SingleSelect,
 				})
 			}
 			categoryItems = append(categoryItems, MenuItemWithModifiers{
@@ -502,6 +507,7 @@ type CreateModifierParams struct {
 	PriceDelta    float64
 	IsRequired    bool
 	ModifierGroup string
+	SingleSelect  bool
 }
 
 // AddModifier adds a modifier to a menu item and invalidates the branch menu cache.
@@ -519,11 +525,39 @@ func (s *MenuService) AddModifier(ctx context.Context, p CreateModifierParams, r
 		PriceDelta:    delta,
 		IsRequired:    p.IsRequired,
 		ModifierGroup: p.ModifierGroup,
+		SingleSelect:  p.SingleSelect,
 	}, p.BranchID)
 	if err != nil {
 		return MenuModifier{}, err
 	}
 	s.InvalidateMenuCache(ctx, p.BranchID)
+	return modifierDTO(mod), nil
+}
+
+// UpdateModifier edits an existing modifier (owner/manager) and invalidates the cache.
+func (s *MenuService) UpdateModifier(ctx context.Context, modifierID, branchID int64, p CreateModifierParams, requiredRole sqlc.StaffRole) (MenuModifier, error) {
+	if err := requireOwnerOrManager(requiredRole); err != nil {
+		return MenuModifier{}, err
+	}
+	var delta pgtype.Numeric
+	if err := delta.Scan(fmt.Sprintf("%.2f", p.PriceDelta)); err != nil {
+		return MenuModifier{}, fmt.Errorf("invalid price_delta: %w", err)
+	}
+	mod, err := s.repos.UpdateItemModifierScoped(ctx, modifierID, branchID, sqlc.CreateItemModifierParams{
+		Name:          p.Name,
+		PriceDelta:    delta,
+		IsRequired:    p.IsRequired,
+		ModifierGroup: p.ModifierGroup,
+		SingleSelect:  p.SingleSelect,
+	})
+	if err != nil {
+		return MenuModifier{}, err
+	}
+	s.InvalidateMenuCache(ctx, branchID)
+	return modifierDTO(mod), nil
+}
+
+func modifierDTO(mod sqlc.ItemModifier) MenuModifier {
 	deltaVal, _ := mod.PriceDelta.Float64Value()
 	return MenuModifier{
 		ID:            mod.ID,
@@ -531,7 +565,8 @@ func (s *MenuService) AddModifier(ctx context.Context, p CreateModifierParams, r
 		PriceDelta:    deltaVal.Float64,
 		IsRequired:    mod.IsRequired,
 		ModifierGroup: mod.ModifierGroup,
-	}, nil
+		SingleSelect:  mod.SingleSelect,
+	}
 }
 
 // DeleteModifier removes a modifier and invalidates the branch menu cache.

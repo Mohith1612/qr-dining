@@ -422,6 +422,7 @@ func New(
 	staffAPI.POST("/menu/items/:id/modifiers", menuAdminH.AddItemModifier)
 	staffAPI.DELETE("/menu/categories/:id", menuAdminH.DeleteMenuCategory)
 	staffAPI.PATCH("/menu/categories/:id", menuAdminH.UpdateMenuCategory)
+	staffAPI.PATCH("/menu/modifiers/:id", menuAdminH.UpdateItemModifier)
 	staffAPI.DELETE("/menu/modifiers/:id", menuAdminH.DeleteItemModifier)
 
 	// Image upload presign — staff-protected.

@@ -113,8 +113,8 @@ WHERE id = $1 AND branch_id = $5
 RETURNING *;
 
 -- name: CreateItemModifier :one
-INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group, single_select)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: DeleteItemModifier :exec
@@ -137,8 +137,21 @@ JOIN menu_items mi ON mi.id = im.item_id
 WHERE im.id = $1;
 
 -- name: CreateItemModifierScoped :one
-INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group)
-SELECT $1, $3, $4, $5, $6
+INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group, single_select)
+SELECT $1, $3, $4, $5, $6, $7
 FROM menu_items
 WHERE id = $1 AND branch_id = $2
 RETURNING *;
+
+-- name: UpdateItemModifierScoped :one
+UPDATE item_modifiers im
+SET name          = $3,
+    price_delta   = $4,
+    is_required   = $5,
+    modifier_group = $6,
+    single_select = $7
+FROM menu_items mi
+WHERE im.id = $1
+  AND im.item_id = mi.id
+  AND mi.branch_id = $2
+RETURNING im.*;

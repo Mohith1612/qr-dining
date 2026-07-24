@@ -23,9 +23,9 @@ func (q *Queries) CountItemsInCategory(ctx context.Context, categoryID int64) (i
 }
 
 const createItemModifier = `-- name: CreateItemModifier :one
-INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, item_id, name, price_delta, is_required, modifier_group
+INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group, single_select)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, item_id, name, price_delta, is_required, modifier_group, single_select
 `
 
 type CreateItemModifierParams struct {
@@ -34,6 +34,7 @@ type CreateItemModifierParams struct {
 	PriceDelta    pgtype.Numeric `json:"price_delta"`
 	IsRequired    bool           `json:"is_required"`
 	ModifierGroup string         `json:"modifier_group"`
+	SingleSelect  bool           `json:"single_select"`
 }
 
 func (q *Queries) CreateItemModifier(ctx context.Context, arg CreateItemModifierParams) (ItemModifier, error) {
@@ -43,6 +44,7 @@ func (q *Queries) CreateItemModifier(ctx context.Context, arg CreateItemModifier
 		arg.PriceDelta,
 		arg.IsRequired,
 		arg.ModifierGroup,
+		arg.SingleSelect,
 	)
 	var i ItemModifier
 	err := row.Scan(
@@ -52,16 +54,17 @@ func (q *Queries) CreateItemModifier(ctx context.Context, arg CreateItemModifier
 		&i.PriceDelta,
 		&i.IsRequired,
 		&i.ModifierGroup,
+		&i.SingleSelect,
 	)
 	return i, err
 }
 
 const createItemModifierScoped = `-- name: CreateItemModifierScoped :one
-INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group)
-SELECT $1, $3, $4, $5, $6
+INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group, single_select)
+SELECT $1, $3, $4, $5, $6, $7
 FROM menu_items
 WHERE id = $1 AND branch_id = $2
-RETURNING id, item_id, name, price_delta, is_required, modifier_group
+RETURNING id, item_id, name, price_delta, is_required, modifier_group, single_select
 `
 
 type CreateItemModifierScopedParams struct {
@@ -71,6 +74,7 @@ type CreateItemModifierScopedParams struct {
 	PriceDelta    pgtype.Numeric `json:"price_delta"`
 	IsRequired    bool           `json:"is_required"`
 	ModifierGroup string         `json:"modifier_group"`
+	SingleSelect  bool           `json:"single_select"`
 }
 
 func (q *Queries) CreateItemModifierScoped(ctx context.Context, arg CreateItemModifierScopedParams) (ItemModifier, error) {
@@ -81,6 +85,7 @@ func (q *Queries) CreateItemModifierScoped(ctx context.Context, arg CreateItemMo
 		arg.PriceDelta,
 		arg.IsRequired,
 		arg.ModifierGroup,
+		arg.SingleSelect,
 	)
 	var i ItemModifier
 	err := row.Scan(
@@ -90,6 +95,7 @@ func (q *Queries) CreateItemModifierScoped(ctx context.Context, arg CreateItemMo
 		&i.PriceDelta,
 		&i.IsRequired,
 		&i.ModifierGroup,
+		&i.SingleSelect,
 	)
 	return i, err
 }
@@ -265,7 +271,7 @@ func (q *Queries) GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]Me
 }
 
 const getModifierWithItemBranch = `-- name: GetModifierWithItemBranch :one
-SELECT im.id, im.item_id, im.name, im.price_delta, im.is_required, im.modifier_group, mi.branch_id
+SELECT im.id, im.item_id, im.name, im.price_delta, im.is_required, im.modifier_group, im.single_select, mi.branch_id
 FROM item_modifiers im
 JOIN menu_items mi ON mi.id = im.item_id
 WHERE im.id = $1
@@ -278,6 +284,7 @@ type GetModifierWithItemBranchRow struct {
 	PriceDelta    pgtype.Numeric `json:"price_delta"`
 	IsRequired    bool           `json:"is_required"`
 	ModifierGroup string         `json:"modifier_group"`
+	SingleSelect  bool           `json:"single_select"`
 	BranchID      int64          `json:"branch_id"`
 }
 
@@ -291,6 +298,7 @@ func (q *Queries) GetModifierWithItemBranch(ctx context.Context, id int64) (GetM
 		&i.PriceDelta,
 		&i.IsRequired,
 		&i.ModifierGroup,
+		&i.SingleSelect,
 		&i.BranchID,
 	)
 	return i, err
@@ -595,7 +603,7 @@ func (q *Queries) ListMenuItemsForCategory(ctx context.Context, categoryID int64
 }
 
 const listModifiersForItem = `-- name: ListModifiersForItem :many
-SELECT id, item_id, name, price_delta, is_required, modifier_group FROM item_modifiers WHERE item_id = $1 ORDER BY id ASC
+SELECT id, item_id, name, price_delta, is_required, modifier_group, single_select FROM item_modifiers WHERE item_id = $1 ORDER BY id ASC
 `
 
 func (q *Queries) ListModifiersForItem(ctx context.Context, itemID int64) ([]ItemModifier, error) {
@@ -614,6 +622,7 @@ func (q *Queries) ListModifiersForItem(ctx context.Context, itemID int64) ([]Ite
 			&i.PriceDelta,
 			&i.IsRequired,
 			&i.ModifierGroup,
+			&i.SingleSelect,
 		); err != nil {
 			return nil, err
 		}
@@ -626,7 +635,7 @@ func (q *Queries) ListModifiersForItem(ctx context.Context, itemID int64) ([]Ite
 }
 
 const listModifiersForItems = `-- name: ListModifiersForItems :many
-SELECT id, item_id, name, price_delta, is_required, modifier_group FROM item_modifiers WHERE item_id = ANY($1::bigint[]) ORDER BY item_id, id ASC
+SELECT id, item_id, name, price_delta, is_required, modifier_group, single_select FROM item_modifiers WHERE item_id = ANY($1::bigint[]) ORDER BY item_id, id ASC
 `
 
 func (q *Queries) ListModifiersForItems(ctx context.Context, dollar_1 []int64) ([]ItemModifier, error) {
@@ -645,6 +654,7 @@ func (q *Queries) ListModifiersForItems(ctx context.Context, dollar_1 []int64) (
 			&i.PriceDelta,
 			&i.IsRequired,
 			&i.ModifierGroup,
+			&i.SingleSelect,
 		); err != nil {
 			return nil, err
 		}
@@ -708,6 +718,53 @@ func (q *Queries) RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTok
 		&i.QrCodeToken,
 		&i.Status,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const updateItemModifierScoped = `-- name: UpdateItemModifierScoped :one
+UPDATE item_modifiers im
+SET name          = $3,
+    price_delta   = $4,
+    is_required   = $5,
+    modifier_group = $6,
+    single_select = $7
+FROM menu_items mi
+WHERE im.id = $1
+  AND im.item_id = mi.id
+  AND mi.branch_id = $2
+RETURNING im.id, im.item_id, im.name, im.price_delta, im.is_required, im.modifier_group, im.single_select
+`
+
+type UpdateItemModifierScopedParams struct {
+	ID            int64          `json:"id"`
+	BranchID      int64          `json:"branch_id"`
+	Name          string         `json:"name"`
+	PriceDelta    pgtype.Numeric `json:"price_delta"`
+	IsRequired    bool           `json:"is_required"`
+	ModifierGroup string         `json:"modifier_group"`
+	SingleSelect  bool           `json:"single_select"`
+}
+
+func (q *Queries) UpdateItemModifierScoped(ctx context.Context, arg UpdateItemModifierScopedParams) (ItemModifier, error) {
+	row := q.db.QueryRow(ctx, updateItemModifierScoped,
+		arg.ID,
+		arg.BranchID,
+		arg.Name,
+		arg.PriceDelta,
+		arg.IsRequired,
+		arg.ModifierGroup,
+		arg.SingleSelect,
+	)
+	var i ItemModifier
+	err := row.Scan(
+		&i.ID,
+		&i.ItemID,
+		&i.Name,
+		&i.PriceDelta,
+		&i.IsRequired,
+		&i.ModifierGroup,
+		&i.SingleSelect,
 	)
 	return i, err
 }

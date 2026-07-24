@@ -317,6 +317,7 @@ type Querier interface {
 	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) (CartItem, error)
 	UpdateFeatureFlag(ctx context.Context, arg UpdateFeatureFlagParams) (PlatformFeatureFlag, error)
 	UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStatusParams) (SubscriptionInvoice, error)
+	UpdateItemModifierScoped(ctx context.Context, arg UpdateItemModifierScopedParams) (ItemModifier, error)
 	UpdateMenuCategory(ctx context.Context, arg UpdateMenuCategoryParams) (MenuCategory, error)
 	UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) (MenuItem, error)
 	UpdateMenuItemAvailability(ctx context.Context, arg UpdateMenuItemAvailabilityParams) error

@@ -568,6 +568,7 @@ type addModifierRequest struct {
 	PriceDelta    float64 `json:"price_delta"`
 	IsRequired    bool    `json:"is_required"`
 	ModifierGroup string  `json:"modifier_group"`
+	SingleSelect  bool    `json:"single_select"`
 	BranchID      int64   `json:"branch_id"`
 }
 
@@ -613,6 +614,7 @@ func (h *MenuAdminHandler) AddItemModifier(c *gin.Context) {
 		PriceDelta:    req.PriceDelta,
 		IsRequired:    req.IsRequired,
 		ModifierGroup: req.ModifierGroup,
+		SingleSelect:  req.SingleSelect,
 	}, sess.Role)
 	if err != nil {
 		menuAdminError(c, err)
@@ -620,6 +622,55 @@ func (h *MenuAdminHandler) AddItemModifier(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, mod)
+}
+
+// UpdateItemModifier edits an existing modifier in place (owner/manager),
+// scoped to the caller's branch. PATCH /menu/modifiers/:id
+func (h *MenuAdminHandler) UpdateItemModifier(c *gin.Context) {
+	modifierID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid modifier id")
+		return
+	}
+	var req addModifierRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	target, err := h.repos.GetModifierWithItemBranch(c.Request.Context(), modifierID)
+	if err != nil {
+		menuAdminError(c, err)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuModifierUpdate, authz.MenuModifierResource(target.ID, target.BranchID, orgID)) {
+		return
+	}
+
+	mod, err := h.svc.UpdateModifier(c.Request.Context(), modifierID, target.BranchID, services.CreateModifierParams{
+		Name:          req.Name,
+		PriceDelta:    req.PriceDelta,
+		IsRequired:    req.IsRequired,
+		ModifierGroup: req.ModifierGroup,
+		SingleSelect:  req.SingleSelect,
+	}, sess.Role)
+	if err != nil {
+		menuAdminError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, mod)
 }
 
 func (h *MenuAdminHandler) DeleteItemModifier(c *gin.Context) {
