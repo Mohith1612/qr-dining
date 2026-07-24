@@ -359,7 +359,7 @@ export function StaffTab() {
               className="press"
               style={{
                 height: 44, borderRadius: "var(--rad-md)", fontSize: 14, fontWeight: 600,
-                background: "var(--brass)", color: "#0E0C09", border: "none",
+                background: "var(--accent)", color: "var(--accent-ink)", border: "none",
                 cursor: resetting || resetPin.length < 4 ? "not-allowed" : "pointer",
                 opacity: resetting || resetPin.length < 4 ? 0.6 : 1,
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,

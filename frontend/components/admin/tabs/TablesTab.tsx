@@ -80,8 +80,8 @@ function TableRow({
           textTransform: "uppercase",
           padding: "2px 8px",
           borderRadius: 99,
-          background: isOccupied ? "rgba(251,191,36,0.12)" : "rgba(52,211,153,0.12)",
-          color: isOccupied ? "#F59E0B" : "#10B981",
+          background: isOccupied ? "var(--warn-soft)" : "var(--ok-soft)",
+          color: isOccupied ? "var(--warn)" : "var(--ok)",
           flexShrink: 0,
         }}
       >
@@ -223,8 +223,8 @@ export function TablesTab() {
               borderRadius: 10,
               fontSize: 13,
               fontWeight: 600,
-              background: "var(--brass)",
-              color: "#0E0C09",
+              background: "var(--accent)",
+              color: "var(--accent-ink)",
               border: "none",
               cursor: "pointer",
             }}
@@ -283,8 +283,8 @@ export function TablesTab() {
                 borderRadius: "var(--rad-md)",
                 fontSize: 14,
                 fontWeight: 600,
-                background: "var(--brass)",
-                color: "#0E0C09",
+                background: "var(--accent)",
+                color: "var(--accent-ink)",
                 border: "none",
                 cursor: creating || !identifier.trim() ? "not-allowed" : "pointer",
                 opacity: creating || !identifier.trim() ? 0.6 : 1,
