@@ -24,6 +24,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   INSUFFICIENT_ROLE:         "You don't have permission to do this.",
   INVALID_PHONE:             "Please enter a valid 10-digit mobile number.",
   NOT_SESSION_HOST:          "Only the table host can do this. Ask the host to send the order or request the bill.",
+  FEATURE_DISABLED:          "This restaurant doesn't offer saved preferences.",
+  MODIFIER_CONFLICT:         "Only one option may be chosen from this group.",
 }
 
 export function friendlyErrorMessage(code: string): string {

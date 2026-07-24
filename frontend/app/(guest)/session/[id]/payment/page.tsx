@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useOrdersStore } from "@/store/orders"
 import { useSession } from "@/hooks/useSession"
+import { useTenant } from "@/providers/TenantProvider"
 import { useSessionStore } from "@/store/session"
 import { paymentsApi } from "@/lib/api/payments"
 import { generateIdempotencyKey } from "@/lib/idempotency"
@@ -78,24 +79,41 @@ export default function PaymentPage() {
   const isComplete = submitted?.status === "completed" || completedPayment !== null
 
   // Fetch bill on mount and when orders change (new order placed triggers WS → store update).
-  useEffect(() => {
+  const fetchBill = useCallback(async (attempt = 0) => {
     if (!session?.id) return
     const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
     setBillLoading(true)
     setBillError(null)
-    paymentsApi
-      .getBill(session.id, guestToken)
-      .then(setBill)
-      .catch(() => setBillError("Could not load bill — please ask your waiter."))
-      .finally(() => setBillLoading(false))
+    try {
+      setBill(await paymentsApi.getBill(session.id, guestToken))
+    } catch {
+      // One automatic retry with a short backoff before surfacing the error —
+      // the bill briefly 500s right after an order lands while the snapshot settles.
+      if (attempt < 2) {
+        setTimeout(() => fetchBill(attempt + 1), 600)
+        return
+      }
+      setBillError("Could not load your bill just yet.")
+    } finally {
+      if (attempt === 0) setBillLoading(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id])
+
+  useEffect(() => {
+    fetchBill()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, orders.length])
 
+  // Only offer "save my preferences" when the restaurant has customer memory
+  // enabled — otherwise the opt-in submit returns FEATURE_DISABLED.
+  const customerMemoryEnabled = useTenant().settings.customer_memory_enabled === true
+
   useEffect(() => {
-    if (!submitted) return
+    if (!submitted || !customerMemoryEnabled) return
     const timer = setTimeout(() => setShowOptIn(true), 1500)
     return () => clearTimeout(timer)
-  }, [submitted])
+  }, [submitted, customerMemoryEnabled])
 
   const billTotal = bill?.total ?? 0
   const discount = appliedPromo?.discount_amount ?? 0
@@ -266,6 +284,19 @@ export default function PaymentPage() {
       <div style={{ padding: "0 20px 8px" }}>
         <HospitalityCard elev={1} style={{ padding: "16px 18px" }}>
           <BillBreakdown bill={bill} loading={billLoading} error={billError} />
+          {billError && (
+            <button
+              onClick={() => fetchBill()}
+              className="press"
+              style={{
+                marginTop: 12, width: "100%", height: 40, borderRadius: "var(--rad-md)",
+                background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
+                color: "var(--ink-1)", fontSize: 13, fontWeight: 500, cursor: "pointer",
+              }}
+            >
+              Try again
+            </button>
+          )}
         </HospitalityCard>
       </div>
 
