@@ -17,8 +17,8 @@ function FeaturedCard({ item, onSelect }: { item: MenuItem; onSelect: (i: MenuIt
         width: "min(72vw, 280px)",
         flexShrink: 0,
         scrollSnapAlign: "start",
-        borderRadius: 14,
-        background: "var(--bg-elev-2)",
+        borderRadius: "var(--rad-lg)",
+        background: "var(--bg-elev-1)",
         border: "1px solid var(--line-2)",
         padding: 0,
         overflow: "hidden",
@@ -66,7 +66,8 @@ function FeaturedCard({ item, onSelect }: { item: MenuItem; onSelect: (i: MenuIt
           className="serif"
           style={{
             fontSize: 18,
-            fontWeight: 500,
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
             color: "var(--ink-1)",
             lineHeight: 1.25,
             marginBottom: 6,

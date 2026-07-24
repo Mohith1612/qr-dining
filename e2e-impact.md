@@ -19,3 +19,12 @@ Full e2e reconciliation is deferred; this is the breadcrumb trail.
 - Pointed `@theme inline --font-display`, `.serif`, `.display-*` at Hanken Grotesk (weight 600,
   serene sizes/tracking). Guest-scoped utility/typography only; shared `body`/`html`/`--font-sans`/
   `--font-mono` left untouched. CSS only, no DOM/text/selector changes. No e2e impact expected.
+
+### A3 — guest glass primitives + shared polish
+- Shell/TopBar/BottomNav: cream-glass surfaces (`--bg-overlay` + backdrop-blur), Shell root now sets
+  `font-family: var(--font-body)` (Hanken) to scope guest body type. New `components/shared/FloatingCart`
+  (glass cart pill; wired in A5/A6). Tag premium variants (signature/chef/seasonal) → muted gold/sand.
+  BottomSheet heavier backdrop-blur + title weight 600. FeaturedCarousel card radius/title polish.
+- All visual; no markup/text/selector changes. Remaining shared/* (StatusBadge, EmptyState,
+  SectionHeader, Vignette, BeverageModifierGrid) already consume governed tokens (serene via A1) and
+  will be fine-tuned in their screen commits (A5/A7). No e2e impact expected.
