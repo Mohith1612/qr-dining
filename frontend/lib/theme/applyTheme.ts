@@ -10,7 +10,7 @@ export type ThemeConfig = {
   tokens: Record<string, string>
 }
 
-export const KNOWN_PRESETS = ["dark-luxury", "modern-minimal", "warm-cafe", "vibrant"] as const
+export const KNOWN_PRESETS = ["serene", "dark-luxury", "modern-minimal", "warm-cafe", "vibrant"] as const
 
 // Mirrors the backend allowlist (services/theme.go allowedThemeTokens). Each key maps
 // 1:1 to a `--<key>` CSS custom property defined in styles/themes.css.
