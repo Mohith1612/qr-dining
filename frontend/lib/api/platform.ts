@@ -33,8 +33,21 @@ import type {
   PlatformBranchDetail,
 } from "@/types/platform"
 import type { CollateralConfig } from "@/types/collateral"
+import type {
+  WaiterPerformanceRow,
+  KitchenPerformanceRow,
+  StaffDailyActivityRow,
+} from "@/lib/api/analytics"
 
 type Period = "daily" | "weekly" | "monthly"
+
+export interface StaffPerformanceReport {
+  branch_id: number
+  period: string
+  waiters: WaiterPerformanceRow[]
+  kitchen: KitchenPerformanceRow[]
+  summary: StaffDailyActivityRow[]
+}
 
 function orgQuery(period: Period, organizationId?: number): string {
   const p = new URLSearchParams({ period })
@@ -378,6 +391,12 @@ export const platformApi = {
 
   getHealth: (period: Period, organizationId: number | undefined, token: string) =>
     api.get<HealthReport>(`/platform/analytics/health?${orgQuery(period, organizationId)}`, { platformToken: token }),
+
+  getStaffPerformance: (branchId: number, period: Period, token: string) =>
+    api.get<StaffPerformanceReport>(
+      `/platform/analytics/staff-performance?branch_id=${branchId}&period=${period}`,
+      { platformToken: token }
+    ),
 
   // ── Theme ──────────────────────────────────────────────────────────────────
   listThemePresets: (token: string) =>

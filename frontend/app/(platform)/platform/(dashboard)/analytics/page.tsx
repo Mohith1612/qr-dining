@@ -2,14 +2,24 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { usePlatformStore } from "@/store/platform"
-import { platformApi } from "@/lib/api/platform"
-import type { Organization, UsageReport, RevenueReport, HealthReport } from "@/types/platform"
+import { platformApi, type StaffPerformanceReport } from "@/lib/api/platform"
+import type { Organization, Branch, UsageReport, RevenueReport, HealthReport } from "@/types/platform"
 import type { AnalyticsPeriod } from "@/lib/api/analytics"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { PeriodSelector } from "@/components/shared/PeriodSelector"
+import { EmptyState } from "@/components/shared/EmptyState"
+import { StatsSkeleton } from "@/components/shared/LoadingSkeleton"
+import { StaffPerformanceTables } from "@/components/staff-performance/StaffPerformanceTables"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { PageHeader, StatCard, PlatformLoading, DaySeriesChart } from "@/components/platform/ui"
+import { Users } from "lucide-react"
 import { toast } from "sonner"
+
+const selectStyle: React.CSSProperties = {
+  height: 32, borderRadius: "var(--rad-md)", border: "1px solid var(--line-2)",
+  background: "var(--bg-elev-1)", color: "var(--ink-1)", padding: "0 10px",
+  fontSize: 14, fontFamily: "inherit",
+}
 
 export default function PlatformAnalyticsPage() {
   const token = usePlatformStore((s) => s.token)
@@ -23,12 +33,46 @@ export default function PlatformAnalyticsPage() {
   const [health, setHealth] = useState<HealthReport | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Staff-performance tab: dedicated org→branch picker (a concrete branch is required).
+  const [staffOrgId, setStaffOrgId] = useState<number | undefined>(undefined)
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [staffBranchId, setStaffBranchId] = useState<number | undefined>(undefined)
+  const [staffPerf, setStaffPerf] = useState<StaffPerformanceReport | null>(null)
+  const [staffLoading, setStaffLoading] = useState(false)
+
   useEffect(() => {
     if (!token) return
     platformApi.listOrganizations(token)
-      .then((r) => setOrgs(r.organizations))
+      .then((r) => {
+        setOrgs(r.organizations)
+        setStaffOrgId((cur) => cur ?? r.organizations[0]?.id)
+      })
       .catch(() => {})
   }, [token])
+
+  useEffect(() => {
+    if (!token || !staffOrgId) return
+    platformApi.listBranches(staffOrgId, token)
+      .then((b) => {
+        setBranches(b.branches)
+        setStaffBranchId(b.branches[0]?.id)
+      })
+      .catch(() => toast.error("Couldn't load branches."))
+  }, [token, staffOrgId])
+
+  const loadStaffPerf = useCallback(async () => {
+    if (!token || !staffBranchId) { setStaffPerf(null); return }
+    setStaffLoading(true)
+    try {
+      setStaffPerf(await platformApi.getStaffPerformance(staffBranchId, period, token))
+    } catch {
+      toast.error("Couldn't load staff performance.")
+    } finally {
+      setStaffLoading(false)
+    }
+  }, [token, staffBranchId, period])
+
+  useEffect(() => { loadStaffPerf() }, [loadStaffPerf])
 
   const load = useCallback(async () => {
     if (!token) return
@@ -74,6 +118,7 @@ export default function PlatformAnalyticsPage() {
           <TabsTrigger value="usage">Usage</TabsTrigger>
           <TabsTrigger value="revenue">Revenue</TabsTrigger>
           <TabsTrigger value="health">Health</TabsTrigger>
+          <TabsTrigger value="staff">Staff</TabsTrigger>
         </TabsList>
 
         {loading ? <PlatformLoading /> : (
@@ -110,6 +155,42 @@ export default function PlatformAnalyticsPage() {
               <p style={{ color: "var(--ink-4)", fontSize: 12, marginTop: 12 }}>
                 QR scans, websocket reconnects, worker failures, and audit-write failures are Prometheus-only and not shown here.
               </p>
+            </TabsContent>
+
+            <TabsContent value="staff">
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12, marginBottom: 16 }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>
+                  <span className="eyebrow">Organization</span>
+                  <select
+                    value={staffOrgId ?? ""}
+                    onChange={(e) => setStaffOrgId(e.target.value ? Number(e.target.value) : undefined)}
+                    style={selectStyle}
+                  >
+                    {orgs.map((o) => <option key={o.id} value={o.id}>{o.name} ({o.code})</option>)}
+                  </select>
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>
+                  <span className="eyebrow">Branch</span>
+                  <select
+                    value={staffBranchId ?? ""}
+                    onChange={(e) => setStaffBranchId(e.target.value ? Number(e.target.value) : undefined)}
+                    disabled={branches.length === 0}
+                    style={selectStyle}
+                  >
+                    {branches.length === 0
+                      ? <option value="">No branches</option>
+                      : branches.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.branch_code})</option>)}
+                  </select>
+                </label>
+              </div>
+
+              {staffLoading ? (
+                <StatsSkeleton />
+              ) : !staffPerf ? (
+                <EmptyState icon={Users} title="Select a branch to view staff performance." />
+              ) : (
+                <StaffPerformanceTables waiters={staffPerf.waiters} kitchen={staffPerf.kitchen} summary={staffPerf.summary} />
+              )}
             </TabsContent>
           </>
         )}
