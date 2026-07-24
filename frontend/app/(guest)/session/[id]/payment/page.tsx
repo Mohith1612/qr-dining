@@ -10,7 +10,9 @@ import { formatCurrency } from "@/lib/format"
 import { Banknote, CreditCard, Smartphone, CheckCircle, Clock, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
-import type { PaymentMethod, PaymentStatus, BillData } from "@/types/api"
+import { promosApi } from "@/lib/api/promos"
+import { X } from "lucide-react"
+import type { PaymentMethod, PaymentStatus, BillData, ValidatePromoResponse } from "@/types/api"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { CustomerOptIn } from "@/components/shared/CustomerOptIn"
 import { BillBreakdown } from "@/components/shared/BillBreakdown"
@@ -59,6 +61,17 @@ export default function PaymentPage() {
   const [paidTotal, setPaidTotal] = useState(0)
   const [showOptIn, setShowOptIn] = useState(false)
 
+  // Promo applied at the bill. Validated against the live bill total; the
+  // discount is previewed here and re-applied server-side at payment.
+  const [promoCode, setPromoCode] = useState("")
+  const [appliedPromo, setAppliedPromo] = useState<ValidatePromoResponse | null>(null)
+  const [appliedPromoCode, setAppliedPromoCode] = useState("")
+  const [appliedPromoPhone, setAppliedPromoPhone] = useState<string | undefined>(undefined)
+  const [promoLoading, setPromoLoading] = useState(false)
+  const [promoError, setPromoError] = useState<string | null>(null)
+  const [promoPhone, setPromoPhone] = useState("")
+  const [phoneRequired, setPhoneRequired] = useState(false)
+
   // Authoritative completion: either the initiate response already said
   // "completed" (e.g. an instantly-settled flow) or a PAYMENT_COMPLETED event
   // arrived over the websocket and was stored on the session.
@@ -84,14 +97,62 @@ export default function PaymentPage() {
     return () => clearTimeout(timer)
   }, [submitted])
 
-  const total = bill?.total ?? 0
+  const billTotal = bill?.total ?? 0
+  const discount = appliedPromo?.discount_amount ?? 0
+  const total = Math.max(0, billTotal - discount)
+
+  async function handleApplyPromo() {
+    if (!promoCode.trim() || !session) return
+    setPromoLoading(true)
+    setPromoError(null)
+    try {
+      const code = promoCode.trim().toUpperCase()
+      const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
+      const phone = promoPhone.trim() ? "+91" + promoPhone.trim() : undefined
+      const result = await promosApi.validate(session.id, code, billTotal, phone, guestToken)
+      setAppliedPromo(result)
+      setAppliedPromoCode(code)
+      setAppliedPromoPhone(phone)
+      setPromoCode("")
+      setPhoneRequired(false)
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "PROMO_PHONE_REQUIRED") {
+        setPhoneRequired(true)
+        setPromoError("Add your phone number to use this offer.")
+      } else if (err instanceof ApiError) {
+        const msgs: Record<string, string> = {
+          PROMO_NOT_FOUND:    "This promo code isn't valid right now.",
+          MIN_ORDER_NOT_MET:  "Your bill doesn't meet this promo's minimum.",
+          PROMO_EXHAUSTED:    "This offer has been claimed by too many guests.",
+          PROMO_ALREADY_USED: "You've already used this offer.",
+        }
+        setPromoError(msgs[err.code] ?? "This promo code couldn't be applied.")
+      } else {
+        setPromoError("Couldn't validate the promo code. Please try again.")
+      }
+    } finally {
+      setPromoLoading(false)
+    }
+  }
+
+  function handleRemovePromo() {
+    setAppliedPromo(null)
+    setAppliedPromoCode("")
+    setAppliedPromoPhone(undefined)
+    setPhoneRequired(false)
+    setPromoPhone("")
+    setPromoError(null)
+  }
 
   async function handlePay(method: PaymentMethod) {
     if (!session || submitted) return
     const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
     setLoading(method)
     try {
-      const payment = await paymentsApi.initiate(session.id, total, method, generateIdempotencyKey(), undefined, guestToken)
+      // Fresh idempotency key per attempt, so editing the promo and retrying
+      // is never blocked by the previous attempt's key.
+      const promo = appliedPromo ? { code: appliedPromoCode, phoneE164: appliedPromoPhone } : undefined
+      const payment = await paymentsApi.initiate(session.id, total, method, generateIdempotencyKey(), undefined, guestToken, promo)
       setPaidTotal(total)
       setSubmitted({ method, status: payment.status })
       toast.success(
@@ -100,7 +161,22 @@ export default function PaymentPage() {
           : "Request sent — your server will confirm."
       )
     } catch (err) {
-      toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't process payment. Please try again.")
+      if (err instanceof ApiError) {
+        const promoMsgs: Record<string, string> = {
+          PROMO_NOT_FOUND:    "Your promo code is no longer valid.",
+          MIN_ORDER_NOT_MET:  "Your bill doesn't meet the promo's minimum.",
+          PROMO_EXHAUSTED:    "This promo has reached its limit.",
+          PROMO_ALREADY_USED: "You've already used this promo.",
+        }
+        if (promoMsgs[err.code]) {
+          handleRemovePromo()
+          toast.error(promoMsgs[err.code])
+        } else {
+          toast.error(friendlyErrorMessage(err.code))
+        }
+      } else {
+        toast.error("Couldn't process payment. Please try again.")
+      }
     } finally {
       setLoading(null)
     }
@@ -192,6 +268,102 @@ export default function PaymentPage() {
           <BillBreakdown bill={bill} loading={billLoading} error={billError} />
         </HospitalityCard>
       </div>
+
+      {/* Promo code — host only, applied to the bill */}
+      {isHost && billTotal > 0 && (
+        <div style={{ padding: "8px 20px 0" }}>
+          {appliedPromo ? (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "12px 14px", borderRadius: "var(--rad-md)",
+              background: "var(--ok-soft)", border: "1px solid var(--ok)",
+            }}>
+              <CheckCircle style={{ width: 16, height: 16, color: "var(--ok)", flexShrink: 0 }} aria-hidden />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--ok)", lineHeight: 1.3 }}>
+                  {appliedPromoCode} applied — saving {formatCurrency(discount)}
+                </p>
+                {appliedPromo.description && (
+                  <p style={{ fontSize: 12, color: "var(--ok)", opacity: 0.8, marginTop: 2 }}>{appliedPromo.description}</p>
+                )}
+              </div>
+              <button onClick={handleRemovePromo} aria-label="Remove promo code" style={{
+                width: 24, height: 24, borderRadius: "50%", background: "transparent",
+                border: "none", color: "var(--ok)", cursor: "pointer", flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <X size={14} aria-hidden />
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  value={promoCode}
+                  onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null) }}
+                  onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
+                  placeholder="Promo code"
+                  aria-label="Promo code"
+                  style={{
+                    flex: 1, height: 42, borderRadius: "var(--rad-md)",
+                    background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
+                    padding: "0 12px", fontSize: 13, color: "var(--ink-1)", outline: "none",
+                  }}
+                />
+                <button
+                  onClick={handleApplyPromo}
+                  disabled={promoLoading || !promoCode.trim()}
+                  className="press"
+                  aria-label="Apply promo code"
+                  style={{
+                    height: 42, padding: "0 16px", borderRadius: "var(--rad-md)",
+                    background: "var(--accent)", color: "var(--accent-ink)",
+                    border: "1px solid var(--accent)", fontSize: 13, fontWeight: 500,
+                    opacity: promoLoading || !promoCode.trim() ? 0.5 : 1,
+                    display: "flex", alignItems: "center", gap: 6,
+                    cursor: promoLoading || !promoCode.trim() ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {promoLoading ? <Loader2 size={14} className="animate-spin" aria-hidden /> : "Apply"}
+                </button>
+              </div>
+              {phoneRequired && (
+                <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+                  <div style={{
+                    height: 42, padding: "0 12px", borderRadius: "var(--rad-md)",
+                    background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
+                    display: "flex", alignItems: "center", fontSize: 13, color: "var(--ink-2)", flexShrink: 0,
+                  }}>🇮🇳 +91</div>
+                  <input
+                    type="tel" inputMode="numeric" maxLength={10}
+                    value={promoPhone}
+                    onChange={(e) => { setPromoPhone(e.target.value.replace(/\D/g, "")); setPromoError(null) }}
+                    onKeyDown={(e) => e.key === "Enter" && promoPhone.length === 10 && handleApplyPromo()}
+                    placeholder="Phone number for this offer"
+                    aria-label="Phone number for this offer"
+                    autoFocus
+                    style={{
+                      flex: 1, height: 42, borderRadius: "var(--rad-md)",
+                      background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
+                      padding: "0 12px", fontSize: 13, color: "var(--ink-1)", outline: "none",
+                    }}
+                  />
+                </div>
+              )}
+              {promoError && (
+                <p style={{ marginTop: 6, fontSize: 12, color: "var(--alert)", lineHeight: 1.4 }}>{promoError}</p>
+              )}
+            </div>
+          )}
+          {appliedPromo && (
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line-1)" }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)" }}>To pay</span>
+              <span className="serif" style={{ fontSize: 18, fontWeight: 600, color: "var(--accent)" }}>{formatCurrency(total)}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Payment methods — host-controlled: only the host requests the bill/payment */}
       {!isHost ? (

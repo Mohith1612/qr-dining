@@ -8,13 +8,16 @@ export const paymentsApi = {
     method: PaymentMethod,
     idempotencyKey: string,
     orderId?: string,
-    guestToken?: string
+    guestToken?: string,
+    promo?: { code: string; phoneE164?: string }
   ) =>
     api.post<Payment>(`/sessions/${sessionId}/payments`, {
       amount,
       method,
       idempotency_key: idempotencyKey,
       order_id: orderId ?? null,
+      ...(promo?.code ? { promo_code: promo.code } : {}),
+      ...(promo?.phoneE164 ? { phone_e164: promo.phoneE164 } : {}),
     }, { guestToken }),
 
   getBill: (sessionId: string, guestToken?: string) =>

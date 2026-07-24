@@ -10,11 +10,10 @@ import { formatCurrency } from "@/lib/format"
 import { CartSkeleton } from "@/components/shared/LoadingSkeleton"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { Vignette } from "@/components/shared/Vignette"
-import { Trash2, ShoppingCart, Loader2, CheckCircle, X } from "lucide-react"
+import { Trash2, ShoppingCart } from "lucide-react"
 import { toast } from "sonner"
 import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
-import { promosApi } from "@/lib/api/promos"
-import type { CartItem, ValidatePromoResponse } from "@/types/api"
+import type { CartItem } from "@/types/api"
 
 interface Props {
   params: Promise<{ id: string }>
@@ -92,17 +91,7 @@ export default function CartPage({ params }: Props) {
 
   const hostName = participants.find((p) => p.is_host)?.display_name
 
-  const [promoCode, setPromoCode] = useState("")
-  const [appliedPromo, setAppliedPromo] = useState<ValidatePromoResponse | null>(null)
-  const [appliedPromoCode, setAppliedPromoCode] = useState<string>("")
-  const [promoLoading, setPromoLoading] = useState(false)
-  const [promoError, setPromoError] = useState<string | null>(null)
-  // Phone gate: promos with a per-guest limit require the phone (the offer is
-  // tracked per number). Reveal a field on PROMO_PHONE_REQUIRED and carry the
-  // phone used into order placement so the redemption records against it.
-  const [promoPhone, setPromoPhone] = useState("")
-  const [phoneRequired, setPhoneRequired] = useState(false)
-  const [appliedPromoPhone, setAppliedPromoPhone] = useState<string | undefined>(undefined)
+  // Promo codes are entered at the bill (payment screen), not on the cart.
 
   useEffect(() => {
     refreshCart()
@@ -117,51 +106,6 @@ export default function CartPage({ params }: Props) {
     }
   }
 
-  async function handleApplyPromo() {
-    if (!promoCode.trim() || !session) return
-    setPromoLoading(true)
-    setPromoError(null)
-    try {
-      const code = promoCode.trim().toUpperCase()
-      const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
-      const phone = promoPhone.trim() ? "+91" + promoPhone.trim() : undefined
-      const result = await promosApi.validate(session.id, code, subtotal, phone, guestToken)
-      setAppliedPromo(result)
-      setAppliedPromoCode(code)
-      setAppliedPromoPhone(phone)
-      setPromoCode("")
-      setPhoneRequired(false)
-    } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.code === "PROMO_PHONE_REQUIRED") {
-          setPhoneRequired(true)
-          setPromoError("Add your phone number to use this offer.")
-        } else {
-          const msgs: Record<string, string> = {
-            PROMO_NOT_FOUND:    "This promo code isn't valid right now.",
-            MIN_ORDER_NOT_MET:  "Your order total doesn't meet this promo's minimum.",
-            PROMO_EXHAUSTED:    "This offer has been claimed by too many guests.",
-            PROMO_ALREADY_USED: "You've already used this offer.",
-          }
-          setPromoError(msgs[err.code] ?? "This promo code couldn't be applied.")
-        }
-      } else {
-        setPromoError("Couldn't validate the promo code. Please try again.")
-      }
-    } finally {
-      setPromoLoading(false)
-    }
-  }
-
-  function handleRemovePromo() {
-    setAppliedPromo(null)
-    setAppliedPromoCode("")
-    setAppliedPromoPhone(undefined)
-    setPhoneRequired(false)
-    setPromoPhone("")
-    setPromoError(null)
-  }
-
   async function handlePlaceOrder() {
     if (items.length === 0) return
     setPlacing(true)
@@ -172,30 +116,13 @@ export default function CartPage({ params }: Props) {
           quantity: item.quantity,
           modifier_ids: item.selected_modifiers?.map((m) => m.id),
           note: item.note || undefined,
-        })),
-        appliedPromo ? appliedPromoCode : undefined,
-        appliedPromo ? appliedPromoPhone : undefined
+        }))
       )
       useCartStore.getState().clear()
       toast.success("Order placed!")
       router.push(`/session/${sessionId}/orders`)
     } catch (err) {
-      if (err instanceof ApiError) {
-        const promoMsgs: Record<string, string> = {
-          PROMO_NOT_FOUND:    "Your promo code is no longer valid.",
-          MIN_ORDER_NOT_MET:  "Your order total doesn't meet the promo's minimum.",
-          PROMO_EXHAUSTED:    "This promo has reached its limit.",
-          PROMO_ALREADY_USED: "You've already used this promo.",
-        }
-        if (promoMsgs[err.code]) {
-          setAppliedPromo(null)
-          toast.error(promoMsgs[err.code])
-        } else {
-          toast.error(friendlyErrorMessage(err.code))
-        }
-      } else {
-        toast.error("Couldn't place order. Please try again.")
-      }
+      toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't place order. Please try again.")
       setPlacing(false)
     }
   }
@@ -239,125 +166,6 @@ export default function CartPage({ params }: Props) {
         ))}
       </div>
 
-      {/* Promo code section */}
-      <div style={{ marginBottom: 16 }}>
-        {appliedPromo ? (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "12px 14px", borderRadius: "var(--rad-md)",
-            background: "var(--ok-soft)", border: "1px solid var(--ok)",
-          }}>
-            <CheckCircle style={{ width: 16, height: 16, color: "var(--ok)", flexShrink: 0 }} aria-hidden />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: "var(--ok)", lineHeight: 1.3 }}>
-                {appliedPromoCode} applied — saving {formatCurrency(appliedPromo.discount_amount)}
-              </p>
-              {appliedPromo.description && (
-                <p style={{ fontSize: 12, color: "var(--ok)", opacity: 0.8, lineHeight: 1.4, marginTop: 2 }}>
-                  {appliedPromo.description}
-                </p>
-              )}
-            </div>
-            <button
-              onClick={handleRemovePromo}
-              style={{
-                width: 24, height: 24, borderRadius: "50%",
-                background: "transparent", border: "none",
-                color: "var(--ok)", cursor: "pointer", flexShrink: 0,
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-              aria-label="Remove promo code"
-            >
-              <X size={14} aria-hidden />
-            </button>
-          </div>
-        ) : (
-          <div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                type="text"
-                value={promoCode}
-                onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null) }}
-                onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
-                placeholder="Promo code"
-                style={{
-                  flex: 1, height: 42, borderRadius: "var(--rad-md)",
-                  background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
-                  padding: "0 12px", fontSize: 13, color: "var(--ink-1)",
-                  outline: "none",
-                }}
-                aria-label="Promo code"
-              />
-              <button
-                onClick={handleApplyPromo}
-                disabled={promoLoading || !promoCode.trim()}
-                className="press"
-                style={{
-                  height: 42, padding: "0 16px", borderRadius: "var(--rad-md)",
-                  background: "var(--accent)", color: "var(--accent-ink)",
-                  border: "1px solid var(--accent)", fontSize: 13, fontWeight: 500,
-                  opacity: promoLoading || !promoCode.trim() ? 0.5 : 1,
-                  display: "flex", alignItems: "center", gap: 6,
-                  cursor: promoLoading || !promoCode.trim() ? "not-allowed" : "pointer",
-                }}
-                aria-label="Apply promo code"
-              >
-                {promoLoading
-                  ? <Loader2 size={14} className="animate-spin" aria-hidden />
-                  : "Apply"
-                }
-              </button>
-            </div>
-            {phoneRequired && (
-              <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-                <div style={{
-                  height: 42, padding: "0 12px", borderRadius: "var(--rad-md)",
-                  background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
-                  display: "flex", alignItems: "center", fontSize: 13, color: "var(--ink-2)",
-                  flexShrink: 0,
-                }}>🇮🇳 +91</div>
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  maxLength={10}
-                  value={promoPhone}
-                  onChange={(e) => { setPromoPhone(e.target.value.replace(/\D/g, "")); setPromoError(null) }}
-                  onKeyDown={(e) => e.key === "Enter" && promoPhone.length === 10 && handleApplyPromo()}
-                  placeholder="Phone number for this offer"
-                  style={{
-                    flex: 1, height: 42, borderRadius: "var(--rad-md)",
-                    background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
-                    padding: "0 12px", fontSize: 13, color: "var(--ink-1)", outline: "none",
-                  }}
-                  aria-label="Phone number for this offer"
-                  autoFocus
-                />
-                <button
-                  onClick={handleApplyPromo}
-                  disabled={promoLoading || promoPhone.length !== 10}
-                  className="press"
-                  style={{
-                    height: 42, padding: "0 16px", borderRadius: "var(--rad-md)",
-                    background: "var(--accent)", color: "var(--accent-ink)",
-                    border: "1px solid var(--accent)", fontSize: 13, fontWeight: 500,
-                    opacity: promoLoading || promoPhone.length !== 10 ? 0.5 : 1,
-                    cursor: promoLoading || promoPhone.length !== 10 ? "not-allowed" : "pointer",
-                    flexShrink: 0,
-                  }}
-                >
-                  Use
-                </button>
-              </div>
-            )}
-            {promoError && (
-              <p style={{ marginTop: 6, fontSize: 12, color: "var(--err, #e05252)", lineHeight: 1.4 }}>
-                {promoError}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
       {/* Totals card */}
       <div
         className="atmos"
@@ -370,23 +178,11 @@ export default function CartPage({ params }: Props) {
         <p className="eyebrow" style={{ marginBottom: 12 }}>
           {itemCount} {itemCount === 1 ? "item" : "items"}
         </p>
-        {appliedPromo && (
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-            <span style={{ fontSize: 13, color: "var(--ink-3)" }}>Subtotal</span>
-            <span style={{ fontSize: 13, color: "var(--ink-2)" }}>{formatCurrency(subtotal)}</span>
-          </div>
-        )}
-        {appliedPromo && (
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-            <span style={{ fontSize: 13, color: "var(--ok)" }}>Discount ({appliedPromoCode})</span>
-            <span style={{ fontSize: 13, color: "var(--ok)", fontWeight: 500 }}>−{formatCurrency(appliedPromo.discount_amount)}</span>
-          </div>
-        )}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <span className="serif" style={{ fontSize: 28, fontWeight: 500, color: "var(--accent)", letterSpacing: "-0.015em" }}>
-            {formatCurrency(appliedPromo ? subtotal - appliedPromo.discount_amount : subtotal)}
+            {formatCurrency(subtotal)}
           </span>
-          <span style={{ fontSize: 11, color: "var(--ink-4)", fontStyle: "italic" }}>Confirmed at table</span>
+          <span style={{ fontSize: 11, color: "var(--ink-4)", fontStyle: "italic" }}>Have a code? Apply it at the bill</span>
         </div>
       </div>
 
