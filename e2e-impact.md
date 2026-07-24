@@ -14,3 +14,8 @@ Full e2e reconciliation is deferred; this is the breadcrumb trail.
 - Pure CSS token VALUES + restructure. `:root`/`[data-theme="serene"]` now carry the serene light
   palette (was dark-luxury). `dark-luxury` split into its own block; `modern-minimal`/`warm-cafe`/
   `vibrant` unchanged. Token KEY NAMES unchanged. No DOM/text/selector changes. No e2e impact expected.
+
+### A2 — guest typography (globals.css)
+- Pointed `@theme inline --font-display`, `.serif`, `.display-*` at Hanken Grotesk (weight 600,
+  serene sizes/tracking). Guest-scoped utility/typography only; shared `body`/`html`/`--font-sans`/
+  `--font-mono` left untouched. CSS only, no DOM/text/selector changes. No e2e impact expected.
