@@ -148,6 +148,7 @@ export const staffApi = {
       id: number
       name: string
       organization_id: number
+      restaurant_id: number
       branch_code: string
       status: string
       support_metadata: Record<string, unknown>
@@ -157,6 +158,7 @@ export const staffApi = {
       tax_rate: number
       service_charge_rate: number
       include_tax_in_price: boolean
+      customer_memory_enabled: boolean
       restaurant_name: string
       logo_url: string
     }>(`/branches/${branchId}`, { staffToken }),

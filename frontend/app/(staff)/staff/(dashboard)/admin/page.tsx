@@ -1047,27 +1047,33 @@ const PLAN_FEATURES: { label: string; key: keyof Plan["features_json"] }[] = [
 ]
 
 function PlanTab() {
-  const { token } = useStaffStore()
-  const { restaurantId, ready: tenantReady } = useTenant()
+  const { branchId, token } = useStaffStore()
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [features, setFeatures] = useState<Plan["features_json"] | null>(null)
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    if (!tenantReady) return
-    if (!restaurantId || !token) {
+    if (!branchId || !token) {
       setLoading(false)
       return
     }
-    plansApi
-      .getSubscription(restaurantId, token)
+    setFailed(false)
+    // Resolve restaurant_id from the branch (works without a tenant subdomain),
+    // then load the subscription for that restaurant.
+    staffApi
+      .getBranch(branchId, token)
+      .then((branch) => plansApi.getSubscription(branch.restaurant_id, token))
       .then((data) => {
         setSubscription(data.subscription)
         setFeatures(data.features)
       })
-      .catch(() => toast.error("Couldn't load subscription."))
+      .catch(() => {
+        setFailed(true)
+        toast.error("Couldn't load subscription.")
+      })
       .finally(() => setLoading(false))
-  }, [restaurantId, token, tenantReady])
+  }, [branchId, token])
 
   if (loading) {
     return (
@@ -1077,16 +1083,10 @@ function PlanTab() {
     )
   }
 
-  if (!restaurantId) {
+  if (failed) {
     return (
       <div className="py-12 text-center">
-        <p className="text-[13px] text-[var(--ink-3)]">
-          No tenant context. Set{" "}
-          <code className="font-mono text-[11px] px-1.5 py-0.5 rounded-[var(--rad-sm)] bg-[var(--bg-elev-2)] border border-[var(--line-2)] text-[var(--ink-2)]">
-            NEXT_PUBLIC_TENANT_SLUG
-          </code>{" "}
-          in your local environment.
-        </p>
+        <p className="text-[13px] text-[var(--ink-3)]">Couldn&apos;t load your plan. Please try again.</p>
       </div>
     )
   }
