@@ -24,6 +24,8 @@ const (
 	ActionMenuCategoryUpdate Action = "menu.category.update"
 	ActionMenuModifierUpdate Action = "menu.modifier.update"
 	ActionStaffPinUpdate     Action = "staff.pin.update"
+	ActionStaffPinReset      Action = "staff.pin.reset"
+	ActionStaffListRead      Action = "staff.list.read"
 	ActionCustomerHistory    Action = "customer.history.read"
 	ActionCustomerDelete     Action = "customer.delete"
 )

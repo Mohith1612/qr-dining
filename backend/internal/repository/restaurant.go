@@ -63,3 +63,12 @@ func (r *Repos) UpdateRestaurantBillingByBranchID(ctx context.Context, branchID 
 		WHERE b.id = $4 AND b.restaurant_id = r.id
 	`, taxRate, serviceChargeRate, includeTaxInPrice, branchID)
 }
+
+func (r *Repos) UpdateRestaurantCustomerMemoryByBranchID(ctx context.Context, branchID int64, enabled bool) error {
+	return r.ExecRaw(ctx, `
+		UPDATE restaurants r
+		SET settings_json = settings_json || jsonb_build_object('customer_memory_enabled', $1::bool)
+		FROM branches b
+		WHERE b.id = $2 AND b.restaurant_id = r.id
+	`, enabled, branchID)
+}

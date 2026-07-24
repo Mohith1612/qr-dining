@@ -320,6 +320,52 @@ func (q *Queries) ListStaffForBranch(ctx context.Context, branchID int64) ([]Sta
 	return items, nil
 }
 
+const listStaffRosterForBranch = `-- name: ListStaffRosterForBranch :many
+SELECT id, branch_id, name, role, staff_code, is_active, created_at
+FROM staff
+WHERE branch_id = $1 AND is_active = TRUE
+ORDER BY name ASC
+`
+
+type ListStaffRosterForBranchRow struct {
+	ID        int64     `json:"id"`
+	BranchID  int64     `json:"branch_id"`
+	Name      string    `json:"name"`
+	Role      StaffRole `json:"role"`
+	StaffCode string    `json:"staff_code"`
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Pin-hash-free projection for the staff roster shown to managers/owners.
+func (q *Queries) ListStaffRosterForBranch(ctx context.Context, branchID int64) ([]ListStaffRosterForBranchRow, error) {
+	rows, err := q.db.Query(ctx, listStaffRosterForBranch, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStaffRosterForBranchRow{}
+	for rows.Next() {
+		var i ListStaffRosterForBranchRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BranchID,
+			&i.Name,
+			&i.Role,
+			&i.StaffCode,
+			&i.IsActive,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const revokeStaffSessionsForStaff = `-- name: RevokeStaffSessionsForStaff :exec
 UPDATE staff_sessions SET revoked_at = NOW()
 WHERE staff_id = $1 AND revoked_at IS NULL

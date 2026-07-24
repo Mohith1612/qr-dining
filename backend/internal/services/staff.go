@@ -330,6 +330,47 @@ func (s *StaffService) RotatePINScoped(ctx context.Context, staffID, branchID in
 	return s.repos.UpdateStaffPINScoped(ctx, staffID, branchID, string(newHash))
 }
 
+// ResetPINScoped sets a new PIN for a staff member WITHOUT the current PIN —
+// the manager/owner reset path for a forgotten PIN. It invalidates the target's
+// active tokens so the old PIN can't keep a session alive.
+func (s *StaffService) ResetPINScoped(ctx context.Context, staffID, branchID int64, newPIN string) error {
+	staff, err := s.repos.GetStaffByID(ctx, staffID)
+	if err != nil {
+		return err
+	}
+	if staff.BranchID != branchID {
+		return domain.ErrUnauthorized
+	}
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPIN), bcryptCost)
+	if err != nil {
+		return fmt.Errorf("hash new PIN: %w", err)
+	}
+	if err := s.repos.UpdateStaffPINScoped(ctx, staffID, branchID, string(newHash)); err != nil {
+		return err
+	}
+	s.invalidateStaffTokens(ctx, staffID)
+	return nil
+}
+
+// invalidateStaffTokens revokes durable sessions and best-effort clears the
+// Redis token set for a staff member (Redis is ephemeral; failures are logged).
+func (s *StaffService) invalidateStaffTokens(ctx context.Context, staffID int64) {
+	if err := s.repos.RevokeStaffSessionsForStaff(ctx, staffID); err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to revoke durable staff sessions on pin reset")
+	}
+	setKey := staffTokenSetKey(staffID)
+	tokenKeys, err := s.cache.SMembers(ctx, setKey)
+	if err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to fetch token set on pin reset")
+		return
+	}
+	if len(tokenKeys) > 0 {
+		if err := s.cache.DeleteMany(ctx, append(tokenKeys, setKey)...); err != nil {
+			s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to clear tokens on pin reset")
+		}
+	}
+}
+
 // Deactivate marks a staff member inactive and invalidates all their active Redis tokens.
 func (s *StaffService) Deactivate(ctx context.Context, staffID int64) error {
 	if err := s.repos.DeactivateStaff(ctx, staffID); err != nil {

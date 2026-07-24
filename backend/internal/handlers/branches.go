@@ -36,6 +36,7 @@ type updateBranchRequest struct {
 	TaxRate               *float64 `json:"tax_rate"`
 	ServiceChargeRate     *float64 `json:"service_charge_rate"`
 	IncludeTaxInPrice     *bool    `json:"include_tax_in_price"`
+	CustomerMemoryEnabled *bool    `json:"customer_memory_enabled"`
 }
 
 var validThemes = map[string]bool{
@@ -65,9 +66,11 @@ func (h *BranchHandler) GetBranch(c *gin.Context) {
 
 	theme := "dark-luxury"
 	var taxRate, serviceChargeRate float64
-	var includeTaxInPrice bool
+	var includeTaxInPrice, customerMemoryEnabled bool
 	var restaurantName, logoURL string
+	var restaurantID int64
 	if restaurant, err := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID); err == nil {
+		restaurantID = restaurant.ID
 		restaurantName = restaurant.Name
 		if restaurant.LogoUrl.Valid {
 			logoURL = restaurant.LogoUrl.String
@@ -86,12 +89,16 @@ func (h *BranchHandler) GetBranch(c *gin.Context) {
 			if v, ok := settings["include_tax_in_price"].(bool); ok {
 				includeTaxInPrice = v
 			}
+			if v, ok := settings["customer_memory_enabled"].(bool); ok {
+				customerMemoryEnabled = v
+			}
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":                      branch.ID,
 		"organization_id":         branch.OrganizationID,
+		"restaurant_id":           restaurantID,
 		"name":                    branch.Name,
 		"branch_code":             branch.BranchCode,
 		"status":                  branch.Status,
@@ -102,6 +109,7 @@ func (h *BranchHandler) GetBranch(c *gin.Context) {
 		"tax_rate":                taxRate,
 		"service_charge_rate":     serviceChargeRate,
 		"include_tax_in_price":    includeTaxInPrice,
+		"customer_memory_enabled": customerMemoryEnabled,
 		"restaurant_name":         restaurantName,
 		"logo_url":                logoURL,
 	})
@@ -188,9 +196,19 @@ func (h *BranchHandler) UpdateBranch(c *gin.Context) {
 		}
 	}
 
+	if req.CustomerMemoryEnabled != nil {
+		if err := h.repos.UpdateRestaurantCustomerMemoryByBranchID(c.Request.Context(), branchID, *req.CustomerMemoryEnabled); err != nil {
+			respondInternalError(c)
+			return
+		}
+	}
+
 	updatedFields := []string{}
 	if req.SessionTimeoutMinutes != nil {
 		updatedFields = append(updatedFields, "session_timeout_minutes")
+	}
+	if req.CustomerMemoryEnabled != nil {
+		updatedFields = append(updatedFields, "customer_memory_enabled")
 	}
 	if req.LogoURL != nil {
 		updatedFields = append(updatedFields, "logo_url")

@@ -375,6 +375,7 @@ func New(
 	branchStaffAPI.POST("/menu/categories", menuAdminH.CreateCategory)
 	branchStaffAPI.POST("/menu/items", menuAdminH.CreateItem)
 	branchStaffAPI.POST("/staff", staffH.CreateStaff)
+	branchStaffAPI.GET("/staff", staffH.ListStaff)
 	branchStaffAPI.GET("/events/recent", eventLogH.GetBranchRecentEvents)
 	branchStaffAPI.GET("/analytics/top-items", analyticsH.GetTopItems)
 	branchStaffAPI.GET("/analytics/busy-hours", analyticsH.GetBusyHours)
@@ -434,6 +435,7 @@ func New(
 
 	// Staff management — owner only (role enforced in handler).
 	staffAPI.PATCH("/staff/:id/pin", staffH.RotatePIN)
+	staffAPI.POST("/staff/:id/pin/reset", staffH.ResetPIN)
 	staffAPI.PATCH("/staff/:id/deactivate", staffH.DeactivateStaff)
 
 	// event_log read APIs — operational debugging and audit.

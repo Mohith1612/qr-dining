@@ -260,6 +260,8 @@ type Querier interface {
 	ListSessionsAwaitingReactivationExpired(ctx context.Context, dollar_1 time.Time) ([]ListSessionsAwaitingReactivationExpiredRow, error)
 	ListSessionsExpiringSoon(ctx context.Context) ([]ListSessionsExpiringSoonRow, error)
 	ListStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
+	// Pin-hash-free projection for the staff roster shown to managers/owners.
+	ListStaffRosterForBranch(ctx context.Context, branchID int64) ([]ListStaffRosterForBranchRow, error)
 	// Enforcement observability: read-only aggregates that surface where enforcement
 	// WOULD bite if it were turned on. Observe-only — nothing here gates any path.
 	ListSubscriptionsForObservability(ctx context.Context) ([]ListSubscriptionsForObservabilityRow, error)

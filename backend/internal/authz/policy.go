@@ -89,6 +89,8 @@ func requiresSameBranch(action Action) bool {
 		ActionStaffUpdateRole,
 		ActionStaffDeactivate,
 		ActionStaffPinUpdate,
+		ActionStaffPinReset,
+		ActionStaffListRead,
 		ActionBranchRead,
 		ActionBranchUpdateSettings,
 		ActionAuditReadBranch:
@@ -122,6 +124,10 @@ func roleAllowed(role sqlc.StaffRole, action Action) bool {
 		return role == sqlc.StaffRoleOwner
 	case ActionStaffPinUpdate:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager || role == sqlc.StaffRoleWaiter || role == sqlc.StaffRoleKitchen
+	case ActionStaffPinReset, ActionStaffListRead:
+		// Manager/owner can list staff and reset PINs (the forgotten-PIN path).
+		// The handler additionally restricts which targets a manager may reset.
+		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
 	case ActionBranchRead:
 		return role != ""
 	case ActionAuditReadBranch:

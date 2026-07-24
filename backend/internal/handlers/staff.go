@@ -273,6 +273,109 @@ func (h *StaffHandler) RotatePIN(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// ListStaff returns the active staff roster for a branch (owner/manager),
+// without pin hashes. GET /branches/:id/staff
+func (h *StaffHandler) ListStaff(c *gin.Context) {
+	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid branch id")
+		return
+	}
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok || sess.BranchID != branchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, branchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionStaffListRead, authz.BranchResource(branchID, orgID)) {
+		return
+	}
+	roster, err := h.repos.ListStaffRosterForBranch(c.Request.Context(), branchID)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"staff": roster})
+}
+
+type resetPINRequest struct {
+	NewPIN string `json:"new_pin" binding:"required,min=4,max=8"`
+}
+
+// ResetPIN sets a new PIN for another staff member WITHOUT the current PIN —
+// the manager/owner forgotten-PIN path. POST /staff/:id/pin/reset
+// Rules: you cannot reset your own PIN here (use the self-change endpoint);
+// a manager may reset only waiters/kitchen; an owner may reset anyone in branch.
+func (h *StaffHandler) ResetPIN(c *gin.Context) {
+	staffID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid staff id")
+		return
+	}
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	if sess.StaffID == staffID {
+		respondError(c, http.StatusBadRequest, CodeValidationError, "use the change-PIN option for your own PIN")
+		return
+	}
+	target, err := h.repos.GetStaffByID(c.Request.Context(), staffID)
+	if err != nil {
+		respondError(c, http.StatusNotFound, CodeUnauthorized, "staff not found")
+		return
+	}
+	if target.BranchID != sess.BranchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+	// A manager may only reset waiters/kitchen; owners may reset anyone.
+	if sess.Role == sqlc.StaffRoleManager &&
+		(target.Role == sqlc.StaffRoleOwner || target.Role == sqlc.StaffRoleManager) {
+		respondError(c, http.StatusForbidden, CodeForbidden, "managers can only reset waiter and kitchen PINs")
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionStaffPinReset, authz.StaffResource(target.ID, target.BranchID, orgID)) {
+		return
+	}
+	var req resetPINRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	if err := h.svc.ResetPINScoped(c.Request.Context(), staffID, target.BranchID, req.NewPIN); err != nil {
+		respondInternalError(c)
+		return
+	}
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:     target.BranchID,
+		ResourceType: audit.ResourceStaff,
+		ResourceID:   audit.IDStr(staffID),
+		Action:       audit.ActionStaffPINReset,
+		Result:       audit.ResultSuccess,
+		ActorType:    audit.ActorTypeStaff,
+		ActorID:      audit.IDStr(sess.StaffID),
+		RiskLevel:    audit.RiskHigh,
+	})
+	c.Status(http.StatusNoContent)
+}
+
 // DeactivateStaff soft-deactivates a staff member and invalidates their tokens.
 // Only owners may deactivate staff.
 func (h *StaffHandler) DeactivateStaff(c *gin.Context) {
