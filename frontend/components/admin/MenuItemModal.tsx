@@ -5,6 +5,7 @@ import { Loader2, Plus, Trash2, Pencil, Check } from "lucide-react"
 import { toast } from "sonner"
 import { staffApi } from "@/lib/api/staff"
 import { BottomSheet } from "@/components/shared/BottomSheet"
+import { ImageUploadField } from "@/components/admin/ImageUploadField"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { MenuItem, MenuCategory, ItemModifier, DietaryFlag, ItemBadge } from "@/types/api"
@@ -52,6 +53,7 @@ interface PendingModifier {
 interface ModalForm {
   name: string
   description: string
+  imageUrl: string
   price: string
   position: number
   categoryId: number
@@ -94,6 +96,7 @@ export function MenuItemModal({
   const [form, setForm] = useState<ModalForm>({
     name: item?.name ?? "",
     description: item?.description ?? "",
+    imageUrl: item?.image_url ?? "",
     price: item?.price != null ? String(item.price) : "",
     position: item?.position ?? 0,
     categoryId: initialCategoryId,
@@ -191,6 +194,7 @@ export function MenuItemModal({
             dietary_flags: form.dietaryFlags,
             item_badges: form.itemBadges,
             spice_level: form.spiceLevel,
+            image_url: form.imageUrl.trim() || undefined,
           }
         )
 
@@ -223,6 +227,7 @@ export function MenuItemModal({
             item_badges: form.itemBadges,
             spice_level: form.spiceLevel,
             category_id: form.categoryId !== item!.category_id ? form.categoryId : undefined,
+            image_url: form.imageUrl.trim(),
           },
           token
         )
@@ -393,13 +398,28 @@ export function MenuItemModal({
             />
           </div>
 
-          {/* Image placeholder (Plan 02 dependency) */}
-          <div style={{
-            padding: "10px 14px", borderRadius: "var(--rad-md)",
-            border: "1.5px dashed var(--line-2)",
-            fontSize: 12, color: "var(--ink-4)", textAlign: "center",
-          }}>
-            Image upload coming soon
+          {/* Image */}
+          <div>
+            <label style={labelStyle}>Image</label>
+            {mode === "edit" && item ? (
+              <ImageUploadField
+                currentUrl={form.imageUrl || null}
+                uploadEndpoint="menu-item"
+                itemId={item.id}
+                onUploaded={(url) => patch({ imageUrl: url })}
+                onRemoved={() => patch({ imageUrl: "" })}
+              />
+            ) : (
+              <p style={{ fontSize: 12, color: "var(--ink-4)", margin: "0 0 8px" }}>
+                Save the item first to upload a photo, or paste an image URL below.
+              </p>
+            )}
+            <Input
+              value={form.imageUrl}
+              onChange={(e) => patch({ imageUrl: e.target.value })}
+              placeholder="Or paste an image URL (https://…)"
+              style={{ marginTop: mode === "edit" && item ? 8 : 0 }}
+            />
           </div>
         </div>
 

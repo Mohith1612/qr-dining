@@ -18,6 +18,60 @@ const inputStyle: React.CSSProperties = {
   background: "var(--bg-elev-1)", color: "var(--ink-1)", padding: "0 10px", fontSize: 14, fontFamily: "inherit", width: "100%",
 }
 
+type SetFn = <K extends keyof CollateralConfig>(key: K, value: CollateralConfig[K]) => void
+
+// Hoisted to module scope so their component identity is stable across parent
+// re-renders — defining them inside CollateralConfigForm remounted the inputs on
+// every keystroke, which dropped focus after each character.
+function TextField({ field, label, placeholder, config, set, disabled }: {
+  field: keyof CollateralConfig
+  label: string
+  placeholder?: string
+  config: CollateralConfig
+  set: SetFn
+  disabled?: boolean
+}) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <span style={labelStyle}>{label}</span>
+      <input
+        type="text"
+        value={String(config[field] ?? "")}
+        maxLength={FIELD_LIMITS[field as string]}
+        disabled={disabled}
+        placeholder={placeholder}
+        onChange={(e) => set(field, e.target.value as CollateralConfig[typeof field])}
+        style={inputStyle}
+      />
+    </label>
+  )
+}
+
+function Toggle({ field, label, hint, config, set, disabled }: {
+  field: keyof CollateralConfig
+  label: string
+  hint?: string
+  config: CollateralConfig
+  set: SetFn
+  disabled?: boolean
+}) {
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: disabled ? "default" : "pointer", padding: "6px 0" }}>
+      <input
+        type="checkbox"
+        checked={Boolean(config[field])}
+        disabled={disabled}
+        onChange={(e) => set(field, e.target.checked as CollateralConfig[typeof field])}
+        style={{ width: 16, height: 16, accentColor: "var(--accent)" }}
+      />
+      <span>
+        <span style={{ fontSize: 14, color: "var(--ink-1)" }}>{label}</span>
+        {hint ? <span style={{ fontSize: 12, color: "var(--ink-4)", marginLeft: 8 }}>{hint}</span> : null}
+      </span>
+    </label>
+  )
+}
+
 export function CollateralConfigForm({
   config,
   onChange,
@@ -27,43 +81,8 @@ export function CollateralConfigForm({
   onChange: (next: CollateralConfig) => void
   disabled?: boolean
 }) {
-  const set = <K extends keyof CollateralConfig>(key: K, value: CollateralConfig[K]) => onChange({ ...config, [key]: value })
+  const set: SetFn = (key, value) => onChange({ ...config, [key]: value })
   const allows = (b: CollateralBlock) => formatAllows(config.format, b)
-
-  function TextField({ field, label, placeholder }: { field: keyof CollateralConfig; label: string; placeholder?: string }) {
-    return (
-      <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span style={labelStyle}>{label}</span>
-        <input
-          type="text"
-          value={String(config[field] ?? "")}
-          maxLength={FIELD_LIMITS[field as string]}
-          disabled={disabled}
-          placeholder={placeholder}
-          onChange={(e) => set(field, e.target.value as CollateralConfig[typeof field])}
-          style={inputStyle}
-        />
-      </label>
-    )
-  }
-
-  function Toggle({ field, label, hint }: { field: keyof CollateralConfig; label: string; hint?: string }) {
-    return (
-      <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: disabled ? "default" : "pointer", padding: "6px 0" }}>
-        <input
-          type="checkbox"
-          checked={Boolean(config[field])}
-          disabled={disabled}
-          onChange={(e) => set(field, e.target.checked as CollateralConfig[typeof field])}
-          style={{ width: 16, height: 16, accentColor: "var(--accent)" }}
-        />
-        <span>
-          <span style={{ fontSize: 14, color: "var(--ink-1)" }}>{label}</span>
-          {hint ? <span style={{ fontSize: 12, color: "var(--ink-4)", marginLeft: 8 }}>{hint}</span> : null}
-        </span>
-      </label>
-    )
-  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
@@ -101,10 +120,10 @@ export function CollateralConfigForm({
       {/* Content toggles — only those the format supports */}
       <div>
         <div style={{ ...labelStyle, marginBottom: 4 }}>Content blocks</div>
-        {allows("logo") && <Toggle field="showLogo" label="Show logo" hint="when a restaurant logo is set" />}
-        {allows("branch") && <Toggle field="showBranch" label="Show branch" />}
-        {allows("wifi") && <Toggle field="showWifi" label="Show WiFi" />}
-        {allows("footer") && <Toggle field="showFooter" label="Show footer note" />}
+        {allows("logo") && <Toggle field="showLogo" label="Show logo" hint="when a restaurant logo is set" config={config} set={set} disabled={disabled} />}
+        {allows("branch") && <Toggle field="showBranch" label="Show branch" config={config} set={set} disabled={disabled} />}
+        {allows("wifi") && <Toggle field="showWifi" label="Show WiFi" config={config} set={set} disabled={disabled} />}
+        {allows("footer") && <Toggle field="showFooter" label="Show footer note" config={config} set={set} disabled={disabled} />}
         {!allows("logo") && !allows("branch") && !allows("wifi") && !allows("footer") && (
           <p style={{ fontSize: 12, color: "var(--ink-4)", margin: 0 }}>This format is minimal — no optional blocks.</p>
         )}
@@ -113,21 +132,21 @@ export function CollateralConfigForm({
       {/* Text content — only fields the format supports */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={labelStyle}>Content</div>
-        {allows("welcome") && <TextField field="welcomeMessage" label="Welcome message" placeholder="Scan to begin your evening" />}
-        {allows("subtitle") && <TextField field="subtitle" label="Subtitle" placeholder="No app download required" />}
-        {allows("tagline") && <TextField field="tagline" label="Tagline" placeholder="Fine dining reimagined" />}
-        {allows("branch") && <TextField field="branchDisplay" label="Branch display" placeholder="Bandra" />}
-        {allows("footer") && <TextField field="footerNote" label="Footer note" placeholder="Thank you for dining with us" />}
+        {allows("welcome") && <TextField field="welcomeMessage" label="Welcome message" placeholder="Scan to begin your evening" config={config} set={set} disabled={disabled} />}
+        {allows("subtitle") && <TextField field="subtitle" label="Subtitle" placeholder="No app download required" config={config} set={set} disabled={disabled} />}
+        {allows("tagline") && <TextField field="tagline" label="Tagline" placeholder="Fine dining reimagined" config={config} set={set} disabled={disabled} />}
+        {allows("branch") && <TextField field="branchDisplay" label="Branch display" placeholder="Bandra" config={config} set={set} disabled={disabled} />}
+        {allows("footer") && <TextField field="footerNote" label="Footer note" placeholder="Thank you for dining with us" config={config} set={set} disabled={disabled} />}
         {allows("wifi") && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <TextField field="wifiName" label="WiFi name" placeholder="Lounge-Guest" />
-            <TextField field="wifiPassword" label="WiFi password" placeholder="welcome123" />
+            <TextField field="wifiName" label="WiFi name" placeholder="Lounge-Guest" config={config} set={set} disabled={disabled} />
+            <TextField field="wifiPassword" label="WiFi password" placeholder="welcome123" config={config} set={set} disabled={disabled} />
           </div>
         )}
         {allows("socials") && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <TextField field="instagram" label="Instagram" placeholder="maisonsaffron" />
-            <TextField field="website" label="Website" placeholder="maisonsaffron.com" />
+            <TextField field="instagram" label="Instagram" placeholder="maisonsaffron" config={config} set={set} disabled={disabled} />
+            <TextField field="website" label="Website" placeholder="maisonsaffron.com" config={config} set={set} disabled={disabled} />
           </div>
         )}
       </div>

@@ -4,6 +4,7 @@ import { useRef, useState, useEffect } from "react"
 import { Camera, X } from "lucide-react"
 import { toast } from "sonner"
 import { uploadApi } from "@/lib/api/upload"
+import { ApiError } from "@/lib/api/client"
 import { useStaffStore } from "@/store/staff"
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"]
@@ -81,6 +82,12 @@ export function ImageUploadField({
       setUploading(false)
       setPreviewUrl(currentUrl ?? null)
       if (err instanceof Error && err.name === "AbortError") return
+      // 503 = image hosting (R2) isn't configured on this deployment. Steer the
+      // operator to the manual image-URL field instead of a generic failure.
+      if (err instanceof ApiError && err.status === 503) {
+        toast.error("Image hosting isn't set up here — paste an image URL below instead.")
+        return
+      }
       toast.error("Upload failed — please try again")
     } finally {
       URL.revokeObjectURL(localPreview)

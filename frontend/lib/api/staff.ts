@@ -88,6 +88,7 @@ export const staffApi = {
       dietary_flags?: DietaryFlag[]
       item_badges?: ItemBadge[]
       spice_level?: number
+      image_url?: string
     }
   ) =>
     api.post<MenuItem>(
@@ -99,7 +100,7 @@ export const staffApi = {
   updateMenuItem: (
     itemId: number,
     branchId: number,
-    data: { name: string; price: number; description?: string; position?: number; dietary_flags?: DietaryFlag[]; item_badges?: ItemBadge[]; spice_level?: number; category_id?: number },
+    data: { name: string; price: number; description?: string; position?: number; dietary_flags?: DietaryFlag[]; item_badges?: ItemBadge[]; spice_level?: number; category_id?: number; image_url?: string },
     staffToken: string
   ) =>
     api.patch<MenuItem>(`/menu/items/${itemId}`, { ...data, branch_id: branchId }, { staffToken }),

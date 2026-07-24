@@ -11,6 +11,10 @@ export function Avatar({ name, size = 28 }: AvatarProps) {
   const hue = nameToHue(name)
   const initial = name.trim().charAt(0).toUpperCase()
 
+  // Hue comes from the name; saturation/lightness/ink read from theme tokens with
+  // sensible fallbacks so a surface can retune them. The blob stays mid-dark and the
+  // ink stays light, so initials keep contrast on both light and dark surfaces
+  // (previously it used --ink-1, which inverted to dark text on light themes).
   return (
     <div
       aria-label={name}
@@ -22,11 +26,11 @@ export function Avatar({ name, size = 28 }: AvatarProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: `linear-gradient(135deg, hsl(${hue}, 55%, 38%), hsl(${(hue + 30) % 360}, 40%, 28%))`,
+        background: `linear-gradient(135deg, hsl(${hue}, var(--avatar-sat-1, 55%), var(--avatar-l1, 42%)), hsl(${(hue + 30) % 360}, var(--avatar-sat-2, 42%), var(--avatar-l2, 32%)))`,
         boxShadow: "var(--shadow-1)",
         fontSize: size * 0.42,
         fontWeight: 600,
-        color: "var(--ink-1)",
+        color: "var(--avatar-ink, #fff)",
         userSelect: "none",
         letterSpacing: 0,
       }}
