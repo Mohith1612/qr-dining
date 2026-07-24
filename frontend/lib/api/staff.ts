@@ -181,10 +181,18 @@ export const staffApi = {
   addModifier: (
     itemId: number,
     branchId: number,
-    data: { name: string; price_delta: number; is_required: boolean; modifier_group: string },
+    data: { name: string; price_delta: number; is_required: boolean; modifier_group: string; single_select?: boolean },
     staffToken: string
   ) =>
     api.post<ItemModifier>(`/menu/items/${itemId}/modifiers`, { ...data, branch_id: branchId }, { staffToken }),
+
+  updateModifier: (
+    modifierId: number,
+    branchId: number,
+    data: { name: string; price_delta: number; is_required: boolean; modifier_group: string; single_select?: boolean },
+    staffToken: string
+  ) =>
+    api.patch<ItemModifier>(`/menu/modifiers/${modifierId}`, { ...data, branch_id: branchId }, { staffToken }),
 
   deleteModifier: (modifierId: number, branchId: number, staffToken: string) =>
     api.delete<void>(`/menu/modifiers/${modifierId}?branch_id=${branchId}`, { staffToken }),

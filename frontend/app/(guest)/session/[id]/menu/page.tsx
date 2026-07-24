@@ -351,14 +351,23 @@ export default function MenuPage({ params }: Props) {
   }
 
   function toggleModifier(id: number) {
-    setSheet((s) =>
-      s ? {
-        ...s,
-        selectedModifiers: s.selectedModifiers.includes(id)
-          ? s.selectedModifiers.filter((m) => m !== id)
-          : [...s.selectedModifiers, id],
-      } : s
-    )
+    setSheet((s) => {
+      if (!s) return s
+      if (s.selectedModifiers.includes(id)) {
+        return { ...s, selectedModifiers: s.selectedModifiers.filter((m) => m !== id) }
+      }
+      const mod = s.item.modifiers?.find((m) => m.id === id)
+      const group = mod?.modifier_group ?? ""
+      // Single-select: any modifier in this group flagged single_select makes
+      // the whole group exclusive — picking one clears its siblings.
+      const isSingleSelect =
+        !!group && (s.item.modifiers ?? []).some((m) => (m.modifier_group ?? "") === group && m.single_select)
+      const groupIds = isSingleSelect
+        ? new Set((s.item.modifiers ?? []).filter((m) => (m.modifier_group ?? "") === group).map((m) => m.id))
+        : new Set<number>()
+      const kept = s.selectedModifiers.filter((m) => !groupIds.has(m))
+      return { ...s, selectedModifiers: [...kept, id] }
+    })
   }
 
   async function handleAddToCart() {

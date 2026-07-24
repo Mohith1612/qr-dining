@@ -57,6 +57,7 @@ export interface ItemModifier {
   price_delta: number
   is_required?: boolean
   modifier_group?: string
+  single_select?: boolean
 }
 
 export type DietaryFlag = 'vegetarian' | 'vegan' | 'jain' | 'egg' | 'non-veg'

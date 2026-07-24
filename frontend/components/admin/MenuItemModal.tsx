@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Plus, Trash2 } from "lucide-react"
+import { Loader2, Plus, Trash2, Pencil, Check } from "lucide-react"
 import { toast } from "sonner"
 import { staffApi } from "@/lib/api/staff"
 import { BottomSheet } from "@/components/shared/BottomSheet"
@@ -46,6 +46,7 @@ interface PendingModifier {
   modifier_group: string
   price_delta: string
   is_required: boolean
+  single_select: boolean
 }
 
 interface ModalForm {
@@ -105,7 +106,7 @@ export function MenuItemModal({
     modifiers: item?.modifiers ?? [],
     pendingModifiers: [],
     deletedModifierIds: [],
-    newMod: { name: "", modifier_group: "", price_delta: "0", is_required: false },
+    newMod: { name: "", modifier_group: "", price_delta: "0", is_required: false, single_select: false },
     addingMod: false,
     saving: false,
     deleting: false,
@@ -115,6 +116,43 @@ export function MenuItemModal({
 
   function patch(updates: Partial<ModalForm>) {
     setForm((f) => ({ ...f, ...updates }))
+  }
+
+  // Inline edit of an existing (already-persisted) modifier.
+  const [editMod, setEditMod] = useState<(PendingModifier & { id: number }) | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+
+  function startEditMod(mod: ItemModifier) {
+    setEditMod({
+      id: mod.id,
+      name: mod.name,
+      modifier_group: mod.modifier_group ?? "",
+      price_delta: String(mod.price_delta ?? 0),
+      is_required: !!mod.is_required,
+      single_select: !!mod.single_select,
+    })
+  }
+
+  async function saveEditMod() {
+    if (!editMod) return
+    if (!editMod.name.trim()) { toast.error("Modifier name required"); return }
+    setEditSaving(true)
+    try {
+      const updated = await staffApi.updateModifier(editMod.id, branchId, {
+        name: editMod.name.trim(),
+        price_delta: parseFloat(editMod.price_delta) || 0,
+        is_required: editMod.is_required,
+        modifier_group: editMod.modifier_group.trim(),
+        single_select: editMod.single_select,
+      }, token)
+      patch({ modifiers: form.modifiers.map((m) => (m.id === updated.id ? updated : m)) })
+      setEditMod(null)
+      toast.success("Modifier updated")
+    } catch {
+      toast.error("Couldn't update modifier")
+    } finally {
+      setEditSaving(false)
+    }
   }
 
   // ── Validation ──────────────────────────────────────────────────────────────
@@ -167,6 +205,7 @@ export function MenuItemModal({
             price_delta: parseFloat(mod.price_delta) || 0,
             is_required: mod.is_required,
             modifier_group: mod.modifier_group.trim(),
+            single_select: mod.single_select,
           }, token)
           saved = { ...saved, modifiers: [...(saved.modifiers ?? []), created] }
         }
@@ -210,6 +249,7 @@ export function MenuItemModal({
             price_delta: parseFloat(mod.price_delta) || 0,
             is_required: mod.is_required,
             modifier_group: mod.modifier_group.trim(),
+            single_select: mod.single_select,
           }, token)
           addedMods.push(created)
         }
@@ -245,7 +285,7 @@ export function MenuItemModal({
     if (!form.newMod.name.trim()) { toast.error("Modifier name required"); return }
     patch({
       pendingModifiers: [...form.pendingModifiers, form.newMod],
-      newMod: { name: "", modifier_group: "", price_delta: "0", is_required: false },
+      newMod: { name: "", modifier_group: "", price_delta: "0", is_required: false, single_select: false },
       addingMod: false,
     })
   }
@@ -501,6 +541,31 @@ export function MenuItemModal({
           {/* Existing modifiers (edit mode) */}
           <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
             {allMods.map((mod) => (
+              editMod?.id === mod.id ? (
+                <div key={mod.id} style={{ ...modRowStyle, flexDirection: "column", alignItems: "stretch", gap: 8, borderColor: "var(--accent-soft)" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <Input value={editMod.name} onChange={(e) => setEditMod({ ...editMod, name: e.target.value })} placeholder="Name" style={{ fontSize: 13 }} />
+                    <Input value={editMod.modifier_group} onChange={(e) => setEditMod({ ...editMod, modifier_group: e.target.value })} placeholder="Group" style={{ fontSize: 13 }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <Input type="number" value={editMod.price_delta} onChange={(e) => setEditMod({ ...editMod, price_delta: e.target.value })} placeholder="₹ delta" style={{ flex: 1, fontSize: 13, minWidth: 90 }} />
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink-2)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={editMod.is_required} onChange={(e) => setEditMod({ ...editMod, is_required: e.target.checked })} style={{ accentColor: "var(--accent)" }} />
+                      Required
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink-2)", cursor: "pointer" }} title="Guests may pick only one option from this group">
+                      <input type="checkbox" checked={editMod.single_select} onChange={(e) => setEditMod({ ...editMod, single_select: e.target.checked })} style={{ accentColor: "var(--accent)" }} />
+                      Pick one only
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Button onClick={saveEditMod} style={{ flex: 1 }} disabled={editSaving}>
+                      {editSaving ? <Loader2 size={14} className="animate-spin" /> : <><Check size={14} style={{ marginRight: 4 }} />Save</>}
+                    </Button>
+                    <Button variant="outline" onClick={() => setEditMod(null)} style={{ flex: 1 }} disabled={editSaving}>Cancel</Button>
+                  </div>
+                </div>
+              ) : (
               <div key={mod.id} style={modRowStyle}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 13, fontWeight: 500, color: "var(--ink-1)" }}>{mod.name}</p>
@@ -508,8 +573,19 @@ export function MenuItemModal({
                     {mod.modifier_group && <span style={{ marginRight: 8 }}>{mod.modifier_group}</span>}
                     {mod.price_delta >= 0 ? `+₹${mod.price_delta}` : `-₹${Math.abs(mod.price_delta)}`}
                     {mod.is_required && <span style={{ marginLeft: 8, color: "var(--accent)" }}>Required</span>}
+                    {mod.single_select && <span style={{ marginLeft: 8, color: "var(--ink-4)" }}>Pick one</span>}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  className="press"
+                  onClick={() => startEditMod(mod)}
+                  style={iconBtnStyle}
+                  aria-label="Edit modifier"
+                  disabled={form.saving}
+                >
+                  <Pencil size={12} />
+                </button>
                 <button
                   type="button"
                   className="press"
@@ -521,6 +597,7 @@ export function MenuItemModal({
                   <Trash2 size={12} />
                 </button>
               </div>
+              )
             ))}
 
             {/* Pending modifiers */}
@@ -585,6 +662,18 @@ export function MenuItemModal({
                     style={{ accentColor: "var(--accent)" }}
                   />
                   Required
+                </label>
+                <label
+                  title="Guests may pick only one option from this group (e.g. sweet OR salty)"
+                  style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink-2)", cursor: "pointer", flexShrink: 0 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.newMod.single_select}
+                    onChange={(e) => patch({ newMod: { ...form.newMod, single_select: e.target.checked } })}
+                    style={{ accentColor: "var(--accent)" }}
+                  />
+                  Pick one only
                 </label>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
