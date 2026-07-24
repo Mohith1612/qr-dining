@@ -1,25 +1,129 @@
-/* Ops / Platform surface tokens.
+/* Ops / Platform surface tokens (UI redesign — "Harmony" ops design).
  *
  * Staff and platform pages are NOT tenant-branded. Instead of the guest
  * [data-theme] system (applyTheme), they set a static [data-surface] on the
- * shell and inherit fixed "ops" tokens — this structurally prevents the staff
- * theme from resetting on refresh.
+ * shell + <html>, inheriting these fixed tokens — which is why the staff theme
+ * no longer resets on refresh.
  *
- * These blocks RE-MAP the same governed theme keys that themes.css defines
- * (--bg-base, --bg-elev-1/2, --bg-sunken, --ink-1..4, --accent*, --ok/--warn/
- * --alert/--info, --line-1..3, --shadow-1..3, --rad-*), plus ops-only --font-*
- * vars. Imported AFTER themes.css so [data-surface] wins over [data-theme].
+ * These blocks RE-MAP the same governed theme keys that themes.css defines, so
+ * every existing staff/platform page (which reads --bg-base / --ink-1 / --accent
+ * etc. inline) is restyled with zero class renames. Values are oklch, derived
+ * from samples/guest-staff-harmony/src/styles.css (dark ops slate; near-black
+ * platform with an electric-purple accent).
  *
- * VALUES ARE FILLED BY THE OPS/PLATFORM TRACK (commit B1). Until then these are
- * intentionally empty: staff/platform fall back to :root, preserving the current
- * look while the refresh-reset bug is already fixed by the static attribute.
+ * Selectors are `:root[data-surface=...]` (specificity 0,2,0) so they win over
+ * themes.css `:root` / `[data-theme]` (0,1,0) regardless of stylesheet import
+ * order; the bare `[data-surface=...]` covers login pages that set the attribute
+ * on a wrapper div rather than on <html>.
  */
 
+:root[data-surface="ops"],
 [data-surface="ops"] {
-  /* Track B (B1): cool-slate canvas + amber accent + Inter Tight / Instrument
-     Serif / JetBrains Mono. Re-map every governed key here. */
+  /* surfaces — cool slate */
+  --bg-base:    oklch(0.16 0.012 250);
+  --bg-sunken:  oklch(0.13 0.012 250);
+  --bg-elev-1:  oklch(0.20 0.014 250);
+  --bg-elev-2:  oklch(0.235 0.016 250);
+  --bg-elev-3:  oklch(0.27 0.018 250);
+  --bg-overlay: oklch(0.10 0.010 250 / 0.72);
+
+  /* ink */
+  --ink-1: oklch(0.97 0.004 80);
+  --ink-2: oklch(0.72 0.008 60);
+  --ink-3: oklch(0.55 0.008 60);
+  --ink-4: oklch(0.42 0.008 60);
+
+  /* accent — warm amber */
+  --accent:        oklch(0.78 0.15 60);
+  --accent-soft:   oklch(0.30 0.06 55);
+  --accent-strong: oklch(0.85 0.16 65);
+  --accent-ink:    oklch(0.20 0.02 60);
+
+  /* status */
+  --ok:    oklch(0.68 0.14 155);  --ok-soft:    oklch(0.28 0.06 155);
+  --warn:  oklch(0.78 0.15 80);   --warn-soft:  oklch(0.30 0.07 80);
+  --alert: oklch(0.62 0.21 25);   --alert-soft: oklch(0.30 0.08 25);
+  --info:  oklch(0.62 0.14 240);  --info-soft:  oklch(0.28 0.06 240);
+
+  /* borders (light hairlines on dark) */
+  --line-1: oklch(1 0 0 / 0.06);
+  --line-2: oklch(1 0 0 / 0.10);
+  --line-3: oklch(1 0 0 / 0.16);
+
+  /* depth */
+  --shadow-1: 0 1px 0 oklch(1 0 0 / 0.04), 0 1px 2px oklch(0 0 0 / 0.40);
+  --shadow-2: 0 10px 30px -10px oklch(0 0 0 / 0.55);
+  --shadow-3: 0 30px 80px -20px oklch(0 0 0 / 0.70);
+  --glow-warm: radial-gradient(80% 60% at 50% 0%, oklch(0.78 0.15 60 / 0.08), transparent 70%);
+
+  /* radii — crisper ops scale */
+  --rad-sm: 6px;
+  --rad-md: 10px;
+  --rad-lg: 14px;
+  --rad-xl: 22px;
+  --rad-pill: 999px;
+
+  /* type — Inter Tight UI, Instrument Serif display, JetBrains Mono numerics */
+  --font-sans:    var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-instrument-serif), ui-serif, Georgia, serif;
+  --font-mono:    var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+:root[data-surface="platform"],
 [data-surface="platform"] {
-  /* Track B (B1): near-black canvas + electric-purple accent. */
+  /* surfaces — near-black neutral */
+  --bg-base:    oklch(0.12 0 0);
+  --bg-sunken:  oklch(0.09 0 0);
+  --bg-elev-1:  oklch(0.16 0 0);
+  --bg-elev-2:  oklch(0.20 0 0);
+  --bg-elev-3:  oklch(0.24 0 0);
+  --bg-overlay: oklch(0.06 0 0 / 0.74);
+
+  /* ink */
+  --ink-1: oklch(0.97 0.004 80);
+  --ink-2: oklch(0.72 0.006 0);
+  --ink-3: oklch(0.55 0.006 0);
+  --ink-4: oklch(0.42 0.006 0);
+
+  /* accent — electric purple */
+  --accent:        oklch(0.70 0.20 265);
+  --accent-soft:   oklch(0.28 0.10 265);
+  --accent-strong: oklch(0.78 0.20 265);
+  --accent-ink:    oklch(0.97 0.02 265);
+
+  /* status */
+  --ok:    oklch(0.68 0.14 155);  --ok-soft:    oklch(0.26 0.06 155);
+  --warn:  oklch(0.78 0.15 80);   --warn-soft:  oklch(0.28 0.07 80);
+  --alert: oklch(0.62 0.21 25);   --alert-soft: oklch(0.28 0.08 25);
+  --info:  oklch(0.62 0.14 240);  --info-soft:  oklch(0.26 0.06 240);
+
+  /* borders */
+  --line-1: oklch(1 0 0 / 0.06);
+  --line-2: oklch(1 0 0 / 0.10);
+  --line-3: oklch(1 0 0 / 0.16);
+
+  /* depth */
+  --shadow-1: 0 1px 0 oklch(1 0 0 / 0.04), 0 1px 2px oklch(0 0 0 / 0.50);
+  --shadow-2: 0 10px 30px -10px oklch(0 0 0 / 0.65);
+  --shadow-3: 0 30px 80px -20px oklch(0 0 0 / 0.80);
+  --glow-warm: radial-gradient(80% 60% at 50% 0%, oklch(0.70 0.20 265 / 0.08), transparent 70%);
+
+  /* radii */
+  --rad-sm: 6px;
+  --rad-md: 10px;
+  --rad-lg: 14px;
+  --rad-xl: 22px;
+  --rad-pill: 999px;
+
+  /* type */
+  --font-sans:    var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-instrument-serif), ui-serif, Georgia, serif;
+  --font-mono:    var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* The .mono utility hardcodes Geist Mono in globals.css; route it to the ops/
+ * platform mono face within these surfaces. */
+[data-surface="ops"] .mono,
+[data-surface="platform"] .mono {
+  font-family: var(--font-mono);
 }
