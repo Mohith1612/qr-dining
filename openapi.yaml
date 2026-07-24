@@ -1,7 +1,7 @@
 openapi: "3.1.0"
 info:
   title: qr-dining API
-  version: "2.1.0"
+  version: "2.2.0"
   description: |
     Realtime, session-centric dine-in operating system plus its SaaS control plane.
     Covers the guest dining loop (session lifecycle, shared cart, orders, payments, assistance,
@@ -212,6 +212,29 @@ components:
         price_delta:
           type: number
           description: Price adjustment (positive = surcharge, negative = discount)
+
+    ItemModifier:
+      type: object
+      description: A configurable modifier attached to a menu item (menu/admin surface)
+      properties:
+        id:
+          type: integer
+        menu_item_id:
+          type: integer
+        name:
+          type: string
+        price_delta:
+          type: number
+        is_required:
+          type: boolean
+        modifier_group:
+          type: string
+          description: Modifiers sharing a group are presented together
+        single_select:
+          type: boolean
+          description: |
+            Group-wide flag — when set, the guest may pick only one option from this
+            `modifier_group` (the cart rejects more with 422 `MODIFIER_CONFLICT`).
 
     CartItem:
       type: object
@@ -1323,14 +1346,16 @@ paths:
                 code: MENU_ITEM_NOT_FOUND
                 message: menu item not found
         "422":
-          description: Menu item unavailable
+          description: |
+            Menu item unavailable (`MENU_ITEM_UNAVAILABLE`), or more than one option was
+            selected from a single-select modifier group (`MODIFIER_CONFLICT`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIError"
               example:
-                code: MENU_ITEM_UNAVAILABLE
-                message: menu item is not available
+                code: MODIFIER_CONFLICT
+                message: Only one option may be chosen from this group.
 
   /sessions/{id}/cart/items/{item_id}:
     delete:
@@ -1682,6 +1707,17 @@ paths:
                 provider_payment_ref:
                   type: string
                   description: Provider payment reference for externally created provider payments
+                promo_code:
+                  type: [string, "null"]
+                  description: |
+                    Optional promo code applied at the bill. Validated BEFORE any state mutation;
+                    an invalid code is rejected without freezing the cart or burning the idempotency
+                    key. The discount is folded into the immutable bill snapshot and the redemption is
+                    recorded against the payment. The idempotency hash includes the promo code, so
+                    changing the code on retry produces a fresh payment (regenerate the client key too).
+                phone_e164:
+                  type: [string, "null"]
+                  description: Guest phone in E.164 form. Required only when the promo enforces a per-guest limit (else `PROMO_PHONE_REQUIRED`).
       responses:
         "201":
           description: Payment initiated
@@ -1703,7 +1739,7 @@ paths:
                 code: NOT_SESSION_HOST
                 message: only the session host can initiate payment
         "404":
-          description: Session not found
+          description: Session not found, or promo code not valid/active (`PROMO_NOT_FOUND`)
           content:
             application/json:
               schema:
@@ -1712,11 +1748,24 @@ paths:
                 code: SESSION_NOT_FOUND
                 message: session not found
         "409":
-          description: Cart already frozen / payment in progress
+          description: |
+            Cart already frozen / payment in progress, or promo conflict
+            (`PROMO_EXHAUSTED`, `PROMO_ALREADY_USED`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIError"
+        "422":
+          description: |
+            Promo present but not applicable: `PROMO_PHONE_REQUIRED` (phone needed for a
+            per-guest-limited promo) or `MIN_ORDER_NOT_MET` (bill below the promo minimum).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: PROMO_PHONE_REQUIRED
+                message: Add your phone number to use this offer.
 
   /webhooks/payments/{provider}:
     post:
@@ -2382,6 +2431,44 @@ paths:
 
   # ── Staff Management ──────────────────────────────────────────────────────
   /branches/{id}/staff:
+    get:
+      summary: List the active staff roster (owner/manager)
+      description: Returns active staff for the branch **without PIN hashes**. Used by the admin Staff tab.
+      tags: [Staff]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Active staff roster
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  staff:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        branch_id: { type: integer }
+                        name: { type: string }
+                        role:
+                          type: string
+                          enum: [owner, manager, kitchen, waiter]
+                        staff_code: { type: string }
+                        is_active: { type: boolean }
+                        created_at: { type: string, format: date-time }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
       summary: Create a new staff member (owner only)
       tags: [Staff]
@@ -2473,6 +2560,58 @@ paths:
                 message: current PIN is incorrect
         "403":
           $ref: "#/components/responses/Forbidden"
+
+  /staff/{id}/pin/reset:
+    post:
+      summary: Reset a staff member's PIN (manager/owner; forgotten-PIN path)
+      description: |
+        Manager/owner reset — **no `current_pin` required**. Rules: you cannot reset your own PIN
+        here (use `PATCH /staff/{id}/pin`); a manager may reset only waiter/kitchen; an owner may
+        reset anyone in the branch. The target's existing tokens are invalidated.
+      tags: [Staff]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_pin]
+              properties:
+                new_pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 8
+      responses:
+        "204":
+          description: PIN reset
+        "400":
+          description: Invalid request, or attempting to reset your own PIN via this path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller may not reset this target (e.g. a manager resetting an owner/manager)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "404":
+          description: Staff not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
 
   /staff/{id}/deactivate:
     patch:
@@ -2799,7 +2938,7 @@ paths:
   /branches/{id}:
     get:
       summary: Get branch detail (staff)
-      description: Includes `logo_url` and `restaurant_name` for collateral/branding.
+      description: Includes `logo_url` and `restaurant_name` for collateral/branding, plus `restaurant_id` (for plan/subscription lookups without a tenant subdomain) and `customer_memory_enabled`.
       tags: [Branches]
       security:
         - StaffBearer: []
@@ -2812,6 +2951,23 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  id: { type: integer }
+                  name: { type: string }
+                  organization_id: { type: integer }
+                  restaurant_id: { type: integer }
+                  branch_code: { type: string }
+                  status: { type: string }
+                  support_metadata: { type: object, additionalProperties: true }
+                  session_timeout_minutes: { type: integer }
+                  order_prefix: { type: string }
+                  theme: { type: string }
+                  tax_rate: { type: number }
+                  service_charge_rate: { type: number }
+                  include_tax_in_price: { type: boolean }
+                  customer_memory_enabled: { type: boolean }
+                  restaurant_name: { type: string }
+                  logo_url: { type: string }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2840,6 +2996,9 @@ paths:
                 tax_rate: { type: number }
                 service_charge_rate: { type: number }
                 include_tax_in_price: { type: boolean }
+                customer_memory_enabled:
+                  type: boolean
+                  description: Toggles the guest customer-memory (saved preferences) opt-in for this branch.
       responses:
         "200":
           description: Updated branch
@@ -3395,6 +3554,26 @@ paths:
                 type: array
                 items:
                   type: object
+                  properties:
+                    id: { type: integer }
+                    code: { type: string }
+                    type:
+                      type: string
+                      enum: [flat_amount, percentage]
+                    value: { type: number }
+                    min_order_amount: { type: number }
+                    max_uses: { type: [integer, "null"] }
+                    uses_per_phone: { type: integer }
+                    valid_from: { type: string, format: date-time }
+                    valid_until: { type: string, format: date-time }
+                    time_window_start:
+                      type: [string, "null"]
+                      description: 'Local start time as "HH:MM" (null when no daily window)'
+                    time_window_end:
+                      type: [string, "null"]
+                      description: 'Local end time as "HH:MM" (null when no daily window)'
+                    is_active: { type: boolean }
+                    description: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
     post:
@@ -3509,6 +3688,12 @@ paths:
                 price_delta: { type: number }
                 is_required: { type: boolean }
                 modifier_group: { type: string }
+                single_select:
+                  type: boolean
+                  description: |
+                    Group-wide flag. A `(item, modifier_group)` group is single-select if ANY
+                    of its rows carries this flag; the guest may then choose only one option from
+                    that group (the cart rejects more with 422 `MODIFIER_CONFLICT`).
                 branch_id: { type: integer }
       responses:
         "201":
@@ -3516,7 +3701,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/ItemModifier"
         "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -3573,6 +3758,39 @@ paths:
                 $ref: "#/components/schemas/APIError"
 
   /menu/modifiers/{id}:
+    patch:
+      summary: Update an item modifier (owner/manager)
+      description: Edits a modifier in place. Setting `single_select` applies group-wide to the modifier's `(item, modifier_group)`.
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, branch_id]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                price_delta: { type: number }
+                is_required: { type: boolean }
+                modifier_group: { type: string }
+                single_select: { type: boolean }
+                branch_id: { type: integer }
+      responses:
+        "200":
+          description: Modifier updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemModifier"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
     delete:
       summary: Delete an item modifier (owner/manager)
       tags: [Menu Management]
