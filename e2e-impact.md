@@ -28,3 +28,9 @@ Full e2e reconciliation is deferred; this is the breadcrumb trail.
 - All visual; no markup/text/selector changes. Remaining shared/* (StatusBadge, EmptyState,
   SectionHeader, Vignette, BeverageModifierGrid) already consume governed tokens (serene via A1) and
   will be fine-tuned in their screen commits (A5/A7). No e2e impact expected.
+
+### A4 — welcome + specials carousel (session/[id]/page.tsx)
+- Restructured: prominent **View Menu** + secondary tiles, dining party, **Today's Specials**
+  (FeaturedCarousel/is_featured), **Currently Popular** list. Fetches menu for specials/popular;
+  tapping a special/popular deep-links to `/session/[id]/menu?item={id}` (consumed in A5).
+- **Preserved exactly:** `Welcome, {display_name}.` heading. No test selectors removed.
