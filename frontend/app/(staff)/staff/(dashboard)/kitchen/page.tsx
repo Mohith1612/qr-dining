@@ -6,6 +6,7 @@ import { staffApi } from "@/lib/api/staff"
 import { ordersApi } from "@/lib/api/orders"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
+import { Badge } from "@/components/ds"
 import { relativeTime } from "@/lib/format"
 import { UtensilsCrossed, Loader2 } from "lucide-react"
 import { KitchenSkeleton } from "@/components/shared/LoadingSkeleton"
@@ -65,11 +66,25 @@ function KitchenCard({
   const isStale = mins >= 15
 
   return (
-    <HospitalityCard elev={2} style={{ padding: 14, borderRadius: "var(--rad-md)", borderLeft: `3px solid ${tone}` }}>
+    <HospitalityCard
+      elev={2}
+      style={{
+        padding: 14,
+        borderRadius: "var(--rad-md)",
+        borderLeft: `3px solid ${tone}`,
+        // Overdue ring — escalates the whole ticket once it's been sitting too long.
+        outline: mins >= 30 ? "1.5px solid var(--alert)" : mins >= 15 ? "1.5px solid var(--warn)" : undefined,
+        outlineOffset: 1,
+      }}
+    >
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
         <span className="mono" style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600 }}>{displayId}</span>
-        <span style={{ fontSize: 10, color: "var(--ink-4)" }}>{relativeTime(order.created_at)}</span>
+        {mins >= 15 ? (
+          <Badge tone={mins >= 30 ? "danger" : "warn"}>{mins >= 30 ? "Overdue" : "Attention"}</Badge>
+        ) : (
+          <span style={{ fontSize: 10, color: "var(--ink-4)" }}>{relativeTime(order.created_at)}</span>
+        )}
       </div>
       {order.table_identifier && (
         <p className="serif" style={{ fontSize: 18, fontWeight: 600, margin: "0 0 8px" }}>
@@ -112,22 +127,6 @@ function KitchenCard({
           {elapsedLabel(mins)} elapsed
         </p>
       </div>
-
-      {/* Stale alert banner */}
-      {mins >= 15 && (
-        <div style={{
-          background: mins >= 30 ? "var(--alert-soft)" : "var(--warn-soft)",
-          border: `1px solid ${mins >= 30 ? "var(--alert)" : "var(--warn)"}`,
-          borderRadius: "var(--rad-sm)",
-          padding: "5px 8px",
-          fontSize: 11, fontWeight: 600,
-          color: mins >= 30 ? "var(--alert)" : "var(--warn)",
-          textAlign: "center",
-          marginBottom: 10,
-        }}>
-          {mins >= 30 ? "Critical — check now" : "Needs attention"}
-        </div>
-      )}
 
       {/* Advance button */}
       {next && nextLabel && (

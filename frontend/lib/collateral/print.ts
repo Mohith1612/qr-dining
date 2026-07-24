@@ -57,7 +57,10 @@ export function buildPrintHtml(
   return `<!doctype html><html><head><meta charset="utf-8" />
 <title>QR collateral — ${esc(branding.restaurantName)}</title>
 <style>
-  * { box-sizing: border-box; }
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&display=swap');
+  /* Keep designed backgrounds + colours when printing / saving to PDF — without this
+     browsers drop card backgrounds and the piece collapses to plain text. */
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { margin: 0; background: #f3f3f0; font-family: -apple-system, Segoe UI, system-ui, sans-serif; color: ${colors.ink1}; }
   .toolbar { padding: 16px; }
   .toolbar button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
