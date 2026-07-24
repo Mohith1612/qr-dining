@@ -14,7 +14,7 @@ import (
 )
 
 // defaultThemePreset matches the frontend default (frontend/providers/ThemeProvider.tsx).
-const defaultThemePreset = "dark-luxury"
+const defaultThemePreset = "serene"
 
 // allowedThemeTokens is the curated allowlist of overridable design-token keys.
 // These map 1:1 to CSS custom properties consumed by frontend/styles/themes.css.
