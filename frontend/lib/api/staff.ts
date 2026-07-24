@@ -2,6 +2,7 @@ import { api } from "./client"
 import type {
   StaffSession,
   Staff,
+  StaffRosterMember,
   StaffRole,
   Session,
   KitchenOrder,
@@ -44,6 +45,14 @@ export const staffApi = {
       { current_pin: currentPin, new_pin: newPin },
       { staffToken }
     ),
+
+  // Owner/manager forgotten-PIN reset (no current_pin). Manager may reset only
+  // waiter/kitchen; owner may reset anyone in branch; never self.
+  resetPin: (staffId: number, newPin: string, staffToken: string) =>
+    api.post<void>(`/staff/${staffId}/pin/reset`, { new_pin: newPin }, { staffToken }),
+
+  listStaff: (branchId: number, staffToken: string) =>
+    api.get<{ staff: StaffRosterMember[] }>(`/branches/${branchId}/staff`, { staffToken }),
 
   deactivate: (staffId: number, staffToken: string) =>
     api.patch<void>(`/staff/${staffId}/deactivate`, {}, { staffToken }),

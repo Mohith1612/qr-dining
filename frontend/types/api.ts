@@ -214,6 +214,17 @@ export interface Staff {
   staff_code?: string
 }
 
+// Roster row returned by GET /branches/:id/staff (no pin hash; active staff only).
+export interface StaffRosterMember {
+  id: number
+  branch_id: number
+  name: string
+  role: StaffRole
+  staff_code: string
+  is_active: boolean
+  created_at: string
+}
+
 export interface StaffSession {
   staff_id: number
   branch_id: number
