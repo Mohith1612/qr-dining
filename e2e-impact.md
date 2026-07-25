@@ -42,3 +42,9 @@ Full e2e reconciliation is deferred; this is the breadcrumb trail.
   Consumes `?item=<id>` (from A4) to open the sheet, then strips the param via `router.replace`.
 - **Preserved:** menu **item names render as plain visible text** (ItemRow `<span>{item.name}</span>`
   unchanged). Sheet title still the item name.
+
+### A6 — cart / review (cart/page.tsx)
+- Serene item rows + **"Added by {name}"** (uses `participant_id`), "Add more items", totals card,
+  **fixed Place Order bar**. Text changes: heading "Ready to send" → **"Review order"**; host CTA
+  "Confirm your order · {total}" → **"Place order"** + total. Empty-state + host-gating unchanged.
+- No quantity steppers (no update-quantity API) — quantity badge + remove retained.
