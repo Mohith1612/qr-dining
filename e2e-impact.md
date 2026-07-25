@@ -34,3 +34,11 @@ Full e2e reconciliation is deferred; this is the breadcrumb trail.
   (FeaturedCarousel/is_featured), **Currently Popular** list. Fetches menu for specials/popular;
   tapping a special/popular deep-links to `/session/[id]/menu?item={id}` (consumed in A5).
 - **Preserved exactly:** `Welcome, {display_name}.` heading. No test selectors removed.
+
+### A5 — menu + item sheet (menu/page.tsx)
+- Solid charcoal active category pill; reuse `FloatingCart` (cart-bar label now **"View Order"**,
+  was "View cart" — note if any spec asserts that text); item sheet gains a hero image, a "Required"
+  badge on the Customise header, and a **sticky** charcoal "Add to order" footer with live price.
+  Consumes `?item=<id>` (from A4) to open the sheet, then strips the param via `router.replace`.
+- **Preserved:** menu **item names render as plain visible text** (ItemRow `<span>{item.name}</span>`
+  unchanged). Sheet title still the item name.
