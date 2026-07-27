@@ -11,10 +11,11 @@ import { MenuSkeleton } from "@/components/shared/LoadingSkeleton"
 import { BottomSheet } from "@/components/shared/BottomSheet"
 import { Vignette } from "@/components/shared/Vignette"
 import { FeaturedCarousel } from "@/components/shared/FeaturedCarousel"
+import { FloatingCart } from "@/components/shared/FloatingCart"
 import { DietaryTag, BadgeTag, SpiceIndicator } from "@/components/shared/MetaTag"
-import { Minus, Plus, ChevronRight, Search } from "lucide-react"
+import { Minus, Plus, Search } from "lucide-react"
 import { toast } from "sonner"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { use } from "react"
 import { cn, groupBy } from "@/lib/utils"
 import { BeverageModifierGroup, isBeverageCategory } from "@/components/shared/BeverageModifierGrid"
@@ -235,6 +236,7 @@ function FilterBar({ activeFilters, hasActiveFilters, onDietary, onBadge, onSpic
 export default function MenuPage({ params }: Props) {
   const { id: sessionId } = use(params)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const featured = useMenuStore((s) => s.featured)
   const categories = useMenuStore((s) => s.categories)
   const menuLoading = useMenuStore((s) => s.loading)
@@ -349,6 +351,19 @@ export default function MenuPage({ params }: Props) {
   function openSheet(item: MenuItem, categoryName?: string) {
     setSheet({ item, quantity: 1, selectedModifiers: [], note: "", isBeverage: isBeverageCategory(categoryName ?? "") })
   }
+
+  // Deep-link from the landing's specials/popular: ?item=<id> opens its sheet once.
+  const itemParam = searchParams.get("item")
+  useEffect(() => {
+    if (!itemParam || categories.length === 0) return
+    const targetId = Number(itemParam)
+    for (const cat of categories) {
+      const found = cat.items.find((i) => i.id === targetId)
+      if (found) { openSheet(found, cat.name); break }
+    }
+    router.replace(`/session/${sessionId}/menu`, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemParam, categories.length])
 
   function toggleModifier(id: number) {
     setSheet((s) => {
@@ -482,7 +497,7 @@ export default function MenuPage({ params }: Props) {
                     className={cn(
                       "press px-4 py-2.5 rounded-full border text-[13px] whitespace-nowrap transition-[background,color,border-color] duration-[var(--dur-fast)]",
                       active
-                        ? "font-semibold border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent),var(--shadow-1)]"
+                        ? "font-semibold border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] shadow-[var(--shadow-2)]"
                         : "font-medium border-[var(--line-2)] bg-[var(--bg-elev-1)] text-[var(--ink-2)] shadow-[var(--shadow-1)]"
                     )}
                   >
@@ -554,43 +569,13 @@ export default function MenuPage({ params }: Props) {
         )}
       </div>
 
-      {/* Cart bar — fixed above bottom nav */}
-      {itemCount > 0 && (
-        <div style={{
-          position: "fixed",
-          bottom: "calc(84px + env(safe-area-inset-bottom))",
-          left: 0, right: 0,
-          zIndex: 20,
-          padding: "10px 16px 8px",
-          background: "color-mix(in srgb, var(--bg-base) 85%, transparent)",
-          backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-          borderTop: "1px solid var(--line-1)",
-          animation: "slideUp 0.32s var(--ease-out)",
-        }}>
-          <button
-            onClick={() => router.push(`/session/${sessionId}/cart`)}
-            className="press btn-primary"
-            style={{
-              width: "100%", height: 54, borderRadius: 16,
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "0 20px",
-            }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 10, fontSize: 14, fontWeight: 600 }}>
-              <span style={{
-                width: 24, height: 24, borderRadius: 999,
-                background: "rgba(0,0,0,0.2)", color: "inherit",
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                fontSize: 12, fontWeight: 700,
-              }}>{itemCount}</span>
-              View cart
-            </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600 }}>
-              {cartTotal > 0 ? formatCurrency(cartTotal) : ""} <ChevronRight style={{ width: 14, height: 14 }} aria-hidden />
-            </span>
-          </button>
-        </div>
-      )}
+      {/* Floating cart — glass pill above the bottom nav */}
+      <FloatingCart
+        itemCount={itemCount}
+        total={formatCurrency(cartTotal)}
+        onClick={() => router.push(`/session/${sessionId}/cart`)}
+        label="View Order"
+      />
 
       {/* Item bottom sheet */}
       <BottomSheet
@@ -599,13 +584,16 @@ export default function MenuPage({ params }: Props) {
         title={sheet?.item.name}
       >
         {sheet && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 22, paddingBottom: 8 }}>
-            {/* Atmospheric accent strip */}
-            <div style={{
-              height: 3, borderRadius: 2,
-              background: "linear-gradient(90deg, var(--accent), var(--accent-soft) 70%, transparent)",
-              marginTop: -4,
-            }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {/* Hero image */}
+            <div style={{ height: 168, borderRadius: "var(--rad-lg)", overflow: "hidden", background: "var(--bg-sunken)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: -2 }}>
+              {sheet.item.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={sheet.item.image_url} alt="" aria-hidden style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <Vignette hue={itemHue(sheet.item.id)} size={96} />
+              )}
+            </div>
 
             {sheet.item.description && (
               <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 14, lineHeight: 1.65 }}>
@@ -615,7 +603,7 @@ export default function MenuPage({ params }: Props) {
 
             {/* Price + stepper */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span className="serif" style={{ fontSize: 30, fontWeight: 500, color: "var(--accent)", letterSpacing: "-0.015em" }}>
+              <span className="serif" style={{ fontSize: 26, fontWeight: 600, color: "var(--ink-1)", letterSpacing: "-0.02em" }}>
                 {formatCurrency(sheet.item.price)}
               </span>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -654,7 +642,12 @@ export default function MenuPage({ params }: Props) {
             {/* Modifiers */}
             {sheet.item.modifiers && sheet.item.modifiers.length > 0 && (
               <div>
-                <span className="eyebrow" style={{ display: "block", marginBottom: 10 }}>Customise</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <span className="eyebrow">Customise</span>
+                  {sheet.item.modifiers?.some((m) => m.is_required) && (
+                    <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#735B25", background: "#F3E7C8", padding: "2px 7px", borderRadius: "var(--rad-pill)" }}>Required</span>
+                  )}
+                </div>
                 {sheet.isBeverage ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
                     {Object.entries(groupBy(sheet.item.modifiers, (m) => m.modifier_group ?? "add-ons")).map(([group, mods]) => (
@@ -718,34 +711,43 @@ export default function MenuPage({ params }: Props) {
               />
             </div>
 
-            {/* CTA */}
-            <button
-              onClick={handleAddToCart}
-              disabled={adding || !requiredGroupsFulfilled}
-              className="press"
-              style={{
-                width: "100%", height: 54, borderRadius: 16,
-                background: adding || !requiredGroupsFulfilled
-                  ? "var(--bg-elev-3)"
-                  : "linear-gradient(180deg, var(--accent-strong), var(--accent))",
-                color: adding || !requiredGroupsFulfilled ? "var(--ink-3)" : "var(--accent-ink)",
-                fontSize: 16, fontWeight: 600,
-                border: adding || !requiredGroupsFulfilled ? "1px solid var(--line-2)" : "1px solid var(--accent)",
-                boxShadow: adding || !requiredGroupsFulfilled ? "none" : "var(--shadow-2), inset 0 1px 0 rgba(255,255,255,0.18)",
-                transition: "background var(--dur-fast) var(--ease)",
-              }}
-            >
-              {adding
-                ? "Adding…"
-                : `Add to order · ${formatCurrency(
+            {/* Sticky Add-to-Order footer */}
+            <div style={{
+              position: "sticky", bottom: -20,
+              marginLeft: -20, marginRight: -20, marginTop: 4,
+              padding: "12px 20px",
+              paddingBottom: "calc(16px + env(safe-area-inset-bottom))",
+              background: "var(--bg-overlay)",
+              backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+              borderTop: "1px solid var(--line-1)",
+            }}>
+              <button
+                onClick={handleAddToCart}
+                disabled={adding || !requiredGroupsFulfilled}
+                className="press"
+                style={{
+                  width: "100%", height: 54, borderRadius: "var(--rad-md)",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "0 20px",
+                  background: adding || !requiredGroupsFulfilled ? "var(--bg-sunken)" : "var(--accent)",
+                  color: adding || !requiredGroupsFulfilled ? "var(--ink-3)" : "var(--accent-ink)",
+                  fontSize: 15.5, fontWeight: 600, border: "none",
+                  boxShadow: adding || !requiredGroupsFulfilled ? "none" : "var(--shadow-2)",
+                  transition: "background var(--dur-fast) var(--ease)",
+                }}
+              >
+                <span>{adding ? "Adding…" : "Add to order"}</span>
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {formatCurrency(
                     (parseFloat(String(sheet.item.price)) +
                       sheet.selectedModifiers.reduce((sum, id) => {
                         const mod = sheet.item.modifiers?.find((m) => m.id === id)
                         return sum + (mod ? parseFloat(String(mod.price_delta)) : 0)
                       }, 0)) * sheet.quantity
-                  )}`
-              }
-            </button>
+                  )}
+                </span>
+              </button>
+            </div>
           </div>
         )}
       </BottomSheet>

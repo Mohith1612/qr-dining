@@ -1,10 +1,100 @@
 /* QR Dine — premium hospitality design tokens
-   Exact palette from Claude Design "Maison Saffron Redesign".
-   Switch by setting [data-theme] on <html>.
+   Serene Hospitality (guest default) + alternate guest presets.
+   Switch by setting [data-theme] on <html>. Ops/platform use [data-surface]
+   in surfaces.css (imported after this file).
    ──────────────────────────────────────────────────────── */
 
-/* ── DARK LUXURY (default / hero theme) ─────────────────── */
+/* ── SERENE HOSPITALITY (default / guest theme) ──────────── */
 :root,
+[data-theme="serene"] {
+  /* surfaces — alabaster canvas, white cards */
+  --bg-base:    #FAF9F5;
+  --bg-sunken:  #EFEEEA;
+  --bg-elev-1:  #FFFFFF;
+  --bg-elev-2:  #FCFBF8;
+  --bg-elev-3:  #F4F4F0;
+  --bg-overlay: rgba(250, 249, 245, 0.80);
+
+  /* ink — deep charcoal → soft grey */
+  --ink-1: #1B1C1A;
+  --ink-2: #444748;
+  --ink-3: #747878;
+  --ink-4: #9EA1A0;
+
+  /* accent — charcoal primary (muted gold is a sparing, component-level accent) */
+  --accent:        #010101;
+  --accent-soft:   rgba(1, 1, 1, 0.05);
+  --accent-strong: #000000;
+  --accent-ink:    #FFFFFF;
+
+  /* status */
+  --ok:         #3F7D54;
+  --ok-soft:    rgba(63, 125, 84, 0.12);
+  --warn:       #8A6D1E;
+  --warn-soft:  rgba(138, 109, 30, 0.12);
+  --alert:      #BA1A1A;
+  --alert-soft: rgba(186, 26, 26, 0.10);
+  --info:       #4A6985;
+  --info-soft:  rgba(74, 105, 133, 0.12);
+
+  /* borders — warm charcoal hairlines */
+  --line-1: rgba(27, 28, 26, 0.07);
+  --line-2: rgba(27, 28, 26, 0.12);
+  --line-3: rgba(27, 28, 26, 0.20);
+
+  /* depth — soft, diffused ambient shadows (charcoal ~4–6%) */
+  --shadow-1: 0 1px 2px rgba(1, 1, 1, 0.05);
+  --shadow-2: 0 2px 8px rgba(1, 1, 1, 0.04), 0 8px 24px -8px rgba(1, 1, 1, 0.06);
+  --shadow-3: 0 8px 24px rgba(1, 1, 1, 0.05), 0 28px 60px -24px rgba(1, 1, 1, 0.10);
+  --glow-warm: radial-gradient(90% 60% at 50% 0%, rgba(115, 91, 37, 0.04), transparent 70%);
+  --grain: none;
+
+  /* radius */
+  --rad-sm:   8px;
+  --rad-md:   12px;
+  --rad-lg:   16px;
+  --rad-xl:   24px;
+  --rad-pill: 999px;
+
+  /* ── backward-compat bridges for existing --color-* refs ── */
+  --color-bg:             var(--bg-base);
+  --color-surface:        var(--bg-elev-1);
+  --color-surface-raised: var(--bg-elev-2);
+  --color-surface-inset:  var(--bg-sunken);
+  --color-border:         var(--line-2);
+  --color-overlay:        var(--bg-overlay);
+  --color-text:           var(--ink-1);
+  --color-text-muted:     var(--ink-2);
+  --color-accent:         var(--accent);
+  --color-accent-fg:      var(--accent-ink);
+  --color-success:        var(--ok);
+  --color-warning:        var(--warn);
+  --color-error:          var(--alert);
+  --color-elapsed-warning:  var(--warn);
+  --color-elapsed-critical: var(--alert);
+
+  /* ── shadcn bridge ─────────────────────────────────────── */
+  --background:           var(--bg-base);
+  --foreground:           var(--ink-1);
+  --card:                 var(--bg-elev-1);
+  --card-foreground:      var(--ink-1);
+  --popover:              var(--bg-elev-1);
+  --popover-foreground:   var(--ink-1);
+  --primary:              var(--accent);
+  --primary-foreground:   var(--accent-ink);
+  --secondary:            var(--bg-elev-2);
+  --secondary-foreground: var(--ink-1);
+  --muted:                var(--bg-sunken);
+  --muted-foreground:     var(--ink-2);
+  --accent-foreground:    var(--ink-1);
+  --destructive:          var(--alert);
+  --border:               var(--line-2);
+  --input:                var(--line-2);
+  --ring:                 var(--accent);
+  --radius:               var(--rad-md);
+}
+
+/* ── DARK LUXURY (alternate) ─────────────────────────────── */
 [data-theme="dark-luxury"] {
   /* surfaces */
   --bg-base:    #0E0C09;
@@ -55,7 +145,6 @@
   --rad-xl:   22px;
   --rad-pill: 999px;
 
-  /* ── backward-compat bridges for existing --color-* refs ── */
   --color-bg:             var(--bg-base);
   --color-surface:        var(--bg-elev-1);
   --color-surface-raised: var(--bg-elev-2);
@@ -72,7 +161,6 @@
   --color-elapsed-warning:  var(--warn);
   --color-elapsed-critical: var(--alert);
 
-  /* ── shadcn bridge ─────────────────────────────────────── */
   --background:           var(--bg-base);
   --foreground:           var(--ink-1);
   --card:                 var(--bg-elev-1);
@@ -335,6 +423,6 @@
 
 /* ── font references ─────────────────────────────────────── */
 :root {
-  --font-display: var(--font-cormorant-garamond, 'Cormorant Garamond', 'Tiempos Text', Georgia, serif);
-  --font-body:    var(--font-geist-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
+  --font-display: var(--font-hanken-grotesk, 'Hanken Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif);
+  --font-body:    var(--font-hanken-grotesk, 'Hanken Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif);
 }

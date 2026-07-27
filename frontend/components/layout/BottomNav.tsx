@@ -25,10 +25,10 @@ export function BottomNav({ sessionId }: BottomNavProps) {
       className="flex"
       style={{
         height: 84,
-        background: "color-mix(in srgb, var(--bg-base) 88%, transparent)",
-        backdropFilter: "blur(24px) saturate(120%)",
-        WebkitBackdropFilter: "blur(24px) saturate(120%)",
-        borderTop: "1px solid var(--line-1)",
+        background: "var(--bg-overlay)",
+        backdropFilter: "blur(24px) saturate(140%)",
+        WebkitBackdropFilter: "blur(24px) saturate(140%)",
+        borderTop: "1px solid var(--line-2)",
       }}
       aria-label="Session navigation"
     >

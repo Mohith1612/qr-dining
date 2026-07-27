@@ -64,8 +64,8 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
         className="fixed inset-0 z-50"
         style={{
           background: "var(--bg-overlay)",
-          backdropFilter: "blur(2px)",
-          WebkitBackdropFilter: "blur(2px)",
+          backdropFilter: "blur(10px) saturate(120%)",
+          WebkitBackdropFilter: "blur(10px) saturate(120%)",
           animation: "fadeIn 0.24s var(--ease-out)",
         }}
         onClick={onClose}
@@ -105,7 +105,7 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
           {title ? (
             <span
               className="serif"
-              style={{ fontSize: 22, fontWeight: 500, color: "var(--ink-1)", lineHeight: 1.2 }}
+              style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--ink-1)", lineHeight: 1.2 }}
             >
               {title}
             </span>

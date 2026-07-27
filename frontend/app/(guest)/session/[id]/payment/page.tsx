@@ -213,7 +213,7 @@ export default function PaymentPage() {
           width: 84, height: 84, borderRadius: 999,
           background: toneSoft, border: `1px solid ${tone}`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: `0 0 0 8px ${toneSoft}, 0 12px 30px -10px rgba(0,0,0,0.4)`,
+          boxShadow: `0 0 0 8px ${toneSoft}, var(--shadow-2)`,
           marginBottom: 18,
         }}>
           {isComplete
@@ -224,7 +224,7 @@ export default function PaymentPage() {
         <p className="eyebrow" style={{ marginBottom: 6 }}>
           {isComplete ? "Payment confirmed" : "Awaiting confirmation"}
         </p>
-        <h2 className="serif" style={{ margin: 0, fontSize: 32, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.02em" }}>
+        <h2 className="serif" style={{ margin: 0, fontSize: 32, fontWeight: 600, color: "var(--ink-1)", letterSpacing: "-0.02em" }}>
           {isComplete ? "Thank you" : "Almost there"}
         </h2>
         <p style={{ margin: "10px 0 22px", color: "var(--ink-2)", fontSize: 14, lineHeight: 1.6, maxWidth: 300 }}>
@@ -269,15 +269,17 @@ export default function PaymentPage() {
 
   return (
     <div className="scrollarea flex-1 overflow-y-auto screen-enter" style={{ background: "var(--bg-base)" }}>
-      {/* Header */}
-      <div className="page-glow" style={{ padding: "24px 20px 16px" }}>
-        <span className="eyebrow">Your bill</span>
-        <h1 className="display-lg" style={{ margin: "6px 0 4px" }}>
-          Itemized bill
-        </h1>
-        <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 13 }}>
-          Review your order before settling up.
+      {/* Header — total due hero */}
+      <div className="page-glow" style={{ padding: "24px 20px 12px", textAlign: "center" }}>
+        <span className="eyebrow" style={{ color: "var(--ink-3)" }}>Total due</span>
+        <p className="serif" style={{ margin: "6px 0 0", fontSize: "clamp(34px, 11vw, 44px)", fontWeight: 600, letterSpacing: "-0.02em", color: "var(--ink-1)", lineHeight: 1.05 }}>
+          {billLoading || billError ? "—" : formatCurrency(total)}
         </p>
+        {discount > 0 && !billLoading && !billError && (
+          <p style={{ margin: "5px 0 0", color: "var(--ink-3)", fontSize: 12.5 }}>
+            <span style={{ textDecoration: "line-through" }}>{formatCurrency(billTotal)}</span> · {appliedPromoCode} saves {formatCurrency(discount)}
+          </p>
+        )}
       </div>
 
       {/* Bill breakdown */}
@@ -448,7 +450,7 @@ export default function PaymentPage() {
                   }
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="serif" style={{ fontSize: 15, fontWeight: 500, color: "var(--ink-1)" }}>{label}</div>
+                  <div className="serif" style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-1)" }}>{label}</div>
                   <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2, lineHeight: 1.5 }}>{description}</div>
                 </div>
                 <ChevronRight style={{ width: 16, height: 16, color: "var(--ink-3)", flexShrink: 0 }} aria-hidden />

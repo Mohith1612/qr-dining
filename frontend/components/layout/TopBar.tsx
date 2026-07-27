@@ -21,7 +21,9 @@ export function TopBar() {
       className="flex items-center justify-between px-4 sticky top-0 z-30"
       style={{
         height: 56,
-        background: "var(--bg-base)",
+        background: "var(--bg-overlay)",
+        backdropFilter: "blur(20px) saturate(140%)",
+        WebkitBackdropFilter: "blur(20px) saturate(140%)",
         borderBottom: "1px solid var(--line-1)",
         paddingTop: "env(safe-area-inset-top)",
       }}
