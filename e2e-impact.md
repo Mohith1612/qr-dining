@@ -48,3 +48,8 @@ Full e2e reconciliation is deferred; this is the breadcrumb trail.
   **fixed Place Order bar**. Text changes: heading "Ready to send" → **"Review order"**; host CTA
   "Confirm your order · {total}" → **"Place order"** + total. Empty-state + host-gating unchanged.
 - No quantity steppers (no update-quantity API) — quantity badge + remove retained.
+
+### A7 — track order (orders/page.tsx)
+- Replaced the thin segment bar with a **node stepper** (charcoal completed/active nodes, connecting
+  progress line, active pulse) + a total footer. Stage labels (Sent/Confirmed/Preparing/Ready/Served)
+  and order-number format unchanged. No selector/text changes of concern.
