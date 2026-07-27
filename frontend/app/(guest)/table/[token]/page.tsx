@@ -86,7 +86,7 @@ export default function TableEntryPage({ params }: Props) {
 
   if (resolving) {
     return (
-      <div className="atmos min-h-svh flex items-center justify-center" style={{ background: "var(--bg-base)" }}>
+      <div className="atmos min-h-svh flex items-center justify-center" style={{ background: "var(--bg-base)", fontFamily: "var(--font-body)" }}>
         <div style={{ position: "absolute", inset: 0, background: "var(--glow-warm)", pointerEvents: "none" }} />
         <div className="relative z-10 flex flex-col items-center gap-4">
           <div className="skeleton" style={{ width: 88, height: 88, borderRadius: 26 }} />
@@ -99,13 +99,13 @@ export default function TableEntryPage({ params }: Props) {
 
   if (error && !tableInfo) {
     return (
-      <div className="atmos min-h-svh flex flex-col items-center justify-center px-8 text-center gap-5" style={{ background: "var(--bg-base)" }}>
+      <div className="atmos min-h-svh flex flex-col items-center justify-center px-8 text-center gap-5" style={{ background: "var(--bg-base)", fontFamily: "var(--font-body)" }}>
         <div style={{ position: "absolute", inset: 0, background: "var(--glow-warm)", pointerEvents: "none" }} />
         <div className="relative z-10 flex flex-col items-center gap-4">
           <div style={{ width: 64, height: 64, borderRadius: "var(--rad-lg)", background: "var(--bg-elev-2)", border: "1px solid var(--line-2)", boxShadow: "var(--shadow-2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <UtensilsCrossed size={28} style={{ color: "var(--ink-3)" }} aria-hidden />
           </div>
-          <h1 className="serif" style={{ fontSize: 28, fontWeight: 500, color: "var(--ink-1)" }}>Invalid code</h1>
+          <h1 className="serif" style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--ink-1)" }}>Invalid code</h1>
           <p style={{ color: "var(--ink-2)", fontSize: 14, maxWidth: 280 }}>{error}</p>
         </div>
       </div>
@@ -113,7 +113,7 @@ export default function TableEntryPage({ params }: Props) {
   }
 
   return (
-    <div className="atmos min-h-svh flex flex-col items-center justify-center screen-enter" style={{ background: "var(--bg-base)" }}>
+    <div className="atmos min-h-svh flex flex-col items-center justify-center screen-enter" style={{ background: "var(--bg-base)", fontFamily: "var(--font-body)" }}>
       <div style={{ position: "absolute", inset: 0, background: "var(--glow-warm)", pointerEvents: "none" }} />
       <div className="relative z-10 w-full px-7" style={{ maxWidth: 420 }}>
 
@@ -122,7 +122,7 @@ export default function TableEntryPage({ params }: Props) {
           <p className="eyebrow" style={{ marginBottom: 12 }}>
             Table {tableInfo?.label ?? tableInfo?.table_id}
           </p>
-          <h1 className="serif" style={{ margin: "0 0 10px", fontSize: 40, fontWeight: 500, letterSpacing: "-0.02em", color: "var(--ink-1)", lineHeight: 1.05 }}>
+          <h1 className="serif" style={{ margin: "0 0 10px", fontSize: "clamp(32px, 10vw, 40px)", fontWeight: 600, letterSpacing: "-0.02em", color: "var(--ink-1)", lineHeight: 1.05 }}>
             {isJoining ? "Join the party." : "Welcome."}
           </h1>
           <p style={{ color: "var(--ink-2)", fontSize: 14.5, lineHeight: 1.6, maxWidth: 260, marginInline: "auto" }}>
@@ -134,8 +134,8 @@ export default function TableEntryPage({ params }: Props) {
 
         {/* Name card */}
         <div style={{
-          background: "var(--bg-elev-2)",
-          border: "1px solid var(--line-2)",
+          background: "var(--bg-elev-1)",
+          border: "1px solid var(--line-1)",
           borderRadius: "var(--rad-lg)",
           boxShadow: "var(--shadow-2)",
           padding: "20px 20px 18px",
@@ -151,8 +151,8 @@ export default function TableEntryPage({ params }: Props) {
               required
               style={{
                 width: "100%", border: 0, outline: 0, background: "transparent",
-                fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-                fontSize: 24, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.01em",
+                fontFamily: "var(--font-hanken-grotesk, 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif)",
+                fontSize: 24, fontWeight: 600, color: "var(--ink-1)", letterSpacing: "-0.01em",
               }}
             />
             <div style={{ height: 1, background: "var(--line-2)", margin: "10px 0 16px" }} />

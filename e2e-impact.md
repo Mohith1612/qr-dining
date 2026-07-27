@@ -66,3 +66,9 @@ Full e2e reconciliation is deferred; this is the breadcrumb trail.
   actions (API takes only `type`, no message). `ReconnectingBanner` recolored to a legible pale-amber
   serene strip (was `--color-warning`/`--color-text`). SessionTimeoutBanner already serene; Session-
   ReactivatingBanner adapts via `--warn`. Labels (Call Waiter/Request Bill/Other) unchanged.
+
+### A10 — table landing (table/[token]/page.tsx)
+- Standalone page: root now sets `font-family: var(--font-body)`; name input drops the Cormorant
+  fallback → real Hanken; headings weight 600 + responsive; white entry card. **Unchanged:**
+  "Welcome." / "Join the party." copy, input placeholders ("e.g. Aanya"), CTA ("Take your seat →" /
+  "Join the party →"), resolve + create/join logic.
