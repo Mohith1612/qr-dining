@@ -26,8 +26,9 @@ export function ReconnectingBanner() {
           aria-live="polite"
           className="w-full px-4 py-2 text-center text-xs font-medium"
           style={{
-            backgroundColor: "var(--color-warning)",
-            color: "var(--color-text)",
+            backgroundColor: "var(--warn-soft)",
+            color: "var(--warn)",
+            borderBottom: "1px solid var(--warn)",
           }}
         >
           {status === "reconnecting"

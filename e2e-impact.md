@@ -59,3 +59,10 @@ Full e2e reconciliation is deferred; this is the breadcrumb trail.
   spec asserts "Itemized bill"). Success-screen heading weight + icon shadow polish. **Pay-Full only**
   confirmed — no split/by-item tabs exist. Promo entry, phone prompt, payment methods (Cash/Card/UPI),
   CustomerOptIn, host-gating all unchanged. BillBreakdown/CustomerOptIn inherit serene via tokens.
+
+### A9 — assist (assist/page.tsx + ReconnectingBanner)
+- Quick actions presented as a **serene bento** (waiter/bill square tiles + a wide "Other"); active
+  request cards → white. **Kept the 3 real assistance types** (waiter/bill/other) — no invented
+  actions (API takes only `type`, no message). `ReconnectingBanner` recolored to a legible pale-amber
+  serene strip (was `--color-warning`/`--color-text`). SessionTimeoutBanner already serene; Session-
+  ReactivatingBanner adapts via `--warn`. Labels (Call Waiter/Request Bill/Other) unchanged.
