@@ -53,3 +53,9 @@ Full e2e reconciliation is deferred; this is the breadcrumb trail.
 - Replaced the thin segment bar with a **node stepper** (charcoal completed/active nodes, connecting
   progress line, active pulse) + a total footer. Stage labels (Sent/Confirmed/Preparing/Ready/Served)
   and order-number format unchanged. No selector/text changes of concern.
+
+### A8 — bill / pay (payment/page.tsx)
+- Header changed from `h1` "Itemized bill" to a centered **"Total due" + amount** hero (note if any
+  spec asserts "Itemized bill"). Success-screen heading weight + icon shadow polish. **Pay-Full only**
+  confirmed — no split/by-item tabs exist. Promo entry, phone prompt, payment methods (Cash/Card/UPI),
+  CustomerOptIn, host-gating all unchanged. BillBreakdown/CustomerOptIn inherit serene via tokens.
