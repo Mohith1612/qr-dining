@@ -72,3 +72,10 @@ Full e2e reconciliation is deferred; this is the breadcrumb trail.
   fallback → real Hanken; headings weight 600 + responsive; white entry card. **Unchanged:**
   "Welcome." / "Join the party." copy, input placeholders ("e.g. Aanya"), CTA ("Take your seat →" /
   "Join the party →"), resolve + create/join logic.
+
+### A12 — public landing + pricing (app/page.tsx, app/pricing/page.tsx)
+- Standalone server components: root now sets `font-family: var(--font-body)`; headings → weight 600
+  + responsive. Copy unchanged ("QR Dining", "Hospitality, on every plate.", plan names/CTAs). Pricing
+  still HospitalityCard-based; charcoal "Most popular" badge + primary buttons via tokens.
+
+### A11 — loyalty: SKIPPED (no guest loyalty route exists on this branch).

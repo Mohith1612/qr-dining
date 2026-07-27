@@ -4,7 +4,7 @@ export default function Home() {
   return (
     <div
       className="atmos min-h-svh flex flex-col items-center justify-center screen-enter"
-      style={{ background: "var(--bg-base)", position: "relative" }}
+      style={{ background: "var(--bg-base)", position: "relative", fontFamily: "var(--font-body)" }}
     >
       {/* Atmospheric warmth gradient */}
       <div style={{ position: "absolute", inset: 0, background: "var(--glow-warm)", pointerEvents: "none" }} />
@@ -31,7 +31,7 @@ export default function Home() {
 
         <p className="eyebrow" style={{ marginBottom: 14 }}>Hospitality, in your hand</p>
         <h1 className="serif" style={{
-          margin: 0, fontSize: 44, fontWeight: 500, letterSpacing: "-0.02em",
+          margin: 0, fontSize: "clamp(36px, 11vw, 44px)", fontWeight: 600, letterSpacing: "-0.02em",
           color: "var(--ink-1)", lineHeight: 1.05, marginBottom: 16,
         }}>
           QR Dining
