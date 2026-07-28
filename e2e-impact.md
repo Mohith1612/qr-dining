@@ -79,3 +79,32 @@ Full e2e reconciliation is deferred; this is the breadcrumb trail.
   still HospitalityCard-based; charcoal "Most popular" badge + primary buttons via tokens.
 
 ### A11 — loyalty: SKIPPED (no guest loyalty route exists on this branch).
+
+---
+
+## Reconciliation results (2026-06-14, post-merge of both tracks)
+
+Of 106 specs, only **6 touch the DOM**; the other 100 are API/contract (UI-agnostic, unaffected by the
+redesign). **No spec asserts any of the changed visible strings** (View cart / Ready to send / Confirm
+your order / Itemized bill) — those copy changes broke nothing.
+
+Ran the 6 DOM specs against the mtest stack (`API_URL=:8090 APP_URL=:3000`, real platform token in
+`E2E_ADMIN_TOKEN`):
+
+| Spec | Result | Notes |
+|---|---|---|
+| F-03 guest token storage | pass | |
+| F-04 staff token storage | pass | |
+| L-10 back/forward no mutations | pass | asserts `Welcome, NavUser` — welcome prefix preserved |
+| G-01 fresh session + order | UI passes | `Welcome, Alice` + menu item name + place order all pass; fails only on the final `session.create` audit assertion (audit content / `/platform/audit` filtering — NOT redesign) |
+| L-09 stale closed-session revisit | pre-existing | closed session shows welcome + "Reconnecting…" instead of ended/redirect. `SessionProvider` (owns closed-detection) is unchanged by the redesign (`git diff` empty); snapshot fetch errors after force-close so the ended screen never fires. Session/WS logic — out of redesign scope. |
+
+**Conclusion: the redesign broke 0 e2e specs.** The 2 non-pass items are pre-existing and non-redesign
+(backend audit content + a closed-session snapshot/token edge in protected session/WS logic).
+
+**Fix made during reconciliation:** `helpers/api.ts fetchAudit` — `/platform/audit` returns
+`{audit:[...]}`, not a bare array; helper now reads `res.audit` (was crashing `audit.find is not a
+function`).
+
+**To run the suite:** the static `e2e-admin-secret` bypass was removed by the security hardening, so a
+real token is required — pass `E2E_ADMIN_TOKEN` from `POST /platform/auth`, plus `API_URL`/`APP_URL`.

@@ -146,10 +146,12 @@ export async function fetchSessionDB(sessionId: string): Promise<{ id: string; s
 }
 
 export async function fetchAudit(resourceType: string, resourceId: string): Promise<AuditEntry[]> {
-  return apiCall<AuditEntry[]>(
+  // GET /platform/audit returns { audit: [...] }, not a bare array.
+  const res = await apiCall<{ audit: AuditEntry[] }>(
     "GET", `/platform/audit?resource_type=${resourceType}&resource_id=${resourceId}`,
     undefined, { token: adminToken }
   )
+  return res.audit ?? []
 }
 
 export async function forceCloseSession(sessionId: string, guestToken: string): Promise<void> {
