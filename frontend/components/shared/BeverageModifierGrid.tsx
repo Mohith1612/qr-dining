@@ -107,13 +107,19 @@ interface BeverageModifierGroupProps {
 export function BeverageModifierGroup({ groupName, modifiers, selected, onToggle }: BeverageModifierGroupProps) {
   const cols = modifiers.length <= 2 ? "repeat(2, 1fr)" : "repeat(3, 1fr)"
   const hasRequired = modifiers.some((m) => m.is_required)
+  const singleSelect = modifiers.some((m) => m.single_select)
 
   return (
     <div>
-      <span className="eyebrow" style={{ display: "block", marginBottom: 8, textTransform: "capitalize" }}>
+      <span className="eyebrow" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, textTransform: "capitalize" }}>
         {groupName}
         {hasRequired && (
-          <span style={{ color: "var(--alert, #e74c3c)", marginLeft: 4 }}>*</span>
+          <span style={{ color: "var(--alert, #e74c3c)", marginLeft: -4 }}>*</span>
+        )}
+        {singleSelect && (
+          <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: "var(--rad-pill)" }}>
+            Pick one
+          </span>
         )}
       </span>
       <div style={{ display: "grid", gridTemplateColumns: cols, gap: 8 }}>

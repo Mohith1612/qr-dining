@@ -661,34 +661,64 @@ export default function MenuPage({ params }: Props) {
                     ))}
                   </div>
                 ) : (
-                  <div style={{ borderRadius: "var(--rad-lg)", overflow: "hidden", border: "1px solid var(--line-2)" }}>
-                    {sheet.item.modifiers.map((mod: ItemModifier, i: number) => (
-                      <label
-                        key={mod.id}
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "space-between",
-                          padding: "14px 16px", cursor: "default",
-                          borderTop: i > 0 ? "1px solid var(--line-1)" : "none",
-                          background: sheet.selectedModifiers.includes(mod.id) ? "var(--accent-soft)" : "transparent",
-                          transition: "background var(--dur-fast) var(--ease)",
-                        }}
-                      >
-                        <span style={{ fontSize: 14, color: "var(--ink-1)" }}>{mod.name}</span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          {mod.price_delta !== 0 && (
-                            <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
-                              +{formatCurrency(mod.price_delta)}
-                            </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    {Object.entries(groupBy(sheet.item.modifiers, (m) => m.modifier_group ?? "")).map(([group, mods]) => {
+                      // A group is exclusive (radio) when any of its modifiers
+                      // carries single_select — same rule toggleModifier and the
+                      // server (MODIFIER_CONFLICT) enforce.
+                      const singleSelect = !!group && mods.some((m) => m.single_select)
+                      return (
+                        <div key={group || "add-ons"}>
+                          {group && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                              <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+                                {group}
+                              </span>
+                              {singleSelect && (
+                                <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: "var(--rad-pill)" }}>
+                                  Pick one
+                                </span>
+                              )}
+                            </div>
                           )}
-                          <input
-                            type="checkbox"
-                            checked={sheet.selectedModifiers.includes(mod.id)}
-                            onChange={() => toggleModifier(mod.id)}
-                            style={{ width: 18, height: 18, accentColor: "var(--accent)" }}
-                          />
+                          <div style={{ borderRadius: "var(--rad-lg)", overflow: "hidden", border: "1px solid var(--line-2)" }}>
+                            {mods.map((mod: ItemModifier, i: number) => (
+                              <label
+                                key={mod.id}
+                                style={{
+                                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                                  padding: "14px 16px", cursor: "default",
+                                  borderTop: i > 0 ? "1px solid var(--line-1)" : "none",
+                                  background: sheet.selectedModifiers.includes(mod.id) ? "var(--accent-soft)" : "transparent",
+                                  transition: "background var(--dur-fast) var(--ease)",
+                                }}
+                              >
+                                <span style={{ fontSize: 14, color: "var(--ink-1)" }}>{mod.name}</span>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                  {mod.price_delta !== 0 && (
+                                    <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                                      +{formatCurrency(mod.price_delta)}
+                                    </span>
+                                  )}
+                                  <input
+                                    type={singleSelect ? "radio" : "checkbox"}
+                                    name={singleSelect ? `modifier-group-${group}` : undefined}
+                                    checked={sheet.selectedModifiers.includes(mod.id)}
+                                    // Radios don't fire change when the checked one is
+                                    // clicked again, so exclusive groups toggle on click
+                                    // (toggleModifier handles deselect + sibling clearing).
+                                    onChange={singleSelect ? undefined : () => toggleModifier(mod.id)}
+                                    onClick={singleSelect ? () => toggleModifier(mod.id) : undefined}
+                                    readOnly={singleSelect}
+                                    style={{ width: 18, height: 18, accentColor: "var(--accent)" }}
+                                  />
+                                </div>
+                              </label>
+                            ))}
+                          </div>
                         </div>
-                      </label>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
