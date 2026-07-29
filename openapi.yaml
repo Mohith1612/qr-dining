@@ -1925,7 +1925,7 @@ paths:
   /sessions/{id}/promos/validate:
     post:
       summary: Validate a promo code (preview)
-      description: Previews whether a promo code is currently valid for the session's branch. Min-order check is skipped in preview.
+      description: Previews whether a promo code is currently valid for the session's branch, including the discount it would produce for the supplied order total. Promos with a per-phone usage cap require phone_e164.
       tags: [Promos]
       security:
         - GuestBearer: []
@@ -1946,6 +1946,12 @@ paths:
               properties:
                 code:
                   type: string
+                order_total:
+                  type: number
+                  description: Current bill total the discount is previewed against
+                phone_e164:
+                  type: string
+                  description: Guest phone in E.164; required when the promo tracks uses per phone
       responses:
         "200":
           description: Promo is valid
@@ -1977,7 +1983,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/APIError"
         "422":
-          description: Minimum order amount not met
+          description: Minimum order amount not met (MIN_ORDER_NOT_MET) or phone number required for this offer (PROMO_PHONE_REQUIRED)
           content:
             application/json:
               schema:
