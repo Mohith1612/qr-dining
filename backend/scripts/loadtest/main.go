@@ -7,14 +7,15 @@
 // initiate payment (cash).
 //
 // Env:
-//   BASE_URL        http base (default http://127.0.0.1:18080)
-//   WS_URL          ws base   (default ws://127.0.0.1:18080)
-//   BRANCH_ID       branch id for menu/order (required)
-//   TABLE_IDS       csv of table ids to spread sessions across (required)
-//   MENU_ITEM_IDS   csv of menu item ids to order (required)
-//   CONCURRENCY     parallel workers (default 25)
-//   DURATION        seconds to run (default 20)
-//   WS_HOLD         seconds each ws connection is held (default 3)
+//
+//	BASE_URL        http base (default http://127.0.0.1:18080)
+//	WS_URL          ws base   (default ws://127.0.0.1:18080)
+//	BRANCH_ID       branch id for menu/order (required)
+//	TABLE_IDS       csv of table ids to spread sessions across (required)
+//	MENU_ITEM_IDS   csv of menu item ids to order (required)
+//	CONCURRENCY     parallel workers (default 25)
+//	DURATION        seconds to run (default 20)
+//	WS_HOLD         seconds each ws connection is held (default 3)
 package main
 
 import (
@@ -90,16 +91,16 @@ func pct(sorted []float64, p int) float64 {
 }
 
 var (
-	stCreate  = &stat{}
-	stMenu    = &stat{}
-	stCart    = &stat{}
-	stOrder   = &stat{}
-	stTicket  = &stat{}
-	stWS      = &stat{}
-	stSnap    = &stat{}
-	stPay     = &stat{}
+	stCreate   = &stat{}
+	stMenu     = &stat{}
+	stCart     = &stat{}
+	stOrder    = &stat{}
+	stTicket   = &stat{}
+	stWS       = &stat{}
+	stSnap     = &stat{}
+	stPay      = &stat{}
 	httpClient = &http.Client{
-		Timeout: 15 * time.Second,
+		Timeout:   15 * time.Second,
 		Transport: &http.Transport{MaxIdleConns: 500, MaxIdleConnsPerHost: 500, MaxConnsPerHost: 500},
 	}
 )
@@ -250,7 +251,7 @@ func wsConnect(ticket string, holdSec int) error {
 	}
 	defer c.Close()
 	deadline := time.Now().Add(time.Duration(holdSec) * time.Second)
-	c.SetReadDeadline(deadline)
+	_ = c.SetReadDeadline(deadline)
 	for time.Now().Before(deadline) {
 		if _, _, err := c.ReadMessage(); err != nil {
 			break // timeout/close expected

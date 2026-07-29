@@ -24,12 +24,12 @@ import (
 )
 
 type PlatformHandler struct {
-	repos     *repository.Repos
-	svc       *services.PlatformService
-	ent       *services.EntitlementService
-	flag      *services.FlagService
-	analytics *services.PlatformAnalyticsService
-	theme     *services.ThemeService
+	repos      *repository.Repos
+	svc        *services.PlatformService
+	ent        *services.EntitlementService
+	flag       *services.FlagService
+	analytics  *services.PlatformAnalyticsService
+	theme      *services.ThemeService
 	support    *services.SupportService
 	billing    *services.BillingService
 	obs        *services.EnforcementObservabilityService
@@ -71,9 +71,9 @@ func (h *PlatformHandler) Authenticate(c *gin.Context) {
 	if result.Challenge != nil {
 		h.logPlatformAudit(c, 0, "platform.auth.mfa_challenge_issued", "platform_user", "", 0, 0, 0, gin.H{"email": services.NormalizePlatformEmail(req.Email)})
 		c.JSON(http.StatusOK, gin.H{
-			"mfa_required":      true,
-			"mfa_challenge":     result.Challenge.Challenge,
-			"mfa_expires_at":    result.Challenge.ExpiresAt,
+			"mfa_required":   true,
+			"mfa_challenge":  result.Challenge.Challenge,
+			"mfa_expires_at": result.Challenge.ExpiresAt,
 		})
 		return
 	}
@@ -897,22 +897,6 @@ func platformSupportSessionResponse(s sqlc.PlatformSupportSession) gin.H {
 	}
 }
 
-func platformAuditResponse(row sqlc.PlatformAuditLog) gin.H {
-	return gin.H{
-		"id":                 row.ID,
-		"platform_user_id":   nullableInt64(row.PlatformUserID),
-		"action":             row.Action,
-		"target_type":        row.TargetType,
-		"target_id":          row.TargetID,
-		"organization_id":    nullableInt64(row.OrganizationID),
-		"branch_id":          nullableInt64(row.BranchID),
-		"support_session_id": nullableInt64(row.SupportSessionID),
-		"request_id":         row.RequestID,
-		"payload":            row.Payload,
-		"created_at":         row.CreatedAt,
-	}
-}
-
 func auditV2PlatformResponse(row sqlc.AuditLog) gin.H {
 	return gin.H{
 		"id":              row.ID,
@@ -1072,12 +1056,4 @@ func generatedBranchCode(orgCode string) string {
 		return fmt.Sprintf("%s-BR-%d", services.NormalizePlatformCode(orgCode), time.Now().Unix()%100000)
 	}
 	return fmt.Sprintf("%s-BR-%s", services.NormalizePlatformCode(orgCode), strings.ToUpper(hex.EncodeToString(b[:])))
-}
-
-func platformError(c *gin.Context, err error) {
-	if errors.Is(err, domain.ErrUnauthorized) {
-		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "unauthorized")
-		return
-	}
-	respondInternalError(c)
 }

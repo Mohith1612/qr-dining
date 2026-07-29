@@ -151,7 +151,7 @@ func (s *EntitlementService) ResolveForOrganization(ctx context.Context, orgID i
 
 	var base []baseEntitlement
 	tier := "free"
-	source := entSourceFreeDefault
+	var source string
 
 	assignment, err := s.repos.GetOrganizationPlanAssignment(ctx, orgID)
 	switch {

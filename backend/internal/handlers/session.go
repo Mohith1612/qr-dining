@@ -97,10 +97,6 @@ func (h *SessionHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, guestSafeSession(sess))
 }
 
-type closeSessionRequest struct {
-	ParticipantID int64 `json:"participant_id" binding:"required"`
-}
-
 func (h *SessionHandler) Close(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {

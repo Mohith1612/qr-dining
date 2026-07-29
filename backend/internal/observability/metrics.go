@@ -2,6 +2,7 @@ package observability
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
 // Metrics holds all Prometheus metric definitions.
@@ -327,8 +328,8 @@ func NewMetrics() *Metrics {
 	}
 
 	reg.MustRegister(
-		prometheus.NewGoCollector(),
-		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		m.HTTPRequestsTotal,
 		m.HTTPRequestDuration,
 		m.WSConnectionsActive,

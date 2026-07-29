@@ -11,15 +11,13 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-const defaultCacheTTL = 5 * time.Minute
-
 // Cache provides a simple JSON get/set cache with TTL.
 // Used to avoid repeated DB lookups for hot read paths (e.g., session validation on WS auth).
 // A cache miss always falls back to PostgreSQL — Redis is never the source of truth.
 type Cache struct {
-	client   *goredis.Client
-	hits     prometheus.Counter // optional; nil if metrics not provided
-	misses   prometheus.Counter
+	client *goredis.Client
+	hits   prometheus.Counter // optional; nil if metrics not provided
+	misses prometheus.Counter
 }
 
 func NewCache(client *goredis.Client, hits, misses prometheus.Counter) *Cache {
