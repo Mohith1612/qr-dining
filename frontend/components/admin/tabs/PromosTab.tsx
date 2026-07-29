@@ -86,8 +86,10 @@ export function PromosTab() {
         min_order_amount: minOrder ? parseFloat(minOrder) : 0,
         max_uses: maxUses ? parseInt(maxUses) : null,
         uses_per_phone: usesPerPhone ? parseInt(usesPerPhone) : 0,
-        valid_from: new Date(validFrom).toISOString(),
-        valid_until: new Date(validUntil).toISOString(),
+        // Date-only pickers: the promo runs from the start of the first day to
+        // the end of the last day, in the operator's local time.
+        valid_from: new Date(validFrom + "T00:00:00").toISOString(),
+        valid_until: new Date(validUntil + "T23:59:59").toISOString(),
         time_window_start: windowStart || null,
         time_window_end: windowEnd || null,
         description: description || null,
@@ -205,22 +207,31 @@ export function PromosTab() {
           <div style={{ display: "flex", gap: 8 }}>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: 11, color: "var(--ink-3)", display: "block", marginBottom: 4 }}>Valid from</label>
-              <Input type="datetime-local" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+              <Input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
             </div>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: 11, color: "var(--ink-3)", display: "block", marginBottom: 4 }}>Valid until</label>
-              <Input type="datetime-local" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+              <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
             </div>
           </div>
+          <p style={{ fontSize: 11, color: "var(--ink-4)", marginTop: -4 }}>
+            The promo is live from the start of the first day to the end of the last day.
+          </p>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, color: "var(--ink-3)", display: "block", marginBottom: 4 }}>Time window start (HH:MM)</label>
-              <Input type="time" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} placeholder="16:00" />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, color: "var(--ink-3)", display: "block", marginBottom: 4 }}>Time window end (HH:MM)</label>
-              <Input type="time" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} placeholder="19:00" />
+          <div style={{ borderTop: "1px solid var(--line-1)", paddingTop: 10 }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 2 }}>Active hours each day (optional)</p>
+            <p style={{ fontSize: 11, color: "var(--ink-4)", marginBottom: 8 }}>
+              e.g. 16:00–19:00 for a happy-hour offer. Leave blank to run all day.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, color: "var(--ink-3)", display: "block", marginBottom: 4 }}>From</label>
+                <Input type="time" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} placeholder="16:00" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, color: "var(--ink-3)", display: "block", marginBottom: 4 }}>Until</label>
+                <Input type="time" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} placeholder="19:00" />
+              </div>
             </div>
           </div>
 
