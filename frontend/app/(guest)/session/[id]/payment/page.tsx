@@ -17,6 +17,7 @@ import type { PaymentMethod, PaymentStatus, BillData, ValidatePromoResponse } fr
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { CustomerOptIn } from "@/components/shared/CustomerOptIn"
 import { BillBreakdown } from "@/components/shared/BillBreakdown"
+import { BottomSheet } from "@/components/shared/BottomSheet"
 
 const PAYMENT_OPTIONS: {
   method: PaymentMethod
@@ -63,7 +64,10 @@ export default function PaymentPage() {
   const [showOptIn, setShowOptIn] = useState(false)
 
   // Promo applied at the bill. Validated against the live bill total; the
-  // discount is previewed here and re-applied server-side at payment.
+  // discount is previewed here and re-applied server-side at payment. Entry
+  // happens in a bottom sheet that always collects a phone number — the offer
+  // is tracked per number.
+  const [promoSheetOpen, setPromoSheetOpen] = useState(false)
   const [promoCode, setPromoCode] = useState("")
   const [appliedPromo, setAppliedPromo] = useState<ValidatePromoResponse | null>(null)
   const [appliedPromoCode, setAppliedPromoCode] = useState("")
@@ -71,7 +75,6 @@ export default function PaymentPage() {
   const [promoLoading, setPromoLoading] = useState(false)
   const [promoError, setPromoError] = useState<string | null>(null)
   const [promoPhone, setPromoPhone] = useState("")
-  const [phoneRequired, setPhoneRequired] = useState(false)
 
   // Authoritative completion: either the initiate response already said
   // "completed" (e.g. an instantly-settled flow) or a PAYMENT_COMPLETED event
@@ -119,30 +122,30 @@ export default function PaymentPage() {
   const discount = appliedPromo?.discount_amount ?? 0
   const total = Math.max(0, billTotal - discount)
 
+  const promoFormValid = !!promoCode.trim() && promoPhone.length === 10
+
   async function handleApplyPromo() {
-    if (!promoCode.trim() || !session) return
+    if (!promoFormValid || !session) return
     setPromoLoading(true)
     setPromoError(null)
     try {
       const code = promoCode.trim().toUpperCase()
       const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
-      const phone = promoPhone.trim() ? "+91" + promoPhone.trim() : undefined
+      const phone = "+91" + promoPhone.trim()
       const result = await promosApi.validate(session.id, code, billTotal, phone, guestToken)
       setAppliedPromo(result)
       setAppliedPromoCode(code)
       setAppliedPromoPhone(phone)
       setPromoCode("")
-      setPhoneRequired(false)
+      setPromoSheetOpen(false)
     } catch (err) {
-      if (err instanceof ApiError && err.code === "PROMO_PHONE_REQUIRED") {
-        setPhoneRequired(true)
-        setPromoError("Add your phone number to use this offer.")
-      } else if (err instanceof ApiError) {
+      if (err instanceof ApiError) {
         const msgs: Record<string, string> = {
-          PROMO_NOT_FOUND:    "This promo code isn't valid right now.",
-          MIN_ORDER_NOT_MET:  "Your bill doesn't meet this promo's minimum.",
-          PROMO_EXHAUSTED:    "This offer has been claimed by too many guests.",
-          PROMO_ALREADY_USED: "You've already used this offer.",
+          PROMO_NOT_FOUND:      "This promo code isn't valid right now.",
+          PROMO_PHONE_REQUIRED: "Add your phone number to use this offer.",
+          MIN_ORDER_NOT_MET:    "Your bill doesn't meet this promo's minimum.",
+          PROMO_EXHAUSTED:      "This offer has been claimed by too many guests.",
+          PROMO_ALREADY_USED:   "You've already used this offer.",
         }
         setPromoError(msgs[err.code] ?? "This promo code couldn't be applied.")
       } else {
@@ -157,7 +160,6 @@ export default function PaymentPage() {
     setAppliedPromo(null)
     setAppliedPromoCode("")
     setAppliedPromoPhone(undefined)
-    setPhoneRequired(false)
     setPromoPhone("")
     setPromoError(null)
   }
@@ -329,65 +331,20 @@ export default function PaymentPage() {
               </button>
             </div>
           ) : (
-            <div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  type="text"
-                  value={promoCode}
-                  onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null) }}
-                  onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
-                  placeholder="Promo code"
-                  aria-label="Promo code"
-                  style={{
-                    flex: 1, height: 42, borderRadius: "var(--rad-md)",
-                    background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
-                    padding: "0 12px", fontSize: 13, color: "var(--ink-1)", outline: "none",
-                  }}
-                />
-                <button
-                  onClick={handleApplyPromo}
-                  disabled={promoLoading || !promoCode.trim()}
-                  className="press"
-                  aria-label="Apply promo code"
-                  style={{
-                    height: 42, padding: "0 16px", borderRadius: "var(--rad-md)",
-                    background: "var(--accent)", color: "var(--accent-ink)",
-                    border: "1px solid var(--accent)", fontSize: 13, fontWeight: 500,
-                    opacity: promoLoading || !promoCode.trim() ? 0.5 : 1,
-                    display: "flex", alignItems: "center", gap: 6,
-                    cursor: promoLoading || !promoCode.trim() ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {promoLoading ? <Loader2 size={14} className="animate-spin" aria-hidden /> : "Apply"}
-                </button>
-              </div>
-              {phoneRequired && (
-                <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-                  <div style={{
-                    height: 42, padding: "0 12px", borderRadius: "var(--rad-md)",
-                    background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
-                    display: "flex", alignItems: "center", fontSize: 13, color: "var(--ink-2)", flexShrink: 0,
-                  }}>🇮🇳 +91</div>
-                  <input
-                    type="tel" inputMode="numeric" maxLength={10}
-                    value={promoPhone}
-                    onChange={(e) => { setPromoPhone(e.target.value.replace(/\D/g, "")); setPromoError(null) }}
-                    onKeyDown={(e) => e.key === "Enter" && promoPhone.length === 10 && handleApplyPromo()}
-                    placeholder="Phone number for this offer"
-                    aria-label="Phone number for this offer"
-                    autoFocus
-                    style={{
-                      flex: 1, height: 42, borderRadius: "var(--rad-md)",
-                      background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
-                      padding: "0 12px", fontSize: 13, color: "var(--ink-1)", outline: "none",
-                    }}
-                  />
-                </div>
-              )}
-              {promoError && (
-                <p style={{ marginTop: 6, fontSize: 12, color: "var(--alert)", lineHeight: 1.4 }}>{promoError}</p>
-              )}
-            </div>
+            <button
+              onClick={() => { setPromoError(null); setPromoSheetOpen(true) }}
+              className="press"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                width: "100%", height: 46, padding: "0 14px",
+                borderRadius: "var(--rad-md)",
+                background: "var(--bg-elev-1)", border: "1px dashed var(--line-2)",
+                color: "var(--ink-2)", fontSize: 13, fontWeight: 500, cursor: "pointer",
+              }}
+            >
+              <span>Have a promo code?</span>
+              <ChevronRight size={16} aria-hidden style={{ opacity: 0.7 }} />
+            </button>
           )}
           {appliedPromo && (
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line-1)" }}>
@@ -466,6 +423,75 @@ export default function PaymentPage() {
         )}
       </div>
       )}
+
+      {/* Promo entry sheet — code + phone are both required; the offer is
+          tracked against the phone number. */}
+      <BottomSheet open={promoSheetOpen} onClose={() => setPromoSheetOpen(false)} title="Apply a promo code">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "4px 0 8px" }}>
+          <div>
+            <span className="eyebrow" style={{ display: "block", marginBottom: 6 }}>Promo code</span>
+            <input
+              type="text"
+              value={promoCode}
+              onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null) }}
+              placeholder="e.g. HAPPY20"
+              aria-label="Promo code"
+              autoFocus
+              style={{
+                width: "100%", height: 46, borderRadius: "var(--rad-md)",
+                background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+                padding: "0 14px", fontSize: 14, color: "var(--ink-1)", outline: "none",
+                letterSpacing: "0.04em",
+              }}
+            />
+          </div>
+          <div>
+            <span className="eyebrow" style={{ display: "block", marginBottom: 6 }}>Phone number</span>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{
+                height: 46, padding: "0 12px", borderRadius: "var(--rad-md)",
+                background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+                display: "flex", alignItems: "center", fontSize: 14, color: "var(--ink-2)", flexShrink: 0,
+              }}>🇮🇳 +91</div>
+              <input
+                type="tel" inputMode="numeric" maxLength={10}
+                value={promoPhone}
+                onChange={(e) => { setPromoPhone(e.target.value.replace(/\D/g, "")); setPromoError(null) }}
+                onKeyDown={(e) => e.key === "Enter" && promoFormValid && handleApplyPromo()}
+                placeholder="10-digit number"
+                aria-label="Phone number for this offer"
+                style={{
+                  flex: 1, height: 46, borderRadius: "var(--rad-md)",
+                  background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+                  padding: "0 14px", fontSize: 14, color: "var(--ink-1)", outline: "none",
+                }}
+              />
+            </div>
+            <p style={{ marginTop: 6, fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.4 }}>
+              Offers are tracked per phone number.
+            </p>
+          </div>
+          {promoError && (
+            <p style={{ fontSize: 12.5, color: "var(--alert)", lineHeight: 1.4 }}>{promoError}</p>
+          )}
+          <button
+            onClick={handleApplyPromo}
+            disabled={promoLoading || !promoFormValid}
+            className="press"
+            aria-label="Apply promo code"
+            style={{
+              height: 48, borderRadius: "var(--rad-md)",
+              background: "var(--accent)", color: "var(--accent-ink)",
+              border: "1px solid var(--accent)", fontSize: 14, fontWeight: 600,
+              opacity: promoLoading || !promoFormValid ? 0.5 : 1,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              cursor: promoLoading || !promoFormValid ? "not-allowed" : "pointer",
+            }}
+          >
+            {promoLoading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : "Apply offer"}
+          </button>
+        </div>
+      </BottomSheet>
     </div>
   )
 }
