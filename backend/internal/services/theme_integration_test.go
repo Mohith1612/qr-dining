@@ -59,8 +59,8 @@ func TestThemeLegacyBridge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve invalid: %v", err)
 	}
-	if got.Preset != "dark-luxury" {
-		t.Fatalf("invalid legacy preset = %q, want dark-luxury default", got.Preset)
+	if got.Preset != "serene" {
+		t.Fatalf("invalid legacy preset = %q, want serene default", got.Preset)
 	}
 
 	// A structured tenant_themes row takes precedence over legacy.
@@ -90,8 +90,8 @@ func TestThemeSetGetAndEntitlementGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get default: %v", err)
 	}
-	if def.Preset != "dark-luxury" || len(def.Tokens) != 0 {
-		t.Fatalf("default = %+v, want dark-luxury/empty", def)
+	if def.Preset != "serene" || len(def.Tokens) != 0 {
+		t.Fatalf("default = %+v, want serene/empty", def)
 	}
 
 	// Preset-only set requires no entitlement.

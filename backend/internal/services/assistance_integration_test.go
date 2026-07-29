@@ -80,8 +80,14 @@ func TestAssistance_InvalidTransition(t *testing.T) {
 		t.Fatalf("Request: %v", err)
 	}
 
-	// pending → resolved skipping acknowledged is invalid.
-	_, err = assistanceSvc.Resolve(ctx, ar.ID, f.BranchID, 1)
+	// pending → resolved is a valid transition (staff may resolve directly,
+	// matching the state machine in domain/statemachine.go).
+	if _, err := assistanceSvc.Resolve(ctx, ar.ID, f.BranchID, 1); err != nil {
+		t.Fatalf("Resolve (pending→resolved): %v", err)
+	}
+
+	// resolved is terminal: acknowledging an already-resolved request is invalid.
+	_, err = assistanceSvc.Acknowledge(ctx, ar.ID, f.BranchID, 1)
 	if err == nil {
 		t.Fatal("expected ErrInvalidAssistanceTransition, got nil")
 	}

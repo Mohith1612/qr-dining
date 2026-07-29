@@ -23,13 +23,15 @@ func TestStaleSessionCleaner(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Insert an active session with timestamps set 3 hours in the past.
+	// Insert an active session created 3 hours in the past (ListStaleSessions
+	// keys staleness off created_at). session_business_date / visit_number /
+	// session_number are NOT NULL with no default, so supply them.
 	var rawID [16]byte
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO sessions (branch_id, table_id, session_token, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, 'active', NOW() - INTERVAL '3 hours', NOW() - INTERVAL '3 hours')
+		`INSERT INTO sessions (branch_id, table_id, session_token, status, created_at, session_business_date, visit_number, session_number)
+		 VALUES ($1, $2, $3, 'active', NOW() - INTERVAL '3 hours', CURRENT_DATE, 1, $4)
 		 RETURNING id`,
-		f.BranchID, f.TableID, "stale-test-"+uuid.NewString(),
+		f.BranchID, f.TableID, "stale-test-"+uuid.NewString(), "stale-"+uuid.NewString(),
 	).Scan(&rawID); err != nil {
 		t.Fatalf("insert stale session: %v", err)
 	}

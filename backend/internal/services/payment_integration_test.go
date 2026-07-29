@@ -117,6 +117,20 @@ func TestManualPaymentRequiresStaffSettlementAndRejectsStaleSnapshot(t *testing.
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
+
+	// Place an order BEFORE initiating payment (the order path is frozen once
+	// payment is in progress) and record it as the bill snapshot's source order.
+	placed, err := orderSvc.PlaceOrder(ctx, services.PlaceOrderRequest{
+		SessionID:             sess.Session.ID,
+		BranchID:              f.BranchID,
+		PlacedByParticipantID: sess.Participant.ID,
+		IdempotencyKey:        uuid.NewString(),
+		Items:                 []services.OrderItem{{MenuItemID: f.MenuItemID, Quantity: 1}},
+	})
+	if err != nil {
+		t.Fatalf("PlaceOrder: %v", err)
+	}
+
 	payment, err := paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
 		SessionID:               sess.Session.ID,
 		BranchID:                f.BranchID,
@@ -129,6 +143,7 @@ func TestManualPaymentRequiresStaffSettlementAndRejectsStaleSnapshot(t *testing.
 			Total:          50.00,
 			Currency:       "INR",
 			CreatedByActor: "guest:0",
+			SourceOrderIDs: []uuid.UUID{placed.Order.ID},
 		},
 	})
 	if err != nil {
@@ -137,17 +152,17 @@ func TestManualPaymentRequiresStaffSettlementAndRejectsStaleSnapshot(t *testing.
 	if payment.Status != sqlc.PaymentStatusRequiresStaffConfirmation {
 		t.Fatalf("payment status: got %s, want requires_staff_confirmation", payment.Status)
 	}
-	if _, err := orderSvc.PlaceOrder(ctx, services.PlaceOrderRequest{
-		SessionID:             sess.Session.ID,
-		BranchID:              f.BranchID,
-		PlacedByParticipantID: sess.Participant.ID,
-		IdempotencyKey:        uuid.NewString(),
-		Items:                 []services.OrderItem{{MenuItemID: f.MenuItemID, Quantity: 1}},
-	}); err != nil {
-		t.Fatalf("PlaceOrder: %v", err)
+
+	// Drift the active-order set after the snapshot was captured: cancelling the
+	// snapshotted order makes the snapshot stale. Applied directly because the
+	// order path is frozen during payment — this simulates the drift the
+	// staff-settlement freshness guard must reject.
+	if _, err := pool.Exec(ctx, `UPDATE orders SET status = 'cancelled' WHERE id = $1`, placed.Order.ID); err != nil {
+		t.Fatalf("cancel snapshotted order: %v", err)
 	}
+
 	if _, err := paymentSvc.SettlePaymentByStaff(ctx, payment.ID, 1, f.BranchID); !isErr(err, domain.ErrBillSnapshotStale) {
-		t.Fatalf("settle stale snapshot error: got %v", err)
+		t.Fatalf("settle stale snapshot error: got %v, want ErrBillSnapshotStale", err)
 	}
 }
 
