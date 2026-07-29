@@ -10,23 +10,19 @@ import { menuApi } from "@/lib/api/menu"
 import { ApiError } from "@/lib/api/client"
 import { Avatar } from "@/components/shared/Avatar"
 import { FeaturedCarousel } from "@/components/shared/FeaturedCarousel"
-import { Vignette } from "@/components/shared/Vignette"
-import { formatCurrency } from "@/lib/format"
+import { useOrdersStore } from "@/store/orders"
 import type { Participant, MenuItem } from "@/types/api"
-import { UtensilsCrossed, ClipboardList, Bell, Receipt, ChevronRight, Crown, Plus } from "lucide-react"
+import { UtensilsCrossed, ClipboardList, Bell, Receipt, ChevronRight, Crown } from "lucide-react"
 
 interface Props {
   params: Promise<{ id: string }>
-}
-
-function itemHue(id: number): number {
-  return (id * 47 + 15) % 60 + 20
 }
 
 export default function SessionLandingPage({ params }: Props) {
   const { id } = use(params)
   const router = useRouter()
   const { session, participant, participants, isHost } = useSession()
+  const hasOrders = useOrdersStore((s) => s.orders.length > 0)
   const [specials, setSpecials] = useState<MenuItem[]>([])
   const [popular, setPopular] = useState<MenuItem[]>([])
 
@@ -45,7 +41,7 @@ export default function SessionLandingPage({ params }: Props) {
         const bestsellers = all.filter((i) => i.item_badges?.includes("bestseller") && !featIds.has(i.id))
         const pool = bestsellers.length ? bestsellers : all.filter((i) => !featIds.has(i.id))
         setSpecials(feat)
-        setPopular(pool.slice(0, 4))
+        setPopular(pool.slice(0, 8))
       })
       .catch(() => { /* landing degrades gracefully without specials */ })
     return () => { active = false }
@@ -71,6 +67,8 @@ export default function SessionLandingPage({ params }: Props) {
     }
   }
 
+  // Shown only after the party's first order — before that the landing stays
+  // simple: menu + a way to call a waiter.
   const secondary = [
     { href: `/session/${id}/orders`,  label: "Orders", sub: "Track the kitchen", icon: ClipboardList },
     { href: `/session/${id}/assist`,  label: "Help",   sub: "Call your host",    icon: Bell          },
@@ -89,58 +87,6 @@ export default function SessionLandingPage({ params }: Props) {
           {participant ? `Welcome, ${participant.display_name}.` : "Welcome."}
         </h1>
         <p style={{ color: "var(--ink-2)", fontSize: 15, marginTop: 6 }}>Seated at {tableLabel}</p>
-      </div>
-
-      {/* Primary action — View Menu */}
-      <Link
-        href={`/session/${id}/menu`}
-        className="press"
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-          padding: "18px 20px", marginBottom: 12,
-          borderRadius: "var(--rad-lg)",
-          background: "var(--accent)", color: "var(--accent-ink)",
-          boxShadow: "var(--shadow-2)", textDecoration: "none",
-        }}
-      >
-        <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <span style={{ width: 42, height: 42, borderRadius: "var(--rad-md)", background: "rgba(255,255,255,0.12)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-            <UtensilsCrossed size={20} />
-          </span>
-          <span style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: "-0.01em" }}>View Menu</span>
-            <span style={{ fontSize: 12.5, color: "rgba(255,255,255,0.72)", marginTop: 1 }}>Tonight&apos;s offerings</span>
-          </span>
-        </span>
-        <ChevronRight size={20} style={{ opacity: 0.8 }} aria-hidden />
-      </Link>
-
-      {/* Secondary actions */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
-        {secondary.map(({ href, label, sub, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className="press"
-            style={{
-              display: "flex", flexDirection: "column", gap: 10,
-              padding: "14px 12px",
-              borderRadius: "var(--rad-lg)",
-              background: "var(--bg-elev-1)",
-              border: "1px solid var(--line-1)",
-              boxShadow: "var(--shadow-1)",
-              textDecoration: "none",
-            }}
-          >
-            <span style={{ width: 34, height: 34, borderRadius: "var(--rad-sm)", background: "var(--accent-soft)", color: "var(--ink-1)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-              <Icon size={17} />
-            </span>
-            <span>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)" }}>{label}</div>
-              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 1, lineHeight: 1.35 }}>{sub}</div>
-            </span>
-          </Link>
-        ))}
       </div>
 
       {/* Dining party card */}
@@ -200,53 +146,123 @@ export default function SessionLandingPage({ params }: Props) {
         </div>
       </div>
 
+      {/* Currently Popular — horizontal carousel */}
+      {popular.length > 0 && (
+        <div style={{ margin: "0 -20px 24px" }}>
+          <div style={{ padding: "0 20px 2px" }}>
+            <p className="eyebrow">Currently Popular</p>
+          </div>
+          <FeaturedCarousel items={popular} onSelect={goToItem} heading={null} cardEyebrow="Guest Favourite" />
+        </div>
+      )}
+
+      {hasOrders ? (
+        <>
+          {/* Primary action — View Menu */}
+          <Link
+            href={`/session/${id}/menu`}
+            className="press"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+              padding: "18px 20px", marginBottom: 12,
+              borderRadius: "var(--rad-lg)",
+              background: "var(--accent)", color: "var(--accent-ink)",
+              boxShadow: "var(--shadow-2)", textDecoration: "none",
+            }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <span style={{ width: 42, height: 42, borderRadius: "var(--rad-md)", background: "rgba(255,255,255,0.12)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                <UtensilsCrossed size={20} />
+              </span>
+              <span style={{ display: "flex", flexDirection: "column" }}>
+                <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: "-0.01em" }}>View Menu</span>
+                <span style={{ fontSize: 12.5, color: "rgba(255,255,255,0.72)", marginTop: 1 }}>Tonight&apos;s offerings</span>
+              </span>
+            </span>
+            <ChevronRight size={20} style={{ opacity: 0.8 }} aria-hidden />
+          </Link>
+
+          {/* Secondary actions */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
+            {secondary.map(({ href, label, sub, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className="press"
+                style={{
+                  display: "flex", flexDirection: "column", gap: 10,
+                  padding: "14px 12px",
+                  borderRadius: "var(--rad-lg)",
+                  background: "var(--bg-elev-1)",
+                  border: "1px solid var(--line-1)",
+                  boxShadow: "var(--shadow-1)",
+                  textDecoration: "none",
+                }}
+              >
+                <span style={{ width: 34, height: 34, borderRadius: "var(--rad-sm)", background: "var(--accent-soft)", color: "var(--ink-1)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon size={17} />
+                </span>
+                <span>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)" }}>{label}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 1, lineHeight: 1.35 }}>{sub}</div>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </>
+      ) : (
+        /* First landing — Menu + Help side by side; Orders/Bill arrive with the first order */
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
+          <Link
+            href={`/session/${id}/menu`}
+            className="press"
+            style={{
+              display: "flex", flexDirection: "column", gap: 10,
+              padding: "16px 14px",
+              borderRadius: "var(--rad-lg)",
+              background: "var(--accent)", color: "var(--accent-ink)",
+              boxShadow: "var(--shadow-2)", textDecoration: "none",
+            }}
+          >
+            <span style={{ width: 34, height: 34, borderRadius: "var(--rad-sm)", background: "rgba(255,255,255,0.12)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <UtensilsCrossed size={17} />
+            </span>
+            <span>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>View Menu</div>
+              <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 1, lineHeight: 1.35 }}>Tonight&apos;s offerings</div>
+            </span>
+          </Link>
+          <Link
+            href={`/session/${id}/assist`}
+            className="press"
+            style={{
+              display: "flex", flexDirection: "column", gap: 10,
+              padding: "16px 14px",
+              borderRadius: "var(--rad-lg)",
+              background: "var(--bg-elev-1)",
+              border: "1px solid var(--line-1)",
+              boxShadow: "var(--shadow-1)",
+              textDecoration: "none",
+            }}
+          >
+            <span style={{ width: 34, height: 34, borderRadius: "var(--rad-sm)", background: "var(--accent-soft)", color: "var(--ink-1)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <Bell size={17} />
+            </span>
+            <span>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)" }}>Help</div>
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 1, lineHeight: 1.35 }}>Call your host</div>
+            </span>
+          </Link>
+        </div>
+      )}
+
       {/* Today's Specials — reuses the featured carousel */}
       {specials.length > 0 && (
         <div style={{ margin: "0 -20px 28px" }}>
           <div style={{ padding: "0 20px 2px" }}>
             <p className="eyebrow" style={{ color: "var(--accent)" }}>Today&apos;s Specials</p>
           </div>
-          <FeaturedCarousel items={specials} onSelect={goToItem} />
-        </div>
-      )}
-
-      {/* Currently Popular */}
-      {popular.length > 0 && (
-        <div style={{ marginBottom: 28 }}>
-          <p className="eyebrow" style={{ marginBottom: 10 }}>Currently Popular</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {popular.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => goToItem(item)}
-                className="press"
-                style={{
-                  display: "flex", alignItems: "center", gap: 12,
-                  padding: "10px 4px", background: "none", border: "none",
-                  borderBottom: "1px solid var(--line-1)", textAlign: "left", cursor: "pointer", width: "100%",
-                }}
-              >
-                {item.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.image_url} alt="" aria-hidden loading="lazy" style={{ width: 52, height: 52, borderRadius: "var(--rad-md)", objectFit: "cover", flexShrink: 0 }} />
-                ) : (
-                  <div style={{ width: 52, height: 52, borderRadius: "var(--rad-md)", background: "var(--bg-sunken)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <Vignette hue={itemHue(item.id)} size={34} />
-                  </div>
-                )}
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 14.5, fontWeight: 600, color: "var(--ink-1)", letterSpacing: "-0.005em" }}>{item.name}</span>
-                  <span style={{ display: "block", fontSize: 12.5, color: "var(--ink-3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</span>
-                </span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink-1)", fontVariantNumeric: "tabular-nums" }}>{formatCurrency(item.price)}</span>
-                  <span style={{ width: 30, height: 30, borderRadius: "var(--rad-pill)", border: "1px solid var(--line-2)", color: "var(--ink-1)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                    <Plus size={15} aria-hidden />
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
+          <FeaturedCarousel items={specials} onSelect={goToItem} heading={null} />
         </div>
       )}
 

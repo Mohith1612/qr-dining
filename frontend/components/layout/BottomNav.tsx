@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { UtensilsCrossed, ClipboardList, Bell, Receipt } from "lucide-react"
+import { Home, UtensilsCrossed, ClipboardList, Bell, Receipt } from "lucide-react"
 import { useOrdersStore } from "@/store/orders"
 
 interface BottomNavProps {
@@ -14,8 +14,9 @@ export function BottomNav({ sessionId }: BottomNavProps) {
   const hasOrders = useOrdersStore((s) => s.orders.length > 0)
 
   const tabs = [
+    { href: `/session/${sessionId}`,         label: "Home",   icon: Home,            muted: false },
     { href: `/session/${sessionId}/menu`,    label: "Menu",   icon: UtensilsCrossed, muted: false },
-    { href: `/session/${sessionId}/orders`,  label: "Orders", icon: ClipboardList,   muted: false },
+    { href: `/session/${sessionId}/orders`,  label: "Orders", icon: ClipboardList,   muted: !hasOrders },
     { href: `/session/${sessionId}/payment`, label: "Bill",   icon: Receipt,         muted: !hasOrders },
     { href: `/session/${sessionId}/assist`,  label: "Help",   icon: Bell,            muted: false },
   ]
