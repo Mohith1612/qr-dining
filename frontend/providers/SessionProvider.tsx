@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useRef, useState } from "react"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import { reconcileSnapshot } from "@/lib/ws/reconciliation"
 import { sessionsApi } from "@/lib/api/sessions"
+import { ApiError } from "@/lib/api/client"
 import { themeApi } from "@/lib/api/theme"
 import { applyTheme } from "@/lib/theme/applyTheme"
 import { useSessionStore } from "@/store/session"
@@ -63,7 +64,20 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
         setSessionClosed(true)
       }
       setSnapshotLoaded(true)
-    }).catch(() => {
+    }).catch(async (err) => {
+      // A closed session invalidates the guest token (snapshot → 401) and, once the
+      // terminal read window lapses, returns 410 SESSION_ENDED. In both cases a stale
+      // tab should land on the ended screen instead of looping on reconnect. The
+      // snapshot still exposes terminal status without a token (when guest creds
+      // aren't required), so retry once without it to detect a closed session.
+      if (err instanceof ApiError && (err.status === 410 || err.code === "SESSION_ENDED")) {
+        if (!cancelled) setSessionClosed(true)
+      } else {
+        try {
+          const snap = await sessionsApi.snapshot(sessionId)
+          if (!cancelled && TERMINAL_STATUSES.includes(snap.session.status)) setSessionClosed(true)
+        } catch { /* session genuinely unreachable */ }
+      }
       if (!cancelled) setSnapshotLoaded(true)
     })
     return () => { cancelled = true }

@@ -146,10 +146,13 @@ export async function fetchSessionDB(sessionId: string): Promise<{ id: string; s
 }
 
 export async function fetchAudit(resourceType: string, resourceId: string): Promise<AuditEntry[]> {
-  // GET /platform/audit returns { audit: [...] }, not a bare array.
+  // GET /platform/audit returns { audit: [...] } and filters sessions by session_id
+  // (it has no generic resource_type/resource_id filter).
+  const qs = resourceType === "session"
+    ? `session_id=${resourceId}`
+    : `resource_type=${resourceType}&resource_id=${resourceId}`
   const res = await apiCall<{ audit: AuditEntry[] }>(
-    "GET", `/platform/audit?resource_type=${resourceType}&resource_id=${resourceId}`,
-    undefined, { token: adminToken }
+    "GET", `/platform/audit?${qs}`, undefined, { token: adminToken }
   )
   return res.audit ?? []
 }

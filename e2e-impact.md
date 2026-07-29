@@ -108,3 +108,21 @@ function`).
 
 **To run the suite:** the static `e2e-admin-secret` bypass was removed by the security hardening, so a
 real token is required — pass `E2E_ADMIN_TOKEN` from `POST /platform/auth`, plus `API_URL`/`APP_URL`.
+
+### Resolution (the 2 pre-existing failures, now fixed)
+
+**All 6 DOM specs pass on Chromium/desktop.** Root causes were environmental/helper, not the redesign:
+
+- **G-01** (`session.create` not found): the mtest backend ran with `AUDIT_LOG_V2_ENABLED` defaulting to
+  **false** (only stale 2026-06-05 events existed) AND the helper queried `?resource_type/&resource_id`,
+  which the endpoint ignores (it filters by `session_id`). Fixes: (1) `scripts/manual-testing-up.sh` now
+  launches both backends with `AUDIT_LOG_V2_ENABLED=true`; (2) `helpers/api.ts fetchAudit` now queries
+  `?session_id=` for session lookups. → green.
+- **L-09** (closed-session ended screen): closing a session invalidates the guest token, so the stale
+  tab's snapshot 401s; `SessionProvider`'s `.catch` swallowed it. Fix (frontend, no session/WS semantic
+  change): on snapshot failure, treat 410 `SESSION_ENDED` as closed, else retry the snapshot **without**
+  the token (it still exposes terminal status) → show `SessionEndedScreen`. → green.
+
+**Env limitation (pre-existing, not redesign):** the `mobile`/`tablet` projects use iPhone/iPad devices
+= WebKit, but only Chromium is installed and WebKit needs `playwright install --with-deps webkit` (sudo).
+So those projects can't launch here. Functional assertions are viewport-independent and pass on Chromium.
