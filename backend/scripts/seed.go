@@ -33,14 +33,47 @@ import (
 // ─────────────────────────── data model for the seed ────────────────────────
 
 type modSpec struct {
-	name  string
-	delta string
-	req   bool
+	name   string
+	delta  string
+	req    bool
+	group  string // modifier_group; empty = plain add-on
+	single bool   // single_select; group renders as a radio "pick one"
 }
 type itemSpec struct {
 	name  string
 	price string
 	mods  []modSpec
+}
+
+// stockImageURLs gives every seeded dish a representative stock photo so image
+// layouts are visible in manual testing. Keyed by item name; unmatched items
+// simply render the vignette placeholder. All URLs verified to resolve.
+var stockImageURLs = map[string]string{
+	"Paneer Tikka":         "https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=400&q=60",
+	"Veg Spring Rolls":     "https://images.unsplash.com/photo-1625220194771-7ebdea0b70b9?w=400&q=60",
+	"Chicken 65":           "https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=400&q=60",
+	"Dal Makhani":          "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=60",
+	"Butter Chicken":       "https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=400&q=60",
+	"Veg Biryani":          "https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=400&q=60",
+	"Butter Naan":          "https://images.unsplash.com/photo-1601050690597-df0568f70950?w=400&q=60",
+	"Garlic Roti":          "https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=400&q=60",
+	"Laccha Paratha":       "https://images.unsplash.com/photo-1626074353765-517a681e40be?w=400&q=60",
+	"Sweet Lassi":          "https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=400&q=60",
+	"Masala Chai":          "https://images.unsplash.com/photo-1596797038530-2c107229654b?w=400&q=60",
+	"Mango Shake":          "https://images.unsplash.com/photo-1551024506-0bccd828d307?w=400&q=60",
+	"Gulab Jamun":          "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=400&q=60",
+	"Ice Cream":            "https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=400&q=60",
+	"Kheer":                "https://images.unsplash.com/photo-1541696432-82c6da8ce7bf?w=400&q=60",
+	"Espresso":             "https://images.unsplash.com/photo-1517244683847-7456b63c5969?w=400&q=60",
+	"Cappuccino":           "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=400&q=60",
+	"Cold Brew":            "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&q=60",
+	"Green Tea":            "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&q=60",
+	"Grilled Veg Sandwich": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400&q=60",
+	"Chicken Club":         "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=400&q=60",
+	"Butter Croissant":     "https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=60",
+	"Chocolate Muffin":     "https://images.unsplash.com/photo-1607958996333-41aef7caefaa?w=400&q=60",
+	"Iced Latte":           "https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=400&q=60",
+	"Lemonade":             "https://images.unsplash.com/photo-1523677011781-c91d1bbe2f9e?w=400&q=60",
 }
 type catSpec struct {
 	name  string
@@ -442,11 +475,15 @@ func seedMenu(ctx context.Context, pool *pgxpool.Pool, branchID int64, cats []ca
 		}
 		for ipos, item := range cat.items {
 			var itemID int64
+			var imageURL *string
+			if u, ok := stockImageURLs[item.name]; ok {
+				imageURL = &u
+			}
 			if err := pool.QueryRow(ctx,
-				`INSERT INTO menu_items (category_id, branch_id, name, price, position)
-				 VALUES ($1, $2, $3, $4::numeric, $5)
+				`INSERT INTO menu_items (category_id, branch_id, name, price, position, image_url)
+				 VALUES ($1, $2, $3, $4::numeric, $5, $6)
 				 ON CONFLICT DO NOTHING RETURNING id`,
-				catID, branchID, item.name, item.price, ipos,
+				catID, branchID, item.name, item.price, ipos, imageURL,
 			).Scan(&itemID); err != nil {
 				if e2 := pool.QueryRow(ctx, `SELECT id FROM menu_items WHERE branch_id=$1 AND name=$2`, branchID, item.name).Scan(&itemID); e2 != nil {
 					fmt.Printf("item %s: %v\n", item.name, err)
@@ -455,9 +492,9 @@ func seedMenu(ctx context.Context, pool *pgxpool.Pool, branchID int64, cats []ca
 			}
 			for _, mod := range item.mods {
 				_, _ = pool.Exec(ctx,
-					`INSERT INTO item_modifiers (item_id, name, price_delta, is_required)
-					 VALUES ($1, $2, $3::numeric, $4) ON CONFLICT DO NOTHING`,
-					itemID, mod.name, mod.delta, mod.req,
+					`INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group, single_select)
+					 VALUES ($1, $2, $3::numeric, $4, $5, $6) ON CONFLICT DO NOTHING`,
+					itemID, mod.name, mod.delta, mod.req, mod.group, mod.single,
 				)
 			}
 		}
@@ -667,13 +704,13 @@ func tenantCatalog() []tenantSpec {
 func restaurantMenu() []catSpec {
 	return []catSpec{
 		{"Starters", []itemSpec{
-			{"Paneer Tikka", "180", []modSpec{{"Extra Sauce", "20", false}}},
+			{"Paneer Tikka", "180", []modSpec{{"Extra Sauce", "20", false, "", false}}},
 			{"Veg Spring Rolls", "140", nil},
 			{"Chicken 65", "210", nil},
 		}},
 		{"Mains", []itemSpec{
 			{"Dal Makhani", "220", nil},
-			{"Butter Chicken", "280", []modSpec{{"Extra Butter", "30", false}}},
+			{"Butter Chicken", "280", []modSpec{{"Extra Butter", "30", false, "", false}}},
 			{"Veg Biryani", "200", nil},
 		}},
 		{"Breads", []itemSpec{
@@ -682,13 +719,13 @@ func restaurantMenu() []catSpec {
 			{"Laccha Paratha", "50", nil},
 		}},
 		{"Beverages", []itemSpec{
-			{"Sweet Lassi", "80", []modSpec{{"Sweet", "0", true}, {"Salted", "0", false}}},
+			{"Sweet Lassi", "80", []modSpec{{"Sweet", "0", true, "style", true}, {"Salted", "0", false, "style", true}}},
 			{"Masala Chai", "30", nil},
 			{"Mango Shake", "90", nil},
 		}},
 		{"Desserts", []itemSpec{
 			{"Gulab Jamun", "60", nil},
-			{"Ice Cream", "80", []modSpec{{"Chocolate", "10", false}, {"Vanilla", "0", false}}},
+			{"Ice Cream", "80", []modSpec{{"Chocolate", "10", false, "flavour", true}, {"Vanilla", "0", false, "flavour", true}}},
 			{"Kheer", "70", nil},
 		}},
 	}
@@ -698,7 +735,7 @@ func cafeMenu() []catSpec {
 	return []catSpec{
 		{"Coffee", []itemSpec{
 			{"Espresso", "120", nil},
-			{"Cappuccino", "160", []modSpec{{"Oat Milk", "30", false}}},
+			{"Cappuccino", "160", []modSpec{{"Oat Milk", "30", false, "", false}}},
 			{"Cold Brew", "180", nil},
 		}},
 		{"Tea", []itemSpec{
@@ -714,7 +751,7 @@ func cafeMenu() []catSpec {
 			{"Chocolate Muffin", "110", nil},
 		}},
 		{"Cold Drinks", []itemSpec{
-			{"Iced Latte", "180", []modSpec{{"Hazelnut", "20", false}}},
+			{"Iced Latte", "180", []modSpec{{"Hazelnut", "20", false, "", false}}},
 			{"Lemonade", "100", nil},
 		}},
 	}

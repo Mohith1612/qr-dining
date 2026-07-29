@@ -8,13 +8,15 @@ import type { NextConfig } from "next";
 //   our own build pipeline.
 // - `connect-src` allows the API host (NEXT_PUBLIC_API_BASE) plus the WS
 //   origin (wss://...). For dev, plain ws:// and localhost are added.
-// - `img-src` allows R2 public host for menu / brand assets. Configure via
-//   NEXT_PUBLIC_R2_PUBLIC_BASE.
+// - `img-src` allows any https host: menu items and branding accept operator
+//   supplied image URLs (R2-hosted uploads or pasted stock links), so images
+//   may come from arbitrary https origins. Images-only; everything else stays
+//   locked to 'self'.
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 const R2_PUBLIC_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ?? "";
 
 const connectSources = ["'self'"];
-const imgSources = ["'self'", "data:", "blob:"];
+const imgSources = ["'self'", "data:", "blob:", "https:"];
 if (API_BASE) {
   connectSources.push(API_BASE);
   // The API host also accepts WebSocket upgrades; allow ws/wss to the same host.
