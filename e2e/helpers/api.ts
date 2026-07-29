@@ -170,6 +170,10 @@ export async function placeWebhook(
   event: Record<string, unknown>,
   secret: string
 ): Promise<Response> {
+  // The webhook contract requires a provider event id (`id`) — it is the
+  // idempotency/dedupe key. Default one, but mutate the caller's object so
+  // replay specs that resend the same event keep the same id.
+  if (event.id == null) event.id = crypto.randomUUID()
   const body = JSON.stringify(event)
   const ts = Math.floor(Date.now() / 1000).toString()
   const sigPayload = `${ts}.${body}`
@@ -179,8 +183,8 @@ export async function placeWebhook(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Webhook-Timestamp": ts,
-      "X-Webhook-Signature": `v1=${sig}`,
+      "X-Payment-Timestamp": ts,
+      "X-Payment-Signature": sig,
     },
     body,
   })

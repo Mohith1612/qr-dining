@@ -8,7 +8,7 @@ test.describe("P-03: Webhook replay idempotency", () => {
     const secret = process.env.WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
     const externalEventId = crypto.randomUUID()
     const event = {
-      external_event_id: externalEventId,
+      id: externalEventId,
       event: "payment.completed",
       payment_intent_id: crypto.randomUUID(),
       amount: 15000,
@@ -25,8 +25,8 @@ test.describe("P-03: Webhook replay idempotency", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-Webhook-Timestamp": ts,
-            "X-Webhook-Signature": `v1=${sig}`,
+            "X-Payment-Timestamp": ts,
+            "X-Payment-Signature": sig,
           },
           body,
         })

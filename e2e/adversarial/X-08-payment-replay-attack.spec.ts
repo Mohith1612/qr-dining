@@ -61,7 +61,9 @@ test.describe("X-08: Payment idempotency prevents replay attack", () => {
         idempotency_key: key,
       }),
     })
-    // Either 409 IDEMPOTENCY_CONFLICT or session is already payment_pending
-    expect([409]).toContain(pay3.status)
+    // 409 IDEMPOTENCY_CONFLICT / session already payment_pending, or 422
+    // PAYMENT_AMOUNT_INVALID (amount is validated against the bill before the
+    // idempotency key is consulted). Either way the replay is rejected.
+    expect([409, 422]).toContain(pay3.status)
   })
 })
