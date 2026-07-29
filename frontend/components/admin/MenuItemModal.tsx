@@ -4,6 +4,8 @@ import { useState } from "react"
 import { Loader2, Plus, Trash2, Pencil, Check } from "lucide-react"
 import { toast } from "sonner"
 import { staffApi } from "@/lib/api/staff"
+import { uploadApi } from "@/lib/api/upload"
+import { ApiError } from "@/lib/api/client"
 import { BottomSheet } from "@/components/shared/BottomSheet"
 import { ImageUploadField } from "@/components/admin/ImageUploadField"
 import { Button } from "@/components/ui/button"
@@ -124,6 +126,8 @@ export function MenuItemModal({
   // Inline edit of an existing (already-persisted) modifier.
   const [editMod, setEditMod] = useState<(PendingModifier & { id: number }) | null>(null)
   const [editSaving, setEditSaving] = useState(false)
+  // Create mode: photo picked before the item exists; uploaded right after create.
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
 
   function startEditMod(mod: ItemModifier) {
     setEditMod({
@@ -212,6 +216,29 @@ export function MenuItemModal({
             single_select: mod.single_select,
           }, token)
           saved = { ...saved, modifiers: [...(saved.modifiers ?? []), created] }
+        }
+
+        // A photo picked before the item existed uploads now, against the new
+        // item id. Failure is non-fatal — the item is already created.
+        if (pendingImageFile) {
+          try {
+            const presign = await uploadApi.requestMenuItemPresignUrl(
+              saved.id, pendingImageFile.type, pendingImageFile.size, token
+            )
+            await uploadApi.uploadFileToR2(presign.upload_url, pendingImageFile)
+            saved = await staffApi.updateMenuItem(
+              saved.id, branchId,
+              { name: saved.name, price: priceNum, image_url: presign.public_url },
+              token
+            )
+          } catch (err) {
+            const notConfigured = err instanceof ApiError && err.status === 503
+            toast.error(
+              notConfigured
+                ? "Item created, but image hosting isn't set up here — edit the item and paste an image URL."
+                : "Item created, but the photo upload failed — edit the item to retry."
+            )
+          }
         }
       } else {
         // edit mode
@@ -410,15 +437,20 @@ export function MenuItemModal({
                 onRemoved={() => patch({ imageUrl: "" })}
               />
             ) : (
-              <p style={{ fontSize: 12, color: "var(--ink-4)", margin: "0 0 8px" }}>
-                Save the item first to upload a photo, or paste an image URL below.
-              </p>
+              <ImageUploadField
+                currentUrl={null}
+                uploadEndpoint="menu-item"
+                deferred
+                onFileSelected={(file) => setPendingImageFile(file)}
+                onUploaded={() => {}}
+                onRemoved={() => setPendingImageFile(null)}
+              />
             )}
             <Input
               value={form.imageUrl}
               onChange={(e) => patch({ imageUrl: e.target.value })}
               placeholder="Or paste an image URL (https://…)"
-              style={{ marginTop: mode === "edit" && item ? 8 : 0 }}
+              style={{ marginTop: 8 }}
             />
           </div>
         </div>

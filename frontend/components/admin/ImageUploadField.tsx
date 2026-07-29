@@ -15,7 +15,14 @@ interface ImageUploadFieldProps {
   onUploaded: (publicUrl: string) => void
   onRemoved?: () => void
   uploadEndpoint: "menu-item" | "restaurant-logo"
-  itemId?: number // required when uploadEndpoint === "menu-item"
+  itemId?: number // required when uploadEndpoint === "menu-item" and not deferred
+  /**
+   * Deferred mode: the picked file is only previewed locally and handed to
+   * onFileSelected — no network call. Used on create forms where the upload
+   * target (item id) doesn't exist yet; the caller uploads after creation.
+   */
+  deferred?: boolean
+  onFileSelected?: (file: File) => void
 }
 
 export function ImageUploadField({
@@ -24,6 +31,8 @@ export function ImageUploadField({
   onRemoved,
   uploadEndpoint,
   itemId,
+  deferred = false,
+  onFileSelected,
 }: ImageUploadFieldProps) {
   const token = useStaffStore((s) => s.token)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -51,6 +60,13 @@ export function ImageUploadField({
 
     const localPreview = URL.createObjectURL(file)
     setPreviewUrl(localPreview)
+
+    if (deferred) {
+      // Hold the file for the caller; it uploads once the item exists.
+      onFileSelected?.(file)
+      return
+    }
+
     setUploading(true)
     setProgress(0)
 
