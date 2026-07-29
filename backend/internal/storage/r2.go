@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/Mohith1612/qr-dining/internal/config"
 )
 
 // R2Client wraps the S3-compatible Cloudflare R2 API.
@@ -28,7 +28,7 @@ func NewR2Client(cfg config.R2Config) *R2Client {
 	endpoint := fmt.Sprintf("https://%s.r2.cloudflarestorage.com", cfg.AccountID)
 
 	s3Client := s3.New(s3.Options{
-		Region:      "auto",
+		Region:       "auto",
 		BaseEndpoint: aws.String(endpoint),
 		Credentials: aws.NewCredentialsCache(
 			credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),

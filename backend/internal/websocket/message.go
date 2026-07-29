@@ -43,8 +43,8 @@ const (
 	// enabled/disabled mid-session so they can reconcile their menu and cart
 	// instead of failing an order against a now-unavailable item.
 	EventMenuItemAvailabilityChanged EventType = "MENU_ITEM_AVAILABILITY_CHANGED"
-	EventPing                     EventType = "PING"
-	EventPong                     EventType = "PONG"
+	EventPing                        EventType = "PING"
+	EventPong                        EventType = "PONG"
 )
 
 // Envelope is the standard shape for all WebSocket messages.

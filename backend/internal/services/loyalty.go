@@ -562,4 +562,6 @@ func IsLoyaltyDisabled(err error) bool { return errors.Is(err, domain.ErrLoyalty
 func IsLoyaltyInsufficientPoints(err error) bool {
 	return errors.Is(err, domain.ErrLoyaltyInsufficientPoints)
 }
-func IsLoyaltyAccountNotFound(err error) bool { return errors.Is(err, domain.ErrLoyaltyAccountNotFound) }
+func IsLoyaltyAccountNotFound(err error) bool {
+	return errors.Is(err, domain.ErrLoyaltyAccountNotFound)
+}

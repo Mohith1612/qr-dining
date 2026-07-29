@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	StaffSessionKey  = "staff_session"
-	StaffCookieName  = "qrd_staff_session"
-	StaffCookiePath  = "/"
+	StaffSessionKey = "staff_session"
+	StaffCookieName = "qrd_staff_session"
+	StaffCookiePath = "/"
 )
 
 // StaffAuth validates a staff session token from EITHER the Authorization

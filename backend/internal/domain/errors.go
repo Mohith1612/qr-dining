@@ -4,13 +4,13 @@ import "errors"
 
 // Session lifecycle
 var (
-	ErrSessionNotFound             = errors.New("session not found")
-	ErrSessionClosed               = errors.New("session is closed or abandoned")
-	ErrSessionAlreadyActive        = errors.New("table already has an active session")
-	ErrSessionNotActive            = errors.New("session is not in an active state")
-	ErrPaymentInProgress           = errors.New("payment in progress; cart and order changes are frozen")
-	ErrSessionTerminalReadExpired  = errors.New("session has ended and read window has expired")
-	ErrGuestCredentialRevoked      = errors.New("guest credential has been revoked")
+	ErrSessionNotFound            = errors.New("session not found")
+	ErrSessionClosed              = errors.New("session is closed or abandoned")
+	ErrSessionAlreadyActive       = errors.New("table already has an active session")
+	ErrSessionNotActive           = errors.New("session is not in an active state")
+	ErrPaymentInProgress          = errors.New("payment in progress; cart and order changes are frozen")
+	ErrSessionTerminalReadExpired = errors.New("session has ended and read window has expired")
+	ErrGuestCredentialRevoked     = errors.New("guest credential has been revoked")
 )
 
 // Participants
@@ -104,10 +104,10 @@ var (
 
 // Billing (org-level subscription lifecycle, invoices)
 var (
-	ErrSubscriptionNotFound        = errors.New("organization subscription not found")
+	ErrSubscriptionNotFound          = errors.New("organization subscription not found")
 	ErrInvalidSubscriptionTransition = errors.New("invalid subscription status transition")
-	ErrInvoiceNotFound             = errors.New("invoice not found")
-	ErrInvalidInvoiceTransition    = errors.New("invalid invoice status transition")
+	ErrInvoiceNotFound               = errors.New("invoice not found")
+	ErrInvalidInvoiceTransition      = errors.New("invalid invoice status transition")
 )
 
 // Platform feature flags / theme

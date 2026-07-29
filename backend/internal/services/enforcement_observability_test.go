@@ -12,10 +12,10 @@ func TestClassifySubscription(t *testing.T) {
 	later := now.Add(60 * 24 * time.Hour)
 
 	tests := []struct {
-		name     string
-		status   string
-		trial    *time.Time
-		expires  *time.Time
+		name       string
+		status     string
+		trial      *time.Time
+		expires    *time.Time
 		wantReason string
 	}{
 		{"suspended", SubStatusSuspended, nil, nil, "suspended"},

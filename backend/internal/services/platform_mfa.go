@@ -19,18 +19,18 @@ import (
 )
 
 const (
-	mfaChallengeTTL          = 5 * time.Minute
-	mfaRecoveryCodeCount     = 10
-	mfaRecoveryCodeBytes     = 10 // 16 base32 chars
-	mfaIssuerLabel           = "QR Dining"
-	mfaEncryptionKeyMinLen   = 16
+	mfaChallengeTTL        = 5 * time.Minute
+	mfaRecoveryCodeCount   = 10
+	mfaRecoveryCodeBytes   = 10 // 16 base32 chars
+	mfaIssuerLabel         = "QR Dining"
+	mfaEncryptionKeyMinLen = 16
 )
 
 // PlatformMFASetup is the response from BeginEnrollment containing everything
 // an authenticator app needs to provision a new code.
 type PlatformMFASetup struct {
-	Secret          string `json:"secret"`
-	OTPAuthURI      string `json:"otpauth_uri"`
+	Secret     string `json:"secret"`
+	OTPAuthURI string `json:"otpauth_uri"`
 }
 
 // PlatformMFAEnrollmentResult is returned by ConfirmEnrollment with the

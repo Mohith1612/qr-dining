@@ -13,8 +13,8 @@ import (
 )
 
 type SubscriptionHandler struct {
-	repos   *repository.Repos
-	subSvc  *services.SubscriptionService
+	repos  *repository.Repos
+	subSvc *services.SubscriptionService
 }
 
 func NewSubscriptionHandler(repos *repository.Repos, subSvc *services.SubscriptionService) *SubscriptionHandler {

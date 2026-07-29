@@ -37,15 +37,15 @@ func (r *Repos) UpsertLoyaltyAccountForEarn(ctx context.Context, customerID, org
 
 // LoyaltyTransactionParams carries optional links for a ledger row.
 type LoyaltyTransactionParams struct {
-	AccountID  int64
-	Type       string // earn | redeem | adjustment
-	Points     int64  // signed
-	Amount     pgtype.Numeric
-	PaymentID  int64     // 0 = none
-	SessionID  uuid.UUID // uuid.Nil = none
-	ActorType  string    // system | staff
-	StaffID    int64     // 0 = none
-	Reason     string
+	AccountID int64
+	Type      string // earn | redeem | adjustment
+	Points    int64  // signed
+	Amount    pgtype.Numeric
+	PaymentID int64     // 0 = none
+	SessionID uuid.UUID // uuid.Nil = none
+	ActorType string    // system | staff
+	StaffID   int64     // 0 = none
+	Reason    string
 }
 
 func (r *Repos) InsertLoyaltyTransaction(ctx context.Context, p LoyaltyTransactionParams) (sqlc.CustomerLoyaltyTransaction, error) {

@@ -422,9 +422,9 @@ func (h *StaffHandler) DeactivateStaff(c *gin.Context) {
 		ActorType:      audit.ActorTypeStaff,
 		ActorID:        audit.IDStr(sess.StaffID),
 		ActorScope: map[string]any{
-			"org_id": actor.Scope.OrganizationID,
+			"org_id":    actor.Scope.OrganizationID,
 			"branch_id": target.BranchID,
-			"role": string(sess.Role),
+			"role":      string(sess.Role),
 		},
 		RiskLevel: audit.RiskHigh,
 		After:     audit.MustJSON(map[string]any{"is_active": false}),
