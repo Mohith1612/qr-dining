@@ -12,7 +12,7 @@ import { BottomSheet } from "@/components/shared/BottomSheet"
 import { Vignette } from "@/components/shared/Vignette"
 import { FeaturedCarousel } from "@/components/shared/FeaturedCarousel"
 import { FloatingCart } from "@/components/shared/FloatingCart"
-import { DietaryTag, BadgeTag, SpiceIndicator } from "@/components/shared/MetaTag"
+import { BadgeTag, SpiceIndicator } from "@/components/shared/MetaTag"
 import { Minus, Plus, Search } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -46,84 +46,133 @@ function itemHue(id: number): number {
   return (id * 47 + 15) % 60 + 20
 }
 
+/** Classic Indian menu-card veg/non-veg mark: bordered square with a dot. */
+function VegMark({ flags }: { flags?: DietaryFlag[] | null }) {
+  if (!flags?.length) return null
+  const isVeg = flags.some((f) => f === "vegetarian" || f === "vegan" || f === "jain")
+  const isEgg = flags.includes("egg")
+  const color = flags.includes("non-veg") ? "#D0342C" : isEgg ? "#C89B3C" : isVeg ? "#1E8E3E" : null
+  if (!color) return null
+  return (
+    <span
+      aria-label={flags.includes("non-veg") ? "Non-vegetarian" : isEgg ? "Contains egg" : "Vegetarian"}
+      style={{
+        width: 15, height: 15, borderRadius: 3, flexShrink: 0,
+        border: `1.5px solid ${color}`,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />
+    </span>
+  )
+}
+
 function ItemRow({ item, qty, onTap }: ItemRowProps) {
   const [imgError, setImgError] = useState(false)
+  const customisable = (item.modifiers?.length ?? 0) > 0
+  const tap = () => item.is_available && onTap(item)
   return (
-    <button
-      onClick={() => item.is_available && onTap(item)}
-      disabled={!item.is_available}
-      className="press"
+    <div
       style={{
-        border: 0, background: "transparent", padding: "18px 0",
-        display: "flex", gap: 16, alignItems: "flex-start", textAlign: "left",
-        width: "100%", opacity: item.is_available ? 1 : 0.4,
+        padding: "20px 0 26px",
+        display: "flex", gap: 14, alignItems: "flex-start",
+        borderBottom: "1px dashed var(--line-2)",
+        opacity: item.is_available ? 1 : 0.4,
       }}
-      aria-disabled={!item.is_available}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span className="serif" style={{ fontSize: 20, fontWeight: 500, letterSpacing: "-0.015em", color: "var(--ink-1)", lineHeight: 1.15 }}>
-            {item.name}
-          </span>
-          <span className="leader" />
-          <span className="serif" style={{ fontSize: 17, color: "var(--accent)", fontWeight: 500, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-            {formatCurrency(item.price)}
-          </span>
-        </div>
-        {item.description && (
-          <div style={{ color: "var(--ink-3)", fontSize: 13, lineHeight: 1.6, marginTop: 5 }}>
-            {item.description}
-          </div>
-        )}
-        {(item.dietary_flags?.length || item.item_badges?.length || !!item.spice_level) ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-            {item.dietary_flags?.map((f) => <DietaryTag key={f} flag={f} />)}
-            {item.item_badges?.map((b) => <BadgeTag key={b} badge={b} />)}
+      {/* Left — identity, price, description */}
+      <div
+        role="button"
+        tabIndex={item.is_available ? 0 : -1}
+        onClick={tap}
+        onKeyDown={(e) => e.key === "Enter" && tap()}
+        style={{ flex: 1, minWidth: 0, cursor: item.is_available ? "pointer" : "default" }}
+        aria-disabled={!item.is_available}
+      >
+        {(item.dietary_flags?.length || !!item.spice_level) ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7 }}>
+            <VegMark flags={item.dietary_flags} />
             {item.spice_level ? <SpiceIndicator level={item.spice_level} /> : null}
           </div>
         ) : null}
+        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.015em", color: "var(--ink-1)", lineHeight: 1.25 }}>
+          {item.name}
+        </div>
+        {item.item_badges?.length ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 7 }}>
+            {item.item_badges.map((b) => <BadgeTag key={b} badge={b} />)}
+          </div>
+        ) : null}
+        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-1)", marginTop: 8, fontVariantNumeric: "tabular-nums" }}>
+          {formatCurrency(item.price)}
+        </div>
+        {item.description && (
+          <div style={{
+            color: "var(--ink-3)", fontSize: 13, lineHeight: 1.55, marginTop: 6,
+            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+          }}>
+            {item.description}
+          </div>
+        )}
         {!item.is_available && (
-          <div style={{ color: "var(--ink-4)", fontSize: 11, marginTop: 5, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+          <div style={{ color: "var(--ink-4)", fontSize: 11, marginTop: 6, letterSpacing: "0.05em", textTransform: "uppercase" }}>
             Not available
           </div>
         )}
       </div>
-      <div style={{ position: "relative", flexShrink: 0 }}>
-        {item.image_url && !imgError ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={item.image_url}
-            alt=""
-            aria-hidden
-            loading="lazy"
-            onError={() => setImgError(true)}
-            style={{
-              width: 66, height: 66, borderRadius: 12,
-              objectFit: "cover", flexShrink: 0,
-              outline: qty > 0 ? "2px solid var(--accent)" : "none",
-              outlineOffset: 2,
-            }}
-          />
-        ) : (
-          <Vignette hue={itemHue(item.id)} size={66} ring={qty > 0} />
-        )}
-        {qty > 0 && (
-          <span style={{
-            position: "absolute", bottom: -3, right: -3,
-            minWidth: 22, height: 22, borderRadius: 999, padding: "0 7px",
-            background: "var(--accent)", color: "var(--accent-ink)",
-            border: "2px solid var(--bg-base)",
-            display: "inline-flex", alignItems: "center", justifyContent: "center",
-            fontSize: 11, fontWeight: 700, letterSpacing: "-0.005em",
+
+      {/* Right — photo with the ADD pill riding its bottom edge */}
+      <div style={{ position: "relative", flexShrink: 0, width: 132, paddingBottom: customisable ? 34 : 18, textAlign: "center" }}>
+        <div role="button" tabIndex={-1} onClick={tap} style={{ cursor: item.is_available ? "pointer" : "default" }}>
+          {item.image_url && !imgError ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.image_url}
+              alt=""
+              aria-hidden
+              loading="lazy"
+              onError={() => setImgError(true)}
+              style={{ width: 132, height: 122, borderRadius: 16, objectFit: "cover", display: "block", boxShadow: "var(--shadow-1)" }}
+            />
+          ) : (
+            <div style={{
+              width: 132, height: 122, borderRadius: 16, background: "var(--bg-elev-2)",
+              display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-1)",
+            }}>
+              <Vignette hue={itemHue(item.id)} size={64} />
+            </div>
+          )}
+        </div>
+        <button
+          onClick={tap}
+          disabled={!item.is_available}
+          className="press"
+          aria-label={qty > 0 ? `${item.name} — ${qty} in cart, tap to adjust` : `Add ${item.name}`}
+          style={{
+            position: "absolute", left: "50%", transform: "translateX(-50%)",
+            bottom: customisable ? 14 : -2,
+            minWidth: 96, height: 36, padding: "0 14px",
+            borderRadius: 10,
+            background: qty > 0 ? "var(--accent)" : "var(--bg-elev-1)",
+            color: qty > 0 ? "var(--accent-ink)" : "var(--accent)",
+            border: "1px solid " + (qty > 0 ? "var(--accent)" : "var(--line-2)"),
+            boxShadow: "0 6px 16px -6px rgba(0,0,0,0.45)",
+            fontSize: 13.5, fontWeight: 800, letterSpacing: "0.08em",
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
+            cursor: item.is_available ? "pointer" : "default",
             fontVariantNumeric: "tabular-nums",
-            boxShadow: "0 4px 12px -4px rgba(0,0,0,0.5)",
-            animation: "pop 0.32s var(--ease-back)",
-          }}>
-            {qty}
+          }}
+        >
+          {qty > 0 ? `ADD · ${qty}` : "ADD"}
+          {qty === 0 && <Plus size={13} strokeWidth={3} aria-hidden />}
+        </button>
+        {customisable && (
+          <span style={{ position: "absolute", left: 0, right: 0, bottom: -6, fontSize: 11, color: "var(--ink-4)" }}>
+            customisable
           </span>
         )}
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -557,11 +606,8 @@ export default function MenuPage({ params }: Props) {
                 <hr className="rule" style={{ margin: 0 }} />
               </div>
               <div style={{ padding: "0 20px" }}>
-                {cat.items.map((item, i, arr) => (
-                  <div key={item.id}>
-                    <ItemRow item={item} qty={cartCountByItem[item.id] ?? 0} onTap={(item) => openSheet(item, cat.name)} />
-                    {i < arr.length - 1 && <hr className="rule" style={{ margin: 0 }} />}
-                  </div>
+                {cat.items.map((item) => (
+                  <ItemRow key={item.id} item={item} qty={cartCountByItem[item.id] ?? 0} onTap={(item) => openSheet(item, cat.name)} />
                 ))}
               </div>
             </section>
