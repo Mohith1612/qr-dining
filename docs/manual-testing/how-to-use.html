@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QR Dining — Manual Testing Guide</title>
+  <style>
+    :root {
+      --bg:        #0f0e0c;
+      --bg2:       #1a1815;
+      --bg3:       #242018;
+      --line:      #2e2b24;
+      --ink1:      #f0ebe0;
+      --ink2:      #a09880;
+      --ink3:      #6b6555;
+      --accent:    #c9a84c;
+      --accent-s:  #2a2416;
+      --ok:        #6ca96a;
+      --ok-s:      #192416;
+      --warn:      #c97a3a;
+      --warn-s:    #2a1e10;
+      --info:      #5b8fc7;
+      --info-s:    #121c28;
+      --rad:       10px;
+      --rad-sm:    6px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink1);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────── */
+
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    /* ── Typography ──────────────────────────────────────────── */
+
+    .eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    h1.hero {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 44px;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      color: var(--ink1);
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 26px;
+      font-weight: 400;
+      letter-spacing: -0.01em;
+      color: var(--ink1);
+      margin: 40px 0 14px;
+    }
+
+    h3 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ink2);
+      margin: 28px 0 10px;
+    }
+
+    p { color: var(--ink2); margin-bottom: 10px; }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--line);
+      margin: 36px 0;
+    }
+
+    /* ── Cards ───────────────────────────────────────────────── */
+
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--line);
+      border-radius: var(--rad);
+      padding: 20px 22px;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink1);
+      margin-bottom: 6px;
+    }
+
+    .card p { margin-bottom: 0; font-size: 14px; }
+
+    /* ── Role badges ─────────────────────────────────────────── */
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 20px;
+      vertical-align: middle;
+    }
+
+    .badge-owner   { background: var(--accent-s); color: var(--accent); border: 1px solid var(--accent); }
+    .badge-kitchen { background: var(--warn-s);   color: var(--warn);   border: 1px solid var(--warn);   }
+    .badge-waiter  { background: var(--info-s);   color: var(--info);   border: 1px solid var(--info);   }
+    .badge-guest   { background: var(--ok-s);     color: var(--ok);     border: 1px solid var(--ok);     }
+
+    /* ── Code blocks ─────────────────────────────────────────── */
+
+    pre {
+      background: #0a0908;
+      border: 1px solid var(--line);
+      border-radius: var(--rad-sm);
+      padding: 16px 18px;
+      overflow-x: auto;
+      margin: 10px 0 16px;
+    }
+
+    code {
+      font-family: "SF Mono", "Fira Code", "Fira Mono", "Cascadia Code", Consolas, monospace;
+      font-size: 13px;
+      color: #d4c9a8;
+    }
+
+    pre code { color: #d4c9a8; }
+
+    .comment { color: #5a5545; }
+    .kw      { color: #c97a3a; }
+    .str     { color: #6ca96a; }
+    .var     { color: #5b8fc7; }
+    .num     { color: #c9a84c; }
+
+    .inline-code {
+      background: var(--bg3);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-family: "SF Mono", Consolas, monospace;
+      font-size: 12.5px;
+      color: var(--accent);
+    }
+
+    /* ── Step list ───────────────────────────────────────────── */
+
+    .steps { list-style: none; margin: 12px 0 20px; }
+
+    .steps li {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+      align-items: start;
+    }
+
+    .step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--bg3);
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ink2);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .step-body { color: var(--ink2); }
+    .step-body strong { color: var(--ink1); }
+
+    /* ── Tables ──────────────────────────────────────────────── */
+
+    .tbl {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 20px;
+      font-size: 14px;
+    }
+
+    .tbl th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink3);
+      border-bottom: 1px solid var(--line);
+      padding: 6px 12px;
+    }
+
+    .tbl td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--ink2);
+      vertical-align: top;
+    }
+
+    .tbl tr:last-child td { border-bottom: none; }
+
+    .tbl td:first-child,
+    .tbl th:first-child { padding-left: 0; }
+
+    /* ── Callout boxes ───────────────────────────────────────── */
+
+    .callout {
+      display: flex;
+      gap: 12px;
+      border-radius: var(--rad-sm);
+      padding: 14px 16px;
+      margin: 14px 0;
+      font-size: 14px;
+    }
+
+    .callout-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+    .callout-warn  { background: var(--warn-s); border: 1px solid #3d2410; color: #d4a060; }
+    .callout-info  { background: var(--info-s); border: 1px solid #1a2d42; color: #7aa8d8; }
+    .callout-tip   { background: var(--ok-s);   border: 1px solid #1a3018; color: #7ab870; }
+
+    .callout strong { color: var(--ink1); }
+
+    /* ── Capability list ─────────────────────────────────────── */
+
+    .cap-list { list-style: none; margin: 10px 0 16px; }
+
+    .cap-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      gap: 10px;
+      color: var(--ink2);
+      font-size: 14px;
+    }
+
+    .cap-list li:last-child { border-bottom: none; }
+
+    .cap-list .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-top: 7px;
+      flex-shrink: 0;
+    }
+
+    .dot-ok     { background: var(--ok); }
+    .dot-accent { background: var(--accent); }
+    .dot-info   { background: var(--info); }
+    .dot-warn   { background: var(--warn); }
+    .dot-muted  { background: var(--ink3); }
+
+    /* ── Nav anchors ─────────────────────────────────────────── */
+
+    .toc {
+      background: var(--bg2);
+      border: 1px solid var(--line);
+      border-radius: var(--rad);
+      padding: 20px 22px;
+      margin-bottom: 36px;
+    }
+
+    .toc-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink3);
+      margin-bottom: 12px;
+    }
+
+    .toc ol {
+      list-style: none;
+      columns: 2;
+      column-gap: 24px;
+    }
+
+    .toc li { margin-bottom: 6px; }
+
+    .toc a {
+      color: var(--ink2);
+      font-size: 14px;
+      text-decoration: none;
+    }
+
+    .toc a:hover { color: var(--accent); }
+
+    /* ── Token box ───────────────────────────────────────────── */
+
+    .token-box {
+      background: #0a0908;
+      border: 1px solid var(--line);
+      border-radius: var(--rad-sm);
+      padding: 10px 14px;
+      font-family: "SF Mono", Consolas, monospace;
+      font-size: 12px;
+      color: var(--ink2);
+      word-break: break-all;
+      margin-bottom: 8px;
+    }
+
+    .token-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink3);
+      margin-bottom: 4px;
+    }
+
+    /* ── Section anchor offset ───────────────────────────────── */
+
+    section { padding-top: 4px; }
+
+    /* ── Header strip ────────────────────────────────────────── */
+
+    .header-strip {
+      border-bottom: 1px solid var(--line);
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 0;
+      background: var(--bg2);
+    }
+
+    .logo-mark {
+      width: 36px;
+      height: 36px;
+      background: var(--accent-s);
+      border: 1px solid var(--accent);
+      border-radius: var(--rad-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .header-meta { font-size: 12px; color: var(--ink3); }
+  </style>
+</head>
+<body>
+
+<div class="header-strip">
+  <div class="logo-mark">🍽</div>
+  <div>
+    <div style="font-weight: 600; color: var(--ink1); font-size: 15px;">QR Dining</div>
+    <div class="header-meta">Manual Testing Guide · Demo Restaurant · Branch 4</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <p class="eyebrow" style="margin-top: 36px;">End-to-End Testing</p>
+  <h1 class="hero">How to run<br>the full stack</h1>
+  <p style="font-size: 16px; margin-bottom: 32px; color: var(--ink2);">
+    Everything you need to start the database, backend, and frontend,
+    then walk through every role — guest, waiter, kitchen, and admin owner.
+  </p>
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#prerequisites">1. Prerequisites</a></li>
+      <li><a href="#start-stack">2. Starting the Stack</a></li>
+      <li><a href="#demo-data">3. Demo Data Reference</a></li>
+      <li><a href="#guest">4. Guest Flow</a></li>
+      <li><a href="#staff-login">5. Staff Login &amp; Role Setup</a></li>
+      <li><a href="#kitchen">6. Kitchen Role</a></li>
+      <li><a href="#waiter">7. Waiter Role</a></li>
+      <li><a href="#admin">8. Admin / Owner Role</a></li>
+      <li><a href="#e2e">9. Full End-to-End Scenario</a></li>
+    </ol>
+  </div>
+
+  <!-- ───────────────────────────────────────── -->
+  <hr />
+  <section id="prerequisites">
+    <p class="eyebrow">Section 1</p>
+    <h2>Prerequisites</h2>
+
+    <p>Make sure these are installed before you start:</p>
+
+    <table class="tbl">
+      <tr>
+        <th>Tool</th>
+        <th>Version</th>
+        <th>What it's used for</th>
+      </tr>
+      <tr>
+        <td><strong>Docker + Docker Compose</strong></td>
+        <td>24+</td>
+        <td>Runs PostgreSQL 17 and Redis 7</td>
+      </tr>
+      <tr>
+        <td><strong>Go</strong></td>
+        <td>1.24+</td>
+        <td>Builds and runs the backend API server</td>
+      </tr>
+      <tr>
+        <td><strong>Node.js</strong></td>
+        <td>20+</td>
+        <td>Runs the Next.js 15 frontend</td>
+      </tr>
+    </table>
+
+    <div class="callout callout-info">
+      <div class="callout-icon">ℹ</div>
+      <div>All commands below are run from the project root:
+        <code class="inline-code">/home/mohith/Development/projects/qr-dining/</code>
+        unless otherwise noted.
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────────────────────── -->
+  <hr />
+  <section id="start-stack">
+    <p class="eyebrow">Section 2</p>
+    <h2>Starting the Stack</h2>
+
+    <h3>Step 1 — Start the database and Redis</h3>
+    <p>Postgres and Redis run inside Docker. Only these two need Docker; the app and frontend run natively.</p>
+    <pre><code><span class="comment"># From the project root</span>
+docker compose up -d postgres redis
+
+<span class="comment"># Verify both are healthy</span>
+docker compose ps</code></pre>
+    <p>Both containers should show <strong>healthy</strong> status within ~15 seconds.</p>
+
+    <h3>Step 2 — Start the backend API server</h3>
+    <p>The backend reads environment variables from the root <code class="inline-code">.env</code> file.
+    Migrations run automatically on startup.</p>
+    <pre><code><span class="comment"># Open a dedicated terminal tab for the backend</span>
+cd backend
+go run ./cmd/server</code></pre>
+    <p>You should see log lines like:</p>
+    <pre><code>INF  postgres connected   service=qr-dining
+INF  migrations applied   service=qr-dining
+INF  redis connected      service=qr-dining
+[GIN-debug] Listening on :8080</code></pre>
+
+    <div class="callout callout-tip">
+      <div class="callout-icon">✓</div>
+      <div>Confirm the backend is alive: <code class="inline-code">curl http://localhost:8080/health</code>
+      should return <code class="inline-code">{"status":"ok"}</code></div>
+    </div>
+
+    <h3>Step 3 — Start the frontend</h3>
+    <p>Open a second terminal tab:</p>
+    <pre><code><span class="comment"># From project root</span>
+cd frontend
+npm run dev</code></pre>
+    <p>Next.js will print the local URL — usually
+    <code class="inline-code">http://localhost:3000</code>.
+    If port 3000 is taken it increments automatically (3001, 3002, …).
+    Watch the terminal output for the actual port.</p>
+
+    <div class="callout callout-warn">
+      <div class="callout-icon">⚠</div>
+      <div><strong>Two terminals needed.</strong> The backend and frontend must stay running in their own terminal tabs for the duration of testing. Closing either one breaks the app.</div>
+    </div>
+
+    <h3>Stopping everything</h3>
+    <pre><code><span class="comment"># Stop frontend: Ctrl+C in its terminal</span>
+<span class="comment"># Stop backend: Ctrl+C in its terminal</span>
+
+<span class="comment"># Stop Docker containers (data is preserved in Docker volumes)</span>
+docker compose down</code></pre>
+  </section>
+
+  <!-- ───────────────────────────────────────── -->
+  <hr />
+  <section id="demo-data">
+    <p class="eyebrow">Section 3</p>
+    <h2>Demo Data Reference</h2>
+
+    <p>The database is pre-seeded with one restaurant and four branches.
+    <strong>Branch 4</strong> is the canonical demo branch — use it for all testing.</p>
+
+    <h3>Restaurant &amp; Branch</h3>
+    <table class="tbl">
+      <tr><th>Field</th><th>Value</th></tr>
+      <tr><td>Restaurant</td><td>Demo Restaurant</td></tr>
+      <tr><td>Branch ID</td><td><strong>4</strong></td></tr>
+      <tr><td>Branch name</td><td>Main Branch</td></tr>
+    </table>
+
+    <h3>Tables (QR tokens for Branch 4)</h3>
+    <p>These tokens are what the QR codes encode. Paste them into the URL as shown in Section 4.</p>
+
+    <div class="token-label">T1</div>
+    <div class="token-box">34832018ce6109e6f0d67063793ae7e2ad6107a52a2368113284a2517e925990</div>
+
+    <div class="token-label">T2</div>
+    <div class="token-box">ae04203d3484b6c998d8c6db74f49c3b1db6c93fed1416c413372578b187e3be</div>
+
+    <div class="token-label">T3</div>
+    <div class="token-box">87068cfa5a2a63010feaedca10e192c4107a5fd61e72e189006cf2704f241873</div>
+
+    <h3>Menu (16 dishes across 5 categories)</h3>
+    <table class="tbl">
+      <tr><th>Category</th><th>Dishes</th><th>Price Range</th></tr>
+      <tr>
+        <td>Starters (3)</td>
+        <td>Paneer Tikka, Veg Spring Rolls, Masala Fries</td>
+        <td>₹120 – ₹180</td>
+      </tr>
+      <tr>
+        <td>Mains (4)</td>
+        <td>Dal Makhani, Paneer Butter Masala ✦, Butter Chicken, Veg Biryani</td>
+        <td>₹200 – ₹280</td>
+      </tr>
+      <tr>
+        <td>Breads (3)</td>
+        <td>Butter Naan, Garlic Roti, Paratha</td>
+        <td>₹35 – ₹50</td>
+      </tr>
+      <tr>
+        <td>Beverages (3)</td>
+        <td>Lassi, Masala Chai, Mango Shake</td>
+        <td>₹30 – ₹90</td>
+      </tr>
+      <tr>
+        <td>Desserts (3)</td>
+        <td>Gulab Jamun, Ice Cream, Kheer</td>
+        <td>₹60 – ₹80</td>
+      </tr>
+    </table>
+    <p style="font-size:13px; color: var(--ink3);">✦ Paneer Butter Masala is tagged as Chef Special (Veg). Paneer Tikka has a modifier: "Extra Sauce +₹20".</p>
+
+    <h3>Staff (Branch 4)</h3>
+    <table class="tbl">
+      <tr><th>Staff ID</th><th>Name</th><th>Role</th></tr>
+      <tr><td>10</td><td>Owner Sam</td><td><span class="badge badge-owner">owner</span></td></tr>
+      <tr><td>11</td><td>Waiter Alex</td><td><span class="badge badge-waiter">waiter</span></td></tr>
+      <tr><td>12</td><td>Chef Jordan</td><td><span class="badge badge-kitchen">kitchen</span></td></tr>
+    </table>
+    <p>All three staff share the initial seed PIN <code class="inline-code">1234</code>.
+    See Section 5 for how to assign distinct PINs so you can log into each role independently.</p>
+  </section>
+
+  <!-- ───────────────────────────────────────── -->
+  <hr />
+  <section id="guest">
+    <p class="eyebrow">Section 4</p>
+    <h2>Guest Flow <span class="badge badge-guest">Guest</span></h2>
+
+    <p>Guests access the app by scanning a QR code that encodes the table token URL.
+    For testing, navigate directly in your browser.</p>
+
+    <h3>1. Join a session at Table T1</h3>
+    <p>Open this URL in your browser (replace the port if your frontend is not on 3000):</p>
+    <pre><code>http://localhost:3000/table/34832018ce6109e6f0d67063793ae7e2ad6107a52a2368113284a2517e925990</code></pre>
+
+    <p>What you see:</p>
+    <ul class="cap-list">
+      <li><span class="dot dot-ok"></span>Table label (T1) and restaurant name</li>
+      <li><span class="dot dot-ok"></span>Name entry field — enter any name (e.g. "Arjun")</li>
+      <li><span class="dot dot-ok"></span>Status indicator: "Live · starting a new session" or "Live · X people here"</li>
+    </ul>
+
+    <p>Enter a name and tap <strong>Take your seat →</strong>. You are redirected to the
+    session hub at <code class="inline-code">/session/[id]</code>.</p>
+
+    <h3>2. Session Hub</h3>
+    <p>The hub is the home page of the dining session. From here guests navigate to all other pages.</p>
+    <ul class="cap-list">
+      <li><span class="dot dot-accent"></span><strong>View Menu</strong> — browse and order food</li>
+      <li><span class="dot dot-info"></span><strong>Orders</strong> — track live order status from the kitchen</li>
+      <li><span class="dot dot-warn"></span><strong>Need Help</strong> — call a waiter or request the bill</li>
+      <li><span class="dot dot-muted"></span><strong>Pay Bill</strong> — view itemized bill and pay</li>
+    </ul>
+    <p>A <em>dining party card</em> shows all guests seated at the table with a live "in sync" WebSocket indicator.</p>
+
+    <h3>3. Menu Page</h3>
+    <p>Navigate via the bottom nav or directly:
+    <code class="inline-code">/session/[id]/menu</code></p>
+    <ul class="cap-list">
+      <li><span class="dot dot-ok"></span><strong>Category tabs</strong> — tap Starters, Mains, Breads, Beverages, Desserts to jump to that section (sticky header highlights the active category as you scroll)</li>
+      <li><span class="dot dot-ok"></span><strong>Dietary filter chips</strong> — filter by Veg, Vegan, Non-Veg, Jain, Egg, Chef Special, Bestseller, New, 🌶 / 🌶🌶 / 🌶🌶🌶</li>
+      <li><span class="dot dot-ok"></span><strong>Search</strong> — tap the 🔍 icon to open the search bar; type to filter live across all dishes</li>
+      <li><span class="dot dot-ok"></span><strong>Item sheet</strong> — tap any dish row to open a bottom sheet with price, description, modifiers (e.g. Extra Sauce +₹20 on Paneer Tikka), quantity stepper, and special note field</li>
+      <li><span class="dot dot-ok"></span><strong>Add to order</strong> — adds the item to your cart; a "View cart" bar appears at the bottom showing item count and subtotal</li>
+    </ul>
+
+    <h3>4. Cart &amp; Order Confirmation</h3>
+    <p>Tap the cart bar → <code class="inline-code">/session/[id]/cart</code></p>
+    <ul class="cap-list">
+      <li><span class="dot dot-ok"></span>Shows all items with quantities and individual prices</li>
+      <li><span class="dot dot-ok"></span><strong>Promo code field</strong> — enter a promo code and Apply to get a discount</li>
+      <li><span class="dot dot-ok"></span>Shows subtotal summary</li>
+      <li><span class="dot dot-accent"></span>Tap <strong>Confirm your order · ₹X</strong> to send the order to the kitchen → redirected to Orders page</li>
+    </ul>
+
+    <div class="callout callout-tip">
+      <div class="callout-icon">✓</div>
+      <div>Each order gets a <strong>human-readable order number</strong> like <strong>#OR1001</strong>
+      (prefix OR + 4-digit sequence, resets daily). The kitchen and waiter see the same number.</div>
+    </div>
+
+    <h3>5. Orders Page</h3>
+    <p><code class="inline-code">/session/[id]/orders</code></p>
+    <ul class="cap-list">
+      <li><span class="dot dot-ok"></span>Live WebSocket updates — no manual refresh needed</li>
+      <li><span class="dot dot-ok"></span>Shows order number, timestamp, and a progress pipeline:</li>
+    </ul>
+    <table class="tbl">
+      <tr><th>Status</th><th>Meaning</th></tr>
+      <tr><td><strong>SENT → PENDING</strong></td><td>Order received by kitchen, awaiting confirmation</td></tr>
+      <tr><td><strong>CONFIRMED</strong></td><td>Kitchen acknowledged the order</td></tr>
+      <tr><td><strong>PREPARING</strong></td><td>Cooking in progress</td></tr>
+      <tr><td><strong>READY</strong></td><td>Dish is ready to be served</td></tr>
+      <tr><td><strong>SERVED</strong></td><td>Delivered to the table</td></tr>
+    </table>
+
+    <h3>6. Help / Assistance Page</h3>
+    <p><code class="inline-code">/session/[id]/assist</code></p>
+    <ul class="cap-list">
+      <li><span class="dot dot-warn"></span><strong>Request a waiter</strong> — "A host will be with you shortly" / shows pending request card</li>
+      <li><span class="dot dot-warn"></span><strong>Request the bill</strong> — "Ready to pay? We'll bring the bill right over"</li>
+    </ul>
+    <p>Both buttons disable after tapping (prevents duplicate requests). Requests show up immediately on the Waiter dashboard.</p>
+
+    <h3>7. Payment / Bill Page</h3>
+    <p><code class="inline-code">/session/[id]/payment</code></p>
+    <ul class="cap-list">
+      <li><span class="dot dot-ok"></span><strong>Itemized bill</strong> — lists every order by number (#OR1001, #OR1002, …) with items and prices</li>
+      <li><span class="dot dot-ok"></span>Running total</li>
+      <li><span class="dot dot-ok"></span>Three payment methods:</li>
+    </ul>
+    <table class="tbl">
+      <tr><th>Method</th><th>Flow</th></tr>
+      <tr><td>💵 Cash</td><td>Confirm → shows "A host will collect at the table"</td></tr>
+      <tr><td>💳 Card</td><td>Confirm → shows "Our team is bringing a card terminal"</td></tr>
+      <tr><td>📱 UPI</td><td>Confirm → shows "Awaiting confirmation of your UPI transfer"</td></tr>
+    </table>
+    <p>After payment is initiated, the bill page shows a confirmation state with the paid amount.</p>
+
+    <h3>Testing multiple guests at the same table</h3>
+    <p>Open the same table URL in two browser tabs with different names.
+    Both guests share the same session. Orders placed by either guest appear on the shared Orders page and on the Kitchen KDS.</p>
+  </section>
+
+  <!-- ───────────────────────────────────────── -->
+  <hr />
+  <section id="staff-login">
+    <p class="eyebrow">Section 5</p>
+    <h2>Staff Login &amp; Role Setup</h2>
+
+    <p>All staff log in at: <code class="inline-code">http://localhost:3000/staff/login</code></p>
+    <p>Enter the <strong>Branch ID</strong> and <strong>PIN</strong>. The system returns the
+    first matching staff member (ordered alphabetically by name).</p>
+
+    <h3>The PIN collision problem</h3>
+    <p>Out of the box, all three staff on Branch 4 have the same PIN <code class="inline-code">1234</code>.
+    The auth system returns the <strong>first alphabetical match</strong>:</p>
+
+    <table class="tbl">
+      <tr><th>Order</th><th>Name</th><th>Role returned for PIN 1234</th></tr>
+      <tr><td>1st (C)</td><td>Chef Jordan</td><td><span class="badge badge-kitchen">kitchen</span> ← wins by default</td></tr>
+      <tr><td>2nd (O)</td><td>Owner Sam</td><td><em>never reached</em></td></tr>
+      <tr><td>3rd (W)</td><td>Waiter Alex</td><td><em>never reached</em></td></tr>
+    </table>
+
+    <p>To test each role independently, assign each staff member a unique PIN.
+    Do this via the API once both backend and frontend are running:</p>
+
+    <h3>One-time PIN setup (run in a terminal)</h3>
+
+    <p><strong>Step A</strong> — Log in as kitchen (the default), capture the token:</p>
+    <pre><code><span class="comment"># Returns Chef Jordan (kitchen) — the default with PIN 1234</span>
+<span class="var">KITCHEN_TOKEN</span>=$(curl -s -X POST http://localhost:8080/staff/auth \
+  -H "Content-Type: application/json" \
+  -d '{"branch_id": 4, "pin": "1234"}' | \
+  python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+echo <span class="str">"Kitchen token: $KITCHEN_TOKEN"</span></code></pre>
+
+    <p><strong>Step B</strong> — Change Chef Jordan's (kitchen) PIN to <code class="inline-code">9999</code>
+    (each staff can change their own PIN):</p>
+    <pre><code>curl -s -X PATCH http://localhost:8080/staff/12/pin \
+  -H "Authorization: Bearer $KITCHEN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"current_pin": "1234", "new_pin": "9999"}'
+<span class="comment"># Returns 204 No Content on success</span></code></pre>
+
+    <p><strong>Step C</strong> — Now PIN <code class="inline-code">1234</code> matches Owner Sam.
+    Log in as owner and capture that token:</p>
+    <pre><code><span class="var">OWNER_TOKEN</span>=$(curl -s -X POST http://localhost:8080/staff/auth \
+  -H "Content-Type: application/json" \
+  -d '{"branch_id": 4, "pin": "1234"}' | \
+  python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+echo <span class="str">"Owner token: $OWNER_TOKEN"</span></code></pre>
+
+    <p><strong>Step D</strong> — As owner, change Waiter Alex's PIN to
+    <code class="inline-code">7777</code> (owners can change any staff PIN):</p>
+    <pre><code>curl -s -X PATCH http://localhost:8080/staff/11/pin \
+  -H "Authorization: Bearer $OWNER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"current_pin": "1234", "new_pin": "7777"}'</code></pre>
+
+    <h3>PIN summary after setup</h3>
+    <table class="tbl">
+      <tr><th>Role</th><th>Branch ID</th><th>PIN</th><th>URL after login</th></tr>
+      <tr>
+        <td><span class="badge badge-kitchen">kitchen</span> Chef Jordan</td>
+        <td>4</td>
+        <td><code class="inline-code">9999</code></td>
+        <td><code class="inline-code">/staff/kitchen</code></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-owner">owner</span> Owner Sam</td>
+        <td>4</td>
+        <td><code class="inline-code">1234</code></td>
+        <td><code class="inline-code">/staff/admin</code></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-waiter">waiter</span> Waiter Alex</td>
+        <td>4</td>
+        <td><code class="inline-code">7777</code></td>
+        <td><code class="inline-code">/staff/waiter</code></td>
+      </tr>
+    </table>
+
+    <div class="callout callout-info">
+      <div class="callout-icon">ℹ</div>
+      <div>After login, the app stores the session token in browser <code class="inline-code">localStorage</code>.
+      Use different browser profiles, incognito windows, or separate browsers to be logged in as multiple
+      roles simultaneously.</div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────────────────────── -->
+  <hr />
+  <section id="kitchen">
+    <p class="eyebrow">Section 6</p>
+    <h2>Kitchen Role <span class="badge badge-kitchen">kitchen</span></h2>
+
+    <p>URL: <code class="inline-code">http://localhost:3000/staff/kitchen</code><br>
+    Login: Branch 4 · PIN 9999 (after PIN setup) or 1234 (before PIN setup)</p>
+
+    <p>The kitchen shows a <strong>Kanban board</strong> with four columns, updated live via WebSocket.
+    Every new order placed by any guest appears here immediately.</p>
+
+    <h3>The four columns</h3>
+    <table class="tbl">
+      <tr><th>Column</th><th>Action available</th><th>Button label</th></tr>
+      <tr><td>PENDING</td><td>Acknowledge the order</td><td><strong>Confirm</strong></td></tr>
+      <tr><td>CONFIRMED</td><td>Start preparing</td><td><strong>Start cooking</strong></td></tr>
+      <tr><td>PREPARING</td><td>Mark as ready for service</td><td><strong>Mark ready</strong></td></tr>
+      <tr><td>READY</td><td>Mark as delivered</td><td><strong>Served</strong></td></tr>
+    </table>
+
+    <h3>What kitchen staff can do</h3>
+    <ul class="cap-list">
+      <li><span class="dot dot-warn"></span>View all active orders across all tables in real time</li>
+      <li><span class="dot dot-warn"></span>Advance any order through the pipeline: Pending → Confirmed → Preparing → Ready → Served</li>
+      <li><span class="dot dot-warn"></span>See elapsed time per order — cards turn red when an order exceeds 15 minutes</li>
+      <li><span class="dot dot-warn"></span>See the order number (#OR1001), which matches what the guest sees on their Orders page</li>
+      <li><span class="dot dot-muted"></span>See summary counts: PENDING / COOKING / ACTIVE</li>
+    </ul>
+
+    <h3>What kitchen staff cannot do</h3>
+    <ul class="cap-list">
+      <li><span class="dot dot-muted"></span>Cannot access the admin panel or change menu items</li>
+      <li><span class="dot dot-muted"></span>Cannot see or act on waiter assistance requests</li>
+      <li><span class="dot dot-muted"></span>Cannot manage staff accounts or view billing settings</li>
+    </ul>
+
+    <h3>Real-time behaviour</h3>
+    <p>Status changes made here are broadcast over WebSocket to all connected guests.
+    When you click <strong>Confirm</strong>, the guest's Orders page updates from PENDING to CONFIRMED
+    within a second — no page refresh required.</p>
+  </section>
+
+  <!-- ───────────────────────────────────────── -->
+  <hr />
+  <section id="waiter">
+    <p class="eyebrow">Section 7</p>
+    <h2>Waiter Role <span class="badge badge-waiter">waiter</span></h2>
+
+    <p>URL: <code class="inline-code">http://localhost:3000/staff/waiter</code><br>
+    Login: Branch 4 · PIN 7777 (after PIN setup)</p>
+
+    <p>The waiter dashboard manages the <strong>assistance request queue</strong> — all calls for help
+    placed by guests from the Help page of their session.</p>
+
+    <h3>What waiter staff can do</h3>
+    <ul class="cap-list">
+      <li><span class="dot dot-info"></span>See all pending and acknowledged requests across all tables, sorted by urgency</li>
+      <li><span class="dot dot-info"></span>See two request types: <strong>Waiter needed</strong> and <strong>Bill request</strong></li>
+      <li><span class="dot dot-info"></span>Tap <strong>On my way</strong> to acknowledge a request (status changes to In Progress)</li>
+      <li><span class="dot dot-info"></span>Tap <strong>Done</strong> (resolve) to close the request</li>
+      <li><span class="dot dot-info"></span>See elapsed time — requests that have been waiting over 10 minutes are flagged as URGENT (red border)</li>
+      <li><span class="dot dot-info"></span>See a floor plan showing which tables have active requests vs are clear</li>
+      <li><span class="dot dot-muted"></span>Summary counters: Total / Pending / In Progress</li>
+    </ul>
+
+    <h3>What waiter staff cannot do</h3>
+    <ul class="cap-list">
+      <li><span class="dot dot-muted"></span>Cannot access the admin panel</li>
+      <li><span class="dot dot-muted"></span>Cannot advance kitchen orders</li>
+      <li><span class="dot dot-muted"></span>Cannot manage staff accounts, menu, or settings</li>
+    </ul>
+
+    <h3>Flow: guest requests → waiter resolves</h3>
+    <ol class="steps">
+      <li><div class="step-num">1</div><div class="step-body">Guest opens Help page → taps <strong>Request a waiter</strong></div></li>
+      <li><div class="step-num">2</div><div class="step-body">Waiter dashboard shows the request card under <strong>NEEDS ATTENTION</strong></div></li>
+      <li><div class="step-num">3</div><div class="step-body">Waiter taps <strong>On my way</strong> → request moves to <em>acknowledged</em>; guest sees "Someone is on their way"</div></li>
+      <li><div class="step-num">4</div><div class="step-body">After helping the guest, waiter taps <strong>Done</strong> → request closes</div></li>
+    </ol>
+  </section>
+
+  <!-- ───────────────────────────────────────── -->
+  <hr />
+  <section id="admin">
+    <p class="eyebrow">Section 8</p>
+    <h2>Admin / Owner Role <span class="badge badge-owner">owner</span></h2>
+
+    <p>URL: <code class="inline-code">http://localhost:3000/staff/admin</code><br>
+    Login: Branch 4 · PIN 1234 (after PIN setup, this maps to Owner Sam)</p>
+
+    <p>The admin panel has <strong>9 tabs</strong>. All staff can view the panel,
+    but write actions (edit, delete, create) are restricted to <strong>owner</strong> and
+    <strong>manager</strong> roles. Kitchen and waiter staff see the panel in read-only mode.</p>
+
+    <hr style="margin: 20px 0;" />
+
+    <h3>Tab 1 — Sessions</h3>
+    <ul class="cap-list">
+      <li><span class="dot dot-ok"></span>Lists all active sessions with their table label, session ID, and duration</li>
+      <li><span class="dot dot-ok"></span>Refresh button to re-fetch</li>
+      <li><span class="dot dot-ok"></span>(Owner) Close a session manually if needed</li>
+    </ul>
+
+    <h3>Tab 2 — Menu</h3>
+    <p>The full menu CMS. Owners can manage the entire menu from here.</p>
+    <ul class="cap-list">
+      <li><span class="dot dot-accent"></span><strong>Create category</strong> — add a new section (e.g. "Chef's Specials")</li>
+      <li><span class="dot dot-accent"></span><strong>Add item</strong> — open a modal form with: name, description, price, dietary flags (Veg/Vegan/Non-Veg/Jain/Egg), badges (Chef Special/Bestseller/New), spice level, featured toggle, image URL</li>
+      <li><span class="dot dot-accent"></span><strong>Edit item</strong> — same modal pre-filled with existing data</li>
+      <li><span class="dot dot-accent"></span><strong>Delete item</strong> — confirmation dialog before removal</li>
+      <li><span class="dot dot-accent"></span><strong>Toggle availability</strong> — mark an item as unavailable (hidden from guest menu) without deleting it; available to all staff roles</li>
+      <li><span class="dot dot-accent"></span><strong>Add modifiers</strong> — create modifier options per item (e.g. "Extra Sauce · +₹20") with required/optional flag</li>
+      <li><span class="dot dot-accent"></span><strong>Reorder</strong> — drag items within a category to change display order</li>
+    </ul>
+
+    <h3>Tab 3 — Tables</h3>
+    <ul class="cap-list">
+      <li><span class="dot dot-ok"></span>Lists all tables with their identifier (T1, T2, T3) and QR token</li>
+      <li><span class="dot dot-accent"></span>(Owner) Refresh QR code — generates a new token, invalidating old links</li>
+      <li><span class="dot dot-accent"></span>(Owner) Print QR — opens a print-friendly view of the QR code for the table tent</li>
+    </ul>
+
+    <h3>Tab 4 — Staff</h3>
+    <ul class="cap-list">
+      <li><span class="dot dot-ok"></span>Lists all staff with name and role</li>
+      <li><span class="dot dot-accent"></span>(Owner) Add new staff — name, role (owner/waiter/kitchen), initial PIN</li>
+      <li><span class="dot dot-accent"></span>(Owner) Deactivate staff — immediately invalidates all their login tokens</li>
+      <li><span class="dot dot-accent"></span>(Owner) Reset PIN for any staff member</li>
+    </ul>
+
+    <h3>Tab 5 — Stats</h3>
+    <ul class="cap-list">
+      <li><span class="dot dot-ok"></span>Today's orders — count and total revenue</li>
+      <li><span class="dot dot-ok"></span>Active sessions count</li>
+      <li><span class="dot dot-ok"></span>Order breakdown by status</li>
+      <li><span class="dot dot-ok"></span>Top items by order volume</li>
+    </ul>
+
+    <h3>Tab 6 — Plan</h3>
+    <ul class="cap-list">
+      <li><span class="dot dot-ok"></span>Shows the current subscription plan (Free / Pro / Enterprise)</li>
+      <li><span class="dot dot-ok"></span>Displays feature limits: max tables, max staff, analytics access, promo codes</li>
+      <li><span class="dot dot-accent"></span>(Owner) Upgrade plan option</li>
+    </ul>
+
+    <h3>Tab 7 — Promos</h3>
+    <ul class="cap-list">
+      <li><span class="dot dot-accent"></span>(Owner) Create promo codes — code string, discount amount (fixed ₹) or percentage, validity dates</li>
+      <li><span class="dot dot-accent"></span>(Owner) Activate / deactivate promos</li>
+      <li><span class="dot dot-ok"></span>View redemption count per promo</li>
+    </ul>
+    <p>Guests enter promo codes on the Cart page. Valid codes apply the discount to the order total.</p>
+
+    <h3>Tab 8 — Appearance</h3>
+    <ul class="cap-list">
+      <li><span class="dot dot-accent"></span>(Owner) Choose the restaurant's colour theme — applies to the guest-facing menu UI</li>
+      <li><span class="dot dot-accent"></span>Theme changes are saved and take effect immediately for new guest sessions</li>
+    </ul>
+
+    <h3>Tab 9 — Settings</h3>
+    <p>Billing and session configuration:</p>
+    <ul class="cap-list">
+      <li><span class="dot dot-accent"></span>(Owner) Tax rate — applied to all orders (e.g. 5% GST)</li>
+      <li><span class="dot dot-accent"></span>(Owner) Service charge rate — added to the bill subtotal</li>
+      <li><span class="dot dot-accent"></span>(Owner) "Tax inclusive" toggle — whether listed prices already include tax</li>
+      <li><span class="dot dot-accent"></span>(Owner) Session timeout — idle session auto-close duration (minutes)</li>
+      <li><span class="dot dot-accent"></span>(Owner) Session warning — how many minutes before expiry to warn guests</li>
+    </ul>
+  </section>
+
+  <!-- ───────────────────────────────────────── -->
+  <hr />
+  <section id="e2e">
+    <p class="eyebrow">Section 9</p>
+    <h2>Full End-to-End Scenario</h2>
+
+    <p>Run through this sequence to exercise every part of the system in one pass.
+    You'll need 3 browser windows / tabs:</p>
+
+    <div class="card">
+      <div class="card-title">Window A — Guest (Table T1)</div>
+      <p><code class="inline-code">http://localhost:3000/table/34832018ce...</code></p>
+    </div>
+    <div class="card">
+      <div class="card-title">Window B — Kitchen</div>
+      <p><code class="inline-code">http://localhost:3000/staff/login</code> → Branch 4, PIN 9999</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Window C — Waiter</div>
+      <p><code class="inline-code">http://localhost:3000/staff/login</code> → Branch 4, PIN 7777</p>
+    </div>
+
+    <h3>The scenario</h3>
+
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-body"><strong>[Window A]</strong> Open the T1 table URL. Enter name "Arjun". Tap <em>Take your seat</em>. You arrive at the session hub.</div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-body"><strong>[Window A]</strong> Tap <em>View Menu</em>. Browse the menu. Tap <em>Paneer Tikka</em> → item sheet opens with the Extra Sauce modifier. Toggle Extra Sauce on. Tap <em>Add to order</em>. Cart bar appears: "1 View cart · ₹200".</div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-body"><strong>[Window A]</strong> Add a second item — e.g. <em>Butter Naan</em>. Cart now shows 2 items.</div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-body"><strong>[Window A]</strong> Tap <em>View cart</em>. On the Cart page, tap <em>Confirm your order</em>. You are redirected to the Orders page showing <strong>#OR1001 · PENDING</strong>.</div>
+      </li>
+      <li>
+        <div class="step-num">5</div>
+        <div class="step-body"><strong>[Window B — Kitchen]</strong> Order #OR1001 appears in the PENDING column. Tap <strong>Confirm</strong>.</div>
+      </li>
+      <li>
+        <div class="step-num">6</div>
+        <div class="step-body"><strong>[Window A — Guest]</strong> Orders page updates to CONFIRMED — live, no reload needed.</div>
+      </li>
+      <li>
+        <div class="step-num">7</div>
+        <div class="step-body"><strong>[Window B — Kitchen]</strong> Tap <strong>Start cooking</strong> → order moves to PREPARING.</div>
+      </li>
+      <li>
+        <div class="step-num">8</div>
+        <div class="step-body"><strong>[Window B — Kitchen]</strong> Tap <strong>Mark ready</strong> → order moves to READY.</div>
+      </li>
+      <li>
+        <div class="step-num">9</div>
+        <div class="step-body"><strong>[Window B — Kitchen]</strong> Tap <strong>Served</strong> → order is complete.</div>
+      </li>
+      <li>
+        <div class="step-num">10</div>
+        <div class="step-body"><strong>[Window A — Guest]</strong> Orders page shows SERVED. Tap the bottom nav <em>Help</em> tab → tap <strong>Request a waiter</strong>.</div>
+      </li>
+      <li>
+        <div class="step-num">11</div>
+        <div class="step-body"><strong>[Window C — Waiter]</strong> A "Waiter needed" card appears under NEEDS ATTENTION. Tap <strong>On my way</strong>. Status changes to Acknowledged.</div>
+      </li>
+      <li>
+        <div class="step-num">12</div>
+        <div class="step-body"><strong>[Window A — Guest]</strong> Tap <em>Bill</em> in the bottom nav. The itemized bill shows: #OR1001 · Paneer Tikka (+Extra Sauce) · ₹200 and Butter Naan · ₹45. Total: ₹245. Tap <strong>Cash</strong> to initiate payment.</div>
+      </li>
+      <li>
+        <div class="step-num">13</div>
+        <div class="step-body"><strong>[Admin check]</strong> Open <code class="inline-code">/staff/admin</code> (Owner Sam, PIN 1234). Go to <em>Sessions</em> tab — the session appears as ACTIVE. Go to <em>Stats</em> tab — today's order count is 1, revenue is ₹245.</div>
+      </li>
+    </ol>
+
+    <div class="callout callout-tip">
+      <div class="callout-icon">✓</div>
+      <div>
+        <strong>Smoke test checklist:</strong><br>
+        ✓ Guest joins session via QR token URL<br>
+        ✓ Menu loads all 16 dishes with categories and filters<br>
+        ✓ Item sheet opens with modifiers; added to cart<br>
+        ✓ Order confirmed → kitchen sees it immediately<br>
+        ✓ Kitchen pipeline: Confirm → Start cooking → Ready → Served<br>
+        ✓ Guest orders page updates live with each status change<br>
+        ✓ Waiter request flow: guest calls → waiter acknowledges → resolved<br>
+        ✓ Itemized bill shows correct order numbers and amounts<br>
+        ✓ Admin sessions tab shows the active session<br>
+        ✓ Admin stats tab reflects today's orders
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────────────────────── -->
+  <hr />
+
+  <p class="eyebrow">API &amp; Observability</p>
+  <h2>Useful debug endpoints</h2>
+
+  <table class="tbl">
+    <tr><th>URL</th><th>What it shows</th></tr>
+    <tr><td><code class="inline-code">http://localhost:8080/health</code></td><td>Liveness — returns <code class="inline-code">{"status":"ok"}</code></td></tr>
+    <tr><td><code class="inline-code">http://localhost:8080/readyz</code></td><td>Readiness — checks Postgres + Redis; returns 503 if either is down</td></tr>
+    <tr><td><code class="inline-code">http://localhost:8080/metrics</code></td><td>Prometheus metrics — HTTP counters, WebSocket connections, DB pool stats, order counts</td></tr>
+  </table>
+
+  <h3>Checking logs</h3>
+  <p>The backend outputs structured JSON logs in the terminal where you ran
+  <code class="inline-code">go run ./cmd/server</code>. Set <code class="inline-code">LOG_PRETTY=true</code>
+  in <code class="inline-code">.env</code> (already set in dev) for human-readable output.</p>
+
+  <pre><code><span class="comment"># Example log lines you should see during a guest order</span>
+INF  session created    session_id=00c01c57-... table_id=14
+INF  order placed       order_id=abc123   order_number=OR1001
+INF  order status       order_id=abc123   from=pending  to=confirmed
+INF  payment initiated  session_id=00c01c57-...  method=cash  amount=245</code></pre>
+
+</div><!-- /wrap -->
+</body>
+</html>

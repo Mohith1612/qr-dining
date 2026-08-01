@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR Dining — Cloudflare R2 Production Setup</title>
+<style>
+  :root{--ink:#1a1410;--muted:#6b5f4f;--line:#e3dccf;--gold:#a9802f;--bg:#fbf8f2;--zebra:#f4efe5;--green:#2f8f5b;--red:#b3402f;--amber:#a9802f;--code:#2a2118}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:34px 22px 90px}
+  .kicker{font:700 11px/1 sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--gold)}
+  h1{font-size:28px;margin:8px 0 4px}
+  h2{font-size:17px;margin:34px 0 10px;color:#fff;background:var(--ink);padding:8px 13px;border-radius:7px;letter-spacing:.03em}
+  h3{font-size:15px;margin:22px 0 6px;color:var(--ink)}
+  .sub{color:var(--muted)}
+  .top a{margin-right:16px;font-size:13px;color:var(--gold)}
+  p{margin:8px 0}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:#7a5a16;background:#f1ead9;padding:1px 5px;border-radius:4px}
+  pre{background:var(--code);color:#f3ecdd;padding:14px 16px;border-radius:9px;overflow:auto;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.5}
+  pre .c{color:#9aa0a6}
+  table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:10px 0}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#efe8da;color:#4a4031;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+  tr:nth-child(even) td{background:var(--zebra)}
+  .note{border-left:3px solid var(--gold);background:#fff;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0}
+  .warn{border-left:3px solid var(--red);background:#fdf3f1}
+  .ok{border-left:3px solid var(--green);background:#f0f8f3}
+  .pill{display:inline-block;font:600 11px/1 sans-serif;padding:3px 8px;border-radius:20px;background:#efe8da;color:#4a4031}
+  .pill.req{background:#fbe6e2;color:var(--red)} .pill.opt{background:#eef4ee;color:var(--green)}
+  ol li,ul li{margin:5px 0}
+  footer{margin-top:40px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="kicker">QR Dining · Production Operations</div>
+<h1>Cloudflare R2 — Production Setup</h1>
+<p class="sub">Provision real R2 storage for (1) <b>database backups</b> and (2) <b>guest image uploads</b>, then verify both with live round-trip tests before the release-candidate soak.</p>
+<p class="top"><a href="testing-dashboard.html">← Dashboard</a><a href="alerting-production-setup.html">Alerting Setup →</a></p>
+
+<div class="note warn"><b>Two distinct R2 configurations.</b> The app and the backup script use <b>different env-var names</b> and <b>should use different buckets</b>. Don't merge them.
+<table>
+  <tr><th>Concern</th><th>Bucket</th><th>Used by</th><th>Access</th></tr>
+  <tr><td><b>DB backups</b></td><td><code>qr-dining-backups</code></td><td><code>backend/scripts/nightly-backup.sh</code> (aws CLI)</td><td><b>Private</b> — never public</td></tr>
+  <tr><td><b>Image uploads</b></td><td><code>qr-dining-uploads</code></td><td>app upload handlers (presigned PUT)</td><td>Public read via <code>R2_PUBLIC_BASE</code></td></tr>
+</table>
+Image uploads are <b>optional</b> for the soak (upload endpoints return <code>503</code> if unconfigured). DB backups are <b>required</b> — they are the SEV-1 "live R2 round-trip" gate.</div>
+
+<h2>1 · Bucket creation</h2>
+<p>In the Cloudflare dashboard → <b>R2</b> → <b>Create bucket</b> (or via Wrangler). Use the production jurisdiction nearest the pilot (e.g. APAC). Create both:</p>
+<pre><span class="c"># Wrangler (or use the dashboard "Create bucket" button)</span>
+wrangler r2 bucket create qr-dining-backups
+wrangler r2 bucket create qr-dining-uploads
+
+<span class="c"># Recommended: a 14-day lifecycle rule on the backups bucket as a backstop to</span>
+<span class="c"># the script's own retention (RETENTION_DAYS). Dashboard → bucket → Settings →</span>
+<span class="c"># Object lifecycle rules → Delete objects 14 days after creation.</span></pre>
+
+<h3>Directory hierarchy</h3>
+<table>
+  <tr><th>Bucket</th><th>Key layout</th><th>Source</th></tr>
+  <tr><td><code>qr-dining-backups</code></td><td><code>backups/YYYY/MM/backup_&lt;YYYYMMDD_HHMMSS&gt;.dump</code><br><code>backups/manifest.jsonl</code> (append-only index)</td><td>fixed by <code>nightly-backup.sh</code> (<code>BACKUP_PREFIX=backups</code>)</td></tr>
+  <tr><td><code>qr-dining-uploads</code></td><td><code>menu-items/&lt;branch&gt;/&lt;uuid&gt;.&lt;ext&gt;</code><br><code>logos/&lt;restaurant&gt;/&lt;uuid&gt;.&lt;ext&gt;</code></td><td>keys minted by the app's presign handlers</td></tr>
+</table>
+
+<h2>2 · API token creation</h2>
+<p>Cloudflare dashboard → <b>R2</b> → <b>Manage R2 API Tokens</b> → <b>Create API Token</b>.</p>
+<ol>
+  <li><b>Permissions:</b> <span class="pill">Object Read &amp; Write</span> — covers <code>PutObject</code>, <code>GetObject</code>, <code>DeleteObject</code>, <code>ListBucket</code> (the script uploads, lists for retention, deletes old dumps, and downloads for restore).</li>
+  <li><b>Scope:</b> apply the token to <b>only</b> the two buckets above (not "all buckets"). Prefer <b>two separate tokens</b> — one per bucket — so a leaked uploads key can't touch backups.</li>
+  <li><b>TTL:</b> no expiry for the long-lived backup token (rotate quarterly), or a long TTL with a calendar reminder.</li>
+  <li>On creation Cloudflare shows the <b>Access Key ID</b>, <b>Secret Access Key</b>, and the <b>S3 endpoint</b> <code>https://&lt;ACCOUNT_ID&gt;.r2.cloudflarestorage.com</code>. Copy all three now — the secret is shown once.</li>
+</ol>
+<div class="note">The <b>Account ID</b> is in the R2 overview page URL and the endpoint host. The app builds its endpoint as <code>https://&lt;R2_ACCOUNT_ID&gt;.r2.cloudflarestorage.com</code> (see <code>internal/storage/r2.go</code>); the backup script takes the full <code>R2_ENDPOINT</code>.</div>
+
+<h2>3 · Environment variables</h2>
+
+<h3>A · Database backups — <code>/etc/qr-dining/backup.env</code> (root-only, chmod 600)</h3>
+<p>Consumed by the systemd timer / cron that runs <code>nightly-backup.sh</code>. Template: <code>deploy/backup/backup.env.example</code>.</p>
+<pre>DATABASE_URL=postgres://qrdining:&lt;STRONG_PW&gt;@localhost:5432/qrdining
+BACKUP_PROVIDER=r2
+R2_ENDPOINT=https://&lt;ACCOUNT_ID&gt;.r2.cloudflarestorage.com
+R2_BUCKET=qr-dining-backups
+R2_ACCESS_KEY=&lt;backups token Access Key ID&gt;
+R2_SECRET_KEY=&lt;backups token Secret Access Key&gt;
+BACKUP_PREFIX=backups
+RETENTION_DAYS=14
+<span class="c"># Optional: emit Prometheus metrics for the BackupFailed / BackupTooOld alerts</span>
+NODE_EXPORTER_TEXTFILE_DIR=/var/lib/node_exporter/textfile_collector</pre>
+<div class="note warn"><b>Host dependency:</b> the backup uses the <b>aws CLI</b> (<code>storage_init</code> requires <code>aws</code> on PATH). Install it on the production host: <code>apt-get install -y awscli</code> (or the official bundle). <code>pg_dump</code>/<code>pg_restore</code> v17 must also be present.</div>
+
+<h3>B · Image uploads — the app's environment (compose <code>./.env</code>)</h3>
+<p>All five must be set together or the app treats R2 as disabled (uploads → <code>503</code>). Optional for the soak.</p>
+<pre>R2_ACCOUNT_ID=&lt;ACCOUNT_ID&gt;
+R2_ACCESS_KEY_ID=&lt;uploads token Access Key ID&gt;
+R2_SECRET_ACCESS_KEY=&lt;uploads token Secret Access Key&gt;
+R2_BUCKET=qr-dining-uploads
+R2_PUBLIC_BASE=https://media.&lt;your-domain&gt;   <span class="c"># custom domain or r2.dev public URL for the uploads bucket</span></pre>
+
+<h2>4 · Verification commands</h2>
+<p>Run these on the production host once the backup token is in <code>backup.env</code>. They exercise the exact <code>aws s3</code> code path the script uses (<code>--endpoint-url … --region auto</code>).</p>
+<pre><span class="c"># Load the backup credentials into the shell.</span>
+set -a; . /etc/qr-dining/backup.env; set +a
+export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$R2_SECRET_KEY"
+AWS=(aws --endpoint-url "$R2_ENDPOINT" --region auto)
+
+<span class="c"># (a) Credentials + bucket reachable (empty listing is fine).</span>
+"${AWS[@]}" s3 ls "s3://$R2_BUCKET/"
+
+<span class="c"># (b) Write + read + delete round-trip.</span>
+echo "r2-ok $(date -u +%FT%TZ)" > /tmp/r2probe.txt
+"${AWS[@]}" s3 cp /tmp/r2probe.txt "s3://$R2_BUCKET/_probe/r2probe.txt"
+"${AWS[@]}" s3 cp "s3://$R2_BUCKET/_probe/r2probe.txt" /tmp/r2probe.back.txt
+diff /tmp/r2probe.txt /tmp/r2probe.back.txt && echo "ROUND-TRIP OK"
+"${AWS[@]}" s3 rm "s3://$R2_BUCKET/_probe/r2probe.txt"</pre>
+
+<h2>5 · Backup test (live)</h2>
+<p>Run one real nightly backup and confirm the dump + manifest landed in R2.</p>
+<pre>cd /opt/qr-dining/backend
+set -a; . /etc/qr-dining/backup.env; set +a
+./scripts/nightly-backup.sh
+<span class="c"># Expect: [1/5]…[5/5] then "OK: backup complete -> backups/YYYY/MM/backup_….dump"</span>
+
+<span class="c"># Confirm the object and the manifest exist in R2:</span>
+"${AWS[@]}" s3 ls "s3://$R2_BUCKET/backups/" --recursive | tail
+"${AWS[@]}" s3 cp "s3://$R2_BUCKET/backups/manifest.jsonl" - | tail -1</pre>
+<div class="note ok">The manifest line records <code>timestamp</code>, <code>key</code>, <code>bytes</code>, and <code>sha256</code>. Keep this output as the SEV-1 "live R2 round-trip" evidence.</div>
+
+<h2>6 · Restore test (live, to a throwaway DB)</h2>
+<p>Prove the backup is restorable — a backup you can't restore is not a backup. Restore into a <b>disposable</b> database, never production.</p>
+<pre><span class="c"># Throwaway target (separate container/port; NEVER the production DB).</span>
+docker run -d --name r2-restore-test -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_USER=postgres -e POSTGRES_DB=restore_target -p 55444:5432 postgres:17-alpine
+
+<span class="c"># Download the latest dump named in the manifest.</span>
+LATEST=$("${AWS[@]}" s3 cp "s3://$R2_BUCKET/backups/manifest.jsonl" - | tail -1 \
+  | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
+"${AWS[@]}" s3 cp "s3://$R2_BUCKET/$LATEST" /tmp/restore.dump
+
+<span class="c"># Verify checksum against the manifest, then restore.</span>
+sha256sum /tmp/restore.dump
+DATABASE_URL=postgres://postgres:test@localhost:55444/restore_target \
+  ./scripts/restore.sh /tmp/restore.dump   <span class="c"># type 'yes' to confirm</span>
+<span class="c"># Expect: "Restore complete" + non-zero row counts for sessions/orders/payments/staff/menu_items/event_log</span>
+
+<span class="c"># Tear the throwaway down.</span>
+docker rm -f r2-restore-test</pre>
+
+<h2>7 · Production readiness checklist</h2>
+<table>
+  <tr><th>Item</th><th>Status gate</th></tr>
+  <tr><td>Both buckets created (<code>qr-dining-backups</code> private, <code>qr-dining-uploads</code>)</td><td>manual</td></tr>
+  <tr><td>Scoped API token(s) with Object Read &amp; Write</td><td>manual</td></tr>
+  <tr><td><code>/etc/qr-dining/backup.env</code> populated, chmod 600, root-owned</td><td>manual</td></tr>
+  <tr><td><code>aws</code>, <code>pg_dump</code>/<code>pg_restore</code> v17 installed on host</td><td>manual</td></tr>
+  <tr><td>§4 round-trip OK</td><td><b>required before soak</b></td></tr>
+  <tr><td>§5 live backup landed + manifest entry</td><td><b>required before soak</b></td></tr>
+  <tr><td>§6 restore verified on a throwaway DB</td><td><b>required before first paying dinner</b></td></tr>
+  <tr><td>14-day lifecycle rule on backups bucket</td><td>recommended</td></tr>
+  <tr><td>App uploads (<code>R2_*</code> five-tuple) — optional</td><td>post-soak ok</td></tr>
+</table>
+
+<footer>QR Dining · Cloudflare R2 production setup · derived from <code>backend/scripts/nightly-backup.sh</code>, <code>lib/storage.sh</code>, <code>restore.sh</code>, <code>internal/storage/r2.go</code>, <code>deploy/backup/backup.env.example</code>. The running soak (project <code>qr-dining</code>) must not be touched while preparing this.</footer>
+</div>
+</body>
+</html>

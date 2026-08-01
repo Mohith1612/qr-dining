@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR Dining — Certification Session Guide</title>
+<style>
+  :root{
+    --bg:#0e0b08; --panel:#1a1410; --panel2:#221a13; --line:#3a2e22;
+    --ink:#f4ece0; --muted:#b6a994; --dim:#8c7d68;
+    --gold:#d8a94b; --gold2:#f0cf86; --green:#5fbf86; --amber:#e0a13c; --red:#e07a5f; --blue:#6fa8d8;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 75% -10%,#241a12 0%,var(--bg) 55%);color:var(--ink);font:15px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+  a{color:var(--gold2);text-decoration:none} a:hover{text-decoration:underline}
+  .wrap{max-width:1140px;margin:0 auto;padding:40px 24px 80px}
+  .kicker{font:600 12px/1 var(--sans);letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin-bottom:14px}
+  h1{font-size:34px;line-height:1.15;margin:0 0 10px;font-weight:700;letter-spacing:-.02em}
+  h1 span{color:var(--gold2)}
+  .sub{color:var(--muted);max-width:780px}
+  .top a{margin-right:16px;font-size:13px}
+  h2{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin:48px 0 16px;font-weight:700}
+  h3{font-size:16px;margin:0 0 6px}
+  .card{background:linear-gradient(180deg,var(--panel) 0%,var(--panel2) 100%);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font:600 11px/1 var(--sans);letter-spacing:.1em;text-transform:uppercase}
+  td.k{color:var(--muted);white-space:nowrap}
+  code,.mono{font-family:var(--mono);font-size:12.5px;color:var(--gold2)}
+  .pill{display:inline-block;font:600 11px/1 var(--mono);padding:5px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin:6px 6px 0 0}
+  .pill.ok{color:var(--green);border-color:#2f5a40}
+  .pill.warn{color:var(--amber);border-color:#5a4527}
+  .win{border-left:3px solid var(--gold);padding:12px 16px;margin:12px 0;background:#16100b;border-radius:0 10px 10px 0}
+  .win h4{margin:0 0 4px;font-size:15px} .win h4 b{color:var(--gold2)}
+  .win .role{font:600 11px var(--mono);color:var(--blue)}
+  .win .url{font-family:var(--mono);font-size:12.5px;color:var(--gold2);word-break:break-all}
+  .win .expect{color:var(--muted);font-size:13.5px;margin-top:6px}
+  .phase{border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:14px;background:#16100b}
+  .phase h3 .dur{float:right;font:700 12px var(--mono);color:var(--amber)}
+  .phase .lab{font:700 10.5px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:10px 0 3px}
+  .phase ul{margin:4px 0 4px 18px;padding:0;color:var(--muted);font-size:13.5px}
+  .phase li{margin:3px 0}
+  .phase .fail{color:#d8a08e}
+  .note{background:#1b130c;border:1px solid #4a3a1c;border-radius:12px;padding:16px 18px;color:var(--muted);margin:16px 0}
+  .note.danger{background:#1f1310;border-color:#5a2f25}
+  .note b{color:var(--ink)}
+  .breakitem{padding:10px 0;border-bottom:1px solid var(--line)}
+  .breakitem b{color:var(--ink)}
+  .breakitem .why{color:var(--dim);font-size:12.5px}
+  .sev{display:inline-block;font:700 10px var(--mono);padding:3px 7px;border-radius:5px;margin-right:8px;vertical-align:middle}
+  .sev.hi{background:#3c1d15;color:#f0a08c;border:1px solid #5a2f25}
+  .sev.med{background:#39301a;color:#e8c87a;border:1px solid #5a4527}
+  .sev.low{background:#16281d;color:#8fd0aa;border:1px solid #2f5a40}
+  footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);color:var(--dim);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">QR Dining · Manual Certification</div>
+  <h1>Certification <span>Session Guide</span></h1>
+  <p class="sub">Keep this page open while testing. It tells you exactly which windows to open, who logs in where,
+  what you should see, the order that maximizes bug discovery, and where things are most likely to break.</p>
+  <p class="top" style="margin-top:14px">
+    <a href="testing-dashboard.html">Dashboard (QR tokens)</a>
+    <a href="manual-testing-user-guide.html">User Guide (step-by-step)</a>
+    <a href="manual-testing-checklist.html">Checklist (sign-off)</a>
+    <a href="database-reference.html">Database Reference</a>
+  </p>
+  <div style="margin-top:10px">
+    <span class="pill ok">● app-1 :8090</span><span class="pill ok">● app-2 :8095</span>
+    <span class="pill ok">● frontend-a :3000</span><span class="pill ok">● frontend-b :3001</span>
+    <span class="pill">migration v38</span><span class="pill">Serene + ops redesign</span><span class="pill">gates: all off</span>
+    <span class="pill warn">⚠ soak untouched — never stop project qr-dining</span>
+  </div>
+</header>
+
+<!-- 1 WINDOW SETUP -->
+<h2>1 · Recommended Window Setup</h2>
+<div class="card">
+  <p class="sub" style="margin-top:0">Use <b>separate browser windows</b> (or profiles) per role — guest and staff identities
+  live in per-tab <code>sessionStorage</code>, so a stray shared tab can swap identities under you.
+  Windows 1–2 use different profiles/incognito so the two guests are genuinely distinct devices.
+  Window 4 deliberately runs on <b>Frontend B</b> so the core service loop exercises <b>multi-instance realtime</b> all day.</p>
+
+  <div class="win">
+    <h4><b>Window 1</b> — <span class="role">GUEST · HOST</span> (normal profile)</h4>
+    <div class="url">http://localhost:3000/table/8276380be6132edf382b0dbeb5dd25e3b871ec30d41041f5124a837202bab24b</div>
+    <div class="expect">Saffron House · Bandra <b>T3</b> (free table). Enter a name → you become <b>host</b>.
+    Expect the Serene guest UI (Saffron tenant theme: dark-luxury), a host badge, menu reachable, cart shared. No login — the QR token is the entry.</div>
+  </div>
+  <div class="win">
+    <h4><b>Window 2</b> — <span class="role">GUEST · PARTICIPANT</span> (incognito / second profile)</h4>
+    <div class="url">http://localhost:3000/table/8276380be6132edf382b0dbeb5dd25e3b871ec30d41041f5124a837202bab24b</div>
+    <div class="expect">Open the <b>same</b> T3 token after Window 1 created the session → you <b>join</b> it (different name).
+    Expect: 2 participants, only Window 1 is host, identical shared cart, live presence.</div>
+  </div>
+  <div class="win">
+    <h4><b>Window 3</b> — <span class="role">WAITER</span> (branch 1 · Bandra)</h4>
+    <div class="url">http://localhost:3000/staff/login &nbsp;→&nbsp; branch_id <b>1</b> · PIN <b>3333</b></div>
+    <div class="expect">Waiter dashboard with three queues: assistance · ready-to-serve · pending payments.
+    (Bandra's seeded pending payment was settled in an earlier pass — your Phase-A payment will appear here live;
+    seeded pending payments still exist on Copper Pot br.4 and Urban Brew br.5.)</div>
+  </div>
+  <div class="win">
+    <h4><b>Window 4</b> — <span class="role">KITCHEN</span> (branch 1 · on <b>Frontend B</b>)</h4>
+    <div class="url">http://localhost:3001/staff/login &nbsp;→&nbsp; branch_id <b>1</b> · PIN <b>4444</b></div>
+    <div class="expect">KDS Kanban (pending/confirmed/preparing/ready). Orders placed by Window 1 (via app-1)
+    must appear here (via app-2) within ~1s — this IS the multi-instance test. Kitchen cannot mark “served”.</div>
+  </div>
+  <div class="win">
+    <h4><b>Window 5</b> — <span class="role">BRANCH ADMIN</span> (owner, branch 1)</h4>
+    <div class="url">http://localhost:3000/staff/login &nbsp;→&nbsp; branch_id <b>1</b> · PIN <b>1111</b> (owner; use 2222 for pure-manager checks)</div>
+    <div class="expect">Admin tabs: Sessions · Menu · Tables · Collateral · Staff · Stats · <b>Performance</b> · <b>Loyalty</b> · Plan · Promos · Appearance · Settings.
+    Performance + Loyalty show <b>gated empty states</b> (expected — entitlements/flags default off). Owner additionally gets org governance over all 3 Saffron branches.</div>
+  </div>
+  <div class="win">
+    <h4><b>Window 6</b> — <span class="role">PLATFORM ADMIN</span></h4>
+    <div class="url">http://localhost:3000/platform/login &nbsp;→&nbsp; admin@platform.local · Platform!admin1</div>
+    <div class="expect">Control plane: Overview · Organizations · Plans · Entitlements · Analytics · Feature Flags · Themes · Collateral · Support.
+    Staff tokens are rejected here (separate trust domain).</div>
+  </div>
+  <div class="win">
+    <h4><b>Window 7</b> — <span class="role">ROTATING</span> (open when needed)</h4>
+    <div class="url">support@platform.local · Support!admin1 &nbsp;|&nbsp; billing@platform.local · Billing!admin1 &nbsp;|&nbsp; auditor@platform.local · Auditor!admin1</div>
+    <div class="expect">Phase D/E: platform sub-roles (RBAC separation), Copper Pot / Urban Brew staff
+    (branch_id 4/5, same PINs), and second-tenant guests for cross-tenant tests.</div>
+  </div>
+</div>
+
+<!-- 2 URLS -->
+<h2>2 · URLs</h2>
+<div class="card">
+  <table>
+    <tr><th>Surface</th><th>URL</th><th>Notes</th></tr>
+    <tr><td class="k">Frontend A (primary)</td><td><a href="http://localhost:3000">http://localhost:3000</a></td><td>→ app-1 :8090</td></tr>
+    <tr><td class="k">Frontend B (multi-instance)</td><td><a href="http://localhost:3001">http://localhost:3001</a></td><td>→ app-2 :8095</td></tr>
+    <tr><td class="k">Guest entry</td><td class="mono">/table/&lt;qr_token&gt;</td><td>all tokens on the <a href="testing-dashboard.html">Dashboard</a></td></tr>
+    <tr><td class="k">Staff login</td><td><a href="http://localhost:3000/staff/login">/staff/login</a></td><td>branch_id + PIN</td></tr>
+    <tr><td class="k">Platform login</td><td><a href="http://localhost:3000/platform/login">/platform/login</a></td><td>email + password</td></tr>
+    <tr><td class="k">Backend health</td><td><a href="http://localhost:8090/readyz">:8090/readyz</a> · <a href="http://localhost:8095/readyz">:8095/readyz</a></td><td>{"status":"ready"}</td></tr>
+    <tr><td class="k">Metrics</td><td><a href="http://localhost:8090/metrics">:8090/metrics</a></td><td>Prometheus text</td></tr>
+    <tr><td class="k">Database</td><td class="mono">docker exec -e PGPASSWORD=mtest_pass manual-testing-postgres psql -U mtest -d qrdining_mtest</td><td>investigation only</td></tr>
+    <tr><td class="k">Backend logs</td><td class="mono">/tmp/qrapp-mtest-1.log · /tmp/qrapp-mtest-2.log</td><td>tail -f while testing</td></tr>
+  </table>
+</div>
+
+<!-- 3 CREDENTIALS -->
+<h2>3 · Credentials</h2>
+<div class="card">
+  <table>
+    <tr><th>Who</th><th>Login</th><th>Where</th></tr>
+    <tr><td class="k">Guest / participant</td><td>none — table QR token</td><td class="mono">/table/&lt;token&gt;</td></tr>
+    <tr><td class="k">Owner (Alpha/Beta/Gamma)</td><td>PIN <b>1111</b> @ branch 1 / 4 / 5</td><td class="mono">/staff/login</td></tr>
+    <tr><td class="k">Manager</td><td>PIN <b>2222</b> @ any branch (1–5)</td><td class="mono">/staff/login</td></tr>
+    <tr><td class="k">Waiter</td><td>PIN <b>3333</b> @ any branch</td><td class="mono">/staff/login</td></tr>
+    <tr><td class="k">Kitchen</td><td>PIN <b>4444</b> @ any branch</td><td class="mono">/staff/login</td></tr>
+    <tr><td class="k">Platform super admin</td><td class="mono">admin@platform.local · Platform!admin1</td><td class="mono">/platform/login</td></tr>
+    <tr><td class="k">Support admin</td><td class="mono">support@platform.local · Support!admin1</td><td class="mono">/platform/login</td></tr>
+    <tr><td class="k">Billing admin</td><td class="mono">billing@platform.local · Billing!admin1</td><td class="mono">/platform/login</td></tr>
+    <tr><td class="k">Read-only auditor</td><td class="mono">auditor@platform.local · Auditor!admin1</td><td class="mono">/platform/login</td></tr>
+  </table>
+  <p class="sub" style="margin-bottom:0">Tenants (guest theme; default preset is serene): <b>Saffron House</b> (Alpha · premium · branches 1–3 · dark-luxury) ·
+  <b>Copper Pot Kitchen</b> (Beta · standard · branch 4 · warm-cafe) ·
+  <b>Urban Brew Café</b> (Gamma · free/trial · branch 5 · vibrant). Owner exists only on each tenant's primary branch (1/4/5).
+  All table QR tokens (clickable): <a href="testing-dashboard.html">Dashboard → Restaurants, Branches &amp; QR Tokens</a>.</p>
+</div>
+
+<div class="note">
+  <b>Environment facts to know before you start.</b>
+  (1) <b>Don't run <code>--reset</code></b> unless you accept that all QR tokens in these documents regenerate.
+  (2) The seeded "active" T1 sessions have long since drifted to <code>abandoned</code> (correct lifecycle) — create fresh sessions on free tables.
+  (3) Seeded <code>payment_pending</code> payments survive (by design) on Copper Pot br.4 T2 and Urban Brew br.5 T2; Bandra's was settled in a prior pass.
+  (4) Customer opt-in ("Come back anytime") is gated by <code>settings_json.customer_memory_enabled</code>, which no seeded tenant has —
+  expect <code>FEATURE_DISABLED</code> (known finding #6). Loyalty earn depends on this link, so the optional loyalty deep-dive needs it enabled first.
+  (5) Staff-Performance and Loyalty are <b>gated off everywhere</b> — the correct result is a clean empty state + 403, not data.
+</div>
+
+<!-- 4 ORDER -->
+<h2>4 · Recommended Certification Order</h2>
+<p class="sub">Phases are ordered so foundation bugs surface before they can poison later phases, and so state created early
+(orders, payments, customers, audit rows) becomes the test data for later phases. Total: <b>≈ 6–7.5 focused hours</b> —
+a full day with breaks, or split A–C / D–F across two half-days.</p>
+
+<div class="phase">
+  <h3>Phase A — Guest experience <span class="dur">75–90 min</span></h3>
+  <div class="lab">Goals</div>
+  <ul><li>Full guest loop on Saffron Bandra: QR scan → create → second guest joins → shared cart → host orders → live tracking → cash/UPI payment initiation.</li>
+  <li>Re-scan behaviors: occupied table (joins), idle table (resumes), payment_pending table (join allowed).</li>
+  <li>Manual "Make host" transfer; reconnect (reload mid-session); idle into <code>awaiting_reactivation</code> and recover.</li>
+  <li>Repeat a compressed pass on Urban Brew (br.5) to confirm the vibrant theme + free-plan tenant behaves identically.</li></ul>
+  <div class="lab">Critical observations</div>
+  <ul><li><code>session_token</code> is <b>empty/absent in every guest network response</b> (DevTools → Network) — F-8.</li>
+  <li>Order tracker advances <b>without refresh</b> (F-6); cart converges between windows ≤1s; only one <code>is_host</code>.</li>
+  <li>Non-host order/pay blocked in UI <b>and</b> rejected by the server if forced (edit the request).</li></ul>
+  <div class="lab">Common failure signs</div>
+  <ul class="fail"><li>SESSION_ALREADY_ACTIVE on re-scan of an occupied/idle table (regression of the occupied-table fix).</li>
+  <li>"Connection lost" dead-end after idle (F-1 regression) · cart emptied after reload · duplicate order on double-tap.</li>
+  <li>Theme not applied on entry, or one tenant's colours bleeding into another tab.</li></ul>
+</div>
+
+<div class="phase">
+  <h3>Phase B — Waiter + kitchen operations <span class="dur">60–75 min</span></h3>
+  <div class="lab">Goals</div>
+  <ul><li>Window 4 (kitchen on Frontend B) advances Phase A's order pending→confirmed→preparing→ready; Window 3 (waiter on A) serves it and settles the payment — the loop crosses both backend instances.</li>
+  <li>Assistance: guest requests → waiter ack → resolve, latency observed.</li>
+  <li>Settle the seeded pending payments on Copper Pot (br.4) with its own waiter (PIN 3333 @ 4).</li>
+  <li>Role boundaries: kitchen cannot serve; waiter cannot advance cooking states.</li></ul>
+  <div class="lab">Critical observations</div>
+  <ul><li>Every transition lands on the guest tracker live, across instances, both directions.</li>
+  <li>Settlement closes the session, frees the table, sets <code>settled_by_staff_id</code>; guest sees real completion only after staff settles (no fake success).</li>
+  <li>The two seeded stalled payments will be emitting alert-only escalations in the logs — they must <b>never</b> auto-settle or auto-cancel.</li></ul>
+  <div class="lab">Common failure signs</div>
+  <ul class="fail"><li>Order placed on app-1 never reaches the app-2 KDS (Redis fan-out broken) — this environment is the only place multi-instance is exercised.</li>
+  <li>Stale queues needing manual refresh · settlement succeeds but guest stays "awaiting confirmation" · table not freed after close.</li></ul>
+</div>
+
+<div class="phase">
+  <h3>Phase C — Manager / owner workflows <span class="dur">75–90 min</span></h3>
+  <div class="lab">Goals</div>
+  <ul><li>Menu CRUD + modifiers + availability toggles (watch a seated guest live); staff create/rotate-PIN/deactivate; tables + QR refresh.</li>
+  <li>Promos incl. the per-guest limit: no phone → <code>PROMO_PHONE_REQUIRED</code>; cap enforced per phone.</li>
+  <li><b>Performance and Loyalty tabs: verify the gated empty states</b> (403 codes in Network tab) as owner AND that waiter/kitchen get the role message.</li>
+  <li>Collateral studio (staff side), Appearance tab, Stats (plan-gated by tier: Saffron yes, Urban limited); owner-only org governance + org analytics + audit reads across the 3 Saffron branches.</li></ul>
+  <div class="lab">Critical observations</div>
+  <ul><li>Branch isolation: a Bandra menu edit never appears in Indiranagar; manager cannot reach org governance (owner-only).</li>
+  <li>QR refresh: new token resolves, old token 404s.</li>
+  <li>Audit rows appear for staff mutations (audit v2 is on in this stack).</li></ul>
+  <div class="lab">Common failure signs</div>
+  <ul class="fail"><li>Gated tabs crash or show spinners forever instead of clean empty states.</li>
+  <li>Manager staff-add UI offering roles the backend then rejects (finding #7 — now create-staff is owner-only/manager-gated; confirm).</li>
+  <li>Promo applied at the <b>cart</b> instead of the <b>bill</b> (promo moved to payment initiation in Phase-0 — it must appear on the bill).</li></ul>
+</div>
+
+<div class="phase">
+  <h3>Phase D — Platform operations <span class="dur">90–120 min</span></h3>
+  <div class="lab">Goals</div>
+  <ul><li>Orgs: list 3, create a 4th (org+restaurant+branch+tables+owner), suspend/activate (status flips; resolve-only).</li>
+  <li>Plans &amp; entitlements: catalog shows the new keys (<code>analytics.staff_performance</code>, <code>loyalty.*</code>); assign plans; set org overrides.</li>
+  <li>Feature flags: catalog shows <code>staff_performance_analytics</code> + <code>loyalty</code> (default off); exercise global→org→branch precedence.</li>
+  <li>Subscriptions + billing: status transitions (valid only), invoices, billing profile; platform analytics (usage/revenue/health + the new staff-performance read).</li>
+  <li>Themes (change Urban's preset → its guests adopt it live), platform collateral studio, MFA enroll/confirm/challenge/disable on a platform user.</li>
+  <li>Support console as support@: search, session/order/payment detail (sanitized — no <code>session_token</code>/<code>device_fingerprint</code>), dual audit rows; sub-role separation (billing@ blocked from support, auditor@ read-only).</li>
+  <li><i>Optional deep-dive:</i> grant the loyalty entitlements + flag to one tenant, enable <code>customer_memory_enabled</code>, run a paid session with opt-in, and watch points accrue + redeem. Gate flips take ≤60s (gate cache).</li></ul>
+  <div class="lab">Critical observations</div>
+  <ul><li>Staff tokens rejected on /platform/*, platform tokens rejected on staff routes (trust-domain walls).</li>
+  <li>Every platform read/mutation produces platform-audit entries; deep support reads produce tenant-visible critical audit rows.</li>
+  <li>MFA misconfig path returns 503 <code>MFA_NOT_CONFIGURED</code>, never 500 (PT-03).</li></ul>
+  <div class="lab">Common failure signs</div>
+  <ul class="fail"><li>Theme edits from the staff Appearance tab and the platform Themes page fighting each other (two write-paths — staff writes legacy <code>settings_json.theme</code>, platform writes <code>tenant_themes</code>; platform wins on read).</li>
+  <li>billing_admin reaching support detail pages · auditor able to mutate · invoice/subscription state machine accepting an illegal transition.</li></ul>
+</div>
+
+<div class="phase">
+  <h3>Phase E — Cross-tenant security <span class="dur">60–75 min</span></h3>
+  <div class="lab">Goals</div>
+  <ul><li>Saffron staff/owner can never read Copper Pot/Urban data (dashboards, analytics, audit, menu admin — try forced branch_ids in URLs/API).</li>
+  <li>Guest token from a Saffron session replayed against a Copper Pot session/snapshot → rejected (T-01 class).</li>
+  <li>Snapshot matrix: own token OK · no token rejected · other-session token rejected · <code>session_token</code> stripped.</li>
+  <li>Token tampering (flip a byte), guest token on staff routes, staff on platform routes, oversized body (&gt;1&nbsp;MB), rapid-fire auth (lockout + 429s, fail-closed).</li>
+  <li>Theme/collateral/flags resolved per tenant only; platform analytics per-org filter never merges tenants.</li></ul>
+  <div class="lab">Critical observations</div>
+  <ul><li>Rejections are clean 401/403/404 JSON errors with stable codes — never 500s, never partial data.</li>
+  <li>Authz denials appear in the audit stream.</li></ul>
+  <div class="lab">Common failure signs</div>
+  <ul class="fail"><li>Any cross-tenant 200 — stop and capture immediately; this class (T-01) was the worst historical bug.</li>
+  <li>500s on malformed/forged input (validation should fail closed, not crash).</li></ul>
+</div>
+
+<div class="phase">
+  <h3>Phase F — Failure recovery <span class="dur">60–75 min</span></h3>
+  <div class="lab">Goals</div>
+  <ul><li>Reload mid-session, network toggle, and laptop-sleep style idle → snapshot reconciliation each time.</li>
+  <li>Kill one backend (<code>kill</code> the :8095 pid) mid-session: clients on B reconnect/fail over after restart; app-1 unaffected; restart and confirm recovery. <b>Only ever the mtest binaries.</b></li>
+  <li>Redis flush (<code>docker exec manual-testing-redis redis-cli FLUSHALL</code>): presence/tickets/staff sessions reset (staff re-login expected), business data intact, guests re-snapshot.</li>
+  <li>Lifecycle clocks: a quiet session → <code>awaiting_reactivation</code> (~1 min) → return within ~5 min recovers it; past the window → abandoned, table freed by the reconciler.</li>
+  <li>Terminal sessions readable for 60 min, gone after (410-style).</li></ul>
+  <div class="lab">Critical observations</div>
+  <ul><li>No duplicate orders after any recovery (idempotency); sequence numbers never regress; cart refetches rather than trusting stale state.</li>
+  <li>A session with a non-terminal payment is <b>never</b> abandoned by the workers.</li></ul>
+  <div class="lab">Common failure signs</div>
+  <ul class="fail"><li>Reconnect gives up permanently after ~10 attempts (~2 min of outage) — known WS retry ceiling; document anything that strands a guest.</li>
+  <li>Stranded occupied tables after abandonment · "payment completed" appearing without settlement after recovery.</li></ul>
+</div>
+
+<!-- 5 THINGS MOST LIKELY TO BREAK -->
+<h2>5 · Things Most Likely To Break</h2>
+<div class="card">
+  <p class="sub" style="margin-top:0">Ranked from the pilot dress rehearsal, remediation history, readiness audits, and rollout history.
+  <span class="sev hi">HIGH</span> = watch actively every phase · <span class="sev med">MED</span> = check deliberately once · <span class="sev low">LOW</span> = note if seen.</p>
+
+  <div class="breakitem"><span class="sev hi">HIGH</span><b>Reconnect / reactivation edges.</b>
+    <div class="why">The F-1 dead-end was fixed, but presence/reactivation timing (finding F-2) is deliberately untuned for real dining. Idle a guest tab through every boundary (≈60s → awaiting_reactivation, ≈5 min → abandoned) and through the 10-attempt WS retry ceiling. Anything that leaves a guest stranded without a recovery affordance is a finding.</div></div>
+  <div class="breakitem"><span class="sev hi">HIGH</span><b>Multi-instance event fan-out.</b>
+    <div class="why">The WS Hub is per-process; cross-instance delivery rides Redis pub/sub and is unproven at scale. This stack is the only place it's exercised — watch for one-directional updates (A→B works, B→A doesn't) and events lost during reconnect windows.</div></div>
+  <div class="breakitem"><span class="sev hi">HIGH</span><b>Cross-tenant leakage (T-01 class).</b>
+    <div class="why">The worst historical bug was a cross-org snapshot 200. It's fixed and tested, but every new surface since (support console, collateral, themes, billing, the new gated tabs) is a new opportunity. Force IDs in URLs/API calls in every phase, not just Phase E.</div></div>
+  <div class="breakitem"><span class="sev hi">HIGH</span><b>Payment-pending lifecycle traps.</b>
+    <div class="why">The hardest state: cart frozen, session protected from abandonment, alert-only escalation. Try to break it — leave it stalled, reload, transfer host (must be refused), re-scan the table (join allowed), then settle. Any auto-settle/auto-cancel or fake guest success is a serious finding.</div></div>
+  <div class="breakitem"><span class="sev med">MED</span><b>Windowed promos (Phase-0 fix — verify).</b>
+    <div class="why">Finding #10 is fixed: promo time-windows now compare in branch-local time and display HH:MM. Verify a lunch-window promo is valid at Indian lunch hours (no longer a silent fail). Promo is also applied at the <b>bill</b>, not the cart.</div></div>
+  <div class="breakitem"><span class="sev med">MED</span><b>Theme dual write-path.</b>
+    <div class="why">Staff Appearance tab writes legacy <code>settings_json.theme</code>; platform writes <code>tenant_themes</code> (authoritative on read). Edit from both sides and confirm the platform value wins everywhere and nothing flip-flops.</div></div>
+  <div class="breakitem"><span class="sev med">MED</span><b>Staff management (C16 — verify).</b>
+    <div class="why">Finding #7 addressed: the Staff tab now shows a roster with Reset PIN + Deactivate; create-staff is owner-only (hidden from managers); managers may reset only waiter/kitchen and cannot reset self; "Change PIN" self-service in the staff bar. Confirm these boundaries hold server-side.</div></div>
+  <div class="breakitem"><span class="sev med">MED</span><b>Customer opt-in gate (known finding #6).</b>
+    <div class="why">Opt-in returns FEATURE_DISABLED unless <code>customer_memory_enabled</code> is set on the restaurant. Check the guest UI handles it gracefully; flip it only for the optional loyalty deep-dive.</div></div>
+  <div class="breakitem"><span class="sev med">MED</span><b>New gated tabs (Performance / Loyalty).</b>
+    <div class="why">Newest UI in the build. The only acceptable behavior while gated: clean empty state + 403 code. Crashes, infinite spinners, or data leaking through the gate are findings. Also confirm payments complete with zero loyalty side effects.</div></div>
+  <div class="breakitem"><span class="sev low">LOW</span><b>Stale-data noise in logs.</b>
+    <div class="why">The two seeded stalled payments emit warn/critical escalation lines every minute, forever — by design (alert-only). Don't mistake them for failures; the soak closure flagged exactly this signal-hygiene issue.</div></div>
+  <div class="breakitem"><span class="sev low">LOW</span><b>Audit coverage gap.</b>
+    <div class="why">Order placement emits no audit row (known, deliberate gap) — don't log it as a bug when auditing Phase C/D trails.</div></div>
+  <div class="breakitem"><span class="sev low">LOW</span><b>UX backlog (findings #1–#4, #9 — mostly delivered in Phase-0).</b>
+    <div class="why">Delivered: modifier single-select (radio + 422 MODIFIER_CONFLICT), landing tiles + Currently Popular, kitchen ticket item contents, menu image upload, promo HH:MM clarity, presence heartbeat (no more 30s "still here?" pop). Verify each; remaining polish (e.g. recurring expiry banner) is not a certification blocker.</div></div>
+</div>
+
+<!-- 6 CAPTURE -->
+<h2>6 · When Something Breaks</h2>
+<div class="card">
+  <table>
+    <tr><th>Capture</th><th>How</th></tr>
+    <tr><td class="k">What + where</td><td>Window/role, URL, tenant/branch, timestamp, and the exact action (request payload if you forced one).</td></tr>
+    <tr><td class="k">Network evidence</td><td>DevTools → Network: status code + response JSON (the stable <code>code</code> string matters).</td></tr>
+    <tr><td class="k">Backend logs</td><td class="mono">tail -200 /tmp/qrapp-mtest-1.log /tmp/qrapp-mtest-2.log</td></tr>
+    <tr><td class="k">Database state</td><td class="mono">docker exec -e PGPASSWORD=mtest_pass manual-testing-postgres psql -U mtest -d qrdining_mtest</td></tr>
+    <tr><td class="k">Checklist</td><td>Mark the row's Notes column; keep going unless the env is wedged.</td></tr>
+  </table>
+  <p class="sub" style="margin-bottom:0">Restart only what's broken: backends → <code>./scripts/manual-testing-up.sh</code> (no --reset);
+  frontends → <code>npm run dev</code> in <code>frontend/</code> (:3000) and <code>/tmp/frontend-b</code> (:3001).
+  <b>Never</b> touch docker project <code>qr-dining</code> (the soak).</p>
+</div>
+
+<footer>
+  QR Dining certification session guide · refreshed 2026-06-25 · build <code>feature/certification-fixes-ui-redesign</code>
+  (Serene guest redesign + ops/platform redesign + Phase-0 fixes; absorbs premium-qr-collateral, staff-analytics/loyalty, platform governance) · migration v38 · all strict-rollout + product gates default-off ·
+  soak (project <code>qr-dining</code>) untouched.
+</footer>
+
+</div>
+</body>
+</html>

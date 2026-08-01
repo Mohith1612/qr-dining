@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR Dining — Manual Testing User Guide</title>
+<style>
+  :root{
+    --bg:#0e0b08;--panel:#1a1410;--panel2:#221a13;--line:#3a2e22;--ink:#f4ece0;--muted:#b6a994;--dim:#8c7d68;
+    --gold:#d8a94b;--gold2:#f0cf86;--green:#5fbf86;--amber:#e0a13c;--red:#e07a5f;--blue:#6fa8d8;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,#241a12,var(--bg) 55%);color:var(--ink);font:15px/1.65 var(--sans)}
+  a{color:var(--gold2)}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 24px 90px}
+  .kicker{font:600 12px/1 var(--sans);letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin-bottom:12px}
+  h1{font-size:32px;margin:0 0 8px;letter-spacing:-.02em}
+  .sub{color:var(--muted);max-width:720px}
+  .top a{margin-right:16px;font-size:13px}
+  nav.toc{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:28px 0 8px;columns:2;column-gap:30px}
+  @media(max-width:720px){nav.toc{columns:1}}
+  nav.toc a{display:block;color:var(--muted);font-size:13.5px;padding:3px 0}
+  nav.toc a:hover{color:var(--gold2)}
+  h2{font-size:21px;margin:46px 0 6px;padding-top:10px;border-top:1px solid var(--line);color:var(--gold2)}
+  h2 .dom{font:600 11px var(--mono);color:var(--dim);letter-spacing:.06em;margin-left:8px}
+  h3{font-size:16px;margin:26px 0 8px;color:var(--ink)}
+  p{margin:8px 0}
+  code{font-family:var(--mono);font-size:12.5px;background:#0000;color:var(--gold2)}
+  ol,ul{margin:8px 0 8px 4px;padding-left:22px}
+  li{margin:5px 0}
+  .box{border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:12px 0;background:var(--panel)}
+  .box.exp{border-left:3px solid var(--green)}
+  .box.fail{border-left:3px solid var(--red)}
+  .box.ver{border-left:3px solid var(--blue)}
+  .box .lab{font:700 11px var(--sans);letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px}
+  .exp .lab{color:var(--green)}.fail .lab{color:var(--red)}.ver .lab{color:var(--blue)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font:600 11px var(--sans);letter-spacing:.08em;text-transform:uppercase}
+  .note{background:#1b130c;border:1px solid #4a3a1c;border-radius:10px;padding:12px 16px;color:var(--muted)}
+  .note b{color:var(--ink)}
+  footer{margin-top:50px;border-top:1px solid var(--line);padding-top:18px;color:var(--dim);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="kicker">QR Dining · Certification</div>
+<h1>Manual Testing — User Guide</h1>
+<p class="sub">A role-by-role handbook for certifying every meaningful workflow. Each journey lists the steps, the <b style="color:var(--green)">expected result</b>, <b style="color:var(--red)">common failure modes</b>, and <b style="color:var(--blue)">what to verify</b>.</p>
+<p class="top"><a href="testing-dashboard.html">← Dashboard</a><a href="manual-testing-checklist.html">Checklist →</a><a href="database-reference.html">Database Reference</a></p>
+
+<nav class="toc">
+  <a href="#how">How to use this guide</a>
+  <a href="#guest">1 · Guest journey</a>
+  <a href="#participant">2 · Participant journey</a>
+  <a href="#waiter">3 · Waiter journey</a>
+  <a href="#kitchen">4 · Kitchen journey</a>
+  <a href="#manager">5 · Manager journey</a>
+  <a href="#owner">6 · Owner / Org owner</a>
+  <a href="#platform">7 · Platform admin</a>
+  <a href="#subroles">8 · Support / Billing / Auditor</a>
+  <a href="#multi">9 · Multi-instance realtime</a>
+  <a href="#isolation">10 · Cross-tenant isolation</a>
+  <a href="#security">11 · Security</a>
+  <a href="#regressions">12 · Pilot-finding regressions</a>
+</nav>
+
+<h2 id="how">How to use this guide</h2>
+<p>Open the <a href="testing-dashboard.html">Dashboard</a> for live URLs, credentials, and QR table tokens. Drive the <b>guest</b> flows on <b>Frontend A</b> (<code>localhost:3000</code> → app-1). For multi-instance tests, open <b>Frontend B</b> (<code>localhost:3001</code> → app-2) in a second browser/profile. Three tenants exist for cross-tenant work:</p>
+<table>
+  <tr><th>Tenant</th><th>Slug</th><th>Plan</th><th>Theme</th><th>Branches</th></tr>
+  <tr><td><b>Saffron House</b> (Alpha)</td><td><code>saffron-house</code></td><td>premium / active</td><td>dark-luxury (default: serene)</td><td>Bandra(1) · Indiranagar(2) · Connaught Place(3)</td></tr>
+  <tr><td><b>Copper Pot Kitchen</b> (Beta)</td><td><code>copper-pot-kitchen</code></td><td>standard / active</td><td>warm-cafe</td><td>Koramangala(4)</td></tr>
+  <tr><td><b>Urban Brew Café</b> (Gamma)</td><td><code>urban-brew-cafe</code></td><td>free / trial</td><td>vibrant</td><td>Cyber Hub(5)</td></tr>
+</table>
+<p class="note"><b>Staff PINs:</b> owner 1111 · manager 2222 · waiter 3333 · kitchen 4444 (scoped by <code>branch_id</code>). <b>Platform:</b> admin/support/billing/auditor @platform.local — see Dashboard.</p>
+
+<h2 id="guest">1 · Guest journey <span class="dom">trust domain: guest</span></h2>
+<p>The guest is the heart of the product: scan a table QR, join a session, collaborate on a shared cart, and (as host) order and pay.</p>
+
+<h3>1.1 Scan QR &amp; create a session</h3>
+<ol>
+  <li>From the Dashboard, click a free Saffron House table (e.g. Bandra <code>T3</code>), or visit <code>localhost:3000/table/&lt;token&gt;</code>.</li>
+  <li>The resolved table shows the branch and the Serene guest UI with its tenant theme (dark-luxury for Saffron House).</li>
+  <li>Enter a display name (phone optional) and create the session. You become the <b>host</b>.</li>
+</ol>
+<div class="box exp"><div class="lab">Expected</div>Session opens; the page shows your name as host; the table theme (colours) is applied; the menu is reachable.</div>
+<div class="box fail"><div class="lab">Common failure modes</div>"Table not found" (wrong/expired token) · theme not applied (theme bridge) · scanning an occupied/idle table must <b>join or resume</b> the existing session (incl. <code>payment_pending</code> / <code>awaiting_reactivation</code>) — a <code>SESSION_ALREADY_ACTIVE</code> error here is the regression the occupied-table fix closed.</div>
+<div class="box ver"><div class="lab">Verify</div>Returned <code>session.session_token</code> is empty in the network response (F-8 — credential never leaks). A host badge appears. <code>session_number</code> looks like <code>SAFF-BND-S-YYYYMMDD-NNN</code>.</div>
+
+<h3>1.2 Join an existing session (second guest)</h3>
+<ol>
+  <li>In a second browser, open the <b>same</b> table token (a seeded live table like Bandra <code>T1</code>, or a session you created on T3).</li>
+  <li>Enter a different name and join.</li>
+</ol>
+<div class="box exp"><div class="lab">Expected</div>Both participants appear in the presence list; the second joiner is <b>not</b> host; the shared cart is identical for both.</div>
+<div class="box fail"><div class="lab">Common failure modes</div>Second guest sees an empty/different cart (cart not shared) · join silently creates a second session on the table.</div>
+<div class="box ver"><div class="lab">Verify</div>One session, two <code>session_participants</code> rows; only one <code>is_host=true</code>.</div>
+
+<h3>1.3 Reconnect</h3>
+<ol><li>Mid-session, reload the page or toggle network off/on briefly.</li></ol>
+<div class="box exp"><div class="lab">Expected</div>A reconnecting banner appears, then state restores from the authoritative snapshot — cart, orders, and participants are intact. No duplicate orders.</div>
+<div class="box fail"><div class="lab">Common failure modes</div>"Connection lost" dead-end (F-1) · cart empties on reconnect (snapshot refetches cart separately) · stale order statuses.</div>
+<div class="box ver"><div class="lab">Verify</div>After reload the order tracker still shows current statuses; sequence numbers don't regress.</div>
+
+<h3>1.4 Order (host only)</h3>
+<ol>
+  <li>Add items to the shared cart from the menu.</li>
+  <li>As host, place the order. As a non-host, confirm the "only the host can send orders" gate.</li>
+</ol>
+<div class="box exp"><div class="lab">Expected</div>Order is created (<code>pending</code>), appears in the guest order tracker and on the kitchen display. Non-host cannot place it (UI disabled <i>and</i> server rejects).</div>
+<div class="box fail"><div class="lab">Common failure modes</div>Non-host able to order (host gate is server-authoritative) · duplicate orders on double-tap (idempotency) · price drift after menu change (order snapshots price).</div>
+<div class="box ver"><div class="lab">Verify</div>As the order advances (kitchen side) the guest tracker moves <code>confirmed→preparing→ready→served</code> <b>without a manual refresh</b> (F-6).</div>
+
+<h3>1.5 Payment &amp; customer linking (host only)</h3>
+<ol>
+  <li>Open Pay, review the bill (subtotal/tax/total — an immutable snapshot is captured).</li>
+  <li>Choose cash or UPI and initiate. Optionally opt in as a customer (name/phone).</li>
+  <li>For cash/UPI the status becomes "awaiting confirmation" until a waiter settles.</li>
+</ol>
+<div class="box exp"><div class="lab">Expected</div>Cart freezes (session → <code>payment_pending</code>); guest waits for real confirmation; on waiter settlement guest sees <code>PAYMENT_COMPLETED</code> and the session closes.</div>
+<div class="box fail"><div class="lab">Common failure modes</div>False "payment success" before settlement · bill changes after initiation · session abandoned while payment pending (must <b>not</b> happen).</div>
+<div class="box ver"><div class="lab">Verify</div>No fabricated settlement — the guest only completes after a staff/webhook event. Customer opt-in creates/links a <code>customers</code> row.</div>
+
+<h2 id="participant">2 · Participant journey <span class="dom">guest (non-host)</span></h2>
+<div class="box exp"><div class="lab">Expected</div><b>Shared cart:</b> any participant adds/removes items; everyone converges via <code>CART_UPDATED</code> refetch. <b>Presence:</b> joins/leaves update the list live. <b>Reconnect:</b> a participant reload restores the same shared session.</div>
+<div class="box fail"><div class="lab">Common failure modes</div>Cart diverges between participants · a left participant still shown present · participant accidentally gets host powers.</div>
+<div class="box ver"><div class="lab">Verify</div>Add an item as participant B → it appears for host A within ~1s. Host hand-off (host leaves) reassigns host via <code>HOST_CHANGED</code>; the new host gains ordering rights. Also test the <b>manual</b> path: the host's "Make host" control transfers the role to another participant (refused while <code>payment_pending</code> — <code>HOST_TRANSFER_LOCKED</code>).</div>
+
+<h2 id="waiter">3 · Waiter journey <span class="dom">staff · pin 3333</span></h2>
+<ol>
+  <li>Login at <code>/staff/login</code> with <code>branch_id</code> 1 (Bandra) and PIN <code>3333</code> → waiter dashboard.</li>
+  <li>Three queues: <b>assistance</b>, <b>ready-to-serve orders</b>, <b>pending payments</b> (the seeded T2 payment shows here).</li>
+  <li>Acknowledge then resolve an assistance request; mark a <code>ready</code> order <code>served</code>; settle a pending cash payment.</li>
+</ol>
+<div class="box exp"><div class="lab">Expected</div>Settling a payment completes it, notifies the guest (<code>PAYMENT_COMPLETED</code>), and closes the session. Serving moves the order out of the ready queue.</div>
+<div class="box fail"><div class="lab">Common failure modes</div>Pending-payments queue empty when it shouldn't be (seeded T2) · waiter can advance cooking states (kitchen-only) · settlement doesn't reach the guest.</div>
+<div class="box ver"><div class="lab">Verify</div>The seeded "awaiting confirmation" payment on each primary branch's T2 is visible and settleable. After settle, <code>payments.status=completed</code> and <code>settled_by_staff_id</code> is set.</div>
+
+<h2 id="kitchen">4 · Kitchen journey <span class="dom">staff · pin 4444</span></h2>
+<ol>
+  <li>Login with <code>branch_id</code> 1, PIN <code>4444</code> → KDS Kanban (pending / confirmed / preparing / ready).</li>
+  <li>Advance the seeded confirmed order: <code>confirmed→preparing→ready</code>. Note kitchen <b>cannot</b> mark <code>served</code>.</li>
+</ol>
+<div class="box exp"><div class="lab">Expected</div>Each transition pushes a WS event; the guest tracker and waiter queue update live. "Served" is absent/blocked for kitchen.</div>
+<div class="box fail"><div class="lab">Common failure modes</div>Kitchen able to serve (waiter-only, server-enforced) · elapsed-time colouring stuck · order skips states.</div>
+<div class="box ver"><div class="lab">Verify</div>Try to PATCH an order to <code>served</code> as kitchen → server rejects. Order only reaches <code>ready</code> from the kitchen.</div>
+
+<h2 id="manager">5 · Manager journey <span class="dom">staff · pin 2222</span></h2>
+<p>Login with <code>branch_id</code> 1, PIN <code>2222</code>. The manager runs branch operations without org-level governance.</p>
+<table>
+  <tr><th>Area</th><th>Do</th><th>Expected</th></tr>
+  <tr><td>Menu</td><td>create/edit category &amp; item; toggle availability/featured; add modifier</td><td>changes persist; availability toggles push <code>MENU_ITEM_AVAILABILITY_CHANGED</code> live to guests</td></tr>
+  <tr><td>Staff</td><td>create staff, rotate PIN, deactivate</td><td>new staff can log in; rotated PIN invalidates old; deactivated cannot log in</td></tr>
+  <tr><td>Tables</td><td>add table, refresh QR token</td><td>refreshed token works, old token 404s</td></tr>
+  <tr><td>Promos</td><td>create flat/percentage promo; set "Uses per guest"</td><td>guest applies the promo <b>at the bill</b> (not the cart); a per-guest-limited promo without a phone returns <code>PROMO_PHONE_REQUIRED</code>; the cap is enforced per phone; discount folds into the bill at payment initiation</td></tr>
+  <tr><td>Analytics</td><td>open branch analytics</td><td>numbers reflect seeded orders/payments for <b>this branch only</b></td></tr>
+  <tr><td>Customers</td><td>view history; delete (GDPR)</td><td>opted-in customers listed; delete removes PII</td></tr>
+  <tr><td>Performance tab</td><td>open the new "Performance" admin tab</td><td><b>gated off by default</b> — clean empty state ("Staff performance not enabled"), backend returns 403 <code>STAFF_ANALYTICS_DISABLED</code>; no errors/crashes</td></tr>
+  <tr><td>Loyalty tab</td><td>open the new "Loyalty" admin tab</td><td><b>gated off by default</b> — empty state ("Loyalty not enabled"), 403 <code>LOYALTY_DISABLED</code>; payments still complete with zero loyalty side effects</td></tr>
+</table>
+<div class="box fail"><div class="lab">Common failure modes</div>Menu edit on branch 1 leaks to another branch · availability toggle needs guest refresh · manager can reach org governance (should be owner-only).</div>
+<div class="box ver"><div class="lab">Verify</div>Toggle a Bandra item's availability → a guest seated at Bandra sees it grey out live; an Indiranagar guest is unaffected.</div>
+
+<h2 id="owner">6 · Owner / Organization owner <span class="dom">staff owner · pin 1111</span></h2>
+<p>Saffron House is multi-branch, so its owner exercises real org governance. Login with <code>branch_id</code> 1, PIN <code>1111</code>.</p>
+<ul>
+  <li><b>Branch governance:</b> view/govern all three Saffron branches; cross-branch oversight.</li>
+  <li><b>Org analytics:</b> aggregate across Bandra + Indiranagar + Connaught Place.</li>
+  <li><b>Audit:</b> read the branch/org audit log (richer when <code>AUDIT_LOG_V2_ENABLED</code> is on).</li>
+  <li>Everything a manager can do, plus the above.</li>
+</ul>
+<div class="box exp"><div class="lab">Expected</div>Org analytics sum the three branches; a single-branch owner (Copper Pot / Urban Brew) sees only their one branch.</div>
+<div class="box fail"><div class="lab">Common failure modes</div>Org owner sees another org's branches (cross-tenant leak) · org analytics include only the primary branch.</div>
+<div class="box ver"><div class="lab">Verify</div>Saffron owner cannot see Copper Pot or Urban Brew branches/data anywhere.</div>
+
+<h2 id="platform">7 · Platform admin <span class="dom">platform · super_admin</span></h2>
+<p>Login at <code>/platform/login</code> as <code>admin@platform.local</code> / <code>Platform!admin1</code>. This is a separate trust domain — staff tokens are rejected here.</p>
+<table>
+  <tr><th>Console area</th><th>Do</th><th>Expected</th></tr>
+  <tr><td>Organizations</td><td>list 3 orgs; create a 4th; suspend/activate</td><td>create returns org+restaurant; suspend flips status (resolve-only — not yet enforced)</td></tr>
+  <tr><td>Branches</td><td>create a branch with initial tables + owner</td><td>tables come back with QR tokens; initial owner can log in</td></tr>
+  <tr><td>Plans &amp; entitlements</td><td>inspect free/standard/premium + entitlement keys</td><td>premium has multi_branch + advanced analytics; free is limited</td></tr>
+  <tr><td>Subscriptions</td><td>activate/renew/suspend/cancel a subscription</td><td>status transitions recorded &amp; audited (state machine)</td></tr>
+  <tr><td>Billing</td><td>view/edit billing profile, invoices</td><td>GST/currency persist; INR currency</td></tr>
+  <tr><td>Support console</td><td>search a session/order/payment; inspect</td><td>read-only sanitized detail; deep reads emit a tenant-visible audit row</td></tr>
+  <tr><td>Feature flags</td><td>set a global/org/branch flag override</td><td>targeting resolves (resolve-only/shadow)</td></tr>
+  <tr><td>Themes</td><td>change a tenant's preset/tokens</td><td>guest UI for that tenant adopts the new theme</td></tr>
+  <tr><td>Collateral</td><td>open a branch's collateral studio</td><td>renders per the tenant theme; five print formats; export</td></tr>
+  <tr><td>Analytics</td><td>cross-tenant platform analytics</td><td>on-demand Postgres aggregation across orgs</td></tr>
+  <tr><td>MFA</td><td>enroll/confirm TOTP, then disable</td><td>enroll returns a secret/QR; confirm requires a valid code; re-login challenges MFA</td></tr>
+</table>
+<div class="box exp"><div class="lab">Expected</div>Each Saffron/Copper/Urban tenant is governed independently; theme/collateral changes reflect on the matching guest UI; support reads are sanitized (no <code>session_token</code>/fingerprint).</div>
+<div class="box fail"><div class="lab">Common failure modes</div>Staff token accepted on a platform route · support detail exposes guest credentials · theme change bleeds across tenants · subscription transition skips audit.</div>
+<div class="box ver"><div class="lab">Verify</div>Change Urban Brew's theme to a different preset → a guest at Cyber Hub sees it; Saffron/Copper guests unchanged. Support inspect of a Saffron session never returns Copper Pot data.</div>
+
+<h2 id="subroles">8 · Support / Billing / Read-only auditor <span class="dom">platform sub-roles</span></h2>
+<table>
+  <tr><th>Sub-role</th><th>Login</th><th>Should be able to</th><th>Must NOT</th></tr>
+  <tr><td>support_admin</td><td>support@platform.local / Support!admin1</td><td>search + read sessions/orders/payments/audit; tenant health</td><td>mutate anything; touch billing</td></tr>
+  <tr><td>billing_admin</td><td>billing@platform.local / Billing!admin1</td><td>subscriptions, billing profiles, invoices</td><td>open the support console</td></tr>
+  <tr><td>read_only_auditor</td><td>auditor@platform.local / Auditor!admin1</td><td>read observability/audit</td><td>any write</td></tr>
+</table>
+<div class="box ver"><div class="lab">Verify</div>billing_admin is rejected from support endpoints; support_admin gets 403 on any mutation; auditor can read but every write 403s. Each deep support read appears in the tenant's own audit log.</div>
+
+<h2 id="multi">9 · Multi-instance realtime <span class="dom">app-1 ⇄ app-2</span></h2>
+<ol>
+  <li>Guest: open a Saffron table on <b>Frontend A</b> (:3000 → app-1), create a session, add a cart item.</li>
+  <li>Staff: open <b>Frontend B</b> (:3001 → app-2), log in as kitchen/waiter for branch 1.</li>
+  <li>Place an order on A; advance it on B; watch both update.</li>
+</ol>
+<div class="box exp"><div class="lab">Expected</div>Events cross instances both ways (shared Postgres + Redis + guest-token secret). A session created on app-1 is fully readable on app-2 with the same guest token.</div>
+<div class="box fail"><div class="lab">Common failure modes</div>Events only visible on the originating instance (Redis pub/sub not shared) · guest token rejected on the other instance (secret mismatch) · CSP blocks the cross-port WS (dev allows localhost).</div>
+<div class="box ver"><div class="lab">Verify</div>Order placed on A appears on B's KDS within ~1s and vice-versa. (Pre-verified at the API layer: app-1 create → app-2 snapshot returns HTTP 200.)</div>
+
+<h2 id="isolation">10 · Cross-tenant isolation <span class="dom">Alpha / Beta / Gamma</span></h2>
+<ol>
+  <li>As Saffron owner (branch 1), attempt to view Copper Pot (branch 4) or Urban Brew (branch 5) data anywhere — branches, menu, sessions, analytics, audit.</li>
+  <li>Take a Saffron guest token and try to read a Copper Pot session/snapshot.</li>
+  <li>In platform analytics, confirm per-org figures don't merge tenants.</li>
+</ol>
+<div class="box exp"><div class="lab">Expected</div>Every cross-tenant attempt is denied or scoped out. A guest token is bound to its own session/branch/org and cannot read another tenant's session (the T-01 class of bug must not reproduce).</div>
+<div class="box fail"><div class="lab">Common failure modes</div>Snapshot of session A returns data when queried with a token from a different session/tenant · branch-scoped admin lists another branch · analytics aggregate across orgs.</div>
+<div class="box ver"><div class="lab">Verify</div>Saffron token on a Copper Pot session → rejected. Owner of one org never sees another org's branches.</div>
+
+<h2 id="security">11 · Security</h2>
+<ul>
+  <li><b>Trust-domain rejection:</b> staff token on a <code>/platform/*</code> route → rejected; guest token on staff routes → rejected.</li>
+  <li><b>Token tampering:</b> mutate a guest token byte → validation fails; revoke participant → credential-version bump invalidates token.</li>
+  <li><b>Lockout / rate limits:</b> repeated bad staff PINs → lockout; hammer <code>/staff/auth</code> or <code>/platform/auth</code> → fail-closed sensitive rate limit (10 rpm).</li>
+  <li><b>Host gating (server):</b> non-host order/payment attempt rejected server-side even if the UI is bypassed.</li>
+  <li><b>Body-size limit:</b> &gt;1 MB body → rejected.</li>
+</ul>
+<div class="box ver"><div class="lab">Verify</div>Each control fails closed. Rate limiting on auth routes stays enforced even under Redis pressure.</div>
+
+<h2 id="regressions">12 · Pilot-finding regressions</h2>
+<table>
+  <tr><th>ID</th><th>Check</th><th>Expected</th></tr>
+  <tr><td>F-8</td><td>Inspect every guest session response (create/get/join/reactivate/snapshot)</td><td><code>session_token</code> is always empty — the dormant credential never leaks, independent of the R6 flag</td></tr>
+  <tr><td>F-6</td><td>Advance an order from the kitchen while watching the guest tracker</td><td>tracker advances live, no manual refresh ({order:{…}} envelope handled)</td></tr>
+  <tr><td>F-1</td><td>Idle a session into <code>awaiting_reactivation</code>, then return/reload</td><td>ws-ticket 409 routes through snapshot reactivation and recovers — no "Connection lost" dead-end</td></tr>
+</table>
+
+<footer>QR Dining manual testing certification · 3 tenants · 5 branches · migration v38 · branch <code>feature/certification-fixes-ui-redesign</code> (Serene + ops/platform redesign, Phase-0 fixes) · strict-rollout flags default-off · soak (project <code>qr-dining</code>) untouched.</footer>
+</div>
+</body>
+</html>

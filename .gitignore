@@ -31,12 +31,23 @@ docker-compose.override.yml
 
 # Backend binary
 backend/server
+# Compiled server binary at repo root (build artifact — never commit)
+/server
 
 # Frontend
 frontend/.next/
+frontend/.open-next/
+frontend/.wrangler/
+.wrangler/
 frontend/out/
 frontend/node_modules/
 frontend/.env.local
 
 # Session handouts (internal use)
 handout.md
+
+# E2E tooling output (regenerable)
+e2e/node_modules/
+e2e/artifacts/
+e2e/screenshots/*/
+.playwright-mcp/
