@@ -80,3 +80,25 @@ func (c *Cache) DeleteMany(ctx context.Context, keys ...string) error {
 	}
 	return c.client.Del(ctx, keys...).Err()
 }
+
+// DeleteByPattern deletes every key matching a glob pattern (e.g. "featgate:*").
+// It scans in batches rather than using KEYS so it never blocks Redis. Intended
+// for rare operator-triggered invalidations, not hot paths.
+func (c *Cache) DeleteByPattern(ctx context.Context, pattern string) error {
+	var cursor uint64
+	for {
+		keys, next, err := c.client.Scan(ctx, cursor, pattern, 256).Result()
+		if err != nil {
+			return fmt.Errorf("cache scan: %w", err)
+		}
+		if len(keys) > 0 {
+			if err := c.client.Del(ctx, keys...).Err(); err != nil {
+				return fmt.Errorf("cache del: %w", err)
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			return nil
+		}
+	}
+}

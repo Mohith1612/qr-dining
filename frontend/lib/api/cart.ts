@@ -10,6 +10,7 @@ interface BackendCartItem {
   note: string
   item_name?: string
   item_price?: number
+  image_url?: string | null
   is_available?: boolean
 }
 

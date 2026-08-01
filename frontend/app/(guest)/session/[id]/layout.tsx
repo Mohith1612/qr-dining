@@ -8,6 +8,7 @@ import { Shell } from "@/components/layout/Shell"
 import { BottomNav } from "@/components/layout/BottomNav"
 import { TopBar } from "@/components/layout/TopBar"
 import { ErrorBoundary } from "@/providers/ErrorBoundary"
+import { recoverGuestCreds } from "@/lib/guest-session"
 
 interface Props {
   children: React.ReactNode
@@ -21,16 +22,16 @@ export default function SessionLayout({ children, params }: Props) {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    const storedSession = sessionStorage.getItem("session_id")
-    const storedParticipant = sessionStorage.getItem("participant_id")
-    const storedGuestToken = sessionStorage.getItem("guest_access_token")
-
-    if (!storedSession || storedSession !== id || !storedParticipant || !storedGuestToken) {
+    // Prefer this tab's sessionStorage; fall back to the localStorage rejoin
+    // copy so reopening a /session/<id> link in a fresh tab recovers the
+    // session instead of bouncing to the landing page.
+    const creds = recoverGuestCreds(id)
+    if (!creds) {
       router.replace(`/`)
       return
     }
 
-    setParticipantId(Number(storedParticipant))
+    setParticipantId(creds.participantId)
     setReady(true)
   }, [id, router])
 

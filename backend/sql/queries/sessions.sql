@@ -122,8 +122,12 @@ SET status = 'abandoned', closed_at = NOW()
 WHERE id = $1 AND status = 'active';
 
 -- name: ListActiveSessionsForBranch :many
+-- All live sessions for the branch, not just 'active': a payment_pending or
+-- awaiting_reactivation session still occupies its table and is relevant to
+-- staff, so the board reflects why a table reads occupied.
 SELECT * FROM sessions
-WHERE branch_id = $1 AND status = 'active'
+WHERE branch_id = $1
+  AND status IN ('active', 'payment_pending', 'awaiting_reactivation')
 ORDER BY created_at DESC;
 
 -- name: GetActiveSessionForTable :one

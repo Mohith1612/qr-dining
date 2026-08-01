@@ -48,6 +48,7 @@ export interface CartItem {
   added_at: string
   item_name?: string
   item_price?: number
+  image_url?: string | null
 }
 
 export interface ItemModifier {

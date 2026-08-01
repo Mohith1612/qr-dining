@@ -104,6 +104,7 @@ func New(
 	// initiate payment. The session service is the single host authority.
 	orderSvc.SetHostAuthority(sessionSvc)
 	paymentSvc.SetHostAuthority(sessionSvc)
+	assistanceSvc.SetHostAuthority(sessionSvc)
 	// Promos are applied at payment initiation now (not order placement).
 	paymentSvc.SetPromoService(promoSvc)
 	subSvc := services.NewSubscriptionService(repos)
@@ -136,7 +137,7 @@ func New(
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
-	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, supportSvc, billingSvc, enforcementObsSvc, collateralSvc, staffAnalyticsSvc, auditWriter)
+	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, supportSvc, billingSvc, enforcementObsSvc, collateralSvc, staffAnalyticsSvc, featureGate, auditWriter)
 	flagH := handlers.NewFlagHandler(flagSvc, cache)
 	themeH := handlers.NewThemeHandler(themeSvc)
 	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter, promoSvc)

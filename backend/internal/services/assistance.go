@@ -13,16 +13,34 @@ import (
 type AssistanceService struct {
 	repos     *repository.Repos
 	publisher *events.Publisher
+	hostAuth  *SessionService
 }
 
 func NewAssistanceService(repos *repository.Repos, publisher *events.Publisher) *AssistanceService {
 	return &AssistanceService{repos: repos, publisher: publisher}
 }
 
+// SetHostAuthority injects the session service used to enforce host-only
+// actions. A bill request is a host-only action (it owns the bill), mirroring
+// the order and payment services; wired post-construction to avoid a cycle.
+func (s *AssistanceService) SetHostAuthority(h *SessionService) { s.hostAuth = h }
+
 func (s *AssistanceService) Request(ctx context.Context, sessionID uuid.UUID, tableID, participantID int64, reqType sqlc.AssistanceType) (sqlc.AssistanceRequest, error) {
 	sess, err := s.repos.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return sqlc.AssistanceRequest{}, err
+	}
+
+	// Requesting the bill is host-only, like initiating payment. Waiter/other
+	// calls stay open to any participant.
+	if reqType == sqlc.AssistanceTypeBill && s.hostAuth != nil {
+		authorized, err := s.hostAuth.AuthorizeHostAction(ctx, sessionID, participantID)
+		if err != nil {
+			return sqlc.AssistanceRequest{}, err
+		}
+		if !authorized {
+			return sqlc.AssistanceRequest{}, domain.ErrNotSessionHost
+		}
 	}
 
 	ar, err := s.repos.CreateAssistanceRequest(ctx, sessionID, tableID, participantID, reqType)

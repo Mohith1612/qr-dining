@@ -192,6 +192,7 @@ func (h *PlatformHandler) UpdatePlan(c *gin.Context) {
 		return
 	}
 	ents, _ := h.repos.ListPlanEntitlements(c.Request.Context(), planID)
+	h.featureGate.Invalidate(c.Request.Context())
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.plans.update", "plan", strconv.FormatInt(planID, 10), 0, 0, 0, gin.H{})
 	c.JSON(http.StatusOK, planResponseWithEntitlements(updated, ents))
 }
@@ -251,6 +252,7 @@ func (h *PlatformHandler) SetPlanEntitlements(c *gin.Context) {
 		return
 	}
 	ents, _ := h.repos.ListPlanEntitlements(c.Request.Context(), planID)
+	h.featureGate.Invalidate(c.Request.Context())
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.plans.entitlements.set", "plan", strconv.FormatInt(planID, 10), 0, 0, 0, gin.H{"count": len(req.Entitlements)})
 	c.JSON(http.StatusOK, gin.H{"plan_id": planID, "entitlements": planEntitlementResponses(ents)})
 }
@@ -317,6 +319,7 @@ func (h *PlatformHandler) AssignOrganizationPlan(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
+	h.featureGate.Invalidate(c.Request.Context())
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.org.plan.assign", "organization", strconv.FormatInt(orgID, 10), orgID, 0, 0, gin.H{"plan_id": req.PlanID, "status": status})
 	c.JSON(http.StatusOK, gin.H{
 		"organization_id": assignment.OrganizationID,
@@ -356,6 +359,7 @@ func (h *PlatformHandler) SetOrganizationEntitlementOverride(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
+	h.featureGate.Invalidate(c.Request.Context())
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.org.entitlement.override", "organization", strconv.FormatInt(orgID, 10), orgID, 0, 0, gin.H{"key": key})
 	c.JSON(http.StatusOK, gin.H{
 		"organization_id": override.OrganizationID,

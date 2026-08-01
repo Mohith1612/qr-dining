@@ -116,8 +116,13 @@ WITH affected AS (
     WHERE b.id = t.branch_id
       AND t.status = 'occupied'
       AND NOT EXISTS (
+          -- Any live session holds the table, not just 'active'. A session in
+          -- payment_pending or awaiting_reactivation still occupies the table;
+          -- releasing it here orphaned occupancy state (regen "occupied" with
+          -- 0 active sessions, and cross-table flips on the next tick).
           SELECT 1 FROM sessions s
-          WHERE s.table_id = t.id AND s.status = 'active'
+          WHERE s.table_id = t.id
+            AND s.status IN ('active', 'payment_pending', 'awaiting_reactivation')
       )
     RETURNING b.organization_id, t.branch_id, t.id
 )
@@ -145,7 +150,7 @@ WITH affected AS (
     FROM sessions s
     JOIN branches b ON b.id = s.branch_id
     WHERE s.table_id = t.id
-      AND s.status = 'active'
+      AND s.status IN ('active', 'payment_pending', 'awaiting_reactivation')
       AND t.status = 'available'
     RETURNING s.id AS session_id, b.organization_id, t.branch_id, t.id AS table_id
 )

@@ -161,6 +161,7 @@ func (h *PlatformHandler) SetGlobalFlagOverride(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
+	h.featureGate.Invalidate(c.Request.Context())
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.flags.global.set", "feature_flag", key, 0, 0, 0, gin.H{"enabled": req.Enabled})
 	c.JSON(http.StatusOK, gin.H{"flag_key": key, "scope": "global", "enabled": req.Enabled})
 }
@@ -176,6 +177,7 @@ func (h *PlatformHandler) ClearGlobalFlagOverride(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
+	h.featureGate.Invalidate(c.Request.Context())
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.flags.global.clear", "feature_flag", key, 0, 0, 0, gin.H{})
 	c.Status(http.StatusNoContent)
 }
@@ -209,6 +211,7 @@ func (h *PlatformHandler) SetOrganizationFlagOverride(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
+	h.featureGate.Invalidate(c.Request.Context())
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.org.flag.set", "feature_flag", key, orgID, 0, 0, gin.H{"enabled": req.Enabled})
 	c.JSON(http.StatusOK, gin.H{"flag_key": key, "scope": "organization", "organization_id": orgID, "enabled": req.Enabled})
 }
@@ -228,6 +231,7 @@ func (h *PlatformHandler) ClearOrganizationFlagOverride(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
+	h.featureGate.Invalidate(c.Request.Context())
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.org.flag.clear", "feature_flag", key, orgID, 0, 0, gin.H{})
 	c.Status(http.StatusNoContent)
 }
@@ -262,6 +266,7 @@ func (h *PlatformHandler) SetBranchFlagOverride(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
+	h.featureGate.Invalidate(c.Request.Context())
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.branch.flag.set", "feature_flag", key, branch.OrganizationID, branchID, 0, gin.H{"enabled": req.Enabled})
 	c.JSON(http.StatusOK, gin.H{"flag_key": key, "scope": "branch", "branch_id": branchID, "enabled": req.Enabled})
 }
@@ -281,6 +286,7 @@ func (h *PlatformHandler) ClearBranchFlagOverride(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
+	h.featureGate.Invalidate(c.Request.Context())
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.branch.flag.clear", "feature_flag", key, 0, branchID, 0, gin.H{})
 	c.Status(http.StatusNoContent)
 }

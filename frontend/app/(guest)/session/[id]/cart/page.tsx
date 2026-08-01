@@ -24,14 +24,27 @@ function itemHue(id: number): number {
 }
 
 function CartItemRow({ item, addedBy, onRemove }: { item: CartItem; addedBy?: string; onRemove: (id: number) => void }) {
+  const [imgError, setImgError] = useState(false)
   const modifierTotal = item.selected_modifiers?.reduce((sum, m) => sum + m.price_delta, 0) ?? 0
   const unitPrice = (item.item_price ?? 0) + modifierTotal
 
   return (
     <div style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "16px 0", borderBottom: "1px solid var(--line-1)" }}>
-      {/* Vignette + quantity */}
+      {/* Thumbnail (photo when available, vignette otherwise) + quantity */}
       <div style={{ position: "relative", flexShrink: 0 }}>
-        <Vignette hue={itemHue(item.menu_item_id)} size={56} />
+        {item.image_url && !imgError ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.image_url}
+            alt=""
+            aria-hidden
+            loading="lazy"
+            onError={() => setImgError(true)}
+            style={{ width: 56, height: 56, borderRadius: 12, objectFit: "cover", display: "block" }}
+          />
+        ) : (
+          <Vignette hue={itemHue(item.menu_item_id)} size={56} />
+        )}
         <span style={{
           position: "absolute", top: -4, right: -4,
           minWidth: 20, height: 20, padding: "0 6px", borderRadius: 999,

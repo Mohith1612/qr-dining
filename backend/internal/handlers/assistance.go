@@ -73,6 +73,10 @@ func (h *AssistanceHandler) Request(c *gin.Context) {
 
 	ar, err := h.svc.Request(c.Request.Context(), sessionID, req.TableID, participantID, reqType)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotSessionHost) {
+			respondError(c, http.StatusForbidden, CodeForbidden, "Only the table host can request the bill.")
+			return
+		}
 		respondInternalError(c)
 		return
 	}

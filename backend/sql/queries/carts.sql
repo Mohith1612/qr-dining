@@ -45,6 +45,7 @@ SELECT
     ci.note,
     mi.name AS item_name,
     mi.price AS item_price,
+    mi.image_url,
     mi.is_available
 FROM cart_items ci
 JOIN menu_items mi ON mi.id = ci.menu_item_id

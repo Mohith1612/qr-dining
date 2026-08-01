@@ -328,35 +328,47 @@ func (s *SessionService) reassignHost(ctx context.Context, sess sqlc.Session, ne
 	return nil
 }
 
-// ensureHostBaseline reassigns the host when it is definitively gone — the
-// host_participant_id is unset or the host participant has been revoked. It
-// promotes the oldest active participant. Evaluated on snapshot (reconnect) so
-// any returning participant heals a host-less session. Returns the (possibly
-// updated) session and participants list reflecting the new host.
+// ensureHostBaseline reassigns the host when it is gone. Two cases heal here:
+//  1. the host_participant_id is unset or the host participant is revoked
+//     (definitively gone) — promote the oldest active participant; and
+//  2. the host row is still valid but the host has no live presence (e.g. they
+//     closed their tab) AND another active participant is actually present —
+//     this heals the "stranded remaining guest" deadlock, where the non-host
+//     can't take over so the table can't order. It is deliberately gated on a
+//     present co-participant so a transient host heartbeat gap doesn't churn the
+//     host or hand it to someone who has also left.
+//
+// Evaluated on snapshot (reconnect) so any returning participant heals a
+// host-less session. Returns the (possibly updated) session and participants
+// list reflecting the new host.
 func (s *SessionService) ensureHostBaseline(ctx context.Context, sess sqlc.Session, participants []sqlc.SessionParticipant) (sqlc.Session, []sqlc.SessionParticipant) {
-	hostValid := false
+	hostGone := true
 	if sess.HostParticipantID.Valid {
 		for _, p := range participants {
 			if p.ID == sess.HostParticipantID.Int64 {
-				hostValid = !p.RevokedAt.Valid
+				hostGone = p.RevokedAt.Valid // present in the list but revoked = gone
 				break
 			}
 		}
 	}
-	if hostValid {
+
+	// Case 2: a valid host that has lost presence, healed only when a live
+	// co-participant exists to take over.
+	var present map[int64]struct{}
+	presentKnown := false
+	if !hostGone && sess.HostParticipantID.Valid && s.hostAbsentFromPresence(ctx, sess) {
+		present, presentKnown = s.presentParticipantIDs(ctx, sess)
+		if presentKnown && hasOtherPresentActive(participants, sess.HostParticipantID.Int64, present) {
+			hostGone = true
+		}
+	}
+	if !hostGone {
 		return sess, participants
 	}
 
-	// Promote the oldest active participant (list is ordered joined_at ASC).
-	var newHost *sqlc.SessionParticipant
-	for i := range participants {
-		if !participants[i].RevokedAt.Valid {
-			newHost = &participants[i]
-			break
-		}
-	}
+	newHost := pickNewHost(participants, sess.HostParticipantID, present, presentKnown)
 	if newHost == nil {
-		return sess, participants // no active participant to promote
+		return sess, participants // no eligible participant to promote
 	}
 	if sess.HostParticipantID.Valid && sess.HostParticipantID.Int64 == newHost.ID {
 		return sess, participants // already the host; nothing to do
@@ -369,6 +381,71 @@ func (s *SessionService) ensureHostBaseline(ctx context.Context, sess sqlc.Sessi
 		participants[i].IsHost = participants[i].ID == newHost.ID
 	}
 	return sess, participants
+}
+
+// presentParticipantIDs returns the set of participant IDs with live WebSocket
+// presence for the session, unioning the org/branch-scoped and legacy unscoped
+// keys. The bool is false when presence cannot be determined (no backend or all
+// lookups failed), in which case callers must not treat anyone as absent.
+func (s *SessionService) presentParticipantIDs(ctx context.Context, sess sqlc.Session) (map[int64]struct{}, bool) {
+	if s.presence == nil {
+		return nil, false
+	}
+	ids := map[int64]struct{}{}
+	known := false
+	if org, err := s.repos.GetOrganizationByBranchID(ctx, sess.BranchID); err == nil {
+		if scoped, err := s.presence.GetPresentScoped(ctx, org.ID, sess.BranchID, sess.ID); err == nil {
+			known = true
+			for id := range scoped {
+				ids[id] = struct{}{}
+			}
+		}
+	}
+	if unscoped, err := s.presence.GetPresent(ctx, sess.ID); err == nil {
+		known = true
+		for id := range unscoped {
+			ids[id] = struct{}{}
+		}
+	}
+	return ids, known
+}
+
+// hasOtherPresentActive reports whether some active participant other than the
+// current host currently has live presence.
+func hasOtherPresentActive(participants []sqlc.SessionParticipant, hostID int64, present map[int64]struct{}) bool {
+	for _, p := range participants {
+		if p.RevokedAt.Valid || p.ID == hostID {
+			continue
+		}
+		if _, ok := present[p.ID]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// pickNewHost chooses the participant to promote. It prefers the oldest active
+// participant that is actually present (never the outgoing host) and falls back
+// to the oldest active participant when presence is unknown or nobody is present
+// — the original unset/revoked-host behaviour. The list is ordered joined_at ASC.
+func pickNewHost(participants []sqlc.SessionParticipant, currentHost pgtype.Int8, present map[int64]struct{}, presentKnown bool) *sqlc.SessionParticipant {
+	if presentKnown {
+		for i := range participants {
+			p := &participants[i]
+			if p.RevokedAt.Valid || (currentHost.Valid && p.ID == currentHost.Int64) {
+				continue
+			}
+			if _, ok := present[p.ID]; ok {
+				return p
+			}
+		}
+	}
+	for i := range participants {
+		if !participants[i].RevokedAt.Valid {
+			return &participants[i]
+		}
+	}
+	return nil
 }
 
 // JoinSession adds a participant to an existing active session.

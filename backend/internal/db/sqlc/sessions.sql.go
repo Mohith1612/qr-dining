@@ -224,10 +224,14 @@ func (q *Queries) HasNonTerminalPaymentForSession(ctx context.Context, sessionID
 
 const listActiveSessionsForBranch = `-- name: ListActiveSessionsForBranch :many
 SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number, awaiting_reactivation_at FROM sessions
-WHERE branch_id = $1 AND status = 'active'
+WHERE branch_id = $1
+  AND status IN ('active', 'payment_pending', 'awaiting_reactivation')
 ORDER BY created_at DESC
 `
 
+// All live sessions for the branch, not just 'active': a payment_pending or
+// awaiting_reactivation session still occupies its table and is relevant to
+// staff, so the board reflects why a table reads occupied.
 func (q *Queries) ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]Session, error) {
 	rows, err := q.db.Query(ctx, listActiveSessionsForBranch, branchID)
 	if err != nil {

@@ -207,6 +207,9 @@ type Querier interface {
 	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]ListActiveAssistanceForBranchRow, error)
 	ListActiveOrderItemsForBranch(ctx context.Context, branchID int64) ([]ListActiveOrderItemsForBranchRow, error)
 	ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]ListActiveOrdersForBranchRow, error)
+	// All live sessions for the branch, not just 'active': a payment_pending or
+	// awaiting_reactivation session still occupies its table and is relevant to
+	// staff, so the board reflects why a table reads occupied.
 	ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]Session, error)
 	// Returns active sessions older than the grace floor — candidates for the
 	// awaiting_reactivation transition. The worker still has to verify Redis

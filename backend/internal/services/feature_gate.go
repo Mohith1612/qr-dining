@@ -103,3 +103,16 @@ func (g *FeatureGate) cacheSet(ctx context.Context, key string, enabled bool) {
 	}
 	_ = g.cache.Set(ctx, key, enabled, featureGateCacheTTL)
 }
+
+// Invalidate clears every cached gate decision. Called when a platform operator
+// changes a feature flag or entitlement so the change is visible immediately
+// rather than only after featureGateCacheTTL lapses. A global/org flag change
+// fans out to many branches whose exact keys aren't known here, so a full flush
+// of the small featgate keyspace is the correct, simplest choice — operator
+// mutations are rare and low-volume. The TTL remains a multi-instance backstop.
+func (g *FeatureGate) Invalidate(ctx context.Context) {
+	if g.cache == nil {
+		return
+	}
+	_ = g.cache.DeleteByPattern(ctx, "featgate:*")
+}

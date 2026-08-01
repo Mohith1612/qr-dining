@@ -8,6 +8,7 @@ import { themeApi } from "@/lib/api/theme"
 import { applyTheme } from "@/lib/theme/applyTheme"
 import { ApiError } from "@/lib/api/client"
 import { useSessionStore } from "@/store/session"
+import { persistGuestCreds } from "@/lib/guest-session"
 import { UtensilsCrossed } from "lucide-react"
 
 interface Props {
@@ -62,17 +63,13 @@ export default function TableEntryPage({ params }: Props) {
         // Table has an active session — join it
         const { session, participant, guest_access_token: guestToken } = await sessionsApi.join(tableInfo.session_id, name.trim(), trimmedPhone)
         useSessionStore.getState().setSession(session, participant)
-        sessionStorage.setItem("session_id", session.id)
-        sessionStorage.setItem("participant_id", String(participant.id))
-        sessionStorage.setItem("guest_access_token", guestToken)
+        persistGuestCreds(session.id, participant.id, guestToken)
         sessionId = session.id
       } else {
         // No active session — create one
         const { session, participant, guest_access_token: guestToken } = await sessionsApi.create(tableInfo.table_id, name.trim(), trimmedPhone)
         useSessionStore.getState().setSession(session, participant)
-        sessionStorage.setItem("session_id", session.id)
-        sessionStorage.setItem("participant_id", String(participant.id))
-        sessionStorage.setItem("guest_access_token", guestToken)
+        persistGuestCreds(session.id, participant.id, guestToken)
         sessionId = session.id
       }
       router.push(`/session/${sessionId}`)
