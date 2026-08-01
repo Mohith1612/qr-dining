@@ -75,6 +75,7 @@ var stockImageURLs = map[string]string{
 	"Iced Latte":           "https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=400&q=60",
 	"Lemonade":             "https://images.unsplash.com/photo-1523677011781-c91d1bbe2f9e?w=400&q=60",
 }
+
 type catSpec struct {
 	name  string
 	items []itemSpec
