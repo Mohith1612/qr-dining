@@ -75,6 +75,16 @@ export const platformApi = {
   logout: (token: string) =>
     api.post<void>("/platform/auth/logout", {}, { platformToken: token }),
 
+  // ── MFA (TOTP) enrollment for the signed-in operator ────────────────────────
+  enrollMfa: (token: string) =>
+    api.post<{ secret: string; otpauth_uri: string }>("/platform/mfa/enroll", {}, { platformToken: token }),
+
+  confirmMfa: (code: string, token: string) =>
+    api.post<{ recovery_codes: string[] }>("/platform/mfa/confirm", { code }, { platformToken: token }),
+
+  disableMfa: (code: string, token: string) =>
+    api.post<void>("/platform/mfa/disable", { code }, { platformToken: token }),
+
   // ── Organizations & branches ───────────────────────────────────────────────
   listOrganizations: (token: string) =>
     api.get<{ organizations: Organization[] }>("/platform/organizations", { platformToken: token }),

@@ -7,12 +7,16 @@ import { platformApi } from "@/lib/api/platform"
 import type { Organization } from "@/types/platform"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { PageHeader, PlatformStatusBadge, PlatformLoading } from "@/components/platform/ui"
-import { ChevronRight, Search } from "lucide-react"
+import { hasPlatformRole } from "@/lib/platform-rbac"
+import { ChevronRight, Search, Plus } from "lucide-react"
 import { toast } from "sonner"
 
 export default function OrganizationsPage() {
   const token = usePlatformStore((s) => s.token)
+  const roles = usePlatformStore((s) => s.roles)
+  const canCreate = hasPlatformRole(roles)
   const [orgs, setOrgs] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState("")
@@ -42,7 +46,15 @@ export default function OrganizationsPage() {
 
   return (
     <div>
-      <PageHeader title="Organizations" subtitle={`${orgs.length} total`} />
+      <PageHeader
+        title="Organizations"
+        subtitle={`${orgs.length} total`}
+        actions={canCreate ? (
+          <Link href="/platform/onboarding">
+            <Button><Plus size={15} /> Create organization</Button>
+          </Link>
+        ) : undefined}
+      />
 
       <div style={{ position: "relative", maxWidth: 360, marginBottom: 16 }}>
         <Search size={15} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--ink-4)" }} aria-hidden />

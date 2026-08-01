@@ -20,6 +20,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -329,6 +330,14 @@ func (h *PlatformHandler) CreateOrganization(c *gin.Context) {
 		return err
 	})
 	if err != nil {
+		// A duplicate org code or restaurant slug is a client conflict, not a
+		// server error — surface it so a retry after a mid-wizard failure gets a
+		// clear message instead of an opaque 500.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			respondError(c, http.StatusConflict, "ORGANIZATION_EXISTS", "An organization with that code or restaurant slug already exists. Use a different code, or check the Organizations list — it may have been created already.")
+			return
+		}
 		respondInternalError(c)
 		return
 	}

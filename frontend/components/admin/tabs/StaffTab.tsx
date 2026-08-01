@@ -84,8 +84,15 @@ export function StaffTab() {
     try {
       const data = await staffApi.listStaff(branchId, token)
       setRoster(data.staff)
-    } catch {
-      toast.error("Couldn't load the staff roster.")
+    } catch (err) {
+      // A transient server/network error is retryable, not a real "no roster".
+      const transient = !(err instanceof ApiError) || err.status >= 500
+      toast.error(transient
+        ? "Couldn't load the staff roster — retrying…"
+        : "Couldn't load the staff roster.")
+      if (transient) {
+        setTimeout(() => { void fetchRoster() }, 1500)
+      }
     } finally {
       setLoadingRoster(false)
     }
@@ -127,6 +134,7 @@ export function StaffTab() {
       toast.success(`PIN reset for ${resetTarget.name}`)
       setResetTarget(null)
       setResetPin("")
+      fetchRoster()
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't reset PIN.")
     } finally {

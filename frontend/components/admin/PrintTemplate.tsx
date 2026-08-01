@@ -1,6 +1,8 @@
 "use client"
 
 import dynamic from "next/dynamic"
+import { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import { buildQRUrl } from "@/lib/qr"
 import { useTenant } from "@/providers/TenantProvider"
 import type { Table } from "@/types/api"
@@ -15,8 +17,16 @@ interface Props {
 export function PrintTemplate({ table, tenantSlug }: Props) {
   const { name: restaurantName } = useTenant()
   const url = buildQRUrl(table.qr_code_token, tenantSlug)
+  const [mounted, setMounted] = useState(false)
 
-  return (
+  // Portal to <body> so the print CSS `body > *:not(#print-template)` — which
+  // hides everything except this node — actually applies. Rendered inline the
+  // template sits inside the ops layout wrapper, which that rule hides, taking
+  // the template down with it and printing a blank page.
+  useEffect(() => setMounted(true), [])
+  if (!mounted) return null
+
+  return createPortal(
     <div id="print-template" style={{ display: "none" }}>
       <style>{`
         @media print {
@@ -136,6 +146,7 @@ export function PrintTemplate({ table, tenantSlug }: Props) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
