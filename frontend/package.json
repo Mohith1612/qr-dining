@@ -7,6 +7,9 @@
     "prebuild": "node scripts/check-prod-env.mjs",
     "build": "next build",
     "start": "next start",
+    "build:cf": "node scripts/check-prod-env.mjs && opennextjs-cloudflare build",
+    "preview:cf": "opennextjs-cloudflare preview",
+    "deploy:cf": "node scripts/check-prod-env.mjs && opennextjs-cloudflare deploy",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
   },
@@ -31,6 +34,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@opennextjs/cloudflare": "^1.20.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -38,6 +42,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.18",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.112.0"
   }
 }

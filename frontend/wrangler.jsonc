@@ -1,0 +1,17 @@
+// qr-dining frontend — Cloudflare (Workers static assets via OpenNext).
+//
+// The worker NAME below is a project identifier, not a domain — safe to keep.
+// The public URL is attached later: once the real domain exists, add a
+// `routes` or custom-domain binding in the Cloudflare dashboard (or here).
+// Deploy (after `wrangler login`):  npm run deploy:cf
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "qr-dining-frontend",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  }
+}
