@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# DEPRECATED — superseded by nightly-backup.sh (dump + checksum + upload +
+# manifest + retention + metrics in one pass; that is what the systemd timer
+# runs). Kept only for ad-hoc local dumps.
+#
 # backup.sh — PostgreSQL backup using pg_dump (custom format, compressed).
 # Reads DATABASE_URL from environment. Writes to ./backups/ directory.
 #

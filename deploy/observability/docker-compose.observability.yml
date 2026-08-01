@@ -1,8 +1,12 @@
 # Runnable observability stack: Prometheus + Alertmanager + blackbox + node_exporter.
 #
-# Attach to the same network as the app so `app:8080` resolves. Example:
-#   docker compose -f docker-compose.yml -f deploy/observability/docker-compose.observability.yml up -d
-# or set OBS_NETWORK to an existing external network.
+# This file must be MERGED with the app compose so prometheus/blackbox share a
+# network with the app and `app:8080` resolves — it does not work standalone.
+#   Local/staging:  docker compose -f docker-compose.yml -f deploy/observability/docker-compose.observability.yml up -d
+#   Production VM:  merge with deploy/vm/docker-compose.yml plus the
+#                   deploy/vm/docker-compose.observability-vm.yml overlay, which
+#                   joins prometheus/blackbox to the app's internal network and
+#                   binds the UIs to localhost. See DEPLOYMENT.md.
 #
 # node_exporter reads the backup textfile metric from a shared volume that the
 # nightly backup writes to (NODE_EXPORTER_TEXTFILE_DIR=/var/lib/node_exporter/textfile).

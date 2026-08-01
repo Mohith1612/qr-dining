@@ -1,9 +1,11 @@
 # Alertmanager configuration for qr-dining.
 #
-# Routes Prometheus alerts to real notifications. The default receiver is a
-# generic webhook (the most portable option — it fronts Slack, Teams, PagerDuty,
-# Opsgenie, or a small relay). Native Slack/email/PagerDuty examples are included
-# commented below; pick one and set it as the receiver.
+# GO-LIVE: change exactly ONE line — the &notify_url anchor in the `default`
+# receiver below. Both receivers alias it, so pointing it at a real webhook
+# (Slack relay, Teams, PagerDuty relay, etc.) activates all routing. Severity
+# ("page" vs "ticket") is carried in the webhook payload; the page route only
+# differs in repeat cadence. Native Slack/email/PagerDuty examples remain
+# commented below if a native integration is ever preferred over a webhook.
 #
 # `page` severity → urgent receiver (short repeat); everything else → default.
 
@@ -25,14 +27,14 @@ route:
 receivers:
   - name: default
     webhook_configs:
-      # Replace with your chat/relay webhook URL. For the verification run this is
-      # pointed at a local sink (see alerting-setup.md).
-      - url: "http://webhook-sink:5001/default"
+      # >>> THE go-live line. Replace with the real notification endpoint. <<<
+      # (Local verification runs point this at a throwaway sink — alerting-setup.md.)
+      - url: &notify_url "http://CHANGEME-notify-endpoint:5001/alerts"
         send_resolved: true
 
   - name: urgent
     webhook_configs:
-      - url: "http://webhook-sink:5001/urgent"
+      - url: *notify_url
         send_resolved: true
 
     # --- Native Slack (uncomment and use instead of webhook_configs) ---

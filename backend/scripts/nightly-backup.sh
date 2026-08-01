@@ -93,7 +93,10 @@ rm -f "$MANIFEST_TMP"
 echo "      appended: $ENTRY"
 
 echo "[5/5] retention (>$RETENTION_DAYS days)"
-CUTOFF="$(date -u -d "-${RETENTION_DAYS} days" +%Y%m%d 2>/dev/null || date -u -v-"${RETENTION_DAYS}"d +%Y%m%d)"
+# Epoch math keeps this portable across GNU (-d @), BusyBox (-d @), and BSD (-r)
+# date — the GNU-only "-N days" form broke when run inside alpine containers.
+CUTOFF_EPOCH="$(( $(date -u +%s) - RETENTION_DAYS * 86400 ))"
+CUTOFF="$(date -u -d "@${CUTOFF_EPOCH}" +%Y%m%d 2>/dev/null || date -u -r "${CUTOFF_EPOCH}" +%Y%m%d)"
 PRUNED=0
 while IFS= read -r key; do
   [ -z "$key" ] && continue
