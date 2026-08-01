@@ -1,0 +1,111 @@
+# qr-dining vhost for the CENTRAL reverse proxy (/opt/proxy/nginx/conf.d/qr-dining.conf).
+#
+# Follows the VM Project Deployment Reference vhost pattern (HTTP→HTTPS redirect,
+# shared Let's Encrypt cert, ACME webroot), carrying over the qr-dining-specific
+# behavior from deploy/nginx/qr-dining.conf (WebSocket handling, probe and
+# metrics routing, API rate limiting).
+#
+# PLACEHOLDERS (no domain purchased yet — replace every CHANGEME before install):
+#   api.CHANGEME-DOMAIN.com               → the real API subdomain
+#   /etc/letsencrypt/live/CHANGEME-DOMAIN.com/ → the issued cert's live path
+# Nothing else in this file is domain-specific.
+#
+# Install:  copy to /opt/proxy/nginx/conf.d/qr-dining.conf, then
+#           docker compose -f /opt/proxy/docker-compose.yml exec nginx nginx -s reload
+#
+# WebSocket/idle note: the app pings every ~54s. proxy_read_timeout on /ws must
+# stay well above that (3600s here). If Cloudflare fronts this domain, its ~100s
+# idle window is also satisfied by the 54s ping. Do not lower these timeouts.
+
+# conf.d files are included in the http context, so http-level directives are
+# valid here. Zone name is prefixed qr_ to avoid collisions with other projects'
+# vhosts on the shared proxy.
+map $http_upgrade $qr_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Per-IP limiter for the HTTP API surface. WebSocket upgrades are exempt — the
+# app enforces ws-ticket issuance and per-connection inbound limits itself.
+limit_req_zone $binary_remote_addr zone=qr_api:10m rate=30r/s;
+
+# NOTE: deliberately NO static upstream{} block. A static upstream hostname is
+# resolved when nginx loads its config — if qr_dining_app were down during a
+# proxy reload, the SHARED proxy would fail to load and block config reloads
+# for every project on this VM. Using a variable ($qr_upstream, set in the
+# server block) defers DNS to request time via the docker resolver, so the
+# proxy stays healthy regardless of this app's state.
+
+# ---------- HTTP: ACME challenge + redirect ----------
+server {
+    listen 80;
+    server_name api.CHANGEME-DOMAIN.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ---------- HTTPS ----------
+server {
+    listen 443 ssl;
+    server_name api.CHANGEME-DOMAIN.com;
+
+    ssl_certificate     /etc/letsencrypt/live/CHANGEME-DOMAIN.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/CHANGEME-DOMAIN.com/privkey.pem;
+
+    # Docker service-name DNS for the proxy network; request-time resolution.
+    resolver 127.0.0.11 valid=30s;
+    set $qr_upstream qr_dining_app:8080;
+
+    # The app reads X-Forwarded-For via gin trusted proxies (TRUSTED_PROXIES in
+    # /opt/qr-dining/.env) — keep that set to the docker proxy network CIDR.
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # WebSocket endpoint — long-lived, unbuffered, unthrottled.
+    location = /ws {
+        proxy_pass http://$qr_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $qr_connection_upgrade;
+
+        proxy_buffering    off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # Probes — unthrottled, no log noise.
+    location = /health {
+        access_log off;
+        proxy_pass http://$qr_upstream;
+    }
+    location = /readyz {
+        access_log off;
+        proxy_pass http://$qr_upstream;
+    }
+
+    # Prometheus metrics — never public. Prometheus runs on the same host and
+    # scrapes the app container directly over the docker network, so the only
+    # legitimate HTTP path to /metrics is local debugging.
+    location = /metrics {
+        allow 127.0.0.1;
+        deny all;
+        proxy_pass http://$qr_upstream;
+    }
+
+    # All other API traffic.
+    location / {
+        limit_req zone=qr_api burst=60 nodelay;
+        proxy_pass http://$qr_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_read_timeout 30s;
+    }
+}

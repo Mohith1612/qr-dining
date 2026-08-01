@@ -109,7 +109,7 @@ for _ in $(seq 1 40); do
 done
 echo "  frontend-a(:3000)=$fa  frontend-b(:3001)=$fb"
 echo ""
-echo "✓ stack up. Open the dashboard:  testing-dashboard.html"
+echo "✓ stack up. Open the dashboard:  docs/manual-testing/testing-dashboard.html"
 echo "   Frontend A → http://localhost:3000   (app-1 :8090)"
 echo "   Frontend B → http://localhost:3001   (app-2 :8095)"
 echo "   logs: /tmp/qrapp-mtest-{1,2}.log · /tmp/frontend-{a,b}.log"

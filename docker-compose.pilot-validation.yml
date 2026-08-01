@@ -1,0 +1,66 @@
+# Pilot Dress Rehearsal — fully isolated infra (Postgres + Redis ONLY).
+#
+# The Go backend and Next.js frontend run as native host processes (the host is
+# amd64; the prod Dockerfile hardcodes arm64). This file ONLY provides isolated
+# data stores so the rehearsal never touches the protected R1 soak stack.
+#
+# Isolation guarantees:
+#   - project name `pilot-validation`  (soak is project `qr-dining`)
+#   - distinct container names, network, and named volumes
+#   - non-conflicting host ports 15432 / 16379 (soak/host use 5432 / 6379 / 8080)
+#
+# Usage:
+#   docker compose -f docker-compose.pilot-validation.yml up -d
+#   docker compose -f docker-compose.pilot-validation.yml down -v   # cleanup (pilot only)
+
+name: pilot-validation
+
+networks:
+  pilot:
+    driver: bridge
+
+volumes:
+  pilot_postgres_data:
+  pilot_redis_data:
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: pilot-validation-postgres
+    environment:
+      POSTGRES_USER: pilot
+      POSTGRES_PASSWORD: pilot_pass
+      POSTGRES_DB: qrdining_pilot
+    volumes:
+      - pilot_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "15432:5432"
+    networks:
+      - pilot
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pilot -d qrdining_pilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: pilot-validation-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - pilot_redis_data:/data
+    ports:
+      - "16379:6379"
+    networks:
+      - pilot
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s

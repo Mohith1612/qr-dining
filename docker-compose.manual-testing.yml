@@ -1,0 +1,69 @@
+# Manual Testing — fully isolated datastores (Postgres + Redis ONLY).
+#
+# The Go backend (two instances: app-1, app-2) and the Next.js frontends
+# (frontend-a, frontend-b) run as native host processes — the host is amd64
+# while the prod Dockerfile is arm64-only. This file ONLY provides the isolated
+# data stores, so the manual-testing pass never touches the protected R1 soak
+# stack (project `qr-dining`) or the pilot stack.
+#
+# Isolation guarantees:
+#   - project name `manual-testing`   (soak is project `qr-dining`)
+#   - distinct container names, network, and named volumes
+#   - non-conflicting host ports 25432 / 26379
+#       (soak/host use 5432 / 6379 / 8080; pilot used 15432 / 16379)
+#
+# Usage:
+#   docker compose -f docker-compose.manual-testing.yml up -d
+#   docker compose -f docker-compose.manual-testing.yml down -v   # cleanup (manual-testing only)
+
+name: manual-testing
+
+networks:
+  manual-testing:
+    driver: bridge
+
+volumes:
+  manual_testing_postgres_data:
+  manual_testing_redis_data:
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: manual-testing-postgres
+    environment:
+      POSTGRES_USER: mtest
+      POSTGRES_PASSWORD: mtest_pass
+      POSTGRES_DB: qrdining_mtest
+    volumes:
+      - manual_testing_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "25432:5432"
+    networks:
+      - manual-testing
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mtest -d qrdining_mtest"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: manual-testing-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - manual_testing_redis_data:/data
+    ports:
+      - "26379:6379"
+    networks:
+      - manual-testing
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
