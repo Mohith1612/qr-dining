@@ -133,3 +133,49 @@ Full multi-role sweep on the freshly-reseeded stack; **no new product defects fo
   release-checklist.md.
 - The previously staged deletion of the obsolete 32 MB `server` binary at the repo root (staged
   before certification began) was committed together with the gofmt commit `372e3be`.
+
+---
+
+## Addendum — re-verification at HEAD `550cb22` (2026-07-20)
+
+After certification closed at `439de14`, ten commits landed (the "UX2" guest-menu iteration:
+session-home rework, promo bottom sheet + phone, single-select radio modifiers, menu card
+restyle, stock photos + CSP img-src, screenshots, OpenAPI promo docs — frontend +
+`backend/scripts/seed.go` only, no migrations), followed by the infrastructure-preparation
+commits (CI GHCR publish, Cloudflare/OpenNext toolchain, `deploy/vm/`, backup/observability
+hardening, ops documentation). All automated gates were re-run at HEAD:
+
+| # | Verification | Result at HEAD |
+|---|---|---|
+| 1 | `gofmt -l .` | **FAIL → PASS** — `scripts/seed.go` (from `86e22ef`) had drifted; reformatted in `550cb22` |
+| 2 | `go vet ./...` | PASS |
+| 3 | golangci-lint v2.12.2 | PASS — 0 issues |
+| 4 | `go mod verify` | PASS |
+| 5 | `go build ./...` | PASS |
+| 6 | `go test -count=1 ./...` | PASS |
+| 7 | `go test -race ./internal/domain/...` | PASS |
+| 8 | sqlc drift | PASS — no drift |
+| 9 | Frontend typecheck | PASS |
+| 10 | Frontend lint | PASS — 0 errors, 567 pre-existing warnings (unchanged baseline) |
+| 11 | OpenNext build (`npm run build:cf`) | PASS — first real `opennextjs-cloudflare build`; `.open-next/worker.js` generated |
+| 12 | Playwright `guest/` + `frontend/` (desktop) | **12 passed / 2 failed — exact certified baseline** (G-03, G-07: documented pre-existing spec-side backlog) |
+
+Integration suite and the full Playwright matrix were not re-run: no backend logic, no
+migrations, and no non-guest frontend surface changed after `439de14`.
+
+Operational findings from this pass (both fixed):
+- `scripts/check-prod-env.mjs` ran standalone under node and did **not** load
+  `.env.production`, so the documented `cp … && npm run deploy:cf` flow was blocked even with
+  a correct file. The guard now loads `.env.production` itself (exported env wins, matching
+  Next precedence).
+- Running `build:cf` while `next dev` serves from the same checkout rewrites `.next/` and
+  corrupts the dev server (`Cannot find module './vendor-chunks/sonner.js'`) — this produced
+  one false G-01 failure until the dev server was restarted clean. Warning added to
+  DEPLOYMENT.md §7.
+
+Environment note: the manual-testing backends (:8090/:8095) are currently running the HEAD
+binary with the documented e2e configuration — `RATE_LIMIT_RPM`/`AUTH_RATE_LIMIT_RPM` raised,
+`PAYMENT_WEBHOOK_SECRET_STRIPE=test-webhook-secret`, `MFA_ENCRYPTION_KEY` set.
+
+**Conclusion: every automated gate is green at HEAD. The RC remains READY FOR MANUAL
+TESTING; human manual certification is the open gate.**

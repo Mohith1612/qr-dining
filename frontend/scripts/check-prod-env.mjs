@@ -15,6 +15,25 @@
  *   ALLOW_INSECURE_URLS=true npm run build
  */
 
+// `next build` loads .env.production itself, but this guard runs standalone
+// under node — load the same file (already-set env vars win, matching Next's
+// precedence) so the documented `cp .env.production.example .env.production &&
+// npm run deploy:cf` flow works without exporting vars by hand.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+try {
+  const envFile = join(dirname(fileURLToPath(import.meta.url)), "..", ".env.production");
+  for (const line of readFileSync(envFile, "utf8").split("\n")) {
+    const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!m || m[1] in process.env) continue;
+    process.env[m[1]] = m[2].replace(/^(["'])(.*)\1$/, "$2");
+  }
+} catch {
+  // no .env.production — vars must come from the environment, as before
+}
+
 const BYPASS =
   process.env.ALLOW_LOCALHOST_BUILD === "true" ||
   process.env.NEXT_PUBLIC_ENV === "development";

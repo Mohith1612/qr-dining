@@ -116,7 +116,8 @@ npx wrangler login                            # once per machine
 npm run deploy:cf                             # guard → next build → OpenNext bundle → wrangler deploy
 ```
 
-- `build:cf` / `deploy:cf` run the prod-env guard explicitly (OpenNext bypasses npm's `prebuild` hook).
+- `build:cf` / `deploy:cf` run the prod-env guard explicitly (OpenNext bypasses npm's `prebuild` hook). The guard loads `.env.production` itself (already-exported env vars take precedence, matching Next).
+- Do **not** run `build:cf`/`deploy:cf` while a `next dev` server is serving from the same `frontend/` checkout — the production build rewrites `.next/` under the dev server and corrupts it (symptom: `Cannot find module './vendor-chunks/...'`). Stop the dev server first, or build from a separate clone.
 - Until the domain exists, the worker serves from its `workers.dev` URL; attach the real custom domain in the Cloudflare dashboard (or `wrangler.jsonc` routes) after purchase, then rebuild with final `NEXT_PUBLIC_*` values (they are baked at build time).
 - `NEXT_PUBLIC_API_BASE` must equal the API origin or the CSP blocks API/WS calls.
 
