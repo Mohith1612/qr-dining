@@ -1,0 +1,92 @@
+---
+const { variant = "hero" } = Astro.props;
+---
+{variant === "hero" && (
+  <div class="hero-composition" role="img" aria-label="Guest menu with a shared table cart in front of a live kitchen order board">
+    <div class="ops-board">
+      <div class="ops-top"><span><b></b> Kitchen · Saffron House</span><span class="mono">19:42</span></div>
+      <div class="ops-columns">
+        <div><p>Confirmed <em>2</em></p><article><small>TABLE 06 · 4 ITEMS</small><strong>Paneer tikka</strong><span>Less spicy · 2</span><strong>Garlic naan</strong></article></div>
+        <div><p>Preparing <em>1</em></p><article class="amber"><small>TABLE 03 · 3 ITEMS</small><strong>Dal makhani</strong><span>No butter · 1</span><strong>Jeera rice</strong></article></div>
+        <div><p>Ready <em>1</em></p><article class="green"><small>TABLE 08 · 2 ITEMS</small><strong>Masala dosa</strong><span>Extra chutney</span></article></div>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="phone-bar"><span class="mono">9:41</span><i></i></div>
+      <div class="guest-head"><div><small>Saffron House</small><strong>Good evening, Priya</strong></div><span class="table-pill">Table 06</span></div>
+      <div class="presence"><span class="avatar">P</span><span class="avatar rose">A</span><span class="avatar green">R</span><p><b>3</b> at the table</p></div>
+      <div class="menu-tabs"><b>Popular</b><span>Starters</span><span>Mains</span></div>
+      <div class="food-card"><div class="food-image one"></div><div><small>CHEF'S PICK</small><strong>Paneer tikka</strong><p>Charred cottage cheese, peppers</p><b>₹320</b></div><span class="add-control" aria-hidden="true">+</span></div>
+      <div class="food-card"><div class="food-image two"></div><div><strong>Dal makhani</strong><p>Slow-cooked overnight</p><b>₹280</b></div><span class="add-control" aria-hidden="true">+</span></div>
+      <div class="cart-bar"><span><b>4 items</b><small>Shared by 3 people</small></span><strong>View cart · ₹1,240</strong></div>
+    </div>
+    <div class="join-chip"><span class="avatar rose">A</span><span><b>Aarav joined</b><small>Table 06</small></span></div>
+  </div>
+)}
+
+{variant === "session" && (
+  <div class="session-visual screen-frame" role="img" aria-label="Shared table cart with three guests present and item contributions">
+    <div class="session-top"><span class="mono">TABLE 06 · LIVE</span><div class="avatars"><span>P</span><span>A</span><span>R</span></div></div>
+    <div class="session-title"><div><small>Saffron House</small><h3>Your table's order</h3></div><span class="host-badge">Priya · Host</span></div>
+    <div class="cart-line"><div class="dish cube-one"></div><div><b>Paneer tikka</b><small>Less spicy · Added by Aarav</small></div><span>2</span><strong>₹640</strong></div>
+    <div class="cart-line"><div class="dish cube-two"></div><div><b>Dal makhani</b><small>No butter · Added by Priya</small></div><span>1</span><strong>₹280</strong></div>
+    <div class="cart-line"><div class="dish cube-three"></div><div><b>Garlic naan</b><small>Added by Riya</small></div><span>3</span><strong>₹210</strong></div>
+    <div class="session-total"><span><small>Table total</small><b>6 items</b></span><strong>₹1,130</strong></div>
+    <div class="confirm-order" aria-hidden="true">Confirm order for the table</div>
+  </div>
+)}
+
+{variant === "flow-qr" && (
+  <div class="mini-vignette qr-vignette">
+    <div class="tent"><span>Saffron House</span><div class="fake-qr"></div><b>Scan to begin</b><small>Table 06</small></div>
+  </div>
+)}
+{variant === "flow-cart" && (
+  <div class="mini-vignette cart-vignette">
+    <div class="mini-presence"><span>P</span><span>A</span><span class="live-avatar">R</span><b>3 joined</b></div>
+    <div class="mini-item"><i></i><span><b>Paneer tikka</b><small>Aarav added 2</small></span><strong>₹640</strong></div>
+    <div class="mini-item"><i></i><span><b>Dal makhani</b><small>Priya added 1</small></span><strong>₹280</strong></div>
+  </div>
+)}
+{variant === "flow-kitchen" && (
+  <div class="mini-vignette kitchen-vignette">
+    <div class="stage"><span>Preparing</span><article><small>TABLE 06</small><b>4 items</b><i>Paneer tikka · 2</i><i>Garlic naan · 2</i></article></div>
+    <div class="stage ready"><span>Ready</span><article class="live-ticket"><small>TABLE 06</small><b>4 items</b><i>Ready to serve</i></article></div>
+  </div>
+)}
+
+<style>
+  .hero-composition { position:relative; min-height:600px; }
+  .ops-board { position:absolute; width:650px; height:385px; right:-105px; top:58px; overflow:hidden; border:1px solid rgba(255,255,255,.1); border-radius:24px; background:var(--ops); box-shadow:var(--shadow-3); color:rgba(255,255,255,.92); transform:rotate(1deg); }
+  .ops-top { height:54px; display:flex; align-items:center; justify-content:space-between; padding:0 20px; border-bottom:1px solid rgba(255,255,255,.08); color:rgba(255,255,255,.66); font-size:12px; }
+  .ops-top span:first-child { display:flex; align-items:center; gap:8px; }
+  .ops-top b { width:7px; height:7px; border-radius:50%; background:var(--ops-amber); box-shadow:0 0 0 4px oklch(0.78 0.15 60/.1); }
+  .ops-columns { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:16px; }
+  .ops-columns>div>p { display:flex; justify-content:space-between; margin:0 0 10px; color:rgba(255,255,255,.62); font-size:11px; }
+  .ops-columns em { width:20px;height:20px;display:grid;place-items:center;border-radius:6px;background:rgba(255,255,255,.08);font:normal 9px "JetBrains Mono",monospace;}
+  .ops-columns article { min-height:180px; display:flex; flex-direction:column; gap:8px; padding:14px; border:1px solid rgba(255,255,255,.09); border-top:2px solid #6b7780; border-radius:10px; background:var(--ops-elevated); font-size:12px; }
+  .ops-columns article.amber{border-top-color:var(--ops-amber)} .ops-columns article.green{border-top-color:#68ad78}
+  .ops-columns article small { color:rgba(255,255,255,.48); font:8px "JetBrains Mono",monospace; letter-spacing:.06em; }
+  .ops-columns article strong { font-weight:600; }.ops-columns article span{color:rgba(255,255,255,.5);font-size:10px}
+  .phone { position:absolute; z-index:3; width:298px; height:590px; left:26px; top:0; overflow:hidden; border:7px solid #181918; border-radius:37px; background:var(--canvas); box-shadow:var(--shadow-3); transform:rotate(-1.25deg); }
+  .phone-bar { height:34px; display:flex; align-items:center; justify-content:space-between; padding:0 18px; font-size:8px; }
+  .phone-bar i { width:58px; height:17px; position:absolute; left:50%; top:6px; transform:translateX(-50%); border-radius:999px; background:#181918; }
+  .guest-head { display:flex; justify-content:space-between; align-items:center; padding:14px 17px 12px; }
+  .guest-head div{display:flex;flex-direction:column}.guest-head small{color:var(--gold);font-size:8px;text-transform:uppercase;letter-spacing:.12em}.guest-head strong{font-size:15px}
+  .table-pill { padding:6px 9px;border:1px solid var(--line-2);border-radius:999px;font-size:9px}
+  .presence { display:flex;align-items:center;padding:0 17px 14px}.avatar{width:27px;height:27px;display:grid;place-items:center;margin-right:-5px;border:2px solid var(--canvas);border-radius:50%;background:#dfbf7e;color:#3e3017;font-size:9px;font-weight:650}.avatar.rose{background:#e5b2a2}.avatar.green{background:#a7cfaf}.presence p{margin:0 0 0 12px;color:var(--ink-2);font-size:9px}.presence b{color:var(--ink)}
+  .menu-tabs{display:flex;gap:18px;padding:9px 17px;border-block:1px solid var(--line-1);font-size:9px;color:var(--ink-2)}.menu-tabs b{color:var(--ink);position:relative}.menu-tabs b:after{content:"";position:absolute;height:2px;left:0;right:0;bottom:-10px;background:var(--gold)}
+  .food-card{position:relative;display:grid;grid-template-columns:66px 1fr;gap:11px;padding:14px 17px;border-bottom:1px solid var(--line-1)}.food-image{height:68px;border-radius:12px;background:radial-gradient(circle at 35% 30%,#dda950 0 12%,transparent 13%),radial-gradient(circle at 65% 55%,#b46d37 0 16%,transparent 17%),#ead7b3}.food-image.two{background:radial-gradient(circle at 50% 50%,#674127 0 28%,#b97946 30% 48%,#e3ba76 50%)}.food-card>div:nth-child(2){display:flex;flex-direction:column}.food-card small{color:var(--gold);font-size:7px;letter-spacing:.08em}.food-card strong{font-size:11px}.food-card p{margin:1px 0 2px;color:var(--ink-2);font-size:8px}.food-card b{font-size:10px}.add-control{position:absolute;right:17px;bottom:13px;width:24px;height:24px;display:grid;place-items:center;border-radius:8px;background:#010101;color:#fff}
+  .cart-bar{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-radius:13px;background:#010101;color:#fff;font-size:9px}.cart-bar span{display:flex;flex-direction:column}.cart-bar small{color:rgba(255,255,255,.55);font-size:7px}
+  .join-chip{position:absolute;z-index:4;left:0;bottom:54px;display:flex;align-items:center;gap:10px;padding:10px 15px 10px 10px;border:1px solid var(--line-1);border-radius:999px;background:rgba(255,255,255,.9);box-shadow:var(--shadow-2);backdrop-filter:blur(12px)}.join-chip span:last-child{display:flex;flex-direction:column;font-size:10px}.join-chip small{color:var(--ink-3);font-size:8px}
+
+  .session-visual{padding:30px;background:var(--soft-white)}.session-top,.session-title,.session-total{display:flex;align-items:center;justify-content:space-between}.session-top{padding-bottom:22px;border-bottom:1px solid var(--line-1);color:var(--gold);font-size:10px}.avatars{display:flex}.avatars span{width:30px;height:30px;display:grid;place-items:center;margin-left:-6px;border:2px solid var(--soft-white);border-radius:50%;background:#dfbf7e;color:#3e3017;font-size:10px}.avatars span:nth-child(2){background:#e5b2a2}.avatars span:nth-child(3){background:#a7cfaf}.session-title{padding:28px 0 12px}.session-title small{color:var(--gold);font-size:9px;text-transform:uppercase;letter-spacing:.12em}.session-title h3{margin:2px 0}.host-badge{padding:7px 10px;border-radius:999px;background:rgba(115,91,37,.08);color:var(--gold);font-size:10px}.cart-line{display:grid;grid-template-columns:52px 1fr auto 58px;gap:14px;align-items:center;padding:15px 0;border-bottom:1px solid var(--line-1);font-size:12px}.cart-line>div:nth-child(2){display:flex;flex-direction:column}.cart-line small{color:var(--ink-3);font-size:10px}.cart-line>span{width:25px;height:25px;display:grid;place-items:center;border:1px solid var(--line-2);border-radius:8px}.cart-line>strong{text-align:right}.dish{height:48px;border-radius:10px;background:#d69046}.cube-two{background:#855331}.cube-three{background:#d9bd79}.session-total{padding:22px 0}.session-total span{display:flex;flex-direction:column}.session-total small{color:var(--ink-3)}.session-total>strong{font-size:20px}.confirm-order{width:100%;min-height:48px;display:flex;align-items:center;justify-content:center;border-radius:999px;background:#010101;color:#fff;font-weight:600}
+
+  .mini-vignette { height:190px; overflow:hidden; border-radius:13px; background:var(--soft-white); border:1px solid var(--line-1); }
+  .qr-vignette{display:grid;place-items:center;background:linear-gradient(135deg,#f4f0e5,#e9e2cf)}.tent{width:112px;height:145px;display:flex;flex-direction:column;align-items:center;padding:13px;border-radius:7px 7px 3px 3px;background:#faf9f5;box-shadow:0 12px 28px rgba(27,28,26,.14);transform:rotate(-2deg)}.tent>span{font-size:8px;font-weight:650}.fake-qr{width:62px;height:62px;margin:10px;background:repeating-conic-gradient(#1b1c1a 0 25%,transparent 0 50%) 0/12px 12px}.tent b{font-size:9px}.tent small{color:var(--gold);font:7px "JetBrains Mono",monospace}
+  .cart-vignette{padding:20px}.mini-presence{display:flex;align-items:center;margin-bottom:17px}.mini-presence span{width:27px;height:27px;display:grid;place-items:center;margin-right:-4px;border:2px solid var(--soft-white);border-radius:50%;background:#dfbf7e;font-size:8px}.mini-presence span:nth-child(2){background:#e5b2a2}.mini-presence span:nth-child(3){background:#a7cfaf}.mini-presence b{margin-left:12px;font-size:10px}.mini-item{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line-1);font-size:10px}.mini-item i{height:34px;border-radius:8px;background:#d59a56}.mini-item span{display:flex;flex-direction:column}.mini-item small{color:var(--ink-3);font-size:8px}
+  .kitchen-vignette{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;background:var(--ops);color:#fff}.stage>span{font-size:8px;color:rgba(255,255,255,.55)}.stage article{margin-top:7px;padding:11px;display:flex;min-height:130px;flex-direction:column;gap:7px;border-radius:8px;background:var(--ops-elevated);border-top:2px solid var(--ops-amber)}.stage small{color:rgba(255,255,255,.5);font:7px "JetBrains Mono",monospace}.stage b{font-size:11px}.stage i{color:rgba(255,255,255,.6);font-size:8px;font-style:normal}.stage.ready article{border-top-color:#68ad78}
+  @media(max-width:1023px){.hero-composition{min-height:560px}.ops-board{display:none}.phone{left:50%;transform:translateX(-50%) rotate(-1deg)}.join-chip{left:calc(50% - 180px)}}
+  @media(max-width:639px){.hero-composition{min-height:550px}.phone{width:278px;height:550px}.join-chip{display:none}.session-visual{padding:20px}.cart-line{grid-template-columns:42px 1fr auto}.cart-line>span{display:none}.session-title{align-items:flex-end}.host-badge{font-size:8px}}
+  @media(prefers-reduced-motion:reduce){.live-avatar,.live-ticket{animation:none}}
+</style>
