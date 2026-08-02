@@ -420,6 +420,7 @@ type createPlatformBranchRequest struct {
 	Timezone      string                `json:"timezone"`
 	BranchCode    string                `json:"branch_code"`
 	OrderPrefix   string                `json:"order_prefix"`
+	LogoURL       *string               `json:"logo_url"`
 	InitialTables []createTableRequest  `json:"initial_tables"`
 	InitialOwner  *platformOwnerRequest `json:"initial_owner"`
 }
@@ -530,8 +531,20 @@ func (h *PlatformHandler) CreateBranch(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			respondError(c, http.StatusConflict, "BRANCH_CONFLICT", "That branch code or an initial owner staff code is already in use. Choose a different one.")
+			return
+		}
 		respondInternalError(c)
 		return
+	}
+	// Tenant logo is restaurant-scoped; set it once the branch exists.
+	if req.LogoURL != nil && strings.TrimSpace(*req.LogoURL) != "" {
+		if err := h.repos.UpdateRestaurantLogoByBranchID(c.Request.Context(), branch.ID, strings.TrimSpace(*req.LogoURL)); err != nil {
+			respondInternalError(c)
+			return
+		}
 	}
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.branches.create", "branch", strconv.FormatInt(branch.ID, 10), org.ID, branch.ID, 0, gin.H{"table_count": len(tables), "initial_owner_created": owner != nil})
 	c.JSON(http.StatusCreated, gin.H{
@@ -581,6 +594,93 @@ func (h *PlatformHandler) GetBranch(c *gin.Context) {
 		resp["logo_url"] = textOrEmpty(restaurant.LogoUrl)
 	}
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.branches.read", "branch", strconv.FormatInt(branch.ID, 10), branch.OrganizationID, branch.ID, 0, gin.H{})
+	c.JSON(http.StatusOK, resp)
+}
+
+type updatePlatformBranchRequest struct {
+	Name        *string `json:"name"`
+	Timezone    *string `json:"timezone"`
+	BranchCode  *string `json:"branch_code"`
+	OrderPrefix *string `json:"order_prefix"`
+	LogoURL     *string `json:"logo_url"`
+}
+
+// PATCH /platform/branches/:branch_id — super_admin. Edits a branch's identity
+// (including the branch code) and the tenant logo. Only sent fields change.
+func (h *PlatformHandler) UpdateBranch(c *gin.Context) {
+	session, ok := h.requirePlatformRole(c)
+	if !ok {
+		return
+	}
+	branchID, ok := parseInt64Param(c, "branch_id", "invalid branch id")
+	if !ok {
+		return
+	}
+	branch, err := h.repos.GetBranchByID(c.Request.Context(), branchID)
+	if err != nil {
+		respondError(c, http.StatusNotFound, CodeTenantNotFound, "branch not found")
+		return
+	}
+	var req updatePlatformBranchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+
+	// Identity fields: fall back to current values for anything not sent.
+	name := branch.Name
+	if req.Name != nil {
+		if strings.TrimSpace(*req.Name) == "" {
+			respondValidationError(c, "name cannot be empty")
+			return
+		}
+		name = strings.TrimSpace(*req.Name)
+	}
+	timezone := branch.Timezone
+	if req.Timezone != nil && strings.TrimSpace(*req.Timezone) != "" {
+		timezone = strings.TrimSpace(*req.Timezone)
+	}
+	branchCode := branch.BranchCode
+	if req.BranchCode != nil {
+		bc := services.NormalizePlatformCode(*req.BranchCode)
+		if len(bc) < 2 {
+			respondValidationError(c, "branch code must be at least 2 characters")
+			return
+		}
+		branchCode = bc
+	}
+	orderPrefix := branch.OrderPrefix
+	if req.OrderPrefix != nil {
+		op := services.NormalizePlatformCode(*req.OrderPrefix)
+		if op == "" {
+			op = branch.OrderPrefix
+		}
+		orderPrefix = op
+	}
+
+	updated, err := h.repos.UpdatePlatformBranch(c.Request.Context(), branchID, name, timezone, branchCode, orderPrefix)
+	if err != nil {
+		if errors.Is(err, domain.ErrDuplicateBranchCode) {
+			respondError(c, http.StatusConflict, "BRANCH_CODE_EXISTS", "That branch code is already in use. Choose a different one.")
+			return
+		}
+		respondInternalError(c)
+		return
+	}
+	if req.LogoURL != nil {
+		if err := h.repos.UpdateRestaurantLogoByBranchID(c.Request.Context(), branchID, strings.TrimSpace(*req.LogoURL)); err != nil {
+			respondInternalError(c)
+			return
+		}
+	}
+
+	resp := platformBranchResponse(updated)
+	if restaurant, rerr := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID); rerr == nil {
+		resp["restaurant_name"] = restaurant.Name
+		resp["restaurant_slug"] = restaurant.Slug
+		resp["logo_url"] = textOrEmpty(restaurant.LogoUrl)
+	}
+	h.logPlatformAudit(c, session.PlatformUserID, "platform.branches.update", "branch", strconv.FormatInt(updated.ID, 10), updated.OrganizationID, updated.ID, 0, gin.H{"branch_code": branchCode})
 	c.JSON(http.StatusOK, resp)
 }
 

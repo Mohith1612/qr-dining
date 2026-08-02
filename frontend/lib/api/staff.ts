@@ -136,6 +136,7 @@ export const staffApi = {
       session_timeout_minutes?: number
       order_prefix?: string
       theme?: string
+      logo_url?: string
       tax_rate?: number
       service_charge_rate?: number
       include_tax_in_price?: boolean

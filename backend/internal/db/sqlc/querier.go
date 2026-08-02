@@ -342,6 +342,9 @@ type Querier interface {
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
 	UpdatePaymentStatusExpected(ctx context.Context, arg UpdatePaymentStatusExpectedParams) (Payment, error)
 	UpdatePlan(ctx context.Context, arg UpdatePlanParams) (SubscriptionPlan, error)
+	// Super-admin edit of an existing branch's identity fields. branch_code is
+	// unique; a collision surfaces as a 23505 the handler maps to a 409.
+	UpdatePlatformBranch(ctx context.Context, arg UpdatePlatformBranchParams) (Branch, error)
 	// Edits the mutable fields of a promo. Code and type are immutable (changing
 	// them is effectively a different offer); redemptions already reference them.
 	UpdatePromo(ctx context.Context, arg UpdatePromoParams) (Promo, error)

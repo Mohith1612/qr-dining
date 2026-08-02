@@ -6,5 +6,5 @@ import type { ThemeConfig } from "@/lib/theme/applyTheme"
 // structured row exists, so this is always populated.
 export const themeApi = {
   resolveForBranch: (branchId: number) =>
-    api.get<{ theme: ThemeConfig }>(`/branches/${branchId}/theme`),
+    api.get<{ theme: ThemeConfig; logo_url?: string; restaurant_name?: string }>(`/branches/${branchId}/theme`),
 }

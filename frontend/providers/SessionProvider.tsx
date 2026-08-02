@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/api/client"
 import { themeApi } from "@/lib/api/theme"
 import { applyTheme } from "@/lib/theme/applyTheme"
 import { useSessionStore } from "@/store/session"
+import { useBrandingStore } from "@/store/branding"
 import { ReconnectingBanner } from "@/components/shared/ReconnectingBanner"
 import { SessionEndedScreen } from "@/components/shared/SessionEndedScreen"
 import { SessionReactivatingBanner } from "@/components/shared/SessionReactivatingBanner"
@@ -39,7 +40,10 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
     if (!branchId || themedBranchRef.current === branchId) return
     themedBranchRef.current = branchId
     themeApi.resolveForBranch(branchId)
-      .then(r => applyTheme(r.theme))
+      .then(r => {
+        applyTheme(r.theme)
+        useBrandingStore.getState().setBranding({ logoUrl: r.logo_url, name: r.restaurant_name })
+      })
       .catch(() => {})
   }, [branchId])
 

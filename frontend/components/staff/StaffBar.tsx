@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { KeyRound, Loader2, LogOut } from "lucide-react"
 import { useStaffStore } from "@/store/staff"
 import { useTenant } from "@/providers/TenantProvider"
+import { useBrandingStore } from "@/store/branding"
 import { staffApi } from "@/lib/api/staff"
 import { ApiError } from "@/lib/api/client"
 import { BottomSheet } from "@/components/shared/BottomSheet"
@@ -31,7 +32,11 @@ interface StaffBarProps {
 
 export function StaffBar({ onSignOut }: StaffBarProps) {
   const { role, branchId, staffId, token } = useStaffStore()
-  const { name: restaurantName } = useTenant()
+  const { name: tenantName } = useTenant()
+  const brandLogo = useBrandingStore((s) => s.logoUrl)
+  const brandName = useBrandingStore((s) => s.name)
+  const restaurantName = brandName ?? tenantName
+  const [logoError, setLogoError] = useState(false)
   const [time, setTime] = useState(() => new Date())
 
   const [pinModal, setPinModal] = useState(false)
@@ -82,20 +87,30 @@ export function StaffBar({ onSignOut }: StaffBarProps) {
         position: "sticky", top: 0, zIndex: 40,
       }}
     >
-      {/* Left: brand mark + name + role */}
+      {/* Left: brand mark (tenant logo when set) + name + role */}
       <div style={{ display: "inline-flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-        <span style={{
-          width: 30, height: 30, borderRadius: "var(--rad-md)",
-          background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
-          display: "inline-flex", alignItems: "center", justifyContent: "center",
-          color: "var(--accent)", flexShrink: 0,
-        }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/>
-            <path d="M7 2v20"/>
-            <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>
-          </svg>
-        </span>
+        {(brandLogo && !logoError) ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={brandLogo}
+            alt={restaurantName ?? "Restaurant"}
+            onError={() => setLogoError(true)}
+            style={{ width: 30, height: 30, borderRadius: "var(--rad-md)", objectFit: "contain", flexShrink: 0, background: "var(--bg-elev-2)", border: "1px solid var(--line-2)" }}
+          />
+        ) : (
+          <span style={{
+            width: 30, height: 30, borderRadius: "var(--rad-md)",
+            background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            color: "var(--accent)", flexShrink: 0,
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/>
+              <path d="M7 2v20"/>
+              <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>
+            </svg>
+          </span>
+        )}
         <div style={{ minWidth: 0 }}>
           <div className="serif" style={{ fontSize: 17, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.01em", lineHeight: 1.05, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {restaurantName || "Restaurant"}

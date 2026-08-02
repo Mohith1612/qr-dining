@@ -70,6 +70,7 @@ var (
 	ErrTableNotFound            = errors.New("table not found")
 	ErrTableOccupied            = errors.New("table already has an active session")
 	ErrDuplicateTableIdentifier = errors.New("table identifier already exists for this branch")
+	ErrDuplicateBranchCode      = errors.New("branch code already exists")
 )
 
 // Menu categories

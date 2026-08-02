@@ -9,10 +9,12 @@ import { hasPlatformRole } from "@/lib/platform-rbac"
 import type { Organization, Branch, EffectiveEntitlements } from "@/types/platform"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   PageHeader, Section, PlatformStatusBadge, PlatformLoading, ConfirmDialog,
 } from "@/components/platform/ui"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Loader2 } from "lucide-react"
+import { ApiError } from "@/lib/api/client"
 import { toast } from "sonner"
 
 export default function OrganizationDetailPage() {
@@ -29,6 +31,43 @@ export default function OrganizationDetailPage() {
   // Confirmation dialog state
   const [confirm, setConfirm] = useState<null | { kind: "org" | "branch"; action: "suspend" | "activate"; id: number; label: string }>(null)
   const [acting, setActing] = useState(false)
+
+  // Branch edit modal state
+  const [edit, setEdit] = useState<null | { id: number; name: string; code: string; timezone: string; logoUrl: string }>(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  async function openBranchEdit(b: Branch) {
+    if (!token) return
+    setEdit({ id: b.id, name: b.name, code: b.branch_code, timezone: b.timezone, logoUrl: "" })
+    // Pull the current logo so an empty field doesn't clear it on save.
+    try {
+      const detail = await platformApi.getBranchDetail(b.id, token)
+      setEdit((e) => e && e.id === b.id ? { ...e, logoUrl: detail.logo_url ?? "" } : e)
+    } catch { /* leave logo blank */ }
+  }
+
+  async function saveBranchEdit() {
+    if (!edit || !token) return
+    if (edit.code.trim().length < 2) { toast.error("Branch code must be at least 2 characters."); return }
+    setSavingEdit(true)
+    try {
+      await platformApi.updateBranch(edit.id, {
+        name: edit.name.trim(),
+        branch_code: edit.code.trim(),
+        timezone: edit.timezone.trim(),
+        logo_url: edit.logoUrl.trim(),
+      }, token)
+      toast.success("Branch updated.")
+      setEdit(null)
+      load()
+    } catch (err) {
+      toast.error(err instanceof ApiError && err.code === "BRANCH_CODE_EXISTS"
+        ? "That branch code is already in use."
+        : "Couldn't update the branch.")
+    } finally {
+      setSavingEdit(false)
+    }
+  }
 
   const load = useCallback(async () => {
     if (!token || !orgId) return
@@ -147,6 +186,7 @@ export default function OrganizationDetailPage() {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <PlatformStatusBadge status={b.status} />
+                {canManage && <Button variant="secondary" size="sm" onClick={() => openBranchEdit(b)}>Edit</Button>}
                 {canManage && (b.status === "active" ? (
                   <Button variant="destructive" size="sm" onClick={() => setConfirm({ kind: "branch", action: "suspend", id: b.id, label: b.name })}>Suspend</Button>
                 ) : (
@@ -169,6 +209,42 @@ export default function OrganizationDetailPage() {
         loading={acting}
         onConfirm={runConfirm}
       />
+
+      {edit && (
+        <div
+          onClick={() => !savingEdit && setEdit(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+        >
+          <HospitalityCard elev={3} onClick={(e) => e.stopPropagation()} style={{ padding: 22, width: "100%", maxWidth: 440 }}>
+            <h3 className="serif" style={{ fontSize: 18, fontWeight: 600, margin: "0 0 4px" }}>Edit branch</h3>
+            <p style={{ fontSize: 12.5, color: "var(--ink-3)", margin: "0 0 16px" }}>Super-admin: rename, change the branch code, or set the tenant logo.</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <span className="eyebrow" style={{ fontSize: 10 }}>Branch name</span>
+                <Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <span className="eyebrow" style={{ fontSize: 10 }}>Branch code</span>
+                <Input value={edit.code} onChange={(e) => setEdit({ ...edit, code: e.target.value })} placeholder="SAFF-BND" />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <span className="eyebrow" style={{ fontSize: 10 }}>Timezone</span>
+                <Input value={edit.timezone} onChange={(e) => setEdit({ ...edit, timezone: e.target.value })} />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <span className="eyebrow" style={{ fontSize: 10 }}>Logo URL</span>
+                <Input value={edit.logoUrl} onChange={(e) => setEdit({ ...edit, logoUrl: e.target.value })} placeholder="https://…/logo.png" />
+              </label>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+              <Button onClick={saveBranchEdit} disabled={savingEdit}>
+                {savingEdit ? <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> : "Save"}
+              </Button>
+              <Button variant="ghost" onClick={() => setEdit(null)} disabled={savingEdit}>Cancel</Button>
+            </div>
+          </HospitalityCard>
+        </div>
+      )}
     </div>
   )
 }

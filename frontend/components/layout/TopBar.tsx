@@ -1,14 +1,19 @@
 "use client"
 
+import { useState } from "react"
 import { Utensils, Search } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { useSessionStore } from "@/store/session"
 import { useMenuStore } from "@/store/menu"
+import { useBrandingStore } from "@/store/branding"
 
 export function TopBar() {
   const session = useSessionStore((s) => s.session)
   const participants = useSessionStore((s) => s.participants)
   const setSearchMode = useMenuStore((s) => s.setSearchMode)
+  const logoUrl = useBrandingStore((s) => s.logoUrl)
+  const brandName = useBrandingStore((s) => s.name)
+  const [logoError, setLogoError] = useState(false)
   const pathname = usePathname()
   const isMenuRoute = pathname?.includes("/menu") ?? false
 
@@ -44,6 +49,21 @@ export function TopBar() {
           {tableLabel}
         </span>
       </div>
+
+      {/* Tenant brand — logo (falls back to name) */}
+      {(logoUrl && !logoError) ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt={brandName ?? "Restaurant"}
+          onError={() => setLogoError(true)}
+          style={{ height: 26, maxWidth: 120, objectFit: "contain", display: "block" }}
+        />
+      ) : brandName ? (
+        <span className="serif" style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 150 }}>
+          {brandName}
+        </span>
+      ) : null}
 
       {/* Right slot */}
       <div className="flex items-center gap-2.5" style={{ color: "var(--ink-3)" }}>

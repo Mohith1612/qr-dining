@@ -55,5 +55,6 @@ func (h *TenantHandler) GetBySlug(c *gin.Context) {
 		"slug":            restaurant.Slug,
 		"settings":        restaurant.SettingsJson,
 		"theme":           theme,
+		"logo_url":        textOrEmpty(restaurant.LogoUrl),
 	})
 }

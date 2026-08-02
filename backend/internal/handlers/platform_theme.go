@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Mohith1612/qr-dining/internal/domain"
+	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 )
@@ -109,14 +110,15 @@ func (h *PlatformHandler) SetOrganizationTheme(c *gin.Context) {
 // ThemeHandler serves the public per-branch resolved-theme endpoint.
 type ThemeHandler struct {
 	theme *services.ThemeService
+	repos *repository.Repos
 }
 
-func NewThemeHandler(theme *services.ThemeService) *ThemeHandler {
-	return &ThemeHandler{theme: theme}
+func NewThemeHandler(theme *services.ThemeService, repos *repository.Repos) *ThemeHandler {
+	return &ThemeHandler{theme: theme, repos: repos}
 }
 
-// ResolveForBranch returns the structured theme for a branch's restaurant.
-// GET /branches/:id/theme — public (branch tenant-guarded).
+// ResolveForBranch returns the structured theme plus branding (logo + name) for
+// a branch's restaurant. GET /branches/:id/theme — public (branch tenant-guarded).
 func (h *ThemeHandler) ResolveForBranch(c *gin.Context) {
 	branchID, ok := parseInt64Param(c, "id", "invalid branch id")
 	if !ok {
@@ -127,5 +129,10 @@ func (h *ThemeHandler) ResolveForBranch(c *gin.Context) {
 		respondError(c, http.StatusNotFound, CodeTenantNotFound, "branch not found")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"theme": theme})
+	var logoURL, restaurantName string
+	if restaurant, rerr := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID); rerr == nil {
+		logoURL = textOrEmpty(restaurant.LogoUrl)
+		restaurantName = restaurant.Name
+	}
+	c.JSON(http.StatusOK, gin.H{"theme": theme, "logo_url": logoURL, "restaurant_name": restaurantName})
 }

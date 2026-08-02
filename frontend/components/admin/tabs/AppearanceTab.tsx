@@ -17,6 +17,7 @@ import { SectionHeader } from "@/components/shared/SectionHeader"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useBrandingStore } from "@/store/branding"
 import { cn } from "@/lib/utils"
 import { formatCurrency, relativeTime } from "@/lib/format"
 import { RefreshCw, Loader2, Users, BarChart2, CreditCard, Printer, MoreVertical, RotateCcw, QrCode, Settings2, ChevronDown, ChevronRight, Plus, Trash2, Edit2, Tag, KeyRound, UserX } from "lucide-react"
@@ -56,6 +57,8 @@ type ThemeId = (typeof PRESET_THEMES)[number]["id"]
 export function AppearanceTab() {
   const { branchId, token, role } = useStaffStore()
   const [selectedTheme, setSelectedTheme] = useState<ThemeId>("dark-luxury")
+  const [logoUrl, setLogoUrl] = useState("")
+  const [logoError, setLogoError] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const canEdit = role === "owner" || role === "manager"
@@ -64,7 +67,7 @@ export function AppearanceTab() {
     if (!branchId || !token) { setLoading(false); return }
     staffApi
       .getBranch(branchId, token)
-      .then(b => { if (b.theme) setSelectedTheme(b.theme as ThemeId) })
+      .then(b => { if (b.theme) setSelectedTheme(b.theme as ThemeId); setLogoUrl(b.logo_url ?? "") })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [branchId, token])
@@ -73,8 +76,10 @@ export function AppearanceTab() {
     if (!branchId || !token) return
     setSaving(true)
     try {
-      await staffApi.updateBranch(branchId, { theme: selectedTheme }, token)
+      await staffApi.updateBranch(branchId, { theme: selectedTheme, logo_url: logoUrl.trim() }, token)
       document.documentElement.dataset.theme = selectedTheme
+      // Reflect the new logo in the header immediately.
+      useBrandingStore.getState().setBranding({ logoUrl: logoUrl.trim() })
       toast.success("Appearance saved")
     } catch {
       toast.error("Failed to save appearance")
@@ -139,14 +144,54 @@ export function AppearanceTab() {
           })}
         </div>
 
-        {canEdit && (
-          <div style={{ marginTop: 20 }}>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : "Save appearance"}
-            </Button>
+      </HospitalityCard>
+
+      {/* Logo */}
+      <HospitalityCard elev={1} style={{ padding: "20px 20px" }}>
+        <p className="eyebrow" style={{ marginBottom: 6 }}>Logo</p>
+        <p className="text-sm" style={{ color: "var(--ink-3)", marginBottom: 14 }}>
+          Shown in the header of your guest and staff apps. Paste an image URL (PNG/SVG/JPG),
+          ideally a transparent PNG. A hosted upload option appears here once storage is configured.
+        </p>
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: "var(--rad-md)", flexShrink: 0,
+            border: "1px solid var(--line-2)", background: "var(--bg-elev-2)",
+            display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+          }}>
+            {(logoUrl.trim() && !logoError) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl.trim()} alt="Logo preview" onError={() => setLogoError(true)} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            ) : (
+              <span style={{ fontSize: 11, color: "var(--ink-4)" }}>none</span>
+            )}
           </div>
+          <Input
+            value={logoUrl}
+            onChange={(e) => { setLogoUrl(e.target.value); setLogoError(false) }}
+            placeholder="https://…/logo.png"
+            disabled={!canEdit}
+            style={{ flex: 1, minWidth: 220 }}
+          />
+        </div>
+        {logoUrl.trim() && (
+          <button
+            onClick={() => { setLogoUrl(""); setLogoError(false) }}
+            disabled={!canEdit}
+            style={{ marginTop: 10, fontSize: 12.5, color: "var(--ink-3)", background: "none", border: "none", cursor: canEdit ? "pointer" : "default", padding: 0 }}
+          >
+            Remove logo
+          </button>
         )}
       </HospitalityCard>
+
+      {canEdit && (
+        <div>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="size-4 animate-spin" /> : "Save appearance"}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

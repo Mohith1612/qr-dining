@@ -113,11 +113,18 @@ export const platformApi = {
       timezone?: string
       branch_code?: string
       order_prefix?: string
+      logo_url?: string
       initial_tables?: { identifier: string; capacity?: number }[]
       initial_owner?: { name: string; staff_code: string; pin: string }
     },
     token: string
   ) => api.post<CreateBranchResult>(`/platform/organizations/${orgId}/branches`, body, { platformToken: token }),
+
+  updateBranch: (
+    branchId: number,
+    body: { name?: string; timezone?: string; branch_code?: string; order_prefix?: string; logo_url?: string },
+    token: string
+  ) => api.patch<PlatformBranchDetail>(`/platform/branches/${branchId}`, body, { platformToken: token }),
 
   createBranchTables: (
     branchId: number,

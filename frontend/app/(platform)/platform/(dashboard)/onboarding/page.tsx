@@ -65,6 +65,7 @@ export default function OnboardingPage() {
   const [timezone, setTimezone] = useState("Asia/Kolkata")
   const [branchCode, setBranchCode] = useState("")
   const [orderPrefix, setOrderPrefix] = useState("")
+  const [logoUrl, setLogoUrl] = useState("")
   const [ownerName, setOwnerName] = useState("")
   const [ownerCode, setOwnerCode] = useState("")
   const [ownerPin, setOwnerPin] = useState("")
@@ -134,6 +135,7 @@ export default function OnboardingPage() {
         ? { name: ownerName.trim(), staff_code: ownerCode.trim(), pin: ownerPin.trim() } : undefined
       const res = await platformApi.createBranch(c.orgId!, {
         name: branchName.trim(), timezone: timezone.trim(), branch_code: branchCode.trim(), order_prefix: orderPrefix.trim(),
+        logo_url: logoUrl.trim() || undefined,
         initial_owner: owner,
       }, token!)
       setC((p) => ({ ...p, branchId: res.branch.id, branchName: res.branch.name }))
@@ -238,6 +240,10 @@ export default function OnboardingPage() {
               <LabeledInput label="Timezone" value={timezone} onChange={setTimezone} />
               <LabeledInput label="Branch code" value={branchCode} onChange={setBranchCode} placeholder="auto" />
               <LabeledInput label="Order prefix" value={orderPrefix} onChange={setOrderPrefix} placeholder="OR" />
+            </Grid>
+            <Divider label="Branding (optional)" />
+            <Grid>
+              <LabeledInput label="Logo URL" value={logoUrl} onChange={setLogoUrl} placeholder="https://…/logo.png" />
             </Grid>
             <Divider label="Initial owner (optional)" />
             <Grid>
