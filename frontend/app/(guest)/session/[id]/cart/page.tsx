@@ -105,6 +105,11 @@ export default function CartPage({ params }: Props) {
   const [placing, setPlacing] = useState(false)
 
   const hostName = participants.find((p) => p.is_host)?.display_name
+  // When the host has left and nobody holds the role, let any remaining guest
+  // send the order — the backend promotes whoever places it (AuthorizeHostAction),
+  // so the table is never stranded unable to order.
+  const hasHost = participants.some((p) => p.is_host)
+  const canSend = isHost || !hasHost
 
   // Resolve who added each item for the shared-cart "Added by" line.
   function addedByName(pid: number): string | undefined {
@@ -230,28 +235,35 @@ export default function CartPage({ params }: Props) {
         backdropFilter: "blur(20px) saturate(140%)", WebkitBackdropFilter: "blur(20px) saturate(140%)",
         borderTop: "1px solid var(--line-2)",
       }}>
-        {isHost ? (
-          <button
-            onClick={handlePlaceOrder}
-            disabled={placing || items.length === 0}
-            className="press"
-            style={{
-              width: "100%", height: 54, borderRadius: "var(--rad-md)",
-              display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px",
-              background: placing ? "var(--bg-sunken)" : "var(--accent)",
-              color: placing ? "var(--ink-3)" : "var(--accent-ink)",
-              border: "none",
-              boxShadow: placing ? "none" : "var(--shadow-2)",
-              fontSize: 15.5, fontWeight: 600,
-              cursor: placing ? "not-allowed" : "pointer",
-              transition: "background var(--dur-fast) var(--ease)",
-            }}
-          >
-            <span>{placing ? "Sending to kitchen…" : "Place order"}</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontVariantNumeric: "tabular-nums" }}>
-              {formatCurrency(subtotal)} <ChevronRight size={16} aria-hidden />
-            </span>
-          </button>
+        {canSend ? (
+          <>
+            {!isHost && (
+              <p style={{ textAlign: "center", fontSize: 12, color: "var(--ink-3)", margin: "0 0 8px" }}>
+                The host has left — you&apos;ll become the host when you send this order.
+              </p>
+            )}
+            <button
+              onClick={handlePlaceOrder}
+              disabled={placing || items.length === 0}
+              className="press"
+              style={{
+                width: "100%", height: 54, borderRadius: "var(--rad-md)",
+                display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px",
+                background: placing ? "var(--bg-sunken)" : "var(--accent)",
+                color: placing ? "var(--ink-3)" : "var(--accent-ink)",
+                border: "none",
+                boxShadow: placing ? "none" : "var(--shadow-2)",
+                fontSize: 15.5, fontWeight: 600,
+                cursor: placing ? "not-allowed" : "pointer",
+                transition: "background var(--dur-fast) var(--ease)",
+              }}
+            >
+              <span>{placing ? "Sending to kitchen…" : "Place order"}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontVariantNumeric: "tabular-nums" }}>
+                {formatCurrency(subtotal)} <ChevronRight size={16} aria-hidden />
+              </span>
+            </button>
+          </>
         ) : (
           <div style={{ textAlign: "center", padding: "2px 4px 4px" }}>
             <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink-1)", marginBottom: 2 }}>

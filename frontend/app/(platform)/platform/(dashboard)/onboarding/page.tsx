@@ -121,7 +121,16 @@ export default function OnboardingPage() {
   async function createBranch() {
     await run(async () => {
       if (!branchName.trim()) { toast.error("Branch name is required."); return }
-      const owner = ownerName.trim() && ownerCode.trim() && ownerPin.trim()
+      // The owner block is optional, but if any field is filled all must be valid
+      // (mirrors the backend: staff code ≥2 chars, PIN 4–8 digits) — otherwise the
+      // server rejects it with a raw validation error.
+      const ownerTouched = ownerName.trim() || ownerCode.trim() || ownerPin.trim()
+      if (ownerTouched) {
+        if (!ownerName.trim()) { toast.error("Owner name is required."); return }
+        if (ownerCode.trim().length < 2) { toast.error("Owner staff code must be at least 2 characters."); return }
+        if (ownerPin.trim().length < 4 || ownerPin.trim().length > 8) { toast.error("Owner PIN must be 4–8 digits."); return }
+      }
+      const owner = ownerTouched
         ? { name: ownerName.trim(), staff_code: ownerCode.trim(), pin: ownerPin.trim() } : undefined
       const res = await platformApi.createBranch(c.orgId!, {
         name: branchName.trim(), timezone: timezone.trim(), branch_code: branchCode.trim(), order_prefix: orderPrefix.trim(),

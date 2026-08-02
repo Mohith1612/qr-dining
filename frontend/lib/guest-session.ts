@@ -15,11 +15,23 @@ interface GuestCreds {
 
 /** Persist credentials to sessionStorage (current tab) and localStorage (rejoin). */
 export function persistGuestCreds(sessionId: string, participantId: number, token: string) {
+  // sessionStorage is the per-tab identity and is always the fresh one.
   sessionStorage.setItem("session_id", sessionId)
   sessionStorage.setItem("participant_id", String(participantId))
   sessionStorage.setItem("guest_access_token", token)
   try {
-    localStorage.setItem(LS_PREFIX + sessionId, JSON.stringify({ participantId, token }))
+    // localStorage is the cross-tab rejoin slot, keyed only by session id. When
+    // two participants share one browser (host tab + guest tab) it would collide,
+    // so the FIRST participant to claim the session keeps the slot; a later,
+    // different participant does not clobber it. The same participant may refresh
+    // its token. This makes reopening a /session/<id> link restore the original
+    // (host) identity rather than the most recent joiner.
+    const raw = localStorage.getItem(LS_PREFIX + sessionId)
+    let existing: Partial<GuestCreds> | null = null
+    if (raw) { try { existing = JSON.parse(raw) as Partial<GuestCreds> } catch { existing = null } }
+    if (!existing || existing.participantId === participantId) {
+      localStorage.setItem(LS_PREFIX + sessionId, JSON.stringify({ participantId, token }))
+    }
   } catch {
     /* localStorage unavailable (private mode quota) — sessionStorage still works this tab */
   }
