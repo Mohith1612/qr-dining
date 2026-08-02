@@ -21,18 +21,20 @@ export default function PlatformOverviewPage() {
   const load = useCallback(async () => {
     if (!token) return
     setLoading(true)
-    try {
-      const [u, r, h] = await Promise.all([
-        platformApi.getUsage(period, undefined, token),
-        platformApi.getRevenue(period, undefined, token),
-        platformApi.getHealth(period, undefined, token),
-      ])
-      setUsage(u); setRevenue(r); setHealth(h)
-    } catch {
-      toast.error("Couldn't load platform metrics.")
-    } finally {
-      setLoading(false)
+    // Settle each metric independently so one failing endpoint degrades just its
+    // own widget instead of blanking the whole dashboard to zeros.
+    const [u, r, h] = await Promise.allSettled([
+      platformApi.getUsage(period, undefined, token),
+      platformApi.getRevenue(period, undefined, token),
+      platformApi.getHealth(period, undefined, token),
+    ])
+    setUsage(u.status === "fulfilled" ? u.value : null)
+    setRevenue(r.status === "fulfilled" ? r.value : null)
+    setHealth(h.status === "fulfilled" ? h.value : null)
+    if ([u, r, h].some((x) => x.status === "rejected")) {
+      toast.error("Some platform metrics couldn't load.")
     }
+    setLoading(false)
   }, [token, period])
 
   useEffect(() => { load() }, [load])

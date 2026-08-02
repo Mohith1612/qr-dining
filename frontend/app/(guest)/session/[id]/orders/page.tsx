@@ -73,7 +73,7 @@ function OrderCard({ order }: { order: Order }) {
 
       {order.status === "ready" && (
         <div style={{ marginBottom: 12, background: "var(--ok-soft)", border: "1px solid var(--ok)", borderRadius: "var(--rad-sm)", padding: "8px 12px", textAlign: "center", fontSize: 13, fontWeight: 600, color: "var(--ok)" }} role="alert" aria-live="assertive">
-          Your order is ready — enjoy!
+          Your order is ready — it will be served shortly.
         </div>
       )}
 

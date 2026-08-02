@@ -5,7 +5,10 @@ export class ApiError extends Error {
   constructor(
     public readonly code: string,
     message: string,
-    public readonly status: number
+    public readonly status: number,
+    // Seconds from the Retry-After header, when the server sent one (e.g. on a
+    // 423 lockout). Undefined otherwise.
+    public readonly retryAfter?: number
   ) {
     super(message)
     this.name = "ApiError"
@@ -72,7 +75,9 @@ async function request<T>(
     try {
       errBody = await res.json()
     } catch {}
-    throw new ApiError(errBody.code, errBody.message, res.status)
+    const retryHeader = res.headers.get("Retry-After")
+    const retryAfter = retryHeader ? Number(retryHeader) : undefined
+    throw new ApiError(errBody.code, errBody.message, res.status, Number.isFinite(retryAfter) ? retryAfter : undefined)
   }
 
   if (res.status === 204) {

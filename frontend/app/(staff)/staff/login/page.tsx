@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useStaffStore } from "@/store/staff"
 import { staffApi } from "@/lib/api/staff"
@@ -8,6 +8,7 @@ import { useTenant } from "@/providers/TenantProvider"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { ApiError } from "@/lib/api/client"
 import type { StaffRole } from "@/types/api"
 
 const ROLE_REDIRECT: Record<StaffRole, string> = {
@@ -25,17 +26,33 @@ export default function StaffLoginPage() {
   const [staffCode, setStaffCode] = useState("")
   const [pin, setPin] = useState("")
   const [loading, setLoading] = useState(false)
+  const [lockedFor, setLockedFor] = useState(0) // seconds remaining on a lockout
+
+  // Tick the lockout countdown down to zero.
+  useEffect(() => {
+    if (lockedFor <= 0) return
+    const id = setInterval(() => setLockedFor((s) => Math.max(0, s - 1)), 1000)
+    return () => clearInterval(id)
+  }, [lockedFor])
+
+  const locked = lockedFor > 0
+  const lockLabel = `${Math.floor(lockedFor / 60)}:${String(lockedFor % 60).padStart(2, "0")}`
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!branchCode.trim() || !staffCode.trim() || !pin) return
+    if (!branchCode.trim() || !staffCode.trim() || !pin || locked) return
     setLoading(true)
     try {
       const session = await staffApi.auth(branchCode.trim(), staffCode.trim(), pin)
       setAuth(session.token, session.staff_id, session.branch_id, session.role)
       router.replace(ROLE_REDIRECT[session.role])
-    } catch {
-      toast.error("Invalid credentials. Please check your branch code, staff code, and PIN.")
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 423) {
+        setLockedFor(err.retryAfter && err.retryAfter > 0 ? err.retryAfter : 120)
+        toast.error("Too many attempts. The correct PIN will work again once the timer ends.")
+      } else {
+        toast.error("Invalid credentials. Please check your branch code, staff code, and PIN.")
+      }
     } finally {
       setLoading(false)
     }
@@ -153,9 +170,14 @@ export default function StaffLoginPage() {
             <div style={{ height: 24 }} />
 
             {/* Submit */}
+            {locked && (
+              <p style={{ textAlign: "center", fontSize: 13, color: "var(--alert)", margin: "0 0 12px" }} role="alert" aria-live="polite">
+                Too many attempts. Try again in <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{lockLabel}</span>.
+              </p>
+            )}
             <button
               type="submit"
-              disabled={loading || !branchCode || !staffCode || !pin}
+              disabled={loading || locked || !branchCode || !staffCode || !pin}
               className="press"
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -163,8 +185,8 @@ export default function StaffLoginPage() {
                 background: "var(--accent)", color: "var(--accent-ink)",
                 border: "none", borderRadius: "var(--rad-md)",
                 fontSize: 15, fontWeight: 600,
-                cursor: loading || !branchCode || !staffCode || !pin ? "not-allowed" : "pointer",
-                opacity: loading || !branchCode || !staffCode || !pin ? 0.55 : 1,
+                cursor: loading || locked || !branchCode || !staffCode || !pin ? "not-allowed" : "pointer",
+                opacity: loading || locked || !branchCode || !staffCode || !pin ? 0.55 : 1,
               }}
             >
               {loading ? (
@@ -172,7 +194,7 @@ export default function StaffLoginPage() {
                   <Loader2 className="animate-spin" style={{ width: 16, height: 16 }} />
                   Signing in…
                 </>
-              ) : "Sign in"}
+              ) : locked ? `Locked · ${lockLabel}` : "Sign in"}
             </button>
           </form>
         </HospitalityCard>

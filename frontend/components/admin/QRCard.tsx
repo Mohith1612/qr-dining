@@ -19,10 +19,14 @@ export function QRCard({ table, size = 64 }: Props) {
   return (
     <div
       style={{
-        background: "#181410",
-        border: "1px solid rgba(201,168,118,0.3)",
+        // Theme-aware and transparent: the QR takes the tenant's ink colour and
+        // sits on whatever surface it's placed on, rather than a fixed
+        // black-on-white block. `fill="var(--…)"` resolves against the themed
+        // document tokens; a quiet-zone padding keeps it scannable.
+        background: "transparent",
+        border: "1px solid var(--line-2)",
         borderRadius: 6,
-        padding: 4,
+        padding: 5,
         display: "inline-flex",
         flexShrink: 0,
       }}
@@ -30,8 +34,8 @@ export function QRCard({ table, size = 64 }: Props) {
       <QRCodeSVG
         value={url}
         size={size}
-        fgColor="#F4E8D1"
-        bgColor="#181410"
+        fgColor="var(--ink-1)"
+        bgColor="transparent"
         level="M"
       />
     </div>

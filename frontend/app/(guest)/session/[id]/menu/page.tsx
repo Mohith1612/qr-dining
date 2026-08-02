@@ -606,9 +606,12 @@ export default function MenuPage({ params }: Props) {
                 <hr className="rule" style={{ margin: 0 }} />
               </div>
               <div style={{ padding: "0 20px" }}>
-                {cat.items.map((item) => (
-                  <ItemRow key={item.id} item={item} qty={cartCountByItem[item.id] ?? 0} onTap={(item) => openSheet(item, cat.name)} />
-                ))}
+                {/* Available dishes first; sold-out items sink to the bottom of the category. */}
+                {[...cat.items]
+                  .sort((a, b) => Number(a.is_available === false) - Number(b.is_available === false))
+                  .map((item) => (
+                    <ItemRow key={item.id} item={item} qty={cartCountByItem[item.id] ?? 0} onTap={(item) => openSheet(item, cat.name)} />
+                  ))}
               </div>
             </section>
           ))

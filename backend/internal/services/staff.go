@@ -45,9 +45,12 @@ func NewStaffService(repos *repository.Repos, cache *redisPkg.Cache, logger zero
 		cache:  cache,
 		logger: logger,
 		lockPolicy: redisPkg.LockoutPolicy{
-			Window:         5 * time.Minute,
-			MaxFailures:    10,
-			LockoutTTL:     15 * time.Minute,
+			Window:      5 * time.Minute,
+			MaxFailures: 10,
+			// Short enough that a legitimate staffer who fat-fingered their PIN
+			// isn't stuck for long; the login screen shows a live countdown from
+			// the Retry-After header. Still deters online brute force at 10/window.
+			LockoutTTL:     2 * time.Minute,
 			FailOpenOnLoss: false,
 		},
 	}

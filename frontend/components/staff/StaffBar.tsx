@@ -37,6 +37,7 @@ export function StaffBar({ onSignOut }: StaffBarProps) {
   const [pinModal, setPinModal] = useState(false)
   const [currentPin, setCurrentPin] = useState("")
   const [newPin, setNewPin] = useState("")
+  const [confirmPin, setConfirmPin] = useState("")
   const [savingPin, setSavingPin] = useState(false)
 
   useEffect(() => {
@@ -47,8 +48,14 @@ export function StaffBar({ onSignOut }: StaffBarProps) {
   const roleLabel = role ? ROLE_LABEL[role] : "Staff"
   const roleTone = role ? ROLE_TONE[role] : "brand"
 
+  const pinValid = currentPin.length >= 4 && newPin.length >= 4 && newPin === confirmPin
+
   async function handleChangePin() {
     if (!staffId || !token || currentPin.length < 4 || newPin.length < 4) return
+    if (newPin !== confirmPin) {
+      toast.error("The new PIN and confirmation don't match.")
+      return
+    }
     setSavingPin(true)
     try {
       await staffApi.rotatePin(staffId, currentPin, newPin, token)
@@ -56,6 +63,7 @@ export function StaffBar({ onSignOut }: StaffBarProps) {
       setPinModal(false)
       setCurrentPin("")
       setNewPin("")
+      setConfirmPin("")
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't change PIN.")
     } finally {
@@ -108,11 +116,11 @@ export function StaffBar({ onSignOut }: StaffBarProps) {
         <span className="hidden sm:block" style={{ fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", color: "var(--ink-2)" }}>
           {time.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
         </span>
-        <Button variant="secondary" size="sm" onClick={() => { setCurrentPin(""); setNewPin(""); setPinModal(true) }}>
+        <Button variant="secondary" size="sm" aria-label="Change PIN" onClick={() => { setCurrentPin(""); setNewPin(""); setConfirmPin(""); setPinModal(true) }}>
           <KeyRound size={13} />
           <span className="hidden sm:inline">Change PIN</span>
         </Button>
-        <Button variant="secondary" size="sm" onClick={onSignOut}>
+        <Button variant="secondary" size="sm" aria-label="Sign out" onClick={onSignOut}>
           <LogOut size={13} />
           <span className="hidden sm:inline">Sign out</span>
         </Button>
@@ -140,15 +148,29 @@ export function StaffBar({ onSignOut }: StaffBarProps) {
                 onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
                 placeholder="4–6 digits"
                 maxLength={6}
+                style={{ letterSpacing: "0.2em" }}
+              />
+            </Field>
+            <Field label="Confirm new PIN">
+              <Input
+                type="password"
+                inputMode="numeric"
+                value={confirmPin}
+                onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))}
+                placeholder="Re-enter new PIN"
+                maxLength={6}
                 onKeyDown={(e) => e.key === "Enter" && handleChangePin()}
                 style={{ letterSpacing: "0.2em" }}
               />
             </Field>
+            {confirmPin.length > 0 && newPin !== confirmPin && (
+              <p style={{ fontSize: 12, color: "var(--alert)", margin: "-6px 0 0" }}>PINs don&apos;t match.</p>
+            )}
             <Button
               variant="brand"
               size="lg"
               onClick={handleChangePin}
-              disabled={savingPin || currentPin.length < 4 || newPin.length < 4}
+              disabled={savingPin || !pinValid}
             >
               {savingPin && <Loader2 size={14} className="animate-spin" />}
               Update PIN
