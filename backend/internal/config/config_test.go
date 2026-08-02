@@ -1,8 +1,11 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // setBaseEnv sets the minimum env required for Load() to reach security validation.
@@ -75,6 +78,34 @@ func TestRelease_AcceptsSecureConfig(t *testing.T) {
 	if cfg.Auth.GuestTokenSecret != strongSecret {
 		t.Fatalf("unexpected guest secret: %q", cfg.Auth.GuestTokenSecret)
 	}
+	if cfg.Auth.GuestTokenTTL != 12*time.Hour {
+		t.Fatalf("expected safe guest token TTL default, got %s", cfg.Auth.GuestTokenTTL)
+	}
+	if !cfg.FeatureFlags.AuthGuestCredentialsRequired ||
+		!cfg.FeatureFlags.AuthStaffCodeRequired ||
+		!cfg.FeatureFlags.AuthStaffSessionDBRequired ||
+		!cfg.FeatureFlags.WSTicketAuthRequired {
+		t.Fatal("expected R4, R5, and R6 authentication enforcement to default on")
+	}
+}
+
+func TestRelease_AllowsExplicitTimeBoundAuthRollback(t *testing.T) {
+	setBaseEnv(t, "release")
+	t.Setenv("AUTH_GUEST_CREDENTIALS_REQUIRED", "false")
+	t.Setenv("AUTH_STAFF_CODE_REQUIRED", "false")
+	t.Setenv("AUTH_STAFF_SESSION_DB_REQUIRED", "false")
+	t.Setenv("WS_TICKET_AUTH_REQUIRED", "false")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected explicit rollback config to boot, got err=%v", err)
+	}
+	if cfg.FeatureFlags.AuthGuestCredentialsRequired ||
+		cfg.FeatureFlags.AuthStaffCodeRequired ||
+		cfg.FeatureFlags.AuthStaffSessionDBRequired ||
+		cfg.FeatureFlags.WSTicketAuthRequired {
+		t.Fatal("explicit false values must retain the supervised rollback path")
+	}
 }
 
 func TestDebug_AllowsDevDefaults(t *testing.T) {
@@ -83,5 +114,42 @@ func TestDebug_AllowsDevDefaults(t *testing.T) {
 	t.Setenv("CORS_ALLOWED_ORIGINS", "")
 	if _, err := Load(); err != nil {
 		t.Fatalf("debug mode should permit dev defaults, got err=%v", err)
+	}
+}
+
+func TestRelease_DotenvCannotOverrideInjectedEnvironment(t *testing.T) {
+	setBaseEnv(t, "release")
+	tempDir := t.TempDir()
+	dotenv := strings.Join([]string{
+		"DATABASE_URL=postgres://attacker:pass@localhost:5432/other",
+		"GUEST_TOKEN_SECRET=too-short",
+		"AUTH_GUEST_CREDENTIALS_REQUIRED=false",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(tempDir, ".env"), []byte(dotenv), 0o600); err != nil {
+		t.Fatalf("write .env fixture: %v", err)
+	}
+
+	previousDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previousDir); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("release config should ignore stray .env, got err=%v", err)
+	}
+	if cfg.DB.URL != "postgres://user:pass@localhost:5432/db" {
+		t.Fatalf("stray .env overrode DATABASE_URL: %q", cfg.DB.URL)
+	}
+	if !cfg.FeatureFlags.AuthGuestCredentialsRequired {
+		t.Fatal("stray .env disabled guest credential enforcement")
 	}
 }

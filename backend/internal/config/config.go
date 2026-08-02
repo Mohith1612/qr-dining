@@ -121,8 +121,12 @@ const (
 )
 
 func Load() (*Config, error) {
-	// Load .env if present — no-op in production where env vars are injected directly.
-	_ = godotenv.Overload()
+	// Dotenv is a development convenience only. In release mode, injected
+	// environment variables are authoritative and a stray .env must never be
+	// allowed to override secrets or rollout flags.
+	if getenv("GIN_MODE", "release") != "release" {
+		_ = godotenv.Overload()
+	}
 
 	cfg := &Config{}
 
@@ -190,7 +194,7 @@ func Load() (*Config, error) {
 
 	// Auth
 	cfg.Auth.GuestTokenSecret = getenv("GUEST_TOKEN_SECRET", devGuestTokenSecret)
-	cfg.Auth.GuestTokenTTL = parseDuration("GUEST_TOKEN_TTL", 2*time.Hour)
+	cfg.Auth.GuestTokenTTL = parseDuration("GUEST_TOKEN_TTL", 12*time.Hour)
 	cfg.Auth.MFAEncryptionKey = getenv("MFA_ENCRYPTION_KEY", "")
 	cfg.Auth.StaffCookieEnable = parseBool("AUTH_STAFF_COOKIE_ENABLED", false)
 
@@ -210,13 +214,13 @@ func Load() (*Config, error) {
 
 	// Rollout flags. Phase 0 only parses these flags; later phases decide where
 	// each flag gates strict enforcement.
-	cfg.FeatureFlags.AuthGuestCredentialsRequired = parseBool("AUTH_GUEST_CREDENTIALS_REQUIRED", false)
-	cfg.FeatureFlags.AuthStaffCodeRequired = parseBool("AUTH_STAFF_CODE_REQUIRED", false)
-	cfg.FeatureFlags.AuthStaffSessionDBRequired = parseBool("AUTH_STAFF_SESSION_DB_REQUIRED", false)
+	cfg.FeatureFlags.AuthGuestCredentialsRequired = parseBool("AUTH_GUEST_CREDENTIALS_REQUIRED", true)
+	cfg.FeatureFlags.AuthStaffCodeRequired = parseBool("AUTH_STAFF_CODE_REQUIRED", true)
+	cfg.FeatureFlags.AuthStaffSessionDBRequired = parseBool("AUTH_STAFF_SESSION_DB_REQUIRED", true)
 	cfg.FeatureFlags.AuthzCentralPolicyEnforce = parseBool("AUTHZ_CENTRAL_POLICY_ENFORCE", false)
 	cfg.FeatureFlags.TenancyOrganizationsEnabled = parseBool("TENANCY_ORGANIZATIONS_ENABLED", false)
 	cfg.FeatureFlags.AuditLogV2Enabled = parseBool("AUDIT_LOG_V2_ENABLED", false)
-	cfg.FeatureFlags.WSTicketAuthRequired = parseBool("WS_TICKET_AUTH_REQUIRED", false)
+	cfg.FeatureFlags.WSTicketAuthRequired = parseBool("WS_TICKET_AUTH_REQUIRED", true)
 	cfg.FeatureFlags.PaymentStaffSettlementRequired = parseBool("PAYMENT_STAFF_SETTLEMENT_REQUIRED", false)
 	cfg.FeatureFlags.StrictBranchScopedMutations = parseBool("STRICT_BRANCH_SCOPED_MUTATIONS", false)
 

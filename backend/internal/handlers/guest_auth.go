@@ -50,6 +50,17 @@ func guestParticipantID(
 			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential required")
 			return 0, false
 		}
+		// The legacy header is not authentication, but while the rollback path
+		// exists it must never allow a participant from another session to cross
+		// the trust boundary. Secure production config requires a signed token.
+		if legacyParticipantID != 0 {
+			participant, err := repos.GetSessionParticipantByID(c.Request.Context(), legacyParticipantID)
+			if err != nil || participant.SessionID != sessionID {
+				recordGuestTokenFailure("legacy_participant_mismatch")
+				respondError(c, http.StatusForbidden, CodeForbidden, "participant does not belong to this session")
+				return 0, false
+			}
+		}
 		return legacyParticipantID, true
 	}
 
