@@ -45,12 +45,16 @@ All nine are explicit in `/opt/qr-dining/.env`. Current production posture:
 | R1 | `AUDIT_LOG_V2_ENABLED` | **true — live, soaked. Never disable.** |
 | R2 | `TENANCY_ORGANIZATIONS_ENABLED` | false — needs org backfill + soak |
 | R3 | `AUTHZ_CENTRAL_POLICY_ENFORCE` + `STRICT_BRANCH_SCOPED_MUTATIONS` (pair) | false — 48h zero-mismatch shadow gate |
-| R4 | `AUTH_STAFF_CODE_REQUIRED` + `AUTH_STAFF_SESSION_DB_REQUIRED` (pair) | false — staff-code decay window |
-| R5 | `WS_TICKET_AUTH_REQUIRED` | false |
-| R6 | `AUTH_GUEST_CREDENTIALS_REQUIRED` | false — closes finding F-8 |
+| R4 | `AUTH_STAFF_CODE_REQUIRED` + `AUTH_STAFF_SESSION_DB_REQUIRED` (pair) | **true — launch baseline** |
+| R5 | `WS_TICKET_AUTH_REQUIRED` | **true — launch baseline** |
+| R6 | `AUTH_GUEST_CREDENTIALS_REQUIRED` | **true — launch baseline; `GUEST_TOKEN_TTL=12h`** |
 | R7 | `PAYMENT_STAFF_SETTLEMENT_REQUIRED` | false — needs webhook-replay CI proof |
 
-**Flip procedure:** one wave at a time, never chained. Confirm the wave's gate metrics/alerts are clean → edit the flag in `.env` → `docker compose up -d app` → watch the gate metrics. Rollback is the same edit reversed (<5 min MTTR). Ledger + gate details: `docs/master-system-context-v1.md` §2.5.
+**Change procedure:** R4–R6 were activated together before traffic because there
+is no legacy client population and the only frontend already speaks all three
+protocols. For future changes, confirm metrics are clean → edit `.env` → `docker
+compose up -d app` → watch the gate metrics. A rollback to a legacy auth path is
+time-bounded and supervised, never a steady production posture.
 
 ## 5. Backups (monitoring side)
 

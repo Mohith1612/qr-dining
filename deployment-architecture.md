@@ -98,9 +98,9 @@ qr-dining/
 ## 3. Build
 
 - **Image:** `backend/docker/Dockerfile`, two stages.
-  - Builder: `golang:1.24-alpine`, `CGO_ENABLED=0 GOOS=linux GOARCH=arm64` (hardcoded — Oracle Ampere), `-trimpath -ldflags="-s -w"`, output `/bin/qr-dining` from `./cmd/server`.
+  - Builder: `golang:1.26-alpine`, `CGO_ENABLED=0 GOOS=linux GOARCH=arm64` (hardcoded — Oracle Ampere), `-trimpath -ldflags="-s -w"`, output `/bin/qr-dining` from `./cmd/server`.
   - Runtime: `alpine:3.20` + ca-certificates/wget/tzdata, non-root `appuser`, `EXPOSE 8080`, `HEALTHCHECK` wget `/readyz` (10s/5s/5 retries/20s start), `ENTRYPOINT /app/qr-dining`.
-- **⚠️ Go toolchain mismatch:** `backend/go.mod` declares `go 1.26.0`; Dockerfile builder and CI both pin Go **1.24**. Builds depend on toolchain auto-download or fail. (Known item — STATE Part 10.)
+- Go is pinned to 1.26 across `backend/go.mod`, the Docker builder, and CI.
 - **Migrations ship inside the binary** (embedded iofs). The app self-migrates at every boot, idempotently (chaos-validated). `cmd/migrate` is a developer CLI only — it is not in the image and production must never depend on it.
 - **arm64-only consequence:** on amd64 dev hosts the container cannot run, which is why the pilot-validation and manual-testing stacks run the app as native host processes against containerized datastores.
 
@@ -144,7 +144,7 @@ Port ladder is deliberate isolation: soak/prod 5432/6379/8080 · pilot 15432/163
 ### 4.5 Execution order (production bring-up)
 
 1. Provision host (arm64, docker + compose, aws-cli, postgresql-client 17) and deploy repo to `/opt/qr-dining`.
-2. Write the real `/opt/qr-dining/.env` (container-host DSNs, strong secrets, https CORS, explicit rollout flags). Verify no other stray `.env` can shadow it (`godotenv.Overload()` risk for any host-native process).
+2. Write the real `/opt/qr-dining/.env` (container-host DSNs, strong secrets, https CORS, explicit rollout flags). Release mode ignores dotenv files, so injected environment remains authoritative.
 3. `docker network create proxy_network`.
 4. `docker compose up -d --build` (project `qr-dining`) — app waits on healthy datastores, self-migrates, `/readyz` gates healthy.
 5. Start the edge: nginx with `deploy/nginx/qr-dining.conf` attached to `proxy_network` (mechanism TBD — see §4.2), TLS terminated in front of it.

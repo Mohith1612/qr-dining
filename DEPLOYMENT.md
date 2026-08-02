@@ -60,9 +60,9 @@ docker compose logs app | grep -i migrat # migrations applied at boot (schema v3
 
 Notes:
 - The app self-migrates at every boot (embedded migrations, idempotent). Never run a separate migration step.
-- All nine rollout flags are explicit in the env template. `AUDIT_LOG_V2_ENABLED=true` is mandatory (R1 is live); the rest stay `false` until their wave gates pass (`OPERATIONS.md` §4).
+- All nine rollout flags are explicit in the env template. `AUDIT_LOG_V2_ENABLED=true` is mandatory (R1 is live). R4–R6 also ship `true`: the frontend already uses staff codes, database-backed staff sessions, WS tickets, and signed guest credentials. Keep `GUEST_TOKEN_TTL=12h` until token refresh exists.
 - Release mode fails hard on weak/missing `GUEST_TOKEN_SECRET` or empty `CORS_ALLOWED_ORIGINS` — if the app restarts in a loop, check `docker compose logs app` for the named missing variable.
-- Never place a stray `.env` in any directory a backend process might run from — `godotenv.Overload()` lets it override the real environment.
+- Release mode ignores dotenv files; injected environment variables remain authoritative.
 
 ## 4. Edge (central proxy)
 
@@ -143,3 +143,20 @@ No code changes are required for any of these — all are env/config lines (veri
 5. Full guest journey: QR → join → shared cart → order → kitchen → serve → bill → cash settle → session closed.
 
 > **Release preconditions still standing (do not deploy real traffic before):** merge → `main` + tag `v1.0.0-rc.1`; fresh soak of the tagged build (SEV-0); real alert receiver. See `production-environment-checklist.md`.
+
+## 10. First super-admin bootstrap
+
+After the app has applied migrations, create the one initial platform administrator
+with the image's one-shot bootstrap command. Export the password so it does not land
+in shell history; Docker Compose copies the named variables without printing values:
+
+```bash
+export BOOTSTRAP_ADMIN_EMAIL='owner@example.com'
+read -rsp 'Initial admin password: ' BOOTSTRAP_ADMIN_PASSWORD && export BOOTSTRAP_ADMIN_PASSWORD
+docker compose exec -e BOOTSTRAP_ADMIN_EMAIL -e BOOTSTRAP_ADMIN_PASSWORD app /app/bootstrap-admin
+unset BOOTSTRAP_ADMIN_PASSWORD
+```
+
+The command refuses to overwrite an existing user, grants only `super_admin`, and
+marks MFA required. Sign in immediately, enroll TOTP, store recovery codes in the
+password manager, then clear `BOOTSTRAP_ADMIN_EMAIL` from the shell.

@@ -11,11 +11,13 @@
 
 ## 1. Release engineering (gates everything)
 
+- [ ] Create the git remote, push the branch, and obtain one green CI run; no GHCR deployment image exists until this succeeds.
 - [ ] **Merge `feature/certification-fixes-ui-redesign` → `main` (`--no-ff`) and tag `v1.0.0-rc.1`** (SEV-1). Nothing else lands first.
+- [x] CI unit job widened from `./internal/domain/...` to `./...` under the race detector.
 - [ ] Integration suite green locally (`-tags integration`) — last commit `9dd869a` claims restoration; re-verify before tagging.
 - [ ] Delete the 4 fully-absorbed branches after merge (staff-analytics-loyalty, premium-qr-collateral, pilot-readiness-remediation, platform-governance-entitlements).
 - [ ] Commit the live-but-untracked operational files (STATE-OF-THE-PROJECT.md, docs/history/, docs/manual-testing/, living docs, docker-compose.manual-testing.yml, e2e/package-lock.json) — the RC tag must contain its own documentation.
-- [ ] Resolve the **Go toolchain mismatch**: `go.mod` `go 1.26.0` vs Dockerfile/CI Go 1.24 (align one direction before the tag build).
+- [x] Go toolchain aligned on 1.26 across `go.mod`, Docker, and CI.
 - [ ] **RC soak (SEV-0):** binary built **from the tag**, run **off `/tmp`**, `AUDIT_LOG_V2_ENABLED=true`, continuous synthetic traffic + external probing for the full window, storage curve recorded. The 124h R1 soak covered the pre-redesign binary and does not certify this RC.
 
 ## 2. Host provisioning (Oracle Cloud Ampere)
@@ -24,7 +26,7 @@
 - [ ] Host packages for the backup path: `aws` CLI, `postgresql-client` **17** (pg_dump/pg_restore version-matched to postgres:17).
 - [ ] Repo deployed at **`/opt/qr-dining`** (systemd units hardcode this path).
 - [ ] `docker network create proxy_network` (external network required by the prod compose).
-- [ ] **No stray `.env` anywhere a backend process might CWD** — `godotenv.Overload()` lets a stray file silently override injected env (has bitten before).
+- [x] Release mode ignores dotenv files; injected environment cannot be shadowed by a stray `.env`.
 - [ ] No binaries or long-running artifacts under `/tmp` (tmp-cleaner wiped the soak binary twice).
 - [ ] Firewall/security-list: only 80/443 (edge) exposed publicly; 9090/9093 (observability) private; DB/Redis never published.
 
@@ -48,9 +50,10 @@
 - [ ] `MFA_ENCRYPTION_KEY` — ≥16 chars (required in practice: platform login uses TOTP; unset = MFA fails closed).
 - [ ] `PAYMENT_WEBHOOK_SECRET_<PROVIDER>` — per gateway, ≥16 chars (only when a digital provider is configured; pilot is cash/UPI-manual).
 - [ ] `GIN_MODE=release` (compose already forces it — keep the `.env` consistent rather than contradicting it with `debug`).
-- [ ] **All 9 rollout flags set EXPLICITLY** — they default `false`, so an unconfigured deploy silently regresses R1:
+- [ ] **All 9 rollout flags set EXPLICITLY** — do not rely on application defaults for a production record:
   - `AUDIT_LOG_V2_ENABLED=true` (R1 — live and soaked; must be true)
-  - `TENANCY_ORGANIZATIONS_ENABLED=false` · `AUTHZ_CENTRAL_POLICY_ENFORCE=false` · `STRICT_BRANCH_SCOPED_MUTATIONS=false` · `AUTH_STAFF_CODE_REQUIRED=false` · `AUTH_STAFF_SESSION_DB_REQUIRED=false` · `WS_TICKET_AUTH_REQUIRED=false` · `AUTH_GUEST_CREDENTIALS_REQUIRED=false` · `PAYMENT_STAFF_SETTLEMENT_REQUIRED=false` (R2–R7 — off until their wave gates pass; explicit is the record)
+  - `TENANCY_ORGANIZATIONS_ENABLED=false` · `AUTHZ_CENTRAL_POLICY_ENFORCE=false` · `STRICT_BRANCH_SCOPED_MUTATIONS=false` · `AUTH_STAFF_CODE_REQUIRED=true` · `AUTH_STAFF_SESSION_DB_REQUIRED=true` · `WS_TICKET_AUTH_REQUIRED=true` · `AUTH_GUEST_CREDENTIALS_REQUIRED=true` · `PAYMENT_STAFF_SETTLEMENT_REQUIRED=false`
+  - `GUEST_TOKEN_TTL=12h` (required while the client has no refresh endpoint)
 - [ ] R2 upload vars (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET=qr-dining-uploads`, `R2_PUBLIC_BASE`) — all five or image upload endpoints return 503.
 - [ ] Tuning reviewed for prod (defaults fine at pilot scale): `DB_MAX_CONNS` (20), rate limits (60/10 RPM), worker intervals, payment-escalation thresholds (1m/5m/15m), `LOG_PRETTY=false`.
 
@@ -89,10 +92,10 @@
 
 ## 9. Data & tenant bootstrap
 
-- [ ] First platform super-admin seeded manually (no bootstrap UI — known gap) with TOTP MFA enrolled; credentials in a password manager.
+- [ ] First platform super-admin created with `docker compose exec ... /app/bootstrap-admin` (DEPLOYMENT.md §10), then TOTP enrolled and recovery codes stored in a password manager.
 - [ ] Restaurant #1: org + branch + tables + QR collateral printed + menu entered + staff roster with PINs + theme selected (platform onboarding flow + manual steps; ~half a day supervised).
 - [ ] Billing handled **manually outside the system** (billing subsystem is shadow — do not charge through it).
-- [ ] Do not configure time-windowed promos until the promo timezone bug is fixed (windows compare against UTC, not branch tz).
+- [x] Promo daily windows compare against branch-local time; integration coverage exists.
 
 ## 10. Pre-open verification gates
 
@@ -105,7 +108,9 @@
 
 ## 11. Known open defects to track (not env, but pre-open awareness)
 
-F-8: tokenless session-snapshot fail-open until R6 (acceptable single-tenant supervised; gates multi-tenant exposure) · F-1 lineage: WS reconnect dead-end after 10 attempts · promo timezone bug · `session_sequences` hot-spot ceiling (~concurrency 150, far beyond pilot).
+Track the `session_sequences` hot-spot ceiling (~concurrency 150, far beyond pilot).
+R4–R6 are enabled for launch; guest legacy IDs are session-scoped as defense-in-depth.
+Reconnect exhaustion now exposes an in-place Retry action, and promo windows use branch-local time.
 
 ---
 
@@ -132,23 +137,23 @@ Backend vars are all read in `backend/internal/config/config.go` (`Load()`); `GI
 | `RATE_LIMIT_RPM` / `AUTH_RATE_LIMIT_RPM` | Rate limits | No | 60 / 10 | set / unset | ✅ | — |
 | `LOG_LEVEL` / `LOG_PRETTY` | Logging | No | info / false | `.env` has `LOG_PRETTY=true` | ⚠️ | `false` in prod |
 | `DB_MAX_CONNS` / `DB_MIN_CONNS` / `DB_MAX_CONN_LIFETIME` / `DB_MAX_CONN_IDLE_TIME` | PG pool | No | 20 / 2 / 1h / 30m | unset | ✅ (pilot scale) | Revisit at scale |
-| `GUEST_TOKEN_TTL` | Guest token TTL | No | 2h | unset | ✅ | — |
+| `GUEST_TOKEN_TTL` | Guest token TTL | No | 12h | production template sets 12h | ✅ | Keep until refresh exists |
 | `AUTH_STAFF_COOKIE_ENABLED` | HttpOnly staff cookie | No | false | unset | ✅ | — |
 | `PAYMENT_WEBHOOK_TIMESTAMP_TOLERANCE` | Replay window | No | 5m | unset | ✅ | — |
 | Worker knobs: `STALE_SESSION_INTERVAL`, `PRESENCE_EXPIRY_INTERVAL`, `SESSION_RECONCILE_INTERVAL`, `WORKER_REGION`, `SESSION_PRESENCE_GRACE`, `SESSION_REACTIVATION_WINDOW`, `PAYMENT_PENDING_ESCALATION_INTERVAL`, `PAYMENT_PENDING_WARN_AFTER`, `PAYMENT_PENDING_CRITICAL_AFTER` | Worker/escalation timing | No | 5m/60s/5m/default/60s/5m/1m/5m/15m | partially set | ✅ (tuned post-rehearsal) | — |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE` | App image uploads (all 5 or uploads 503) | No | `""` | 🟠 unset; 🔁 backup uses different R2 names | ⚠️ | Set for `qr-dining-uploads` bucket |
 
-### A.2 Backend — the 9 strict rollout flags (all default `false`; parseBool in config.go)
+### A.2 Backend — the 9 strict rollout flags
 
 | Flag | Wave | Set in prod-path files? | Action |
 |---|---|---|---|
-| `AUDIT_LOG_V2_ENABLED` | R1 ✅ live | 🟠 **nowhere prod-facing** (only manual-testing sets true) | **Must be `true` in prod .env** — silent regression risk |
-| `TENANCY_ORGANIZATIONS_ENABLED` | R2 | 🟠 | Explicit `false` until wave gate |
-| `AUTHZ_CENTRAL_POLICY_ENFORCE` + `STRICT_BRANCH_SCOPED_MUTATIONS` | R3 pair | 🟠 | Explicit `false` |
-| `AUTH_STAFF_CODE_REQUIRED` + `AUTH_STAFF_SESSION_DB_REQUIRED` | R4 pair | 🟠 | Explicit `false` |
-| `WS_TICKET_AUTH_REQUIRED` | R5 | 🟠 | Explicit `false` |
-| `AUTH_GUEST_CREDENTIALS_REQUIRED` | R6 (closes F-8) | 🟠 | Explicit `false` |
-| `PAYMENT_STAFF_SETTLEMENT_REQUIRED` | R7 | 🟠 | Explicit `false` |
+| `AUDIT_LOG_V2_ENABLED` | R1 ✅ live | production template: `true` | Keep `true` |
+| `TENANCY_ORGANIZATIONS_ENABLED` | R2 | production template: `false` | Backfill before enabling |
+| `AUTHZ_CENTRAL_POLICY_ENFORCE` + `STRICT_BRANCH_SCOPED_MUTATIONS` | R3 pair | production template: `false` | Keep shadow |
+| `AUTH_STAFF_CODE_REQUIRED` + `AUTH_STAFF_SESSION_DB_REQUIRED` | R4 pair | production template + code defaults: `true` | Keep `true` |
+| `WS_TICKET_AUTH_REQUIRED` | R5 | production template + code default: `true` | Keep `true` |
+| `AUTH_GUEST_CREDENTIALS_REQUIRED` | R6 | production template + code default: `true` | Keep `true`; pair with 12h TTL |
+| `PAYMENT_STAFF_SETTLEMENT_REQUIRED` | R7 | production template: `false` | Enable with a real gateway |
 
 ### A.3 Compose / infrastructure
 

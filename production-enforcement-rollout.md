@@ -1,7 +1,11 @@
 # Production Enforcement Rollout
 
 Date: 2026-05-22
-Status: Pre-rollout. All strict-enforcement flags default `false` in `backend/internal/config/config.go:172-180`. This document defines the staged sequence, dependencies, observability checkpoints, and rollback procedure for moving the platform from compatibility/dual-mode to strict enforcement.
+Status: Historical rollout design. As of 2026-07-29, R4–R6 default on and are
+the production launch baseline because no legacy client population exists.
+R2/R3/R7 retain staged gates. The procedures below remain useful for rollback
+and for later data-dependent waves, but the original decay-window schedule for
+R4–R6 is superseded by `OPERATIONS.md`.
 
 ## 1. Scope
 
