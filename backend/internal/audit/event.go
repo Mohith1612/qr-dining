@@ -62,6 +62,7 @@ const (
 	ResourceCustomer               = "customer"
 	ResourcePromo                  = "promo"
 	ResourceQRToken                = "qr_token"
+	ResourceTable                  = "table"
 	ResourceAuditLog               = "audit_log"
 	ResourcePlatformSupportSession = "platform.support_session"
 )
@@ -81,6 +82,8 @@ const (
 	ActionSessionClose             = "session.close"
 	ActionSessionAbandon           = "session.abandon"
 	ActionQRTokenRotate            = "qr_token.rotate"
+	ActionTableUpdate              = "table.update"
+	ActionTableDelete              = "table.delete"
 	ActionMenuItemCreate           = "menu.item.create"
 	ActionMenuItemUpdate           = "menu.item.update"
 	ActionMenuItemDelete           = "menu.item.delete"

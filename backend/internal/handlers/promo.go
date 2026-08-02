@@ -342,6 +342,134 @@ func (h *PromoHandler) DeactivatePromo(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// POST /branches/:id/promos/:promo_id/activate — re-enables a deactivated promo.
+func (h *PromoHandler) ActivatePromo(c *gin.Context) {
+	branchID, promo, staffSession, ok := h.resolvePromoForMutation(c)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, promo.BranchID)
+	if !ok {
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionPromoDeactivate, authz.PromoResource(promo.ID, promo.BranchID, orgID)) {
+		return
+	}
+	if err := h.svc.ActivatePromo(c.Request.Context(), promo.ID, branchID); err != nil {
+		respondInternalError(c)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// PATCH /branches/:id/promos/:promo_id — edits a promo's mutable fields.
+func (h *PromoHandler) UpdatePromo(c *gin.Context) {
+	branchID, promo, staffSession, ok := h.resolvePromoForMutation(c)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, promo.BranchID)
+	if !ok {
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionPromoCreate, authz.PromoResource(promo.ID, promo.BranchID, orgID)) {
+		return
+	}
+
+	var req createPromoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	usesPerPhone := int32(1)
+	if req.UsesPerPhone != nil {
+		usesPerPhone = *req.UsesPerPhone
+		if usesPerPhone < 0 {
+			usesPerPhone = 0
+		}
+	}
+	validFrom, err := time.Parse(time.RFC3339, req.ValidFrom)
+	if err != nil {
+		respondValidationError(c, "valid_from must be RFC3339")
+		return
+	}
+	validUntil, err := time.Parse(time.RFC3339, req.ValidUntil)
+	if err != nil {
+		respondValidationError(c, "valid_until must be RFC3339")
+		return
+	}
+	svcReq := services.UpdatePromoRequest{
+		PromoID:        promo.ID,
+		BranchID:       branchID,
+		Value:          req.Value,
+		MinOrderAmount: req.MinOrderAmount,
+		MaxUses:        req.MaxUses,
+		UsesPerPhone:   usesPerPhone,
+		ValidFrom:      validFrom,
+		ValidUntil:     validUntil,
+		Description:    req.Description,
+	}
+	if req.TimeWindowStart != nil && req.TimeWindowEnd != nil {
+		start, errS := parseHHMM(*req.TimeWindowStart)
+		end, errE := parseHHMM(*req.TimeWindowEnd)
+		if errS != nil || errE != nil {
+			respondValidationError(c, "time_window_start/end must be HH:MM")
+			return
+		}
+		svcReq.TimeWindowStart = &start
+		svcReq.TimeWindowEnd = &end
+	}
+	updated, err := h.svc.UpdatePromo(c.Request.Context(), svcReq)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	c.JSON(http.StatusOK, updated)
+}
+
+// resolvePromoForMutation loads the promo named by :id/:promo_id, verifies it
+// belongs to the branch, and returns the branch id, promo, and staff session.
+// Shared by activate/update.
+func (h *PromoHandler) resolvePromoForMutation(c *gin.Context) (int64, sqlc.Promo, services.StaffSession, bool) {
+	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid branch id")
+		return 0, sqlc.Promo{}, services.StaffSession{}, false
+	}
+	promoID, err := strconv.ParseInt(c.Param("promo_id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid promo id")
+		return 0, sqlc.Promo{}, services.StaffSession{}, false
+	}
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return 0, sqlc.Promo{}, services.StaffSession{}, false
+	}
+	promo, err := h.repos.GetPromoByID(c.Request.Context(), promoID)
+	if err != nil {
+		if errors.Is(err, domain.ErrPromoNotFound) {
+			respondError(c, http.StatusNotFound, CodePromoNotFound, err.Error())
+		} else {
+			respondInternalError(c)
+		}
+		return 0, sqlc.Promo{}, services.StaffSession{}, false
+	}
+	if promo.BranchID != branchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return 0, sqlc.Promo{}, services.StaffSession{}, false
+	}
+	return branchID, promo, staffSession, true
+}
+
 // parseHHMM parses "HH:MM" into a duration since midnight.
 func parseHHMM(s string) (time.Duration, error) {
 	t, err := time.Parse("15:04", s)

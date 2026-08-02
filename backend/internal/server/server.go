@@ -415,6 +415,8 @@ func New(
 	branchStaffAPI.GET("/promos", promoH.ListPromos)
 	branchStaffAPI.POST("/promos", promoH.CreatePromo)
 	branchStaffAPI.DELETE("/promos/:promo_id", promoH.DeactivatePromo)
+	branchStaffAPI.PATCH("/promos/:promo_id", promoH.UpdatePromo)
+	branchStaffAPI.POST("/promos/:promo_id/activate", promoH.ActivatePromo)
 
 	// Menu item updates — item-scoped, no branch param on path.
 	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)
@@ -433,6 +435,8 @@ func New(
 
 	// Table QR token refresh — table-scoped; branch ownership verified in handler.
 	staffAPI.PATCH("/tables/:id/qr-refresh", tableH.RefreshQR)
+	staffAPI.PATCH("/tables/:id", tableH.UpdateTable)
+	staffAPI.DELETE("/tables/:id", tableH.DeleteTable)
 
 	// Staff management — owner only (role enforced in handler).
 	staffAPI.PATCH("/staff/:id/pin", staffH.RotatePIN)

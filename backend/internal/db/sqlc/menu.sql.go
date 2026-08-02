@@ -188,6 +188,20 @@ func (q *Queries) DeleteMenuItem(ctx context.Context, arg DeleteMenuItemParams) 
 	return err
 }
 
+const deleteTable = `-- name: DeleteTable :exec
+DELETE FROM tables WHERE id = $1 AND branch_id = $2
+`
+
+type DeleteTableParams struct {
+	ID       int64 `json:"id"`
+	BranchID int64 `json:"branch_id"`
+}
+
+func (q *Queries) DeleteTable(ctx context.Context, arg DeleteTableParams) error {
+	_, err := q.db.Exec(ctx, deleteTable, arg.ID, arg.BranchID)
+	return err
+}
+
 const getMenuCategoryByID = `-- name: GetMenuCategoryByID :one
 SELECT id, branch_id, name, position, is_active FROM menu_categories WHERE id = $1
 `
@@ -978,6 +992,39 @@ func (q *Queries) UpdateMenuItemScoped(ctx context.Context, arg UpdateMenuItemSc
 		&i.ItemBadges,
 		&i.SpiceLevel,
 		&i.ImageUrl,
+	)
+	return i, err
+}
+
+const updateTable = `-- name: UpdateTable :one
+UPDATE tables SET identifier = $2, capacity = $3
+WHERE id = $1 AND branch_id = $4
+RETURNING id, branch_id, identifier, capacity, qr_code_token, status, created_at
+`
+
+type UpdateTableParams struct {
+	ID         int64  `json:"id"`
+	Identifier string `json:"identifier"`
+	Capacity   int16  `json:"capacity"`
+	BranchID   int64  `json:"branch_id"`
+}
+
+func (q *Queries) UpdateTable(ctx context.Context, arg UpdateTableParams) (Table, error) {
+	row := q.db.QueryRow(ctx, updateTable,
+		arg.ID,
+		arg.Identifier,
+		arg.Capacity,
+		arg.BranchID,
+	)
+	var i Table
+	err := row.Scan(
+		&i.ID,
+		&i.BranchID,
+		&i.Identifier,
+		&i.Capacity,
+		&i.QrCodeToken,
+		&i.Status,
+		&i.CreatedAt,
 	)
 	return i, err
 }

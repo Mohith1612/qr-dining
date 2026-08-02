@@ -127,6 +127,52 @@ func (r *Repos) DeactivatePromo(ctx context.Context, promoID, branchID int64) er
 	return r.q.DeactivatePromo(ctx, sqlc.DeactivatePromoParams{ID: promoID, BranchID: branchID})
 }
 
+func (r *Repos) ActivatePromo(ctx context.Context, promoID, branchID int64) error {
+	return r.q.ActivatePromo(ctx, sqlc.ActivatePromoParams{ID: promoID, BranchID: branchID})
+}
+
+// UpdatePromoParams carries the mutable fields (code and type are immutable).
+type UpdatePromoParams struct {
+	PromoID         int64
+	BranchID        int64
+	Value           float64
+	MinOrderAmount  float64
+	MaxUses         *int32
+	UsesPerPhone    int32
+	ValidFrom       time.Time
+	ValidUntil      time.Time
+	TimeWindowStart *time.Duration
+	TimeWindowEnd   *time.Duration
+	Description     *string
+}
+
+func (r *Repos) UpdatePromo(ctx context.Context, p UpdatePromoParams) (sqlc.Promo, error) {
+	var value, minOrder pgtype.Numeric
+	_ = value.Scan(numericStr(p.Value))
+	_ = minOrder.Scan(numericStr(p.MinOrderAmount))
+
+	params := sqlc.UpdatePromoParams{
+		ID:             p.PromoID,
+		BranchID:       p.BranchID,
+		Value:          value,
+		MinOrderAmount: minOrder,
+		UsesPerPhone:   p.UsesPerPhone,
+		ValidFrom:      p.ValidFrom,
+		ValidUntil:     p.ValidUntil,
+	}
+	if p.MaxUses != nil {
+		params.MaxUses = pgtype.Int4{Int32: *p.MaxUses, Valid: true}
+	}
+	if p.TimeWindowStart != nil {
+		params.TimeWindowStart = pgtype.Time{Microseconds: p.TimeWindowStart.Microseconds(), Valid: true}
+		params.TimeWindowEnd = pgtype.Time{Microseconds: p.TimeWindowEnd.Microseconds(), Valid: true}
+	}
+	if p.Description != nil {
+		params.Description = pgtype.Text{String: *p.Description, Valid: true}
+	}
+	return r.q.UpdatePromo(ctx, params)
+}
+
 func numericStr(v float64) string {
 	return fmt.Sprintf("%.2f", math.Round(v*100)/100)
 }

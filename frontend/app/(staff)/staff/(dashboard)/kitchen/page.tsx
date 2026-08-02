@@ -51,16 +51,21 @@ const COLUMNS: { status: OrderStatus; label: string; tone: string; toneSoft: str
 ]
 
 function KitchenCard({
-  order, tone, toneSoft, onAdvance, advancing,
+  order, tone, toneSoft, onAdvance, onCancel, advancing, canceling,
 }: {
   order: KitchenOrder
   tone: string
   toneSoft: string
   onAdvance: (id: string, next: OrderStatus) => void
+  onCancel: (id: string) => void
   advancing: boolean
+  canceling: boolean
 }) {
   const next = NEXT_STATUS[order.status]
   const nextLabel = NEXT_LABEL[order.status]
+  // Cancellable up to (but not including) "ready" — matches the backend
+  // transitions (pending/confirmed/preparing → cancelled).
+  const canCancel = order.status === "pending" || order.status === "confirmed" || order.status === "preparing"
   const displayId = order.order_operational_id ?? order.order_number_display ?? order.order_number ?? order.id.slice(0, 8)
   const mins = elapsedMins(order.created_at)
   const isStale = mins >= 15
@@ -151,6 +156,27 @@ function KitchenCard({
           }
         </button>
       )}
+
+      {canCancel && (
+        <button
+          disabled={canceling}
+          onClick={() => onCancel(order.id)}
+          className="press"
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            width: "100%", height: 30, marginTop: 6,
+            background: "transparent", color: "var(--alert)",
+            border: "1px solid var(--line-2)", borderRadius: "var(--rad-md)",
+            fontSize: 11, fontWeight: 600, letterSpacing: "0.03em",
+            cursor: canceling ? "not-allowed" : "pointer",
+            opacity: canceling ? 0.6 : 1,
+          }}
+        >
+          {canceling
+            ? <Loader2 className="animate-spin" style={{ width: 12, height: 12 }} />
+            : "Cancel order"}
+        </button>
+      )}
     </HospitalityCard>
   )
 }
@@ -160,6 +186,7 @@ export default function KitchenPage() {
   const [orders, setOrders] = useState<KitchenOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [advancing, setAdvancing] = useState<string | null>(null)
+  const [canceling, setCanceling] = useState<string | null>(null)
 
   const fetchOrders = useCallback(async () => {
     if (!branchId || !token) return
@@ -189,6 +216,21 @@ export default function KitchenPage() {
       toast.error("Couldn't update status. Please try again.")
     } finally {
       setAdvancing(null)
+    }
+  }
+
+  async function handleCancel(orderId: string) {
+    if (!token) return
+    if (!confirm("Cancel this order? The guest is notified and it leaves the board.")) return
+    setCanceling(orderId)
+    try {
+      await ordersApi.updateStatus(orderId, "cancelled", token)
+      setOrders((prev) => prev.filter((o) => o.id !== orderId))
+      toast.success("Order cancelled.")
+    } catch {
+      toast.error("Couldn't cancel the order. Please try again.")
+    } finally {
+      setCanceling(null)
     }
   }
 
@@ -274,7 +316,9 @@ export default function KitchenPage() {
                           tone={tone}
                           toneSoft={toneSoft}
                           onAdvance={handleAdvance}
+                          onCancel={handleCancel}
                           advancing={advancing === order.id}
+                          canceling={canceling === order.id}
                         />
                       ))
                     )}

@@ -41,13 +41,23 @@ function TableRow({
   canManage,
   onPrint,
   onRefreshQR,
+  onEdit,
+  onDelete,
 }: {
   table: Table
   canManage: boolean
   onPrint: (t: Table) => void
   onRefreshQR: (t: Table) => void
+  onEdit: (t: Table) => void
+  onDelete: (t: Table) => void
 }) {
   const isOccupied = table.status === "occupied"
+  const iconBtn: React.CSSProperties = {
+    display: "flex", alignItems: "center", justifyContent: "center",
+    width: 30, height: 30, borderRadius: "var(--rad-md)",
+    background: "var(--bg-elev-2)", border: "1px solid var(--line-1)",
+    color: "var(--ink-2)", flexShrink: 0, cursor: "pointer",
+  }
 
   return (
     <div
@@ -138,6 +148,24 @@ function TableRow({
           Regen QR
         </button>
       )}
+
+      {canManage && (
+        <>
+          <button onClick={() => onEdit(table)} className="press" title="Edit table" aria-label={`Edit ${table.identifier}`} style={iconBtn}>
+            <Edit2 size={13} aria-hidden />
+          </button>
+          <button
+            onClick={() => onDelete(table)}
+            disabled={isOccupied}
+            className="press"
+            title={isOccupied ? "Cannot delete while table is occupied" : "Delete table"}
+            aria-label={`Delete ${table.identifier}`}
+            style={{ ...iconBtn, color: isOccupied ? "var(--ink-4)" : "var(--alert)", cursor: isOccupied ? "not-allowed" : "pointer", opacity: isOccupied ? 0.5 : 1 }}
+          >
+            <Trash2 size={13} aria-hidden />
+          </button>
+        </>
+      )}
     </div>
   )
 }
@@ -148,6 +176,7 @@ export function TablesTab() {
   const [tables, setTables] = useState<Table[]>([])
   const [loading, setLoading] = useState(true)
   const [createModal, setCreateModal] = useState(false)
+  const [editTable, setEditTable] = useState<Table | null>(null)
   const [creating, setCreating] = useState(false)
   const [identifier, setIdentifier] = useState("")
   const [capacity, setCapacity] = useState(4)
@@ -172,20 +201,57 @@ export function TablesTab() {
     fetchTables()
   }, [fetchTables])
 
-  async function handleCreate() {
+  function openCreate() {
+    setEditTable(null)
+    setIdentifier("")
+    setCapacity(4)
+    setCreateModal(true)
+  }
+
+  function openEdit(table: Table) {
+    setEditTable(table)
+    setIdentifier(table.identifier)
+    setCapacity(table.capacity)
+    setCreateModal(true)
+  }
+
+  async function handleSubmit() {
     if (!branchId || !token || !identifier.trim()) return
     setCreating(true)
     try {
-      const table = await tablesApi.create(branchId, { identifier: identifier.trim(), capacity }, token)
-      setTables(prev => [...prev, table].sort((a, b) => a.identifier.localeCompare(b.identifier)))
+      if (editTable) {
+        const updated = await tablesApi.update(editTable.id, { identifier: identifier.trim(), capacity }, token)
+        setTables(prev => prev.map(t => t.id === updated.id ? updated : t).sort((a, b) => a.identifier.localeCompare(b.identifier)))
+        toast.success(`Table ${updated.identifier} updated.`)
+      } else {
+        const table = await tablesApi.create(branchId, { identifier: identifier.trim(), capacity }, token)
+        setTables(prev => [...prev, table].sort((a, b) => a.identifier.localeCompare(b.identifier)))
+        toast.success(`Table ${table.identifier} created.`)
+      }
       setCreateModal(false)
+      setEditTable(null)
       setIdentifier("")
       setCapacity(4)
-      toast.success(`Table ${table.identifier} created.`)
-    } catch {
-      toast.error("Failed to create table.")
+    } catch (err) {
+      toast.error(err instanceof ApiError && err.code === "DUPLICATE_TABLE_IDENTIFIER"
+        ? "Another table already uses that name."
+        : editTable ? "Failed to update table." : "Failed to create table.")
     } finally {
       setCreating(false)
+    }
+  }
+
+  async function handleDelete(table: Table) {
+    if (!token) return
+    if (!confirm(`Delete table ${table.identifier}? This can't be undone.`)) return
+    try {
+      await tablesApi.remove(table.id, token)
+      setTables(prev => prev.filter(t => t.id !== table.id))
+      toast.success(`Table ${table.identifier} deleted.`)
+    } catch (err) {
+      toast.error(err instanceof ApiError && err.code === "TABLE_OCCUPIED"
+        ? "Can't delete a table with a session in progress."
+        : "Failed to delete table.")
     }
   }
 
@@ -215,7 +281,7 @@ export function TablesTab() {
         <p className="eyebrow">{tables.length} table{tables.length !== 1 ? "s" : ""}</p>
         {canManage && (
           <button
-            onClick={() => setCreateModal(true)}
+            onClick={openCreate}
             className="press"
             style={{
               height: 36,
@@ -246,14 +312,16 @@ export function TablesTab() {
               canManage={canManage}
               onPrint={handlePrint}
               onRefreshQR={handleRefreshQR}
+              onEdit={openEdit}
+              onDelete={handleDelete}
             />
           ))}
         </div>
       )}
 
-      {/* Create modal */}
+      {/* Create / edit modal */}
       {createModal && (
-        <BottomSheet open onClose={() => setCreateModal(false)} title="Add table">
+        <BottomSheet open onClose={() => setCreateModal(false)} title={editTable ? "Edit table" : "Add table"}>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
               <p className="eyebrow" style={{ marginBottom: 6 }}>Table identifier</p>
@@ -261,7 +329,7 @@ export function TablesTab() {
                 placeholder="e.g. T3, Table 12, Garden 2"
                 value={identifier}
                 onChange={e => setIdentifier(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleCreate()}
+                onKeyDown={e => e.key === "Enter" && handleSubmit()}
               />
             </div>
             <div>
@@ -275,7 +343,7 @@ export function TablesTab() {
               />
             </div>
             <button
-              onClick={handleCreate}
+              onClick={handleSubmit}
               disabled={creating || !identifier.trim()}
               className="press"
               style={{
@@ -295,7 +363,7 @@ export function TablesTab() {
               }}
             >
               {creating && <Loader2 size={14} className="animate-spin" />}
-              Create table
+              {editTable ? "Save changes" : "Create table"}
             </button>
           </div>
         </BottomSheet>

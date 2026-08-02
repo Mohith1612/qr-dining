@@ -71,3 +71,22 @@ SELECT * FROM promos WHERE branch_id = $1 ORDER BY created_at DESC;
 
 -- name: DeactivatePromo :exec
 UPDATE promos SET is_active = FALSE WHERE id = $1 AND branch_id = $2;
+
+-- name: ActivatePromo :exec
+UPDATE promos SET is_active = TRUE WHERE id = $1 AND branch_id = $2;
+
+-- name: UpdatePromo :one
+-- Edits the mutable fields of a promo. Code and type are immutable (changing
+-- them is effectively a different offer); redemptions already reference them.
+UPDATE promos SET
+  value = $3,
+  min_order_amount = $4,
+  max_uses = $5,
+  uses_per_phone = $6,
+  valid_from = $7,
+  valid_until = $8,
+  time_window_start = $9,
+  time_window_end = $10,
+  description = $11
+WHERE id = $1 AND branch_id = $2
+RETURNING *;

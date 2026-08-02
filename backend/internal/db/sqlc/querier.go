@@ -18,6 +18,7 @@ type Querier interface {
 	// terminal stage of the awaiting_reactivation pipeline.
 	AbandonStaleSession(ctx context.Context, id uuid.UUID) error
 	ActivatePlatformMFA(ctx context.Context, arg ActivatePlatformMFAParams) (PlatformUserMfa, error)
+	ActivatePromo(ctx context.Context, arg ActivatePromoParams) error
 	AddCartItem(ctx context.Context, arg AddCartItemParams) (CartItem, error)
 	AddPlatformUserRole(ctx context.Context, arg AddPlatformUserRoleParams) error
 	// Signed manual adjustment; floors at zero. Positive part counts as earned,
@@ -79,6 +80,7 @@ type Querier interface {
 	DeleteOrganizationEntitlementOverride(ctx context.Context, arg DeleteOrganizationEntitlementOverrideParams) error
 	DeleteOrganizationFlagOverride(ctx context.Context, arg DeleteOrganizationFlagOverrideParams) error
 	DeletePlanEntitlements(ctx context.Context, planID int64) error
+	DeleteTable(ctx context.Context, arg DeleteTableParams) error
 	DisablePlatformMFA(ctx context.Context, platformUserID int64) error
 	FailIdempotencyKey(ctx context.Context, arg FailIdempotencyKeyParams) error
 	GetActivePlatformSessionByTokenHash(ctx context.Context, tokenHash string) (PlatformSession, error)
@@ -340,8 +342,12 @@ type Querier interface {
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
 	UpdatePaymentStatusExpected(ctx context.Context, arg UpdatePaymentStatusExpectedParams) (Payment, error)
 	UpdatePlan(ctx context.Context, arg UpdatePlanParams) (SubscriptionPlan, error)
+	// Edits the mutable fields of a promo. Code and type are immutable (changing
+	// them is effectively a different offer); redemptions already reference them.
+	UpdatePromo(ctx context.Context, arg UpdatePromoParams) (Promo, error)
 	UpdateRestaurantLogoByBranchID(ctx context.Context, arg UpdateRestaurantLogoByBranchIDParams) error
 	UpdateStaffPIN(ctx context.Context, arg UpdateStaffPINParams) error
+	UpdateTable(ctx context.Context, arg UpdateTableParams) (Table, error)
 	UpdateTableStatus(ctx context.Context, arg UpdateTableStatusParams) error
 	UpsertBillingProfile(ctx context.Context, arg UpsertBillingProfileParams) (OrganizationBillingProfile, error)
 	UpsertBranchCollateral(ctx context.Context, arg UpsertBranchCollateralParams) (BranchCollateral, error)

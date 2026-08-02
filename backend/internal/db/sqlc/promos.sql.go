@@ -12,6 +12,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const activatePromo = `-- name: ActivatePromo :exec
+UPDATE promos SET is_active = TRUE WHERE id = $1 AND branch_id = $2
+`
+
+type ActivatePromoParams struct {
+	ID       int64 `json:"id"`
+	BranchID int64 `json:"branch_id"`
+}
+
+func (q *Queries) ActivatePromo(ctx context.Context, arg ActivatePromoParams) error {
+	_, err := q.db.Exec(ctx, activatePromo, arg.ID, arg.BranchID)
+	return err
+}
+
 const countPromoRedemptions = `-- name: CountPromoRedemptions :one
 SELECT COUNT(*) FROM promo_redemptions WHERE promo_id = $1
 `
@@ -347,4 +361,72 @@ func (q *Queries) ListPromosForBranch(ctx context.Context, branchID int64) ([]Pr
 		return nil, err
 	}
 	return items, nil
+}
+
+const updatePromo = `-- name: UpdatePromo :one
+UPDATE promos SET
+  value = $3,
+  min_order_amount = $4,
+  max_uses = $5,
+  uses_per_phone = $6,
+  valid_from = $7,
+  valid_until = $8,
+  time_window_start = $9,
+  time_window_end = $10,
+  description = $11
+WHERE id = $1 AND branch_id = $2
+RETURNING id, branch_id, code, type, value, min_order_amount, max_uses, uses_per_phone, valid_from, valid_until, time_window_start, time_window_end, is_active, description, created_by, created_at, redeemed_count
+`
+
+type UpdatePromoParams struct {
+	ID              int64          `json:"id"`
+	BranchID        int64          `json:"branch_id"`
+	Value           pgtype.Numeric `json:"value"`
+	MinOrderAmount  pgtype.Numeric `json:"min_order_amount"`
+	MaxUses         pgtype.Int4    `json:"max_uses"`
+	UsesPerPhone    int32          `json:"uses_per_phone"`
+	ValidFrom       time.Time      `json:"valid_from"`
+	ValidUntil      time.Time      `json:"valid_until"`
+	TimeWindowStart pgtype.Time    `json:"time_window_start"`
+	TimeWindowEnd   pgtype.Time    `json:"time_window_end"`
+	Description     pgtype.Text    `json:"description"`
+}
+
+// Edits the mutable fields of a promo. Code and type are immutable (changing
+// them is effectively a different offer); redemptions already reference them.
+func (q *Queries) UpdatePromo(ctx context.Context, arg UpdatePromoParams) (Promo, error) {
+	row := q.db.QueryRow(ctx, updatePromo,
+		arg.ID,
+		arg.BranchID,
+		arg.Value,
+		arg.MinOrderAmount,
+		arg.MaxUses,
+		arg.UsesPerPhone,
+		arg.ValidFrom,
+		arg.ValidUntil,
+		arg.TimeWindowStart,
+		arg.TimeWindowEnd,
+		arg.Description,
+	)
+	var i Promo
+	err := row.Scan(
+		&i.ID,
+		&i.BranchID,
+		&i.Code,
+		&i.Type,
+		&i.Value,
+		&i.MinOrderAmount,
+		&i.MaxUses,
+		&i.UsesPerPhone,
+		&i.ValidFrom,
+		&i.ValidUntil,
+		&i.TimeWindowStart,
+		&i.TimeWindowEnd,
+		&i.IsActive,
+		&i.Description,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.RedeemedCount,
+	)
+	return i, err
 }

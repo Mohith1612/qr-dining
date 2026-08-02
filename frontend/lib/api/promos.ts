@@ -31,4 +31,10 @@ export const promosApi = {
 
   deactivate: (branchId: number, promoId: number, token: string) =>
     api.delete<void>(`/branches/${branchId}/promos/${promoId}`, { staffToken: token }),
+
+  activate: (branchId: number, promoId: number, token: string) =>
+    api.post<void>(`/branches/${branchId}/promos/${promoId}/activate`, {}, { staffToken: token }),
+
+  update: (branchId: number, promoId: number, data: CreatePromoRequest, token: string) =>
+    api.patch<Promo>(`/branches/${branchId}/promos/${promoId}`, data, { staffToken: token }),
 }

@@ -169,3 +169,38 @@ func (s *PromoService) ListPromosForBranch(ctx context.Context, branchID int64) 
 func (s *PromoService) DeactivatePromo(ctx context.Context, promoID, branchID int64) error {
 	return s.repos.DeactivatePromo(ctx, promoID, branchID)
 }
+
+func (s *PromoService) ActivatePromo(ctx context.Context, promoID, branchID int64) error {
+	return s.repos.ActivatePromo(ctx, promoID, branchID)
+}
+
+// UpdatePromoRequest mirrors CreatePromoRequest minus the immutable code/type.
+type UpdatePromoRequest struct {
+	PromoID         int64
+	BranchID        int64
+	Value           float64
+	MinOrderAmount  float64
+	MaxUses         *int32
+	UsesPerPhone    int32
+	ValidFrom       time.Time
+	ValidUntil      time.Time
+	TimeWindowStart *time.Duration
+	TimeWindowEnd   *time.Duration
+	Description     *string
+}
+
+func (s *PromoService) UpdatePromo(ctx context.Context, req UpdatePromoRequest) (sqlc.Promo, error) {
+	return s.repos.UpdatePromo(ctx, repository.UpdatePromoParams{
+		PromoID:         req.PromoID,
+		BranchID:        req.BranchID,
+		Value:           req.Value,
+		MinOrderAmount:  req.MinOrderAmount,
+		MaxUses:         req.MaxUses,
+		UsesPerPhone:    req.UsesPerPhone,
+		ValidFrom:       req.ValidFrom,
+		ValidUntil:      req.ValidUntil,
+		TimeWindowStart: req.TimeWindowStart,
+		TimeWindowEnd:   req.TimeWindowEnd,
+		Description:     req.Description,
+	})
+}

@@ -74,6 +74,14 @@ RETURNING *;
 -- name: RefreshTableQRToken :one
 UPDATE tables SET qr_code_token = $2 WHERE id = $1 RETURNING *;
 
+-- name: UpdateTable :one
+UPDATE tables SET identifier = $2, capacity = $3
+WHERE id = $1 AND branch_id = $4
+RETURNING *;
+
+-- name: DeleteTable :exec
+DELETE FROM tables WHERE id = $1 AND branch_id = $2;
+
 -- name: ListFeaturedMenuItems :many
 SELECT * FROM menu_items
 WHERE branch_id = $1

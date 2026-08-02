@@ -73,7 +73,7 @@ const (
 var orderTransitions = map[OrderStatus][]OrderStatus{
 	OrderStatusPending:   {OrderStatusConfirmed, OrderStatusCancelled},
 	OrderStatusConfirmed: {OrderStatusPreparing, OrderStatusCancelled},
-	OrderStatusPreparing: {OrderStatusReady},
+	OrderStatusPreparing: {OrderStatusReady, OrderStatusCancelled},
 	OrderStatusReady:     {OrderStatusServed},
 	OrderStatusServed:    {},
 	OrderStatusCancelled: {},

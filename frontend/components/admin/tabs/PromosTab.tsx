@@ -42,6 +42,7 @@ export function PromosTab() {
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [editId, setEditId] = useState<number | null>(null)
 
   // Create form state
   const [code, setCode] = useState("")
@@ -71,36 +72,70 @@ export function PromosTab() {
 
   useEffect(() => { fetchPromos() }, [fetchPromos])
 
-  async function handleCreate() {
+  function resetForm() {
+    setEditId(null)
+    setCode(""); setType("percentage"); setValue(""); setMinOrder(""); setMaxUses(""); setUsesPerPhone("1")
+    setValidFrom(""); setValidUntil(""); setWindowStart(""); setWindowEnd(""); setDescription("")
+  }
+
+  function openCreate() {
+    resetForm()
+    setShowCreate(true)
+  }
+
+  function openEdit(p: Promo) {
+    setEditId(p.id)
+    setCode(p.code)
+    setType(p.type)
+    setValue(String(p.value))
+    setMinOrder(p.min_order_amount ? String(p.min_order_amount) : "")
+    setMaxUses(p.max_uses != null ? String(p.max_uses) : "")
+    setUsesPerPhone(String(p.uses_per_phone))
+    setValidFrom(p.valid_from.slice(0, 10))
+    setValidUntil(p.valid_until.slice(0, 10))
+    setWindowStart((p.time_window_start ?? "").slice(0, 5))
+    setWindowEnd((p.time_window_end ?? "").slice(0, 5))
+    setDescription(p.description ?? "")
+    setShowCreate(true)
+  }
+
+  async function handleSubmit() {
     if (!branchId || !token) return
     if (!code.trim() || !value || !validFrom || !validUntil) {
       toast.error("Code, value, and date range are required.")
       return
     }
     setCreating(true)
+    const body = {
+      code: code.trim().toUpperCase(),
+      type,
+      value: parseFloat(value),
+      min_order_amount: minOrder ? parseFloat(minOrder) : 0,
+      max_uses: maxUses ? parseInt(maxUses) : null,
+      uses_per_phone: usesPerPhone ? parseInt(usesPerPhone) : 0,
+      // Date-only pickers: the promo runs from the start of the first day to
+      // the end of the last day, in the operator's local time.
+      valid_from: new Date(validFrom + "T00:00:00").toISOString(),
+      valid_until: new Date(validUntil + "T23:59:59").toISOString(),
+      time_window_start: windowStart || null,
+      time_window_end: windowEnd || null,
+      description: description || null,
+    }
     try {
-      await promosApi.create(branchId, {
-        code: code.trim().toUpperCase(),
-        type,
-        value: parseFloat(value),
-        min_order_amount: minOrder ? parseFloat(minOrder) : 0,
-        max_uses: maxUses ? parseInt(maxUses) : null,
-        uses_per_phone: usesPerPhone ? parseInt(usesPerPhone) : 0,
-        // Date-only pickers: the promo runs from the start of the first day to
-        // the end of the last day, in the operator's local time.
-        valid_from: new Date(validFrom + "T00:00:00").toISOString(),
-        valid_until: new Date(validUntil + "T23:59:59").toISOString(),
-        time_window_start: windowStart || null,
-        time_window_end: windowEnd || null,
-        description: description || null,
-      }, token)
-      toast.success("Promo created.")
+      if (editId != null) {
+        await promosApi.update(branchId, editId, body, token)
+        toast.success("Promo updated.")
+      } else {
+        await promosApi.create(branchId, body, token)
+        toast.success("Promo created.")
+      }
       setShowCreate(false)
-      setCode(""); setValue(""); setMinOrder(""); setMaxUses(""); setUsesPerPhone("1")
-      setValidFrom(""); setValidUntil(""); setWindowStart(""); setWindowEnd(""); setDescription("")
+      resetForm()
       fetchPromos()
     } catch {
-      toast.error("Failed to create promo. Check the code isn't already in use.")
+      toast.error(editId != null
+        ? "Failed to update promo."
+        : "Failed to create promo. Check the code isn't already in use.")
     } finally {
       setCreating(false)
     }
@@ -114,6 +149,17 @@ export function PromosTab() {
       fetchPromos()
     } catch {
       toast.error("Failed to deactivate promo.")
+    }
+  }
+
+  async function handleActivate(promoId: number) {
+    if (!branchId || !token) return
+    try {
+      await promosApi.activate(branchId, promoId, token)
+      toast.success("Promo activated.")
+      fetchPromos()
+    } catch {
+      toast.error("Failed to activate promo.")
     }
   }
 
@@ -136,7 +182,7 @@ export function PromosTab() {
           {promos.length} promo{promos.length !== 1 ? "s" : ""}
         </p>
         <button
-          onClick={() => setShowCreate((v) => !v)}
+          onClick={() => (showCreate ? (setShowCreate(false), resetForm()) : openCreate())}
           className="press"
           style={{
             display: "flex", alignItems: "center", gap: 6,
@@ -152,15 +198,16 @@ export function PromosTab() {
 
       {showCreate && (
         <HospitalityCard elev={1} style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <p className="eyebrow" style={{ marginBottom: 4 }}>Create promotion</p>
+          <p className="eyebrow" style={{ marginBottom: 4 }}>{editId != null ? "Edit promotion" : "Create promotion"}</p>
 
           <div style={{ display: "flex", gap: 8 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, color: "var(--ink-3)", display: "block", marginBottom: 4 }}>Code</label>
+              <label style={{ fontSize: 11, color: "var(--ink-3)", display: "block", marginBottom: 4 }}>Code{editId != null ? " (fixed)" : ""}</label>
               <Input
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 placeholder="HAPPY20"
+                disabled={editId != null}
               />
             </div>
             <div style={{ flex: 1 }}>
@@ -245,11 +292,11 @@ export function PromosTab() {
           </div>
 
           <div style={{ display: "flex", gap: 8 }}>
-            <Button onClick={handleCreate} disabled={creating} style={{ flex: 1 }}>
-              {creating ? <Loader2 className="size-4 animate-spin" /> : "Create promo"}
+            <Button onClick={handleSubmit} disabled={creating} style={{ flex: 1 }}>
+              {creating ? <Loader2 className="size-4 animate-spin" /> : editId != null ? "Save changes" : "Create promo"}
             </Button>
             <Button
-              onClick={() => setShowCreate(false)}
+              onClick={() => { setShowCreate(false); resetForm() }}
               style={{ flex: 1, background: "var(--bg-elev-2)", color: "var(--ink-2)", border: "1px solid var(--line-1)" }}
             >
               Cancel
@@ -304,19 +351,44 @@ export function PromosTab() {
                     {p.time_window_start && ` · ${p.time_window_start}–${p.time_window_end}`}
                   </p>
                 </div>
-                {p.is_active && (
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <button
-                    onClick={() => handleDeactivate(p.id)}
+                    onClick={() => openEdit(p)}
                     className="press"
                     style={{
-                      flexShrink: 0, fontSize: 12, color: "var(--ink-3)",
+                      fontSize: 12, color: "var(--ink-3)",
                       padding: "5px 10px", borderRadius: "var(--rad-md)",
                       background: "var(--bg-elev-2)", border: "1px solid var(--line-1)",
                     }}
                   >
-                    Deactivate
+                    Edit
                   </button>
-                )}
+                  {p.is_active ? (
+                    <button
+                      onClick={() => handleDeactivate(p.id)}
+                      className="press"
+                      style={{
+                        fontSize: 12, color: "var(--ink-3)",
+                        padding: "5px 10px", borderRadius: "var(--rad-md)",
+                        background: "var(--bg-elev-2)", border: "1px solid var(--line-1)",
+                      }}
+                    >
+                      Deactivate
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleActivate(p.id)}
+                      className="press"
+                      style={{
+                        fontSize: 12, color: "var(--ok)",
+                        padding: "5px 10px", borderRadius: "var(--rad-md)",
+                        background: "var(--ok-soft)", border: "1px solid var(--ok)",
+                      }}
+                    >
+                      Activate
+                    </button>
+                  )}
+                </div>
               </div>
             </HospitalityCard>
           ))}

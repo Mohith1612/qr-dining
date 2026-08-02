@@ -127,6 +127,112 @@ func (h *TableHandler) CreateTable(c *gin.Context) {
 	c.JSON(http.StatusCreated, tableToResponse(table))
 }
 
+type updateTableRequest struct {
+	Identifier string `json:"identifier" binding:"required,min=1,max=50"`
+	Capacity   int16  `json:"capacity"`
+}
+
+// PATCH /tables/:id — owner/manager only. Renames a table / changes capacity.
+func (h *TableHandler) UpdateTable(c *gin.Context) {
+	tableID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid table id")
+		return
+	}
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	if sess.Role != sqlc.StaffRoleOwner && sess.Role != sqlc.StaffRoleManager {
+		respondError(c, http.StatusForbidden, CodeForbidden, "only owners and managers can edit tables")
+		return
+	}
+	table, err := h.repos.GetTableByID(c.Request.Context(), tableID)
+	if err != nil {
+		if errors.Is(err, domain.ErrTableNotFound) {
+			respondError(c, http.StatusNotFound, CodeTableNotFound, err.Error())
+			return
+		}
+		respondInternalError(c)
+		return
+	}
+	if table.BranchID != sess.BranchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+	var req updateTableRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	if req.Capacity <= 0 {
+		req.Capacity = table.Capacity
+	}
+	updated, err := h.repos.UpdateTable(c.Request.Context(), tableID, sess.BranchID, req.Identifier, req.Capacity)
+	if err != nil {
+		if errors.Is(err, domain.ErrDuplicateTableIdentifier) {
+			respondError(c, http.StatusConflict, CodeDuplicateTableIdentifier, err.Error())
+			return
+		}
+		respondInternalError(c)
+		return
+	}
+	c.JSON(http.StatusOK, tableToResponse(updated))
+}
+
+// DELETE /tables/:id — owner/manager only. Refuses while a live session holds the table.
+func (h *TableHandler) DeleteTable(c *gin.Context) {
+	tableID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid table id")
+		return
+	}
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	if sess.Role != sqlc.StaffRoleOwner && sess.Role != sqlc.StaffRoleManager {
+		respondError(c, http.StatusForbidden, CodeForbidden, "only owners and managers can delete tables")
+		return
+	}
+	table, err := h.repos.GetTableByID(c.Request.Context(), tableID)
+	if err != nil {
+		if errors.Is(err, domain.ErrTableNotFound) {
+			respondError(c, http.StatusNotFound, CodeTableNotFound, err.Error())
+			return
+		}
+		respondInternalError(c)
+		return
+	}
+	if table.BranchID != sess.BranchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+	// Don't delete a table that still has a guest session in progress.
+	if _, err := h.repos.GetActiveSessionForTable(c.Request.Context(), tableID); err == nil {
+		respondError(c, http.StatusConflict, CodeTableOccupied, "cannot delete a table with a session in progress")
+		return
+	}
+	if err := h.repos.DeleteTable(c.Request.Context(), tableID, sess.BranchID); err != nil {
+		respondInternalError(c)
+		return
+	}
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:     table.BranchID,
+		ResourceType: audit.ResourceTable,
+		ResourceID:   audit.IDStr(tableID),
+		Action:       audit.ActionTableDelete,
+		Result:       audit.ResultSuccess,
+		ActorType:    audit.ActorTypeStaff,
+		ActorID:      audit.IDStr(sess.StaffID),
+		RiskLevel:    audit.RiskMedium,
+		Metadata:     map[string]any{"deleted_table_identifier": table.Identifier},
+	})
+	c.Status(http.StatusNoContent)
+}
+
 // PATCH /tables/:id/qr-refresh — owner/manager only
 func (h *TableHandler) RefreshQR(c *gin.Context) {
 	tableID, err := strconv.ParseInt(c.Param("id"), 10, 64)
