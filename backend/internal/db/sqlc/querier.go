@@ -208,6 +208,9 @@ type Querier interface {
 	LinkSessionToCustomer(ctx context.Context, arg LinkSessionToCustomerParams) error
 	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]ListActiveAssistanceForBranchRow, error)
 	ListActiveOrderItemsForBranch(ctx context.Context, branchID int64) ([]ListActiveOrderItemsForBranchRow, error)
+	// Orders on the kitchen/waiter boards. Gated on a LIVE session so an order whose
+	// table was abandoned or closed (guests gone) drops off the board instead of
+	// lingering as a stale ticket.
 	ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]ListActiveOrdersForBranchRow, error)
 	// All live sessions for the branch, not just 'active': a payment_pending or
 	// awaiting_reactivation session still occupies its table and is relevant to

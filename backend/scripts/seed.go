@@ -532,13 +532,19 @@ func seedLiveData(ctx context.Context, pool *pgxpool.Pool, q *sqlc.Queries, bran
 		_ = pool.QueryRow(ctx, `SELECT price FROM menu_items WHERE id=$1`, itemIDs[0]).Scan(&itemPrice)
 	}
 
-	// ── T1: active session + confirmed order + pending assistance ──
+	// ── T1: active session + a *served* order + pending assistance ──
+	// The order is seeded as already served (not confirmed) so the kitchen board
+	// starts empty after a reset. These synthetic sessions have no live guest, so
+	// the reactivation worker abandons them within a minute; a confirmed order
+	// would otherwise show as a stale ticket. This still demos a table that has
+	// ordered, eaten, and raised an assistance request (waiter board + guest
+	// order history). Place your own order to exercise the kitchen flow.
 	t1 := tableID("T1")
 	if t1 != 0 && !tableHasLiveSession(ctx, pool, t1) {
 		sess := createSession(ctx, pool, branch, t1, dateStr, "active")
 		host := createHost(ctx, pool, q, sess, "Riya")
 		markOccupied(ctx, pool, t1)
-		orderID := createOrder(ctx, pool, branch, sess, host, dateStr, "confirmed", "220.00")
+		orderID := createOrder(ctx, pool, branch, sess, host, dateStr, "served", "220.00")
 		if orderID != "" && len(itemIDs) > 0 {
 			_, _ = q.CreateOrderItem(ctx, sqlc.CreateOrderItemParams{
 				OrderID: pgUUID(orderID), MenuItemID: itemIDs[0], Quantity: 2,
@@ -550,7 +556,7 @@ func seedLiveData(ctx context.Context, pool *pgxpool.Pool, q *sqlc.Queries, bran
 		}); err != nil {
 			fmt.Printf("  assistance: %v\n", err)
 		}
-		fmt.Printf("  live T1: session=%s order=confirmed assistance=pending\n", sess)
+		fmt.Printf("  live T1: session=%s order=served assistance=pending\n", sess)
 	}
 
 	// ── T2: payment_pending session + order + payment awaiting staff confirmation ──
