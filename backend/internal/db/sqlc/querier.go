@@ -206,6 +206,9 @@ type Querier interface {
 	InsertPlatformAuditLog(ctx context.Context, arg InsertPlatformAuditLogParams) error
 	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) (PaymentWebhookEvent, error)
 	LinkSessionToCustomer(ctx context.Context, arg LinkSessionToCustomerParams) error
+	// Assistance requests on the waiter board. Gated on a LIVE session (as the
+	// kitchen order board is) so a request whose table was abandoned or closed
+	// drops off instead of lingering after the guests have gone.
 	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]ListActiveAssistanceForBranchRow, error)
 	ListActiveOrderItemsForBranch(ctx context.Context, branchID int64) ([]ListActiveOrderItemsForBranchRow, error)
 	// Orders on the kitchen/waiter boards. Gated on a LIVE session so an order whose
