@@ -1,0 +1,54 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PricingCard from "../../components/PricingCard.astro";
+import CTABanner from "../../components/CTABanner.astro";
+import { faqs, plans } from "../../data/site";
+const title = "Pricing — Start free | QR Dining";
+const description = "Transparent ₹ pricing for cafés, restaurants, and chains. Free plan available; early access pricing for pilot restaurants. No hardware required.";
+const schema = [
+  {"@context":"https://schema.org","@type":"FAQPage",mainEntity:faqs.map(f=>({"@type":"Question",name:f.question,acceptedAnswer:{"@type":"Answer",text:f.answer}}))},
+  {"@context":"https://schema.org","@type":"BreadcrumbList",itemListElement:[{"@type":"ListItem",position:1,name:"Home",item:"https://qrdining.app/"},{"@type":"ListItem",position:2,name:"Pricing",item:"https://qrdining.app/pricing"}]},
+];
+const rows = [
+  ["Branches", "1", "Up to 3", "Unlimited"],
+  ["Tables per branch", "10", "Unlimited", "Unlimited"],
+  ["Operational analytics", "—", "Included", "Included"],
+  ["Multi-branch analytics", "—", "—", "Included"],
+  ["Loyalty & promos", "—", "Included", "Included"],
+  ["Custom guest theming", "—", "—", "Included"],
+  ["Kitchen & waiter boards", "Included", "Included", "Included"],
+  ["QR collateral studio", "Included", "Included", "Included"],
+];
+---
+<BaseLayout title={title} description={description} image="/og-pricing.png" schema={schema}>
+  <section class="page-hero"><div class="container"><p class="eyebrow">Clear from the start</p><h1>Hospitality, on every plate.</h1><p class="lede">Start free and upgrade when the room gets busier. Every plan includes live table sessions, guest ordering, staff boards, and print-ready QR collateral.</p></div></section>
+  <section class="plans-section">
+    <div class="container">
+      <div class="plan-grid stagger">{[plans[1],plans[0],plans[2]].map((plan,index)=><div class={`plan-shell plan-${index}`}><PricingCard plan={plan} /></div>)}</div>
+      <p class="early-note"><span class="mono">EARLY ACCESS</span> Pricing is locked in for pilot restaurants.</p>
+    </div>
+  </section>
+  <section class="section comparison-section">
+    <div class="container">
+      <div class="section-heading reveal"><p class="eyebrow">Compare plans</p><h2>Choose the room you're running.</h2><p class="lede">No feature maze. Start with the branch and table limits, then choose the visibility your team needs.</p></div>
+      <div class="table-wrap reveal">
+        <table><thead><tr><th>Feature</th>{plans.map(plan=><th class:list={{highlight:"popular" in plan && plan.popular}}>{plan.name}</th>)}</tr></thead><tbody>{rows.map(row=><tr>{row.map((cell,index)=><td class:list={{highlight:index===2}}>{cell}</td>)}</tr>)}</tbody></table>
+      </div>
+      <div class="mobile-comparison">
+        {[plans[1],plans[0],plans[2]].map(plan=><details class="mobile-plan" open={plan.name==="Standard"}><summary>{plan.name}<span>₹{new Intl.NumberFormat("en-IN").format(plan.price)}/mo</span></summary><ul>{rows.map(row=><li><span>{row[0]}</span><b>{row[plans.indexOf(plan)+1]}</b></li>)}</ul></details>)}
+      </div>
+    </div>
+  </section>
+  <section class="section section-sunken">
+    <div class="container faq-grid">
+      <div class="faq-intro reveal"><p class="eyebrow">Questions from the floor</p><h2>Before you put it on a table.</h2><p>Still weighing something specific? Write to <a href="mailto:hello@qrdining.app">hello@qrdining.app</a>. You'll hear from the people building it.</p></div>
+      <div class="faq-list">{faqs.map((faq,index)=><details class="faq-item reveal" style={`--i:${index}`}><summary>{faq.question}<span aria-hidden="true">+</span></summary><p>{faq.answer}</p></details>)}</div>
+    </div>
+  </section>
+  <CTABanner heading="See which plan fits your floor." copy="We'll run a live table with you, understand your setup, and recommend a plan only if the product fits." />
+</BaseLayout>
+
+<style>
+  .page-hero{padding:100px 0 160px;background:var(--glow-warm);text-align:center}.page-hero .container{max-width:780px}.page-hero h1{margin-bottom:24px}.page-hero .lede{margin-inline:auto}.plans-section{margin-top:-90px;padding-bottom:70px}.plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start}.plan-0{order:2}.plan-1{order:1}.plan-2{order:3}.early-note{text-align:center;margin:28px 0 0;color:var(--ink-2);font-size:13px}.early-note span{margin-right:8px;color:var(--gold);font-size:9px;letter-spacing:.08em}.comparison-section{border-top:1px solid var(--line-1)}.table-wrap{overflow:hidden;border:1px solid var(--line-1);border-radius:16px;background:#fff}.table-wrap table{width:100%;border-collapse:collapse;text-align:left}.table-wrap th,.table-wrap td{height:58px;padding:0 20px;border-bottom:1px solid var(--line-1);font-size:14px}.table-wrap th{color:var(--ink);font-weight:600}.table-wrap td{color:var(--ink-2)}.table-wrap td:not(:first-child),.table-wrap th:not(:first-child){text-align:center}.table-wrap .highlight{background:rgba(239,238,234,.52);color:var(--ink);font-weight:600}.table-wrap tr:last-child td{border-bottom:0}.mobile-comparison{display:none}.faq-grid{display:grid;grid-template-columns:.7fr 1.3fr;gap:96px}.faq-intro{position:sticky;top:104px;align-self:start}.faq-intro h2{margin-bottom:18px}.faq-intro p:last-child{color:var(--ink-2)}.faq-intro a{color:var(--ink);text-underline-offset:3px}.faq-list{border-top:1px solid var(--line-2)}.faq-item{border-bottom:1px solid var(--line-2)}.faq-item summary{min-height:68px;display:flex;align-items:center;justify-content:space-between;gap:20px;cursor:pointer;font-weight:600;list-style:none}.faq-item summary::-webkit-details-marker{display:none}.faq-item summary span{color:var(--gold);font:22px/1 "JetBrains Mono",monospace;transition:transform 150ms}.faq-item[open] summary span{transform:rotate(45deg)}.faq-item p{padding:0 38px 24px 0;margin:0;color:var(--ink-2);font-size:15px}
+  @media(max-width:639px){.page-hero{padding:72px 0 130px}.plans-section{margin-top:-74px}.plan-grid{grid-template-columns:1fr}.plan-0{order:1}.plan-1{order:2}.table-wrap{display:none}.mobile-comparison{display:flex;flex-direction:column;gap:10px}.mobile-plan{overflow:hidden;border:1px solid var(--line-1);border-radius:12px;background:#fff}.mobile-plan summary{min-height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;list-style:none;font-weight:650}.mobile-plan summary::-webkit-details-marker{display:none}.mobile-plan summary span{color:var(--ink-2);font:11px "JetBrains Mono",monospace}.mobile-plan ul{padding:0 18px 16px;margin:0;list-style:none}.mobile-plan li{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-top:1px solid var(--line-1);color:var(--ink-2);font-size:12px}.mobile-plan li b{color:var(--ink);text-align:right}.faq-grid{grid-template-columns:1fr;gap:40px}.faq-intro{position:static}}
+</style>

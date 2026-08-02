@@ -1,0 +1,40 @@
+---
+const { plan, compact = false } = Astro.props;
+const formatPrice = (price: number) => new Intl.NumberFormat("en-IN").format(price);
+---
+<article class:list={["pricing-card card", { popular: plan.popular, compact }]}>
+  {plan.popular && <span class="popular-badge">Most popular</span>}
+  <p class="eyebrow">{plan.name}</p>
+  <p class="price"><span>₹{formatPrice(plan.price)}</span><small>/mo</small></p>
+  <p class="summary">{plan.summary}</p>
+  {!compact && (
+    <>
+      <div class="rule"></div>
+      <ul>
+        <li><span>Branches</span><b>{plan.features.branches}</b></li>
+        <li><span>Tables</span><b>{plan.features.tables}</b></li>
+        <li><span>Operational analytics</span><b>{plan.features.operationalAnalytics ? "Included" : "—"}</b></li>
+        <li><span>Multi-branch analytics</span><b>{plan.features.multiBranchAnalytics ? "Included" : "—"}</b></li>
+        <li><span>Loyalty</span><b>{plan.features.loyalty ? "Included" : "—"}</b></li>
+        <li><span>Custom theming</span><b>{plan.features.customTheming ? "Included" : "—"}</b></li>
+      </ul>
+    </>
+  )}
+</article>
+
+<style>
+  .pricing-card { position:relative; padding:30px; }
+  .pricing-card.popular { border-color:#010101; box-shadow:0 0 0 1px #010101,var(--shadow-2); }
+  .popular-badge { position:absolute; top:0; right:24px; transform:translateY(-50%); padding:5px 11px; border-radius:999px; background:#010101; color:#fff; font:9px "JetBrains Mono",monospace; letter-spacing:.08em; text-transform:uppercase; }
+  .price { margin:0 0 12px; display:flex; align-items:baseline; gap:5px; }
+  .price span { font:500 36px/1 "JetBrains Mono",monospace; letter-spacing:-.04em; }
+  .price small { color:var(--ink-2); font-size:13px; }
+  .summary { min-height:50px; margin:0; color:var(--ink-2); font-size:14px; }
+  .rule { height:1px; margin:24px 0; background:var(--line-1); }
+  ul { display:flex; flex-direction:column; gap:12px; padding:0; margin:0 0 26px; list-style:none; }
+  li { display:flex; justify-content:space-between; gap:12px; color:var(--ink-2); font-size:13px; }
+  li b { color:var(--ink); font-weight:600; text-align:right; }
+  .compact { padding:26px; }
+  .compact .summary { min-height:auto; }
+  @media(max-width:639px){.pricing-card{padding:26px}.price span{font-size:32px}}
+</style>
