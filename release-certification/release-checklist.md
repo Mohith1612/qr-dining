@@ -23,6 +23,7 @@ Ordered by sequence, not severity. Items marked ☐ are open; ☑ were closed du
 
 ## D. Production readiness (SEV-1s and infra)
 
+- ☐ Create a git remote, push, and obtain one green CI run so the tagged GHCR image can be published
 - ☐ Wire a real Alertmanager receiver (rules currently fire into a placeholder `notify_url` sink) + an app-down/`/readyz` page alert
 - ☐ Provision the production host (Oracle Ampere arm64) per `DEPLOYMENT.md`; run `production-environment-checklist.md` end-to-end
 - ☐ Nightly R2 backups scheduled against the production bucket (round-trip restore was proven 2026-07-18 against a temp bucket — `RECOVERY.md` §5)
@@ -31,25 +32,27 @@ Ordered by sequence, not severity. Items marked ☐ are open; ☑ were closed du
 
 ## E. Deferred product defects (pre-scale must-fixes, accepted for v1.0 pilot unless manual testing says otherwise)
 
-- ☐ Promo daily-window timezone bug: windows compared in UTC, not branch tz — do not configure time-windowed promos until fixed
 - ☐ Money math uses floats — convert to integer paise before scale
-- ☐ F-8: tokenless session-snapshot fail-open — closes with rollout wave R6 (`AUTH_GUEST_CREDENTIALS_REQUIRED`); gates any public/multi-tenant exposure
 - ☐ `session_sequences` write hot-spot (~5% 500s at concurrency ~150; clean at 50) — acceptable for pilot scale
-- ☐ `godotenv.Overload()` prod footgun — stray `.env` overrides injected env
 - ☐ 567 frontend `no-unused-vars` warnings + dead scaffolding cleanup
+- ☑ Promo daily windows use branch-local time
+- ☑ Guest session tokens are redacted independently of R6
+- ☑ Release mode ignores dotenv files
+- ☑ Reconnect exhaustion exposes an in-place Retry action
 
 ## F. CI/tooling debt
 
 - ☐ Add integration suite (with PG/Redis service containers) and at least a Playwright smoke slice to CI — today neither runs anywhere in CI
-- ☐ Align CI `setup-go` with `go.mod` go 1.26 (works today via GOTOOLCHAIN auto-download, but wastes CI time each run)
+- ☑ Unit job runs `go test -race ./...` across all packages
+- ☑ CI, Docker, and `go.mod` aligned on Go 1.26
 - ☐ Document the e2e runbook: suite needs a live stack, a real `E2E_ADMIN_TOKEN` from `POST /platform/auth`, and `AUTH_RATE_LIMIT_RPM`/`RATE_LIMIT_RPM` raised (default 10 RPM auth limit rate-limits the suite into mass failure)
 
-## G. Rollout waves (post-v1.0, staged; all flags default-off, only R1 live)
+## G. Rollout waves
 
 - ☐ R2 `TENANCY_ORGANIZATIONS_ENABLED` → live R2 verification
 - ☐ R3 `AUTHZ_CENTRAL_POLICY_ENFORCE` + `STRICT_BRANCH_SCOPED_MUTATIONS`
-- ☐ R4 `AUTH_STAFF_CODE_REQUIRED` + `AUTH_STAFF_SESSION_DB_REQUIRED`
-- ☐ R5 `WS_TICKET_AUTH_REQUIRED`
-- ☐ R6 `AUTH_GUEST_CREDENTIALS_REQUIRED` (closes F-8)
+- ☑ R4 `AUTH_STAFF_CODE_REQUIRED` + `AUTH_STAFF_SESSION_DB_REQUIRED` configured for launch
+- ☑ R5 `WS_TICKET_AUTH_REQUIRED` configured for launch
+- ☑ R6 `AUTH_GUEST_CREDENTIALS_REQUIRED` configured for launch with `GUEST_TOKEN_TTL=12h`
 - ☐ R7 `PAYMENT_STAFF_SETTLEMENT_REQUIRED`
 - ☐ Real payment gateway integration (currently manual/webhook-simulated only)

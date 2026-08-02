@@ -60,11 +60,11 @@ rollout changes — closing the operational SEV-0/SEV-1 findings from the pre-pi
    writers) the per-branch `session_sequences` row serializes and a small fraction of
    writes 500 (p99 >1s). Far beyond pilot load; investigate before high-volume scale.
    Raise `DB_MAX_CONNS` to ~40–50 and give Postgres its own host at scale.
-3. **`godotenv.Overload()`** lets a stale `.env` in the working directory override
-   injected env vars — a latent prod footgun. Ensure no `.env` ships in the prod image/host.
-4. **WS reconnect dead-ends after 10 attempts**; **windowed promos use UTC not branch tz**;
-   **order placement isn't audited**; **multi-instance WS** unproven; **money math uses
+3. **Order placement isn't audited**; **multi-instance WS** is unproven; **money math uses
    float accumulation**. All documented in the audit; none block a supervised pilot.
+
+Closed since this report: release mode ignores dotenv files; reconnect exhaustion
+offers an in-place Retry action; and promo daily windows use branch-local time.
 
 ## SEV-3
 

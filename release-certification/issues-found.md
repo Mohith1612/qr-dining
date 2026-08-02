@@ -74,14 +74,13 @@ Issues fixed during certification are cross-referenced to `fixed-during-certific
 - **Recommendation:** execute the documented cleanup plan alongside the R4 wave; add the suite to
   CI afterwards.
 
-## I-8 · Low · `go.mod` (go 1.26.0) vs CI `setup-go` (1.24) skew — NOT FIXED
+## I-8 · Low · `go.mod` (go 1.26.0) vs CI `setup-go` (1.24) skew — FIXED
 
 - **Repro:** inspect `backend/go.mod` vs `.github/workflows/ci.yml`.
 - **Root cause:** toolchain bumped locally; CI pin not updated. Harmless today —
   `GOTOOLCHAIN=auto` downloads go1.26.0 transparently in both places — but CI re-downloads a
   toolchain every run.
-- **Recommendation:** bump CI `go-version` to `"1.26"` when next touching ci.yml (left alone
-  because ci.yml carries uncommitted infra-phase changes that are out of certification scope).
+- **Resolution:** CI and the Docker builder now pin Go 1.26.
 
 ## I-9 · Low · Screenshot-sweep staff flow spec times out — NOT FIXED (spec-side suspicion, manually cross-checked)
 
@@ -95,15 +94,13 @@ Issues fixed during certification are cross-referenced to `fixed-during-certific
 
 ## Known, deliberately-carried defects (recorded, not certification findings)
 
-- **F-8 (P1, gates public exposure):** tokenless session-snapshot fail-open until wave R6
-  (`AUTH_GUEST_CREDENTIALS_REQUIRED`). Verify during manual testing that this stays acceptable for
-  the supervised pilot only.
-- **Promo daily-window timezone bug:** windows evaluated in UTC, not branch tz. Do not configure
-  time-windowed promos.
 - **Float money math** — convert to integer paise before scale.
 - **`session_sequences` hot-spot** — ~5% 500s at concurrency ~150 (clean at pilot scale).
-- **`godotenv.Overload()`** prod env-override footgun.
 - **567 frontend lint warnings** (unused vars, dead scaffolding).
+
+Closed since this report: R6 is configured for launch with a 12h token TTL; guest
+session tokens remain redacted independently; promo windows use branch-local time;
+and release mode ignores dotenv files.
 
 ## Exploration findings (automated multi-role UI sweep)
 

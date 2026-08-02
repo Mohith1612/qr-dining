@@ -17,7 +17,7 @@
 | G-3 | Browse menu | Menu renders with categories, item cards, prices, veg/non-veg markers, images/placeholders; unavailable items are visibly disabled | | |
 | G-4 | Variants | An item with variants opens a variant picker; price updates per variant; chosen variant shows correctly in cart | | |
 | G-5 | Cart (shared, live) | Add/increment/decrement/remove updates the cart; a second device in the same session sees the change live without refresh | | |
-| G-6 | Coupon | Applying a valid promo adjusts the bill; invalid/ineligible code shows a clear rejection; removal restores the total. **Known issue:** time-windowed promos compare against UTC, not branch timezone — do not certify windowed promos | | |
+| G-6 | Coupon | Applying a valid promo adjusts the bill; invalid/ineligible code shows a clear rejection; removal restores the total. Certify a time-windowed promo against the branch-local clock. | | |
 | G-7 | Checkout / send order | Only the host can send the order; non-host sees a disabled/blocked action with explanation; sent order appears with status Confirmed | | |
 | G-8 | Live order tracker (F-6 regression) | As kitchen advances the order (confirmed → preparing → ready) and waiter serves, the guest tracker advances live, without refresh | | |
 | G-9 | Assistance | Request assistance → visible acknowledgment; resolves when waiter resolves it | | |
@@ -27,7 +27,7 @@
 | G-13 | Rejoin session | Closing the tab and re-scanning the same QR rejoins the existing session with cart/order intact | | |
 | G-14 | Second device | Second browser profile joining the same table shares cart, orders, and events live | | |
 | G-15 | Ended session | After staff closes the session, guest tab shows the Session Ended screen (no infinite spinner) | | |
-| G-16 | Token security spot-check (F-8, known open) | In devtools → Network, confirm whether any guest response exposes `session_token`. Known open until rollout wave R6 — record, don't fail the release on it | | |
+| G-16 | Token security spot-check | In devtools → Network, confirm no guest response exposes `session_token`; removing the bearer token must reject guest reads and writes; a participant ID from another session must be forbidden. | | |
 
 ## Waiter (Frontend B, `http://localhost:3001/staff/login`, branch Saffron Bandra id=1, PIN 3333)
 
@@ -58,7 +58,7 @@
 | M-1 | Login + nav | PIN 2222 shows manager view: ops surfaces plus admin tabs (menu, tables, promos, stats, performance, loyalty, collateral, settings) | | |
 | M-2 | Menu admin | Create/edit/disable a menu item (incl. a variant); change reflects on the guest menu | | |
 | M-3 | Tables admin | Add/rename a table; QR token/collateral available; board reflects it | | |
-| M-4 | Promos | Create a non-time-windowed promo; guest can apply it. (Time-windowed promos: known UTC bug — skip or note) | | |
+| M-4 | Promos | Create both ordinary and time-windowed promos; verify the latter uses the branch-local clock. | | |
 | M-5 | Stats | Stats/analytics tabs render with seeded data; no crashes on empty ranges | | |
 | M-6 | Loyalty / performance | Tabs render. Feature-gated (entitlement AND flag, default off) — verify a clean gated/empty state, not an error | | |
 | M-7 | Settings | Branch settings render and persist edits | | |

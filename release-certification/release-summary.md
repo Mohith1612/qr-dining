@@ -39,16 +39,13 @@ certification — nothing found this phase would block starting the soak once yo
 
 ## Recommended fixes (before or shortly after v1.0)
 
-- Promo daily-window timezone bug (before any restaurant configures time-windowed promos).
 - Integer-paise money math (before scale).
 - e2e spec cleanup per `docs/history/e2e-failure-analysis.md` + add integration/e2e slices to CI.
-- Align CI `setup-go` with go.mod 1.26.
 
 ## Known limitations (accepted for supervised pilot)
 
-- **F-8:** tokenless session-snapshot read is fail-open until R6 (`AUTH_GUEST_CREDENTIALS_REQUIRED`);
-  `session_token` itself is redacted (verified). Gates any public/multi-tenant exposure.
-- Rollout waves R2–R7 unflipped (single-tenant supervised-pilot posture); no real payment gateway
+- R2, R3, and R7 remain unflipped; R4–R6 are configured for launch with signed
+  guest credentials, staff-code/session enforcement, and ticketed WS. No real payment gateway
   (cash/manual + simulated webhooks only); `session_sequences` hot-spot beyond ~150 concurrent;
   kitchen KDS is 10 s polling by design.
 

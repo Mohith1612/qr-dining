@@ -3,7 +3,10 @@
 **Engineering Handbook · Chief Architect Review**
 **Date:** 2026-07-18 · **Branch reviewed:** `feature/certification-fixes-ui-redesign` @ `9dd869a` · **Schema:** v38
 
-> This document was reconstructed from the full repository — backend, frontend, migrations, sqlc, OpenAPI, deployment, scripts, and every strategic/readiness/testing document (now archived under `docs/` and `docs/history/`). It supersedes no invariant docs, but where it contradicts an older report, this document is correct and the older report is stale (each case is called out in Part 8).
+> **Correction of record (2026-07-29):** the original review mixed repository
+> history with current code and carried several fixed defects forward. The
+> load-bearing corrections are incorporated below. Deployment and release truth
+> lives in `DEPLOYMENT.md` and `production-environment-checklist.md`.
 
 ---
 
@@ -110,7 +113,7 @@ Covered in depth in Part 6. Summary: single-goroutine hub (`internal/websocket/h
 
 | Domain | Mechanism | Notes |
 |---|---|---|
-| **Guest** | Bespoke HMAC-SHA256 signed token (`internal/auth/guest.go`) — `base64url(claims).base64url(sig)`, audience `qr-dining-guest`, claims: session/branch/tenant/org/participant/credential-version/exp/jti | Not a standard JWT (no `alg` header — immune to alg-confusion, but nonstandard). Enforcement flag `AUTH_GUEST_CREDENTIALS_REQUIRED` is **off** (wave R6) — snapshot currently fails open (finding F-8, see Part 11). WS additionally requires a Redis ticket. |
+| **Guest** | Bespoke HMAC-SHA256 signed token (`internal/auth/guest.go`) — `base64url(claims).base64url(sig)`, audience `qr-dining-guest`, claims: session/branch/tenant/org/participant/credential-version/exp/jti | Not a standard JWT (no `alg` header — immune to alg-confusion, but nonstandard). `AUTH_GUEST_CREDENTIALS_REQUIRED` is on for launch with a 12h TTL; the rollback-only legacy path also rejects cross-session participant IDs. WS requires a Redis ticket. |
 | **Staff** | PIN login → opaque DB-backed session token (`staff_sessions`) | Brute-force lockout + 10-RPM sensitive limiter (fails closed). Roles: owner/manager/waiter/kitchen. Role checks mostly per-handler; central authz engine (`internal/authz/`) exists but runs in **shadow** until R3. |
 | **Platform** | Email login + TOTP MFA (AES-GCM-encrypted secrets), opaque platform session | `middleware/platform_auth.go` explicitly rejects staff tokens. Roles: `super_admin` (global bypass), `support_admin`, `billing_admin`, `read_only_auditor`. |
 
@@ -169,8 +172,8 @@ Migration 000033: `branch_collateral` holds **only physical/content config** (fo
 
 ### 2.15 Deployment
 
-- **Build:** 2-stage Dockerfile, `golang:1.24-alpine` builder hardcoded `GOARCH=arm64` (Oracle Ampere), static binary, non-root, `HEALTHCHECK /readyz`. ⚠️ `go.mod` says `go 1.26.0` — mismatch with Docker/CI 1.24.
-- **Runtime:** `docker-compose.yml` (prod: postgres:17 + redis:7 AOF/LRU + app on external proxy network), plus staging / pilot-validation / manual-testing compose files. nginx `deploy/nginx/qr-dining.conf` (WS-aware, 3600s read timeout > 54s app ping).
+- **Build:** 2-stage Dockerfile, Go 1.26 aligned with CI and `go.mod`, hardcoded `GOARCH=arm64` (Oracle Ampere), static binary, non-root, `HEALTHCHECK /readyz`.
+- **Runtime:** backend + Postgres 17 + Redis 7 on the shared OCI Ampere VM behind the central `/opt/proxy`; frontend on Cloudflare Workers via OpenNext; uploads/backups on Cloudflare R2. This split-origin path makes CORS, CSP `connect-src`, and WSS validation release-critical.
 - **Observability stack committed:** `deploy/observability/` — Prometheus 2.54 + Alertmanager 0.27 + blackbox + node-exporter + Grafana dashboard + 27 promtool-clean alert rules.
 - **Backups:** nightly systemd timer (`deploy/backup/`), R2/S3/local providers, manifest + retention; restore certified byte-faithful (56/56 tables) — and **verified end-to-end against the real production R2 bucket (2026-07-18, RECOVERY.md §5)**.
 
@@ -279,8 +282,11 @@ Legend: **PR** = production ready · **PI** = pilot ready · **EX** = experiment
 | Presence-expiry worker | **EX** (stub) | — |
 | Audit hash-chain (`row_hash`) | **DF** (columns exist, NULL) | — |
 
-### The 9 strict rollout flags (all default `false`; only R1 flipped)
+### The 9 strict rollout flags
 `AUDIT_LOG_V2_ENABLED` (R1 ✅ live) · `TENANCY_ORGANIZATIONS_ENABLED` (R2) · `AUTHZ_CENTRAL_POLICY_ENFORCE` + `STRICT_BRANCH_SCOPED_MUTATIONS` (R3, paired) · `AUTH_STAFF_CODE_REQUIRED` + `AUTH_STAFF_SESSION_DB_REQUIRED` (R4, paired) · `WS_TICKET_AUTH_REQUIRED` (R5) · `AUTH_GUEST_CREDENTIALS_REQUIRED` (R6) · `PAYMENT_STAFF_SETTLEMENT_REQUIRED` (R7).
+
+R4–R6 default on and are explicit `true` in the production template. R1 remains
+explicitly enabled in production; R2/R3/R7 remain deferred.
 
 ---
 
@@ -333,7 +339,7 @@ High. Numbered, reversible, embedded, auto-run at boot (idempotent — chaos-val
 Per-session monotonic sequence numbers (`session_sequences`). The client tracks the last seen sequence; on reconnect it fetches `GET /sessions/:id/snapshot` (the server advertises this via `X-Reconnect-Endpoint`) and reconciles (`frontend/lib/ws/reconciliation.ts`) — **the snapshot is authoritative**, events are advisory. This "backend-authoritative recovery" is the realtime design's core principle.
 
 ### Reconnect
-Client: exponential backoff 1→30s, max 10 attempts, 30s ping. Reconnect storms are bounded server-side (12/min per session admitted, rest 429 — chaos-validated). **Known debt:** after 10 failed attempts the client dead-ends ("Connection lost") with no manual retry affordance; and reconnect into an `awaiting_reactivation` session 409s on the ticket instead of routing through reactivation (dress-rehearsal F-1) — verify this fix landed in the cert branch before pilot.
+Client: exponential backoff 1→30s, max 10 attempts, 30s ping. Reconnect storms are bounded server-side (12/min per session admitted, rest 429 — chaos-validated). A ticket 409 routes through snapshot reactivation, and exhausting retries leaves the current UI visible with an explicit in-place Retry action.
 
 ### Presence
 WS pings double as presence heartbeats (Redis TTL keys). Loss of presence feeds the reactivation pipeline (60s+60s windows — tuned after the rehearsal found them too aggressive for real dining). The dedicated presence-expiry worker is a stub.
@@ -355,7 +361,10 @@ Staff and kitchen poll REST every 10s instead of using WS. This was a conscious 
 ## Part 7 — Operational Readiness
 
 ### Deployment model (today)
-Single Oracle Cloud Ampere arm64 host, docker-compose (app + Postgres 17 + Redis 7), nginx in front, migrations auto-run at boot, stateless app (~12s restart recovery), all strict flags via env. The soak/staging stack runs locally under docker project `qr-dining` (`qr-app-soak`/`qr-app-chaos` + postgres + redis).
+The backend, Postgres 17, and Redis 7 run on a shared OCI Ampere VM behind the
+shared nginx/certbot proxy. The Next.js app deploys as an OpenNext Cloudflare
+Worker, and object storage is Cloudflare R2. The soak/staging stack runs locally
+under docker project `qr-dining`.
 
 > **Standing rule: never touch the soak stack.** No `compose down -v`, no backend restart without `-e AUDIT_LOG_V2_ENABLED=true`, no writes to `audit_log`, no volume wipes. All experimentation belongs on the isolated `manual-testing` stack (backends :8090/:8095, frontends :3000/:3001) or throwaway DBs.
 
@@ -371,7 +380,9 @@ Single Oracle Cloud Ampere arm64 host, docker-compose (app + Postgres 17 + Redis
 `/health` (liveness), `/readyz` (503 on PG/Redis loss — wired into container healthcheck and LB), `/metrics`. All validated in staging topology.
 
 ### Secrets
-Fail-hard on missing prod secrets (pilot-readiness fix); MFA encryption key, guest-token secret, webhook secrets via env. ⚠️ `godotenv.Overload()` means a stray `.env` on the host **overrides** injected env — ensure no `.env` ships to prod.
+Fail-hard on missing prod secrets (pilot-readiness fix); MFA encryption key,
+guest-token secret, webhook secrets via env. Release mode ignores dotenv files,
+so a stray `.env` cannot override injected production values.
 
 ### Load & soak
 - Load: validated at concurrency 50 — p99 ~200ms, ~0.4% errors (pilot-scale proof). Known ceiling: `session_sequences` write hot-spot produces ~5% 500s at concurrency ~150 (single-branch worst case; far beyond pilot).
@@ -399,21 +410,24 @@ Fail-hard on missing prod secrets (pilot-readiness fix); MFA encryption key, gue
 6. **Third arc — certification + redesign (current branch):** a full manual certification pass found ~18 bugs (findings v4) → Phase 0 fixes C1–C20 (migrations 000036–000038) → the two-track "Serene" (guest) + "Harmony" (ops) redesign → merges of both tracks → e2e reconciliation fixes. This produced the current RC candidate.
 
 ### Rollout philosophy (the project's defining decision)
-**Shadow before strict. One wave at a time. Metrics gate flags. Flags are reversible in <5 minutes. Humans stay the authority for money.** Nothing risky is enabled by default; enforcement follows observation.
+**Shadow before strict where legacy traffic or data state exists. Metrics gate
+data migrations. Flags are reversible in <5 minutes. Humans stay the authority
+for money.** R4–R6 do not need decay windows because the only client already
+speaks those protocols.
 
 ### Deliberately deferred (with reasons)
 - Governance enforcement & billing charging — observe first; a pilot with one trusted restaurant doesn't need it.
 - Central authz enforcement (R3) — shadow until 48h of zero mismatches.
-- Guest credential enforcement (R6) — needs legacy decay window; but see F-8 in Part 11.
+- Guest credential enforcement (R6) — enabled for launch with a 12h token TTL.
 - Staff WS realtime — polling is adequate at pilot scale; hub sharding/branch channels deferred.
 - Audit hash-chain, e2e full reconciliation post-redesign, webhook exact-replay CI proof (pre-R7), multi-instance WS soak.
 
 ### Stale documents — corrections of record
 These remain in `docs/`/`docs/history/` unedited; **this section is the correction**:
-1. `docs/project-strategic-context-v1.md` §13 still lists the T-01 cross-org snapshot leak as open. **It was fixed 2026-05-29 (`6db078e`).** (F-8, the *no-token* fail-open, is a different, still-open issue.)
+1. `docs/project-strategic-context-v1.md` §13 still lists the T-01 cross-org snapshot leak as open. **It was fixed 2026-05-29 (`6db078e`).**
 2. `final-production-readiness-assessment.md`, `final-rollout-gates-status.md`, `post-remediation-rollout-status.md` (05-25/26) list the R3 policy decisions as the last hard blocker. **Closed 2026-05-29** (`r3-policy-decisions-v1.md` — all three decisions ratified existing behavior).
 3. `final-pilot-readiness-report.md` (06-10) is superseded by `docs/history/final-release-readiness-report.md` (06-25).
-4. `docs/history/manual-testing-findings-v4.md` reads as 12 open findings; **most were fixed** in cert Phase 0 (promo timezone bug remains open).
+4. `docs/history/manual-testing-findings-v4.md` reads as 12 open findings; the promo timezone bug, F-8 token serialization, and F-1 reconnect lineage were already fixed before the reviewed commit.
 5. `docs/history/HANDOUT.md` describes the redesign as "next action C16"; the branch has since completed the entire redesign through schema v38.
 6. "R1 is soaked" ≠ "the pilot code is soaked" — the soak covered the pre-redesign binary only.
 
@@ -454,22 +468,20 @@ These remain in `docs/`/`docs/history/` unedited; **this section is the correcti
 - **Audit hash-chain columns NULL**, **e2e post-redesign reconciliation partial**, **webhook exact-replay proof deferred to pre-R7 CI**.
 
 ### Accidental debt (fix-worthy)
-1. **CI gap (worst item):** CI runs lint + `internal/domain` unit tests + sqlc drift + docker build only. The 13 integration files and 106 Playwright specs never run in CI. The integration suite is currently **red** (11 test-side failures; harness deadlocks `pgxpool.Close()`).
-2. **Float money math** — accumulation in floats; should be integer paise. Pre-scale must-fix.
-3. **Promo daily-window timezone bug** — windows compared against DB UTC, not branch tz; windowed promos silently fail. Open since findings v4.
-4. **WS reconnect dead-end** after 10 attempts (no retry affordance).
-5. **`go.mod` go 1.26 vs Docker/CI go 1.24.**
-6. **`godotenv.Overload()`** prod footgun.
-7. **567 frontend `no-unused-vars` warnings** (redesign residue); empty `frontend/features/*` scaffolding; `AppearanceTab` not folded into `SettingsTab`; stale `seed.go` demo step.
-8. **`server.go` 489-line constructor** — wiring will become unmanageable; fine now, refactor when it hurts.
-9. **`/tmp`-hosted soak binary** — bitten twice; relocate.
-10. **Two collateral surfaces** (platform studio + admin tab) — watch for config-schema divergence.
+1. **CI gap:** all ordinary Go packages now run under the race detector, but the 13 integration files and a focused Playwright smoke pack still need CI jobs.
+2. **Float money arithmetic:** persistence is exact `NUMERIC`, but add an arithmetic invariant test and database `CHECK` before considering a broad integer-paise migration.
+3. **563 frontend `no-unused-vars` warnings** (redesign residue); cleanup is unscheduled.
+4. **`/tmp`-hosted soak binary** — bitten twice; relocate for the RC soak.
+5. **Two collateral surfaces** (platform studio + admin tab) — watch for config-schema divergence.
 
 ### Never touch casually
 Session transition table · bill snapshot semantics · audit-log schema/trigger · loyalty ledger constraints · additive-migration rule · the soak stack · payment escalation's alert-only property.
 
-### Deserves redesign after public launch
-Money as integers end-to-end · staff realtime (branch-scoped WS channel) · hub sharding for multi-pod WS · dropping the legacy restaurant model · consolidated `server.go` wiring (DI or per-module registration) · CI running the full pyramid.
+### Revisit only when evidence demands it
+Staff realtime (branch-scoped WS channel) · hub sharding for multi-pod WS ·
+dropping the legacy restaurant model · integer money if invariant tests expose
+drift. The explicit server wiring and bespoke signed guest token do not need
+replacement.
 
 ---
 
@@ -477,8 +489,8 @@ Money as integers end-to-end · staff realtime (branch-scoped WS channel) · hub
 
 **Scenario: Restaurant #1 onboards tomorrow.**
 
-### Onboarding (works, with manual steps)
-Platform onboarding flow exists (org → branches → tables → QR package → readiness summary). Manual: super-admin bootstrap (no UI — seed by hand), staff roster + PINs, menu entry, printed collateral from the studio, tenant theme selection. Realistic effort: half a day with you present. Billing: **manual invoice outside the system** (subsystem is shadow).
+### Onboarding (blocked on release infrastructure)
+Platform onboarding flow exists (org → branches → tables → QR package → readiness summary), and the production image contains a one-shot super-admin bootstrap CLI. A real domain, DNS/TLS, a git remote, one green CI run, and a published GHCR tag are still prerequisites. After those: staff roster + PINs, menu entry, printed collateral, and theme selection. Billing remains manual outside the system.
 
 ### Daily operations
 Guests order collaboratively; kitchen works the (polled) display; waiter serves and settles cash/card-manual; escalation alerts catch stalled settlements; sessions self-heal via reconciler/reactivation. The workflows were validated end-to-end in manual testing v3 and the dress rehearsal. Payment reality for India: UPI-as-staff-confirmed or cash — no live gateway integration yet, which is fine for pilot.
@@ -489,32 +501,32 @@ You are the support organization. Tools are genuinely good: read-only support co
 ### What could realistically go wrong
 1. **Unsoaked RC misbehaves under real load** — the SEV-0. A memory leak or redesign-era regression would surface mid-service. *Mitigation: run the soak first. Non-negotiable.*
 2. **Alerting isn't actually wired** — rules fire into a placeholder webhook sink. An outage would be discovered by the restaurant, not you. *Mitigation: real receiver + app-down alert before day 1 (SEV-1).*
-3. **F-8 exposure:** with R6 off, a session snapshot can be fetched tokenlessly (session token + participant PII in the payload). Low risk in a single-tenant supervised pilot (UUIDs unguessable), **gates any public/multi-tenant exposure**.
-4. **Reconnect edge cases** (F-1 lineage): a guest who backgrounds their phone through reactivation may dead-end and need a QR re-scan. Annoying, recoverable.
-5. **Promo timezone bug** — if Restaurant #1 uses time-windowed promos, they'll silently not apply. Don't configure windowed promos, or fix first.
-6. **Host-model confusion** — non-host guests hitting "only the host can send the order" needs staff able to explain host transfer. Training item.
-7. **`/tmp`/env footguns on the prod host** — binary placement and stray `.env` files have both bitten before; the deployment checklist covers them — follow it literally.
+3. **Split-origin deployment fails at the browser edge:** incorrect CORS, CSP, or WSS proxying can break every guest action. Validate Cloudflare → nginx → app from a real phone on cellular.
+4. **Host-model confusion** — non-host guests hitting "only the host can send the order" needs staff able to explain host transfer. Training item.
+5. **`/tmp` soak footgun** — tmp-cleanup has invalidated soak evidence before. Host the tagged binary in a durable path.
 
 ### Burden estimate
 - **Operational:** ~1–2 h/day during week 1 (monitoring dashboards, settling escalations questions, DB spot-checks), decaying to <30 min/day.
 - **Support:** front-loaded staff training (host model, settlement flow, PIN discipline); expect most tickets in week 1 to be workflow questions, not bugs — manual testing v3/v4 already burned down the workflow-bug class.
 
-**Verdict: conditional GO, matching `final-release-readiness-report.md` (~93%).** Conditions: fresh soak of the RC tag, real alert receiver, merge+tag. (Two conditions since met: R2 backup round-trip passed 2026-07-18; integration suite green at `439de14`.)
+**Verdict: not ready for a paying dinner yet.** Conditions: domain + DNS/TLS,
+git remote + green CI + published image, merge/tag, fresh tagged soak with R4–R6
+enabled, a real app-down alert, and an end-to-end split-origin rehearsal.
 
 ---
 
 ## Part 12 — Public Launch Roadmap
 
 ### Pilot → 10 restaurants
-- **Must change:** flip R2 (org tenancy) after backfill; enable R4/R5 (staff code + WS tickets) after decay windows; real Alertmanager paging; onboarding runbook so a second human could do it; fix promo tz bug and reconnect dead-end.
+- **Must change:** flip R2 after backfill; real Alertmanager paging; menu CSV import after Restaurant #1 validates the menu shape; 10-spec e2e smoke pack and database-backed integration CI.
 - **Can stay:** single host, compose deployment, polling staff UIs, manual billing, single Postgres.
 
 ### 10 → 50
-- **Must change:** flip R3 (central authz) and R6 (guest credentials — closes F-8) after shadow windows; integrate one real payment gateway behind the existing webhook abstraction; self-serve-ish onboarding (super-admin bootstrap UI, menu import); CI runs integration + smoke e2e; support rotation beyond one person; billing enforcement pilot (invoices generated, still human-approved).
+- **Must change:** integrate one real payment gateway behind the existing webhook abstraction; support rotation beyond one person; billing enforcement pilot when plans start meaning money.
 - **Watch:** Postgres sizing (`DB_MAX_CONNS`), disk curves from real audit volume.
 
 ### 50 → 500
-- **Must change:** multi-instance app (the architecture is ready: stateless app, Redis-locked workers, pub/sub-fed hub — but needs a real multi-pod WS soak); managed/dedicated Postgres with replicas; staff realtime (branch-scoped WS) replaces polling; integer money migration completed; observability as a managed service; entitlement enforcement on (the business needs plans to mean something); drop legacy restaurant model.
+- **Reassess from metrics:** multi-instance app and multi-pod WS soak; managed/dedicated Postgres; staff realtime; entitlement enforcement. Do not schedule partitioning, sharding, or integer-money migration without measured need.
 - **Organizational:** an on-call rotation, SLOs, status page.
 
 ### Thousands
@@ -535,68 +547,58 @@ You are the support organization. Tools are genuinely good: read-only support co
 
 ## Part 14 — Overall Assessment
 
-| Axis | Score | Rationale |
-|---|---|---|
-| Architecture | **9/10** | Session-centric core, trust-domain separation, Postgres-authoritative/Redis-disposable, flag-gated enforcement. Deducted: dual tenant model, monolithic wiring. |
-| Engineering | **8.5/10** | Strict state machines, sqlc discipline, additive migrations, invariant docs. Deducted: float money, bespoke token, lint residue. |
-| Testing | **6.5/10** | 106-spec e2e matrix + chaos + integration suites *exist* and are strong; but the integration suite was red until the certification fixes (green at `439de14`), e2e post-redesign reconciliation is partial, and **CI runs almost none of it**. The gap is execution, not coverage. |
-| Security | **8/10** | Three trust domains, MFA, immutable audit, ticket-gated WS, fail-closed limiters, webhook verification. Deducted: F-8 open until R6, per-handler authz until R3. |
-| Operations | **7.5/10** | Backups+restore verified (incl. real-R2 round-trip 2026-07-18), 27 alerts, chaos-proven degradation, runbooks. Deducted: alert receiver is a placeholder, `/tmp` incident ×2. |
-| Developer Experience | **7/10** | Excellent docs and scripts; manual-testing stack is superb. Deducted: doc sprawl (now archived), 489-line constructor, dead scaffolding. |
-| Maintainability | **8/10** | Layering, invariants isolated in `domain/`, migrations exemplary. |
-| Scalability | **7/10** | Stateless app + locked workers + pub/sub are multi-pod-ready but unproven multi-instance; known sequence hot-spot; polling staff UIs. |
-| Product Maturity | **7/10** | Guest+staff flows are certified and polished (post-redesign); governance/billing are shadow; zero real-world usage. |
-| Operational Maturity | **6.5/10** | Method is excellent; live proof is thin (single-instance local soak, no production host yet). |
-| **Pilot Readiness** | **8/10 — conditional GO** | ~93% per the June release audit; blocked only by soak + release-engineering conditions, not by product gaps. |
-| **Public Launch Readiness** | **4/10** | R2–R7 unflipped, F-8 open, no gateway, no CI safety net, one-person ops. By design — the roadmap to close it is already written. |
+Numeric scores are intentionally removed: no stable rubric backed them, and the
+old security score obscured disabled authentication enforcement. The useful
+assessment is qualitative:
 
-**One-line verdict:** an unusually disciplined pre-launch system whose engineering risk is genuinely retired; what remains is operational proof (soak), release engineering (merge/tag/CI), and go-to-market courage.
+- The session state machine, bill-snapshot semantics, trust-domain split,
+  additive migrations, and Postgres-authoritative recovery model are strong.
+- R4–R6 are now configured for launch and the ordinary Go test suite runs in CI,
+  but no remote means CI and image publication still have not happened.
+- Operations remain the binding risk: no domain, no tagged RC soak, no real
+  alert receiver, and no production split-origin rehearsal.
+
+**One-line verdict:** good engineering, not yet launchable infrastructure.
 
 ---
 
 ## Part 15 — Final Recommendations
 
 ### Next 30 days — Must Do
-1. **Merge → `main` (no-ff), tag `v1.0.0-rc.1`, delete the 4 absorbed branches.** (Part 9.)
-2. ~~Fix the red integration suite~~ — **done during certification** (`f493dc9`; suite green at `439de14`).
-3. **Run the RC soak:** binary built from the tag, off `/tmp`, `AUDIT_LOG_V2` on, continuous synthetic traffic + external probing for the full window, storage curve recorded.
-4. **Wire real alerting:** actual receiver, app-down/`/readyz` alert, production scrape targets.
-5. ~~Real-R2 backup round-trip~~ — **done 2026-07-18** (PASS; RECOVERY.md §5).
-6. **Provision the prod host** (secrets injected, no `.env`, binary placement per checklist).
+1. **Buy the domain; configure DNS and TLS.**
+2. **Create the git remote, push, and obtain one green CI run.**
+3. **Merge → `main` (no-ff), tag `v1.0.0-rc.1`, publish the GHCR image, then delete the 4 absorbed branches.**
+4. **Run the RC soak:** tagged build, off `/tmp`, R1 and R4–R6 on, continuous traffic + external probing, storage curve recorded.
+5. **Wire one real alert first:** app-down/`/readyz` to a phone.
+6. **Provision and rehearse production:** Cloudflare frontend → CORS/CSP/WSS → shared nginx → app; scan a printed QR from a phone on cellular.
 7. Onboard Restaurant #1 supervised; bill manually.
 
 ### Next 30 days — Should Do
-- Fix the promo timezone bug and the WS reconnect dead-end before the pilot's first weekend.
-- Align `go.mod` with Docker/CI Go version.
-- Add integration suite + a 10-spec e2e smoke pack to CI.
+- Add a Postgres-backed integration job and a 10-spec e2e smoke pack to CI.
+- Add the other Alertmanager routes after the app-down page is proven.
 
 ### Next 90 days — Must Do
 1. Pilot retro → burn down the top field findings.
-2. Flip **R2** (org tenancy) after `branches.organization_id` backfill + soak; start **R3 shadow** (48h zero-mismatch gate) and **R4** staff-code decay window.
-3. Establish the weekly cadence: one wave at a time, never chained.
-4. CI runs the full integration suite on every PR.
+2. Add a CSV menu importer after the first restaurant confirms the import shape.
+3. Flip **R2** after `branches.organization_id` backfill + soak.
+4. Integrate one UPI-capable gateway behind the existing webhook layer.
 
 ### Next 90 days — Should Do
-- Integrate one real payment gateway (UPI-capable) behind the existing webhook layer.
-- Super-admin bootstrap UI + onboarding runbook (make onboarding repeatable by someone who isn't you).
 - Restaurants #2–#5.
-- e2e full reconciliation with the redesigned DOM.
+- Add a bill-arithmetic invariant test and database `CHECK`.
 
-### Next year — Must Do
-1. Complete the wave ladder through **R6** (closes F-8 — precondition for any public/multi-tenant exposure) and **R7** (with the webhook-replay CI proof).
-2. **Integer money migration.**
-3. Multi-instance deployment with a real multi-pod WS soak.
-4. Graduate billing from shadow to enforced (start with invoice generation + human approval).
-5. Second operator: on-call, runbook-driven support, SLOs.
+### Evidence-gated scale work
+- R3 central authz enforcement when per-handler checks become a maintenance burden.
+- R7 with webhook exact-replay proof once a gateway is live.
+- Staff realtime around 50 restaurants or when kitchen latency is reported.
+- Multi-instance deployment only when pool/latency metrics demand it.
+- Integer money only if invariant testing or a real bill exposes drift.
+- Drop the legacy `restaurants` model only when it blocks product work.
+- Graduate billing from shadow when plans need to represent real money.
 
-### Next year — Should Do
-- Staff realtime (branch-scoped WS channel); retire kitchen polling.
-- Drop the legacy `restaurants` model once R2/R3 metrics prove it dead.
-- Audit hash-chain activation; data-retention policy for `audit_log`.
-- Refactor `server.go` wiring into per-module registration.
-
-### Nice To Have (any horizon)
-- Standard JWT library for guest tokens; menu import tooling; owner-facing multi-branch analytics packaging; white-label theme marketplace; collateral-surface consolidation; fold `AppearanceTab` into `SettingsTab`; prune the 567 lint warnings.
+Deleted as scheduled work: server wiring DI refactor, audit hash chain, JWT
+library migration, full 106-spec DOM reconciliation, lint-warning cleanup,
+bootstrap UI, and speculative 500/thousands infrastructure.
 
 ---
 

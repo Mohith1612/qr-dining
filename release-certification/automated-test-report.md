@@ -124,13 +124,9 @@ Full multi-role sweep on the freshly-reseeded stack; **no new product defects fo
   state until wave R6.
 
 ## Notes / observations
-- **Go version skew (informational):** `go.mod` declares `go 1.26.0`; CI pins `go-version: "1.24"`.
-  Because `GOTOOLCHAIN=auto`, both local and CI transparently download and use go1.26.0, so nothing
-  breaks — but CI wastes time fetching a toolchain every run. Recommend aligning `setup-go` to 1.26.
-  Recorded in issues-found.md.
-- **CI coverage gap (pre-existing, tracked):** CI runs lint, domain unit tests, sqlc drift, and a
-  docker build only. The integration suite and Playwright suite run nowhere in CI. Recorded in
-  release-checklist.md.
+- **Go version skew closed:** `go.mod`, CI, and Docker now pin Go 1.26.
+- **CI coverage partially closed:** the unit job now runs every Go package under the
+  race detector. The integration suite and Playwright smoke slice still need CI jobs.
 - The previously staged deletion of the obsolete 32 MB `server` binary at the repo root (staged
   before certification began) was committed together with the gofmt commit `372e3be`.
 
