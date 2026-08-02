@@ -17,7 +17,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
       -trimpath \
       -ldflags="-s -w" \
       -o /bin/qr-dining \
-      ./cmd/server
+      ./cmd/server && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
+      -trimpath \
+      -ldflags="-s -w" \
+      -o /bin/bootstrap-admin \
+      ./cmd/bootstrap-admin
 
 # ================================================================
 # Stage 2: Runtime
@@ -31,6 +36,7 @@ RUN apk add --no-cache ca-certificates wget tzdata && \
 WORKDIR /app
 
 COPY --from=builder /bin/qr-dining /app/qr-dining
+COPY --from=builder /bin/bootstrap-admin /app/bootstrap-admin
 
 USER appuser
 
