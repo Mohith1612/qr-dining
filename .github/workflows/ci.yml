@@ -20,7 +20,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26"
           cache: true
           cache-dependency-path: backend/go.sum
 
@@ -51,7 +51,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26"
           cache: true
           cache-dependency-path: backend/go.sum
 
@@ -62,7 +62,7 @@ jobs:
         run: go build ./...
 
       - name: Unit tests (with race detector)
-        run: go test -count=1 -race ./internal/domain/...
+        run: go test -count=1 -race ./...
 
   sqlc-check:
     name: sqlc Drift Check
@@ -72,7 +72,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26"
           cache: true
           cache-dependency-path: backend/go.sum
 
