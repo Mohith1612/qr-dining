@@ -26,7 +26,7 @@ const TERMINAL_STATUSES: string[] = ["closed", "abandoned", "expired"]
 export function SessionProvider({ sessionId, participantId, children }: SessionProviderProps) {
   const [snapshotLoaded, setSnapshotLoaded] = useState(false)
   const [sessionClosed, setSessionClosed] = useState(false)
-  const { status } = useWebSocket(sessionId)
+  const { retry } = useWebSocket(sessionId)
   const session = useSessionStore((s) => s.session)
   const isReactivating = useSessionStore((s) => s.isReactivating)
   const completedPayment = useSessionStore((s) => s.completedPayment)
@@ -100,34 +100,9 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
     />
   )
 
-  if (status === "failed") return (
-    <div style={{
-      minHeight: "100svh", display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-      padding: 32, textAlign: "center", background: "var(--bg-base)",
-    }}>
-      <p style={{ fontSize: 20, fontWeight: 600, color: "var(--ink-1)", marginBottom: 8 }}>
-        Connection lost
-      </p>
-      <p style={{ fontSize: 14, color: "var(--ink-3)", marginBottom: 24 }}>
-        We couldn&apos;t reconnect to the server.
-      </p>
-      <button
-        onClick={() => window.location.reload()}
-        style={{
-          padding: "10px 24px", borderRadius: 999,
-          background: "var(--accent)", color: "var(--accent-ink)",
-          fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none",
-        }}
-      >
-        Refresh page
-      </button>
-    </div>
-  )
-
   return (
     <ErrorBoundary>
-      {isReactivating ? <SessionReactivatingBanner /> : <ReconnectingBanner />}
+      {isReactivating ? <SessionReactivatingBanner /> : <ReconnectingBanner onRetry={retry} />}
       {snapshotLoaded ? children : null}
       <SessionTimeoutBanner />
     </ErrorBoundary>

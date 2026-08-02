@@ -8,10 +8,15 @@ const prefersReducedMotion =
     ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
     : false
 
-export function ReconnectingBanner() {
+interface ReconnectingBannerProps {
+  onRetry: () => void
+}
+
+export function ReconnectingBanner({ onRetry }: ReconnectingBannerProps) {
   const status = useWsStore((s) => s.status)
   const attempt = useWsStore((s) => s.attempt)
-  const visible = status === "reconnecting" || status === "disconnected"
+  const visible =
+    status === "reconnecting" || status === "disconnected" || status === "failed"
 
   return (
     <AnimatePresence>
@@ -31,9 +36,22 @@ export function ReconnectingBanner() {
             borderBottom: "1px solid var(--warn)",
           }}
         >
-          {status === "reconnecting"
-            ? `Reconnecting${attempt > 1 ? ` (attempt ${attempt})` : ""}…`
-            : "Connection lost. Please refresh."}
+          {status === "reconnecting" ? (
+            `Reconnecting${attempt > 1 ? ` (attempt ${attempt})` : ""}…`
+          ) : status === "failed" ? (
+            <span className="inline-flex items-center gap-2">
+              <span>Connection lost.</span>
+              <button
+                type="button"
+                onClick={onRetry}
+                className="rounded-full border border-current px-3 py-1 font-semibold"
+              >
+                Retry
+              </button>
+            </span>
+          ) : (
+            "Connection lost. Reconnecting…"
+          )}
         </motion.div>
       )}
     </AnimatePresence>

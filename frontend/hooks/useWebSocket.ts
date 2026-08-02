@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { WSConnection } from "@/lib/ws/connection"
 import { reconcileSnapshot } from "@/lib/ws/reconciliation"
 import { useSessionStore } from "@/store/session"
@@ -151,5 +151,8 @@ export function useWebSocket(sessionId: string) {
 
   const status = useWsStore((s) => s.status)
   const attempt = useWsStore((s) => s.attempt)
-  return { status, attempt }
+  const retry = useCallback(() => {
+    connRef.current?.retry()
+  }, [])
+  return { status, attempt, retry }
 }

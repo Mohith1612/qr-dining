@@ -29,6 +29,13 @@ export class WSConnection {
     void this.openSocket()
   }
 
+  retry(): void {
+    if (this.stopped) return
+    this.attemptCount = 0
+    useWsStore.getState().setStatus("reconnecting", 1)
+    this.connect()
+  }
+
   private async openSocket(): Promise<void> {
     const guestToken = sessionStorage.getItem("guest_access_token")
     if (!guestToken) {
