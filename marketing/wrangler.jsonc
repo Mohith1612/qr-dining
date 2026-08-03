@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "qr-dining-marketing",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-07-29",
+  "vars": {
+    "DEMO_TO_EMAIL": "hello@qrdining.app",
+    "DEMO_FROM_EMAIL": "QR Dining <website@qrdining.app>"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "RATE_LIMIT",
+      "id": "REPLACE_WITH_PRODUCTION_KV_NAMESPACE_ID"
+    }
+  ]
+}
