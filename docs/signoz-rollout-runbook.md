@@ -68,4 +68,4 @@ Then tune: raise `OTEL_TRACES_SAMPLE_RATIO` (0.1 → 0.3 → 1.0) only with RAM/
 
 | Date | Phase | Outcome | Notes |
 |---|---|---|---|
-| — | — | — | — |
+| 2026-08-03 | Phase 1 — Local eval | **PASS** | `qr-dining-signoz-eval` healthy; v0.129.0/v0.144.5 arm64-capable images. Full isolated manual-testing flow (create → join → cart/menu → order → payment) produced Gin + pgx + Redis spans. Payment trace/access log/audit correlation matched `368fb151c3909a3146da5f8790eb9945`. Infra endpoints were excluded; collector-stop request returned 200 with only a non-fatal exporter warning. `go test -race ./...` and a CGO-free linux/arm64 backend build passed. `OTEL_ENABLED=false` booted without an OTLP dial and preserved untraced health/readiness/metrics responses. Phase 3 remains blocked pending an explicit Phase 0 GO. |
