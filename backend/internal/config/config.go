@@ -15,6 +15,7 @@ type Config struct {
 	DB           DBConfig
 	Redis        RedisConfig
 	Log          LogConfig
+	OTel         OTelConfig
 	CORS         CORSConfig
 	Auth         AuthConfig
 	Payment      PaymentConfig
@@ -51,15 +52,24 @@ type DBConfig struct {
 	MinConns        int32
 	MaxConnLifetime time.Duration
 	MaxConnIdleTime time.Duration
+	OTelEnabled     bool
 }
 
 type RedisConfig struct {
-	URL string
+	URL         string
+	OTelEnabled bool
 }
 
 type LogConfig struct {
 	Level  string
 	Pretty bool
+}
+
+type OTelConfig struct {
+	Enabled           bool
+	ExporterEndpoint  string
+	ServiceName       string
+	TracesSampleRatio float64
 }
 
 type CORSConfig struct {
@@ -188,6 +198,19 @@ func Load() (*Config, error) {
 	// Logging
 	cfg.Log.Level = getenv("LOG_LEVEL", "info")
 	cfg.Log.Pretty = getenv("LOG_PRETTY", "false") == "true"
+
+	// OpenTelemetry tracing (disabled by default and never required for boot).
+	cfg.OTel.Enabled = parseBool("OTEL_ENABLED", false)
+	cfg.OTel.ExporterEndpoint = getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")
+	cfg.OTel.ServiceName = getenv("OTEL_SERVICE_NAME", "qr-dining-backend")
+	cfg.OTel.TracesSampleRatio = parseFloat("OTEL_TRACES_SAMPLE_RATIO", 0.1)
+	if cfg.OTel.TracesSampleRatio < 0 {
+		cfg.OTel.TracesSampleRatio = 0
+	} else if cfg.OTel.TracesSampleRatio > 1 {
+		cfg.OTel.TracesSampleRatio = 1
+	}
+	cfg.DB.OTelEnabled = cfg.OTel.Enabled
+	cfg.Redis.OTelEnabled = cfg.OTel.Enabled
 
 	// CORS
 	cfg.CORS.AllowedOrigins = splitComma("CORS_ALLOWED_ORIGINS", "")
@@ -348,6 +371,19 @@ func parseDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func parseFloat(key string, fallback float64) float64 {
+	s := getenv(key, "")
+	if s == "" {
+		return fallback
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warn: invalid %s=%q: %v — using default %g\n", key, s, err, fallback)
+		return fallback
+	}
+	return v
 }
 
 func parseBool(key string, fallback bool) bool {

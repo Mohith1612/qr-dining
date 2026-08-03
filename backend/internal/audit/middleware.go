@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // requestIDKey matches middleware.RequestIDKey — duplicated here to avoid import cycle.
@@ -32,6 +33,11 @@ func Middleware() gin.HandlerFunc {
 			RequestID:     c.GetString(requestIDKey),
 			CorrelationID: c.GetHeader("X-Correlation-ID"),
 			Source:        inferSource(c),
+		}
+		if reqCtx.CorrelationID == "" {
+			if sc := trace.SpanContextFromContext(c.Request.Context()); sc.IsValid() {
+				reqCtx.CorrelationID = sc.TraceID().String()
+			}
 		}
 		ctx := context.WithValue(c.Request.Context(), auditCtxKey{}, reqCtx)
 		c.Request = c.Request.WithContext(ctx)

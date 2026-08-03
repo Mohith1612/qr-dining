@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 // Server owns the HTTP server and all wired dependencies.
@@ -55,6 +56,16 @@ func New(
 
 	// ── Middleware stack ─────────────────────────────────────────────────────
 	r.Use(middleware.Recover(logger))
+	if cfg.OTel.Enabled {
+		r.Use(otelgin.Middleware(cfg.OTel.ServiceName, otelgin.WithGinFilter(func(c *gin.Context) bool {
+			switch c.Request.URL.Path {
+			case "/health", "/readyz", "/metrics":
+				return false
+			default:
+				return true
+			}
+		})))
+	}
 	r.Use(middleware.RequestID())
 	r.Use(audit.Middleware())
 	r.Use(middleware.Logger(logger))

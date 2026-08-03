@@ -36,6 +36,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// 3b. Tracing (no-op unless OTEL_ENABLED=true).
+	otelShutdown, err := observability.SetupTracing(ctx, cfg.OTel, logger)
+	if err != nil {
+		logger.Warn().Err(err).Msg("otel init failed; continuing without tracing")
+		otelShutdown = func(context.Context) error { return nil }
+	}
+
 	// 4. Connect to PostgreSQL.
 	db, err := dbPkg.NewPool(ctx, cfg.DB)
 	if err != nil {
@@ -115,6 +122,12 @@ func main() {
 	// 15. Start HTTP server — blocks until shutdown.
 	if err := srv.Start(ctx); err != nil {
 		logger.Error().Err(err).Msg("server error")
+	}
+
+	otelCtx, cancelOTel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelOTel()
+	if err := otelShutdown(otelCtx); err != nil {
+		logger.Warn().Err(err).Msg("otel shutdown failed")
 	}
 
 	logger.Info().Msg("shutdown complete")
