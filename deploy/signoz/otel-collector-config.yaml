@@ -1,11 +1,10 @@
-# SigNoz otel-collector config — SKELETON.
-#
-# ⚠️ Start from the official otel-collector config shipped with the PINNED
-# SigNoz release (deploy/docker/otel-collector-config.yaml in the SigNoz repo):
-# its exporter names, ClickHouse DSN wiring, and internal pipelines change
-# between releases. Then re-apply the sections marked "QR-DINING" below — those
-# are this project's decisions and must survive the merge.
-
+connectors:
+  signozmeter:
+    metrics_flush_interval: 1h
+    dimensions:
+      - name: service.name
+      - name: deployment.environment
+      - name: host.name
 receivers:
   otlp:
     protocols:
@@ -13,83 +12,127 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
-
-  # ── QR-DINING: app log collection (VM only) ──────────────────────────────
-  # Tails the Docker json-file logs of the app container and parses the
-  # zerolog NDJSON body. Zero app-code changes; requires the
-  # /var/lib/docker/containers:ro mount in docker-compose.signoz.yml.
-  # Container-name filtering: prefer the `container` operator if the pinned
-  # collector version ships it; otherwise resolve the container id with
-  #   docker inspect --format '{{.Id}}' qr_dining_app
-  # and narrow `include` to that path (re-check after each app redeploy, or
-  # keep the glob + filter processor on container.name below).
+  # QR-DINING: Docker json-file logs from the backend container (VM only).
   filelog:
     include: ["/var/lib/docker/containers/*/*.log"]
     start_at: end
     operators:
-      # Outer envelope: Docker json-file format {"log":"...","stream":"...","time":"..."}
       - type: json_parser
         parse_from: body
-        timestamp:
-          parse_from: attributes.time
-          layout: "%Y-%m-%dT%H:%M:%S.%LZ"
       - type: move
         from: attributes.log
         to: body
-      # Inner body: zerolog NDJSON from backend/internal/observability/logger.go.
-      # Guests non-JSON lines (panics, stdlib output) pass through unparsed.
       - type: json_parser
         parse_from: body
         if: "body matches '^\\\\{'"
         severity:
           parse_from: attributes.level
-      # QR-DINING: promote correlation fields for search + trace↔log pivot.
-      - type: move
-        from: attributes.trace_id
-        to: trace_id
-        if: "attributes.trace_id != nil"
-      - type: move
-        from: attributes.span_id
-        to: span_id
-        if: "attributes.span_id != nil"
-
+  prometheus:
+    config:
+      global:
+        scrape_interval: 60s
+      scrape_configs:
+        - job_name: otel-collector
+          static_configs:
+          - targets:
+              - localhost:8888
+            labels:
+              job_name: otel-collector
 processors:
-  batch:
-    send_batch_size: 10000
-    timeout: 1s
-  # QR-DINING: keep collector memory inside its 256m mem_limit.
+  # QR-DINING: bound collector memory below its 256 MiB container limit.
   memory_limiter:
     check_interval: 1s
     limit_mib: 200
     spike_limit_mib: 40
-  # QR-DINING: drop log records from other projects' containers on the shared
-  # VM (invoice, job-queue-system, sketchiple share /var/lib/docker/containers).
-  # Exact processor/attribute depends on pinned version — the requirement is:
-  # only qr_dining_app logs reach the logs pipeline.
   filter/qr-dining-only:
     logs:
       log_record:
         - 'resource.attributes["container.name"] != nil and resource.attributes["container.name"] != "qr_dining_app"'
-
+  batch:
+    send_batch_size: 10000
+    send_batch_max_size: 11000
+    timeout: 10s
+  batch/meter:
+    send_batch_max_size: 25000
+    send_batch_size: 20000
+    timeout: 1s
+  resourcedetection:
+    # Using OTEL_RESOURCE_ATTRIBUTES envvar, env detector adds custom labels.
+    detectors: [env, system]
+    timeout: 2s
+  signozspanmetrics/delta:
+    metrics_exporter: signozclickhousemetrics
+    metrics_flush_interval: 60s
+    latency_histogram_buckets: [100us, 1ms, 2ms, 6ms, 10ms, 50ms, 100ms, 250ms, 500ms, 1000ms, 1400ms, 2000ms, 5s, 10s, 20s, 40s, 60s ]
+    dimensions_cache_size: 100000
+    aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
+    enable_exp_histogram: true
+    dimensions:
+      - name: service.namespace
+        default: default
+      - name: deployment.environment
+        default: default
+      # This is added to ensure the uniqueness of the timeseries
+      # Otherwise, identical timeseries produced by multiple replicas of
+      # collectors result in incorrect APM metrics
+      - name: signoz.collector.id
+      - name: service.version
+      - name: browser.platform
+      - name: browser.mobile
+      - name: k8s.cluster.name
+      - name: k8s.node.name
+      - name: k8s.namespace.name
+      - name: host.name
+      - name: host.type
+      - name: container.name
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1777
 exporters:
-  # ⚠️ Placeholder names — copy the real ClickHouse exporter blocks (names,
-  # DSNs, timeouts) from the pinned release's config verbatim.
   clickhousetraces:
     datasource: tcp://clickhouse:9000/signoz_traces
+    low_cardinal_exception_grouping: ${env:LOW_CARDINAL_EXCEPTION_GROUPING}
+    use_new_schema: true
+  signozclickhousemetrics:
+    dsn: tcp://clickhouse:9000/signoz_metrics
   clickhouselogsexporter:
     dsn: tcp://clickhouse:9000/signoz_logs
     timeout: 10s
-
+    use_new_schema: true
+  signozclickhousemeter:
+    dsn: tcp://clickhouse:9000/signoz_meter
+    timeout: 45s
+    sending_queue:
+      enabled: false
+  metadataexporter:
+    cache:
+      provider: in_memory
+    dsn: tcp://clickhouse:9000/signoz_metadata
+    enabled: true
+    timeout: 45s
 service:
+  telemetry:
+    logs:
+      encoding: json
+  extensions:
+    - health_check
+    - pprof
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [clickhousetraces]
+      processors: [memory_limiter, signozspanmetrics/delta, batch]
+      exporters: [clickhousetraces, metadataexporter, signozmeter]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [signozclickhousemetrics, metadataexporter, signozmeter]
     logs:
       receivers: [otlp, filelog]
       processors: [memory_limiter, filter/qr-dining-only, batch]
-      exporters: [clickhouselogsexporter]
-    # QR-DINING: NO metrics pipeline in Phases 0–3. Prometheus + the 27 alert
-    # rules in deploy/observability/ stay authoritative. Phase 4 may add a
-    # prometheus receiver dual-scraping app:8080/metrics — decision deferred.
+      exporters: [clickhouselogsexporter, metadataexporter, signozmeter]
+    metrics/meter:
+      receivers: [signozmeter]
+      processors: [batch/meter]
+      exporters: [signozclickhousemeter]

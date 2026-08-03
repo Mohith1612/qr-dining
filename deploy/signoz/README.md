@@ -8,6 +8,12 @@ Skeleton files in this directory:
 - `docker-compose.signoz.yml` — the stack (validates with `docker compose config -q`; image tags must be re-pinned at implementation time)
 - `otel-collector-config.yaml` — collector pipelines (start from the official config of the pinned release, apply the `QR-DINING` deltas marked inside)
 
+The stack is pinned to **SigNoz v0.129.0**, the newest release that still ships
+the canonical `deploy/docker/` Compose deployment required by this rollout.
+SigNoz v0.130.0 and later removed those files in favor of Foundry. The paired
+upstream collector tag is `v0.144.5`; all pinned long-running images publish
+`linux/arm64` manifests.
+
 > **⚠️ SOAK SAFETY — READ FIRST.** The local dev machine hosts the long-running soak stack under compose project **`qr-dining`** on ports **5432/6379/8080** (SEV-0 RC soak pending). Never bring SigNoz up with `-p qr-dining`, never bind those host ports, never run `docker compose down -v` against anything but the `qr-dining-signoz*` projects. Same standing rules as `OPERATIONS.md` §8.
 
 ## Topology

@@ -1,134 +1,130 @@
-# SigNoz self-hosted stack — SKELETON.
-#
-# ⚠️ Image tags below are placeholders from the 2025-era layout — verify latest
-# at implementation time against the pinned SigNoz release's deploy/docker/
-# compose file (https://github.com/SigNoz/signoz). The service layout itself
-# (merged `signoz` container, schema migrators, keeper choice) also changes
-# between releases: mirror the pinned release, keep the DECISIONS encoded here:
-#   * host bindings: UI 127.0.0.1:3301, OTLP 127.0.0.1:4317/4318 — nothing else
-#   * the signoz container's internal 8080 is NEVER published as host 8080
-#   * ClickHouse/zookeeper: internal network only, no host ports
-#   * every long-running service has an explicit mem_limit (shared VM)
-#   * external network "signoz" is how the app container reaches the collector
-#   * all images must be arm64 (Ampere VM; repo has no amd64 fallback)
-#
-# VM:         docker compose up -d          (project name qr-dining-signoz)
-# Local eval: docker compose -p qr-dining-signoz-eval -f deploy/signoz/docker-compose.signoz.yml up -d
-#
-# ⚠️ Never run with -p qr-dining — that is the local soak stack (SEV-0 pending).
-
+# SigNoz Community Edition deployment pinned to v0.129.0.
+# This is the newest release that still ships deploy/docker Compose assets.
 name: qr-dining-signoz
+
+x-common: &common
+  restart: unless-stopped
+  logging: &default-logging
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
 
 networks:
   signoz:
-    external: true # docker network create signoz — shared with the app via overlay
+    external: true
   signoz_internal:
     internal: true
 
 volumes:
   signoz_clickhouse_data:
   signoz_zookeeper_data:
-  signoz_sqlite_data: # signoz container's own metadata (users, dashboards, retention)
-
-x-logging: &default-logging
-  driver: json-file
-  options:
-    max-size: "10m"
-    max-file: "3"
+  signoz_sqlite_data:
+  signoz_clickhouse_user_scripts:
 
 services:
-  zookeeper:
-    # verify latest at implementation time — use the exact image the pinned
-    # SigNoz release references (newer releases may use clickhouse-keeper instead)
-    image: bitnami/zookeeper:3.7.1
-    restart: unless-stopped
-    environment:
-      ALLOW_ANONYMOUS_LOGIN: "yes"
-    volumes:
-      - signoz_zookeeper_data:/bitnami/zookeeper
-    networks: [signoz_internal]
-    mem_limit: 256m
+  init-clickhouse:
+    image: clickhouse/clickhouse-server:25.5.6
+    restart: on-failure
+    command: ["bash", "-c", "node_os=$$(uname -s | tr '[:upper:]' '[:lower:]'); node_arch=$$(uname -m | sed s/aarch64/arm64/ | sed s/x86_64/amd64/); cd /tmp; wget -O histogram-quantile.tar.gz https://github.com/SigNoz/signoz/releases/download/histogram-quantile%2Fv0.0.1/histogram-quantile_$${node_os}_$${node_arch}.tar.gz; tar -xvzf histogram-quantile.tar.gz; mv histogram-quantile /var/lib/clickhouse/user_scripts/histogramQuantile"]
+    volumes: [signoz_clickhouse_user_scripts:/var/lib/clickhouse/user_scripts]
+    networks: [signoz_internal, signoz]
     logging: *default-logging
 
+  zookeeper-1:
+    <<: *common
+    image: signoz/zookeeper:3.7.1
+    user: root
+    environment:
+      ZOO_SERVER_ID: "1"
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+      ZOO_AUTOPURGE_INTERVAL: "1"
+      ZOO_ENABLE_PROMETHEUS_METRICS: "yes"
+      ZOO_PROMETHEUS_METRICS_PORT_NUMBER: "9141"
+    volumes: [signoz_zookeeper_data:/bitnami/zookeeper]
+    networks: [signoz_internal]
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -m 2 http://localhost:8080/commands/ruok | grep error | grep null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   clickhouse:
-    # verify latest at implementation time — use the tag pinned by the SigNoz release
-    image: clickhouse/clickhouse-server:24.1.2-alpine
-    restart: unless-stopped
-    depends_on: [zookeeper]
-    # The pinned release ships cluster/user config XMLs (deploy/docker/clickhouse-setup/)
-    # that must be mounted here — copy them next to this file at implementation time.
-    # volumes:
-    #   - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/config.xml:ro
-    #   - ./clickhouse-cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+    <<: *common
+    image: clickhouse/clickhouse-server:25.5.6
+    tty: true
+    depends_on:
+      init-clickhouse: {condition: service_completed_successfully}
+      zookeeper-1: {condition: service_healthy}
+    environment: {CLICKHOUSE_SKIP_USER_SETUP: "1"}
+    ulimits:
+      nproc: 65535
+      nofile: {soft: 262144, hard: 262144}
     volumes:
+      - ./clickhouse/config.xml:/etc/clickhouse-server/config.xml:ro
+      - ./clickhouse/users.xml:/etc/clickhouse-server/users.xml:ro
+      - ./clickhouse/custom-function.xml:/etc/clickhouse-server/custom-function.xml:ro
+      - ./clickhouse/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+      - signoz_clickhouse_user_scripts:/var/lib/clickhouse/user_scripts
       - signoz_clickhouse_data:/var/lib/clickhouse
     networks: [signoz_internal]
     mem_limit: 1536m
-    logging: *default-logging
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "127.0.0.1:8123/ping"]
+      test: ["CMD", "wget", "--spider", "-q", "0.0.0.0:8123/ping"]
       interval: 30s
       timeout: 5s
-      retries: 5
-
-  schema-migrator-sync:
-    # verify latest at implementation time — tag tracks the collector version
-    image: signoz/signoz-schema-migrator:latest
-    command: ["sync", "--dsn=tcp://clickhouse:9000", "--up="]
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    networks: [signoz_internal]
-    restart: on-failure
-
-  schema-migrator-async:
-    image: signoz/signoz-schema-migrator:latest # verify latest at implementation time
-    command: ["async", "--dsn=tcp://clickhouse:9000", "--up="]
-    depends_on:
-      schema-migrator-sync:
-        condition: service_completed_successfully
-    networks: [signoz_internal]
-    restart: on-failure
+      retries: 3
 
   signoz:
-    # verify latest at implementation time — merged query-service + web UI
-    image: signoz/signoz:latest
-    restart: unless-stopped
+    <<: *common
+    image: signoz/signoz:v0.129.0
     depends_on:
-      clickhouse:
-        condition: service_healthy
-    # Copy the env block (ClickHouse DSN, storage paths, telemetry opt-out) from
-    # the pinned release's compose file at implementation time.
+      clickhouse: {condition: service_healthy}
     environment:
-      SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN: "tcp://clickhouse:9000"
-      TELEMETRY_ENABLED: "false" # no phone-home from the self-hosted install
-    volumes:
-      - signoz_sqlite_data:/var/lib/signoz
-    ports:
-      # Container serves on 8080 internally — NEVER publish as host 8080 (app conflict).
-      - "127.0.0.1:3301:8080"
+      SIGNOZ_ALERTMANAGER_PROVIDER: signoz
+      SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN: tcp://clickhouse:9000
+      SIGNOZ_SQLSTORE_SQLITE_PATH: /var/lib/signoz/signoz.db
+      SIGNOZ_TOKENIZER_JWT_SECRET: local-eval-change-before-vm-deploy
+      TELEMETRY_ENABLED: "false"
+    volumes: [signoz_sqlite_data:/var/lib/signoz]
+    ports: ["127.0.0.1:3301:8080"]
     networks: [signoz_internal, signoz]
     mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  signoz-telemetrystore-migrator:
+    image: signoz/signoz-otel-collector:v0.144.5
+    restart: on-failure
+    depends_on:
+      clickhouse: {condition: service_healthy}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/signoz-otel-collector migrate bootstrap && /signoz-otel-collector migrate sync up && /signoz-otel-collector migrate async up"]
+    environment: &collector-env
+      SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_DSN: tcp://clickhouse:9000
+      SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_CLUSTER: cluster
+      SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_REPLICATION: "true"
+      SIGNOZ_OTEL_COLLECTOR_TIMEOUT: 10m
+    networks: [signoz_internal]
     logging: *default-logging
 
-  otel-collector:
-    # verify latest at implementation time
-    image: signoz/signoz-otel-collector:latest
-    restart: unless-stopped
-    command: ["--config=/etc/otel-collector-config.yaml"]
+  signoz-otel-collector:
+    <<: *common
+    image: signoz/signoz-otel-collector:v0.144.5
     depends_on:
-      schema-migrator-sync:
-        condition: service_completed_successfully
+      signoz-telemetrystore-migrator: {condition: service_completed_successfully}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/signoz-otel-collector migrate sync check && /signoz-otel-collector --config=/etc/otel-collector-config.yaml"]
+    environment:
+      <<: *collector-env
+      OTEL_RESOURCE_ATTRIBUTES: host.name=signoz-host,os.type=linux
+      LOW_CARDINAL_EXCEPTION_GROUPING: "false"
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
-      # VM only: lets the filelog receiver tail the app container's json-file
-      # logs. Harmless-but-useless on a dev machine (no qr_dining_app there).
+      - ./otel-collector-opamp-config.yaml:/etc/manager-config.yaml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    ports:
-      # Localhost-only: used by a natively-run local backend. VM containers
-      # reach the collector via the "signoz" network instead.
-      - "127.0.0.1:4317:4317" # OTLP gRPC
-      - "127.0.0.1:4318:4318" # OTLP HTTP
+    ports: ["127.0.0.1:4317:4317", "127.0.0.1:4318:4318"]
     networks: [signoz_internal, signoz]
     mem_limit: 256m
-    logging: *default-logging
