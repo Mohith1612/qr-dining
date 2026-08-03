@@ -90,6 +90,40 @@ jobs:
             exit 1
           fi
 
+  migrations:
+    name: Migration Check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: qr_dining
+          POSTGRES_PASSWORD: qr_dining
+          POSTGRES_DB: qr_dining_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qr_dining -d qr_dining_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://qr_dining:qr_dining@localhost:5432/qr_dining_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Run migrations up, down, and up again
+        run: |
+          go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate -path migrations -database "$DATABASE_URL" up
+          go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate -path migrations -database "$DATABASE_URL" down -all
+          go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate -path migrations -database "$DATABASE_URL" up
+
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest
