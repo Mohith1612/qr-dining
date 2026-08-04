@@ -16,6 +16,18 @@
 #                  -f observability/docker-compose.observability.yml \
 #                  -f docker-compose.observability-vm.yml up -d
 
+# WHY THE VOLUME PATHS ARE ABSOLUTE HERE
+#
+# The base observability compose uses relative bind mounts (`./prometheus.yml`).
+# With multiple `-f` files, Compose resolves relative paths against the PROJECT
+# directory — the first file's directory — not against the file that contains
+# them. Run from /opt/qr-dining as DEPLOYMENT.md §5 says, `./prometheus.yml`
+# therefore resolves to /opt/qr-dining/prometheus.yml, which does not exist, and
+# the container dies with "Are you trying to mount a directory onto a file".
+#
+# Re-declaring the mounts with `!override` and absolute paths fixes it without
+# touching the base file, which must keep its relative paths so the documented
+# local/staging invocation (run from the repo root) still works.
 services:
   prometheus:
     networks:
@@ -25,12 +37,20 @@ services:
     # docker compose v2.24+.
     ports: !override
       - "127.0.0.1:9090:9090"
+    volumes: !override
+      - /opt/qr-dining/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/qr-dining/observability/prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
+      - prometheus_data:/prometheus
 
   alertmanager:
     ports: !override
       - "127.0.0.1:9093:9093"
+    volumes: !override
+      - /opt/qr-dining/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
 
   blackbox:
     networks:
       - observability
       - qr-dining_internal
+    volumes: !override
+      - /opt/qr-dining/observability/blackbox.yml:/etc/blackbox/blackbox.yml:ro

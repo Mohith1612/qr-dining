@@ -64,6 +64,14 @@ server {
 
     # The app reads X-Forwarded-For via gin trusted proxies (TRUSTED_PROXIES in
     # /opt/qr-dining/.env) — keep that set to the docker proxy network CIDR.
+    #
+    # ⚠ These server-level headers are inherited by a location ONLY IF that
+    # location sets no proxy_set_header of its own. nginx REPLACES the whole
+    # set at the more specific level rather than merging it. Any location below
+    # that needs its own header must therefore repeat all four, or the app
+    # silently sees the nginx container as the client — which collapses every
+    # guest into one rate-limit bucket and puts the proxy IP in the audit log.
+    # (Found during beta validation 2026-08-04: client_ip logged as 172.18.0.2.)
     proxy_set_header Host              $host;
     proxy_set_header X-Real-IP         $remote_addr;
     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
@@ -73,6 +81,13 @@ server {
     location = /ws {
         proxy_pass http://$qr_upstream;
         proxy_http_version 1.1;
+
+        # Repeated deliberately — see the note above.
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
         proxy_set_header Upgrade    $http_upgrade;
         proxy_set_header Connection $qr_connection_upgrade;
 
@@ -105,6 +120,14 @@ server {
         limit_req zone=qr_api burst=60 nodelay;
         proxy_pass http://$qr_upstream;
         proxy_http_version 1.1;
+
+        # Repeated deliberately — setting Connection below would otherwise
+        # discard the server-level set. See the note above.
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
         proxy_set_header Connection "";
         proxy_read_timeout 30s;
     }

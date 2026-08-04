@@ -117,6 +117,11 @@ services:
       signoz-telemetrystore-migrator: {condition: service_completed_successfully}
     entrypoint: ["/bin/sh", "-c"]
     command: ["/signoz-otel-collector migrate sync check && /signoz-otel-collector --config=/etc/otel-collector-config.yaml"]
+    # The image runs as uid 10001, but Docker's per-container log files are
+    # root-owned and mode 0600. Without this the filelog receiver silently
+    # collects nothing: the pipeline stays healthy and zero logs arrive, which
+    # looks identical to "the app is quiet". The mount below is read-only.
+    user: root
     environment:
       <<: *collector-env
       OTEL_RESOURCE_ATTRIBUTES: host.name=signoz-host,os.type=linux
@@ -124,7 +129,13 @@ services:
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
       - ./otel-collector-opamp-config.yaml:/etc/manager-config.yaml:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # HOST side is configurable because Docker's data-root is not always
+      # /var/lib/docker — the OCI VM this deploys to uses /data/docker, and
+      # mounting the wrong path yields an empty dir rather than an error.
+      # Check with: docker info --format '{{.DockerRootDir}}'
+      # The CONTAINER side stays fixed so otel-collector-config.yaml's include
+      # glob never has to change.
+      - ${DOCKER_CONTAINERS_DIR:-/var/lib/docker/containers}:/var/lib/docker/containers:ro
     ports: ["127.0.0.1:4317:4317", "127.0.0.1:4318:4318"]
     networks: [signoz_internal, signoz]
     mem_limit: 256m

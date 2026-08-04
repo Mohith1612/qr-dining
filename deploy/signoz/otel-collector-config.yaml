@@ -27,6 +27,17 @@ receivers:
         if: "body matches '^\\\\{'"
         severity:
           parse_from: attributes.level
+        # Promote the app's trace_id/span_id onto the LOG RECORD, not just into
+        # attributes. Without this block the values still appear as ordinary
+        # string attributes, so everything looks correct in a log search while
+        # SigNoz's trace<->logs pivot — which keys on the record-level trace_id
+        # column — silently returns nothing. internal/middleware/logger.go
+        # stamps both fields on every traced request.
+        trace:
+          trace_id:
+            parse_from: attributes.trace_id
+          span_id:
+            parse_from: attributes.span_id
   prometheus:
     config:
       global:

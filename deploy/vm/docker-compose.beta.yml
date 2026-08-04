@@ -46,9 +46,16 @@ services:
     pull_policy: never
     environment:
       GIN_MODE: release
-      # Distinguishes the two instances in logs, traces and metrics — same
-      # reason scripts/manual-testing-up.sh labels its pair mtest-1/mtest-2.
-      WORKER_REGION: beta-1
+      # MUST match app2. WORKER_REGION is not an instance label — it is the
+      # background workers' coordination domain: internal/worker/worker.go
+      # locks on "worker:<region>:<name>:lock" in Redis, so two instances with
+      # DIFFERENT regions take different locks and both run every sweep
+      # (duplicate payment escalations, duplicate reactivation transitions).
+      # scripts/manual-testing-up.sh uses mtest-1/mtest-2 because it is
+      # deliberately simulating two regions; an HA pair is one region.
+      # Per-instance identity for logs/metrics comes from the container name
+      # and Prometheus' instance_name label instead.
+      WORKER_REGION: beta
     networks:
       - proxy
       - qr-dining_internal
@@ -67,7 +74,7 @@ services:
     env_file: .env
     environment:
       GIN_MODE: release
-      WORKER_REGION: beta-2
+      WORKER_REGION: beta # must equal app's — see the note above
     depends_on:
       postgres:
         condition: service_healthy
