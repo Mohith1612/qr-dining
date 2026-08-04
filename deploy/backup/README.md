@@ -69,6 +69,48 @@ systemctl list-timers qr-dining-backup.timer   # confirm next run
 # 3b. or cron: install deploy/backup/crontab.example into /etc/cron.d/
 ```
 
+## Setup (rootless — the shared OCI VM)
+
+The section above assumes root on the host and host-installed `pg_dump` + `aws`. On the shared
+OCI VM **none of that is available**: `appuser` has no passwordless sudo, and the host has
+neither Postgres client tools nor the AWS CLI. Rather than requiring an interactive `sudo apt
+install`, run the whole job in a throwaway container — the pattern `RECOVERY.md` §3 already
+certifies — and schedule it from the user crontab.
+
+Everything moves out of `/etc` and `/etc/systemd`:
+
+| Root path | Rootless equivalent |
+|---|---|
+| `/etc/qr-dining/backup.env` | `/opt/qr-dining/backup.env` (mode 600, appuser-owned) |
+| `qr-dining-backup.timer` | `appuser` crontab entry |
+| host `pg_dump` / `aws` | `postgres:17-alpine` + `apk add --no-cache aws-cli bash` |
+
+The container joins `qr-dining_internal`, so the DSN host is the compose service name
+`postgres` — no published port, and the datastore stays invisible to the internet:
+
+```bash
+docker run --rm \
+  --network qr-dining_internal \
+  --env-file /opt/qr-dining/backup.env \
+  -v /opt/qr-dining/repo/backend/scripts:/scripts:ro \
+  -v qr-dining_backup_local:/var/backups/qr-dining \
+  -v qr-dining_backup_textfile:/var/lib/node_exporter/textfile_collector \
+  postgres:17-alpine \
+  sh -c 'apk add --no-cache bash aws-cli >/dev/null && bash /scripts/nightly-backup.sh'
+```
+
+`DATABASE_URL` therefore reads `postgres://qrdining:<pw>@postgres:5432/qrdining`, and
+`NODE_EXPORTER_TEXTFILE_DIR=/var/lib/node_exporter/textfile_collector` — the **in-container**
+path of the volume node_exporter also mounts, so `qr_dining_backup_*` metrics reach Prometheus
+without either side knowing a host path.
+
+Restores use the same image; point `DATABASE_URL` at a scratch database and never restore over a
+live one to "check" a backup.
+
+> Trade-off: a user crontab does not survive a rebuild of the VM the way a checked-in systemd
+> unit does, and it has no `Restart=`/journal integration. For a beta that is a fair price for not
+> needing root. If this host ever gains passwordless sudo, prefer the systemd form above.
+
 Run once on demand to validate:
 ```bash
 set -a; . /etc/qr-dining/backup.env; set +a

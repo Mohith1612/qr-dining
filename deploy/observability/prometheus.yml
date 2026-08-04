@@ -15,10 +15,18 @@ alerting:
         - targets: ["alertmanager:9093"]
 
 scrape_configs:
+  # `app2` exists only when a multi-instance overlay is in use (the beta
+  # deployment runs two backends against one Postgres/Redis to exercise Redis
+  # pub/sub fan-out). Prometheus logs a resolution failure for a target that
+  # isn't running and carries on scraping the rest, so listing both here is
+  # safe for single-instance deployments too.
   - job_name: qr-dining
     metrics_path: /metrics
     static_configs:
       - targets: ["app:8080"]
+        labels: {instance_name: app-1}
+      - targets: ["app2:8080"]
+        labels: {instance_name: app-2}
 
   # Authoritative dependency-outage signal: /readyz returns 503 when Postgres or
   # Redis is down (Phase D F-1). probe_success==0 => a datastore is unavailable.
@@ -27,7 +35,7 @@ scrape_configs:
     params:
       module: [readyz_http_2xx]
     static_configs:
-      - targets: ["http://app:8080/readyz"]
+      - targets: ["http://app:8080/readyz", "http://app2:8080/readyz"]
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

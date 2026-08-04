@@ -24,6 +24,8 @@
 
 Backend image: **`ghcr.io/mohith1612/qr-dining`** — built and pushed by CI on pushes to `main` and `v*` tags (`sha-<short>`, `<tag>`, `latest`). Deploy by pinning `IMAGE_TAG` in `/opt/qr-dining/.env`. arm64-only (Ampere).
 
+> **The registry image does not exist yet.** As of 2026-08-04 nothing has been merged to `main` and no `v*` tag exists, so `ghcr.io/mohith1612/qr-dining` returns *Package not found* and `docker compose pull` in §3 **will fail**. PR builds run with `push: false`. Until the RC merges, deploy an unmerged branch by building on the VM — see **§3b**.
+
 ## 2. VM prerequisites (one-time)
 
 The shared proxy stack (`/opt/proxy`: nginx + certbot + external `proxy` network + `letsencrypt`/`certbot_webroot` volumes) must already be live — it is, for the other projects.
@@ -64,6 +66,36 @@ Notes:
 - Release mode fails hard on weak/missing `GUEST_TOKEN_SECRET` or empty `CORS_ALLOWED_ORIGINS` — if the app restarts in a loop, check `docker compose logs app` for the named missing variable.
 - Release mode ignores dotenv files; injected environment variables remain authoritative.
 
+## 3b. Deploying an unmerged branch (build on the VM)
+
+Used by the internal beta, and by any pre-merge deployment. The VM is Ampere arm64 and so is the
+target image, so this is a **native build with no QEMU** — faster than CI, which has to emulate the
+runtime stage on an amd64 runner.
+
+```bash
+mkdir -p /opt/qr-dining && cd /opt/qr-dining
+git clone https://github.com/Mohith1612/qr-dining.git repo
+cd repo && git checkout <branch>          # stay ON the branch, not a detached SHA
+SHA=$(git rev-parse --short HEAD)         # record this in the deployment report
+docker build -f backend/docker/Dockerfile -t qr-dining:beta-$SHA -t qr-dining:beta ./backend
+```
+
+Then set `IMAGE_TAG=beta-$SHA` in `/opt/qr-dining/.env` and bring up with the beta overlay, which
+repoints `image:` at the local tag and sets `pull_policy: never`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d
+```
+
+- **Stay on the branch.** Certification finds bugs; the fix loop is `git pull` → rebuild → `up -d`,
+  which a detached checkout turns into a manual re-checkout every round. `git rev-parse HEAD` is
+  what proves which commit is deployed, not the checkout mode.
+- **Do not tag the local image `ghcr.io/...`.** It is not in any registry, and a local image wearing
+  a registry name makes provenance ambiguous exactly when you are troubleshooting. The registry name
+  becomes the canonical artifact only after merge + tag.
+- Postgres and Redis are untouched by a backend rebuild, so seeded data and in-flight sessions
+  survive the loop.
+
 ## 4. Edge (central proxy)
 
 ```bash
@@ -73,9 +105,15 @@ docker compose -f /opt/proxy/docker-compose.yml exec nginx nginx -t
 docker compose -f /opt/proxy/docker-compose.yml exec nginx nginx -s reload
 ```
 
-- The vhost uses request-time DNS (`resolver 127.0.0.11` + `set $qr_upstream`) **deliberately** — a static upstream would make the shared proxy fail config loads whenever qr-dining is down. Keep that pattern.
-- DNS + cert (after domain purchase): point `api.<domain>` A-record at the VM, issue/extend the Let's Encrypt cert (webroot method via the existing certbot container), confirm the cert path in the vhost.
+- The vhost uses request-time DNS (`resolver 127.0.0.11` + a variable upstream) **deliberately** — a static upstream would make the shared proxy fail config loads whenever qr-dining is down. Keep that pattern.
 - WS timeouts (3600s) must stay above the app's 54s ping. `/metrics` stays 127.0.0.1-only.
+
+**TLS — corrected 2026-08-04.** This previously said to issue the cert with the "webroot method via the existing certbot container". That is wrong in two ways, and following it would fail:
+
+- The cert in use is a **wildcard** `*.mohith16.com` (+ apex), issued via **DNS-01** with the `dns-cloudflare` authenticator (`/etc/letsencrypt/renewal/mohith16.com.conf`). `--webroot` cannot renew a wildcard, and the `certbot/certbot` image does not even ship the `dns-cloudflare` plugin.
+- Because it is a wildcard, **any new `<name>.mohith16.com` host needs no issuance at all** — just point the vhost at `/etc/letsencrypt/live/mohith16.com/`.
+
+> **Known defect (not beta-blocking, must fix before production).** `proxy_certbot` has been `Exited (137)` for ~4 months, and its compose entrypoint runs `certbot renew --webroot`, which could not renew this cert even if it were running. The current cert is valid to **2026-10-27**; renewal is effectively manual until the `/opt/proxy` certbot service is switched to a DNS-01-capable image (`certbot/dns-cloudflare`) with `--dns-cloudflare-credentials`.
 
 ## 5. Observability
 
@@ -92,6 +130,8 @@ docker compose -f docker-compose.yml \
 
 ## 6. Backups
 
+The systemd path below assumes root on the host. **On the shared OCI VM neither prerequisite holds** — `appuser` has no passwordless sudo, and the host has neither `pg_dump` nor the `aws` CLI (§2's `apt install` needs a password). Use the rootless containerized path instead; see `deploy/backup/README.md`. The systemd form remains correct for a host where you *are* root:
+
 ```bash
 sudo mkdir -p /etc/qr-dining
 sudo install -m 600 <repo>/deploy/backup/backup.env.example /etc/qr-dining/backup.env
@@ -102,6 +142,8 @@ sudo cp <repo>/deploy/backup/qr-dining-backup.{service,timer} /etc/systemd/syste
 sudo systemctl daemon-reload && sudo systemctl enable --now qr-dining-backup.timer
 sudo systemctl start qr-dining-backup.service && journalctl -u qr-dining-backup -n 30
 ```
+
+Rootless equivalent (what the beta actually runs): `backup.env` at `/opt/qr-dining/backup.env` (mode 600, appuser-owned) and an `appuser` crontab entry driving the containerized job — no `/etc` writes, no systemd, no host tooling.
 
 Confirm `qr_dining_backup_last_run_status 0` appears in Prometheus afterward. The full flow (pg_dump → sha256 → R2 → manifest → retention → metrics) was verified end-to-end against the real R2 bucket on 2026-07-18 — see RECOVERY.md §5.
 

@@ -1,0 +1,88 @@
+# qr-dining — BETA overlay for the shared OCI VM.
+#
+# Everything beta-specific lives here so deploy/vm/docker-compose.yml keeps its
+# single-app production shape untouched. Apply as an overlay, never alone:
+#
+#   cd /opt/qr-dining
+#   docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d
+#
+# It does three things:
+#
+#   1. Points both backends at a LOCALLY BUILT image and forbids pulling.
+#      ghcr.io/mohith1612/qr-dining has never been published — CI only pushes on
+#      `main` and `v*` tags, and the beta deploys an unmerged branch — so the
+#      base file's `image:` refers to something that does not exist in any
+#      registry. The image is built on the VM (native arm64, no QEMU) and tagged
+#      qr-dining:beta-<short-sha>. It is deliberately NOT tagged under the ghcr
+#      name: a local image wearing a registry name makes provenance ambiguous
+#      exactly when you're troubleshooting. pull_policy: never turns a stray
+#      `docker compose pull` into a clear error instead of a confusing 401.
+#
+#   2. Adds a SECOND backend instance (app2) sharing one Postgres and one Redis.
+#      A single instance cannot certify Redis pub/sub fan-out, WebSocket ticket
+#      portability, staff-session portability, or background-worker coordination
+#      — a whole class of bug that only appears with more than one process. The
+#      manual-certification checklist has cross-instance tests; this is what
+#      makes them runnable outside the laptop stack's :8090/:8095 pair.
+#
+#   3. Joins both to the external `signoz` network so they can reach
+#      signoz-otel-collector:4317 (see deploy/signoz/README.md).
+#
+# FIRST BOOT ONLY: start `app` alone, let it apply the embedded migrations, and
+# only then start `app2` — two containers racing the same migrations against an
+# empty database is a risk worth not taking once:
+#   docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d app
+#   # wait for healthy, confirm schema v38, then:
+#   docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d
+# Migrations are idempotent, so later restarts can bring both up together.
+
+networks:
+  signoz:
+    external: true
+
+services:
+  app:
+    image: qr-dining:${IMAGE_TAG}
+    pull_policy: never
+    environment:
+      GIN_MODE: release
+      # Distinguishes the two instances in logs, traces and metrics — same
+      # reason scripts/manual-testing-up.sh labels its pair mtest-1/mtest-2.
+      WORKER_REGION: beta-1
+    networks:
+      - proxy
+      - qr-dining_internal
+      - signoz
+
+  app2:
+    image: qr-dining:${IMAGE_TAG}
+    pull_policy: never
+    container_name: qr_dining_app_2
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file: .env
+    environment:
+      GIN_MODE: release
+      WORKER_REGION: beta-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - proxy
+      - qr-dining_internal
+      - signoz
+    expose:
+      - "8080"
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/readyz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
