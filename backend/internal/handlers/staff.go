@@ -286,6 +286,10 @@ func (h *StaffHandler) ListStaff(c *gin.Context) {
 		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 		return
 	}
+	if sess.Role != sqlc.StaffRoleOwner && sess.Role != sqlc.StaffRoleManager {
+		respondError(c, http.StatusForbidden, CodeForbidden, "only owners and managers can view the staff roster")
+		return
+	}
 	actor, ok := staffActorForRequest(c, h.repos, sess)
 	if !ok {
 		return
@@ -324,6 +328,10 @@ func (h *StaffHandler) ResetPIN(c *gin.Context) {
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
 		return
 	}
+	if sess.Role != sqlc.StaffRoleOwner && sess.Role != sqlc.StaffRoleManager {
+		respondError(c, http.StatusForbidden, CodeForbidden, "only owners and managers can reset PINs")
+		return
+	}
 	if sess.StaffID == staffID {
 		respondError(c, http.StatusBadRequest, CodeValidationError, "use the change-PIN option for your own PIN")
 		return
@@ -359,7 +367,7 @@ func (h *StaffHandler) ResetPIN(c *gin.Context) {
 		respondValidationError(c, err.Error())
 		return
 	}
-	if err := h.svc.ResetPINScoped(c.Request.Context(), staffID, target.BranchID, req.NewPIN); err != nil {
+	if err := h.svc.ResetPINScoped(c.Request.Context(), staffID, target.BranchID, sess.Role, req.NewPIN); err != nil {
 		respondInternalError(c)
 		return
 	}

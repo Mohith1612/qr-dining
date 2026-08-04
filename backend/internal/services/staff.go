@@ -336,7 +336,13 @@ func (s *StaffService) RotatePINScoped(ctx context.Context, staffID, branchID in
 // ResetPINScoped sets a new PIN for a staff member WITHOUT the current PIN —
 // the manager/owner reset path for a forgotten PIN. It invalidates the target's
 // active tokens so the old PIN can't keep a session alive.
-func (s *StaffService) ResetPINScoped(ctx context.Context, staffID, branchID int64, newPIN string) error {
+func (s *StaffService) ResetPINScoped(ctx context.Context, staffID, branchID int64, actorRole sqlc.StaffRole, newPIN string) error {
+	// Re-check the actor role here as well as in the handler: the central
+	// authorizer runs in shadow mode by default and cannot be relied on to
+	// block an account-takeover-grade operation.
+	if err := requireOwnerOrManager(actorRole); err != nil {
+		return err
+	}
 	staff, err := s.repos.GetStaffByID(ctx, staffID)
 	if err != nil {
 		return err
