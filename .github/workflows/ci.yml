@@ -6,6 +6,7 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 defaults:
   run:
@@ -36,11 +37,15 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # Both the action major and the linter version are pinned on purpose: an RC
+      # has to lint identically on a re-run months from now, and `version: latest`
+      # silently changes the gate under a rebuild of the same commit. v2.12.2 is
+      # the version this branch was certified against (0 issues).
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
-          args: --timeout=3m
+          version: v2.12.2
+          args: --timeout=5m
           working-directory: backend
 
   test:
@@ -124,6 +129,72 @@ jobs:
           go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate -path migrations -database "$DATABASE_URL" down -all
           go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate -path migrations -database "$DATABASE_URL" up
 
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: qr_dining
+          POSTGRES_PASSWORD: qr_dining
+          POSTGRES_DB: qr_dining_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qr_dining -d qr_dining_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgres://qr_dining:qr_dining@localhost:5432/qr_dining_test?sslmode=disable
+      TEST_REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      # The unit `test` job compiles none of the //go:build integration files, so
+      # without this job the cross-tenant authz regression tests never run at all.
+      #
+      # -p 1 is mandatory, not tuning: every package shares this one database and
+      # one Redis, so parallel package binaries truncate each other's fixtures and
+      # fail with deadlocks and FK violations that are isolation artifacts rather
+      # than product bugs. The suite runs its own migrations on startup.
+      - name: Integration tests (with race detector)
+        run: go test -count=1 -p 1 -race -tags integration ./...
+
+  openapi:
+    name: OpenAPI Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      # Uses the committed redocly.yaml ruleset. Guards the spec against becoming
+      # invalid; it does not prove the spec still matches the server's routes.
+      - name: Lint openapi.yaml
+        run: npx --yes @redocly/cli@2.43.3 lint openapi.yaml
+
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest
@@ -132,6 +203,16 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      # Required: the runtime stage is a real linux/arm64 image and its
+      # `apk add` / `adduser` layer executes under emulation on an amd64 runner.
+      # Without this the build dies with "exec /bin/sh: exec format error".
+      # The builder stage is pinned to $BUILDPLATFORM in the Dockerfile, so QEMU
+      # only carries that one small layer, not the Go compile.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

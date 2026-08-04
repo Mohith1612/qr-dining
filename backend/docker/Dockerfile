@@ -1,7 +1,11 @@
 # ================================================================
 # Stage 1: Builder
 # ================================================================
-FROM golang:1.26-alpine AS builder
+# Pinned to the BUILD platform, not the target. The build below cross-compiles to
+# arm64 explicitly, so there is nothing to gain from emulating an arm64 toolchain
+# — running the Go compiler natively on an amd64 CI runner turns a ~15 minute
+# QEMU build into a normal one. Only the runtime stage below is genuinely arm64.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates
 
