@@ -18,7 +18,11 @@ func NewClient(ctx context.Context, cfg config.RedisConfig) (*goredis.Client, er
 
 	client := goredis.NewClient(opts)
 	if cfg.OTelEnabled {
-		if err := redisotel.InstrumentTracing(client); err != nil {
+		// WithDBStatement(false) is required, not cosmetic: session bearer tokens
+		// are used as Redis keys (staff:token:<token>, platform:token:<token>), and
+		// redisotel records the full command — key and value — in db.statement by
+		// default. Leaving it on exports live 8h tokens into the trace store.
+		if err := redisotel.InstrumentTracing(client, redisotel.WithDBStatement(false)); err != nil {
 			_ = client.Close()
 			return nil, fmt.Errorf("instrument redis tracing: %w", err)
 		}
