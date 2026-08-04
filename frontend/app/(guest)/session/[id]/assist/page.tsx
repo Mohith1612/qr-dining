@@ -10,6 +10,7 @@ import { Bell, CreditCard, MessageSquare, CheckCircle, Loader2, ChevronRight } f
 import { toast } from "sonner"
 import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
 import type { AssistanceRequest, AssistanceType } from "@/types/api"
+import { track } from "@/lib/product-analytics/events"
 
 const ASSIST_OPTIONS: {
   type: AssistanceType
@@ -81,7 +82,9 @@ export default function AssistPage() {
     if (type === "bill" && !isHost) return // host-only; button is disabled below
     setRequesting(type)
     try {
-      await requestAssistance(type)
+      const request = await requestAssistance(type)
+      if (!request) return
+      track("assistance_requested", { assistance_type: type })
       toast.success("Request sent — we'll be right with you.")
     } catch (err) {
       toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't send request. Please try again.")

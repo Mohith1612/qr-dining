@@ -6,6 +6,7 @@ import { TenantProvider, useTenant } from "@/providers/TenantProvider"
 import { ThemeProvider } from "@/providers/ThemeProvider"
 import { Toaster } from "@/components/ui/sonner"
 import { applyTheme, validPreset, type ThemeConfig } from "@/lib/theme/applyTheme"
+import { ProductAnalyticsProvider } from "@/providers/ProductAnalyticsProvider"
 
 // Applies the tenant's structured theme (preset + custom tokens) once resolved.
 // Server-driven branding is authoritative and applied directly to <html>, so it
@@ -37,7 +38,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <TenantProvider>
       <ThemeProvider>
         <TenantThemeSync />
-        {children}
+        <ProductAnalyticsProvider>{children}</ProductAnalyticsProvider>
         <Toaster position="top-center" />
       </ThemeProvider>
     </TenantProvider>

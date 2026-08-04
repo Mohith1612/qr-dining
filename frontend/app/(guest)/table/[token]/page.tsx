@@ -10,6 +10,8 @@ import { ApiError } from "@/lib/api/client"
 import { useSessionStore } from "@/store/session"
 import { persistGuestCreds } from "@/lib/guest-session"
 import { UtensilsCrossed } from "lucide-react"
+import { track } from "@/lib/product-analytics/events"
+import { registerBranchProps, registerGuestSessionProps } from "@/lib/product-analytics/identity"
 
 interface Props {
   params: Promise<{ token: string }>
@@ -37,6 +39,12 @@ export default function TableEntryPage({ params }: Props) {
     menuApi.resolveQrToken(token)
       .then(data => {
         setTableInfo(data)
+        registerBranchProps(data.branch_id)
+        track("qr_resolved", {
+          branch_id: data.branch_id,
+          table_id: data.table_id,
+          has_active_session: Boolean(data.session_id),
+        })
         // Instant paint from the QR payload's legacy preset, then refine with the
         // authoritative structured theme (preset + custom tokens) for the branch.
         if (data.branch_theme) {
@@ -46,7 +54,10 @@ export default function TableEntryPage({ params }: Props) {
           .then(r => applyTheme(r.theme))
           .catch(() => {})
       })
-      .catch(() => setError("This QR code is invalid or has expired."))
+      .catch((err) => {
+        track("qr_resolve_failed", { error_code: err instanceof ApiError ? err.code : "UNKNOWN" })
+        setError("This QR code is invalid or has expired.")
+      })
       .finally(() => setResolving(false))
   }, [token])
 
@@ -64,12 +75,34 @@ export default function TableEntryPage({ params }: Props) {
         const { session, participant, guest_access_token: guestToken } = await sessionsApi.join(tableInfo.session_id, name.trim(), trimmedPhone)
         useSessionStore.getState().setSession(session, participant)
         persistGuestCreds(session.id, participant.id, guestToken)
+        registerGuestSessionProps({
+          sessionId: session.id,
+          participantId: participant.id,
+          isHost: participant.is_host,
+          tableId: session.table_id,
+        })
+        track("session_joined", {
+          session_id: session.id,
+          participant_id: participant.id,
+          phone_provided: Boolean(trimmedPhone),
+        })
         sessionId = session.id
       } else {
         // No active session — create one
         const { session, participant, guest_access_token: guestToken } = await sessionsApi.create(tableInfo.table_id, name.trim(), trimmedPhone)
         useSessionStore.getState().setSession(session, participant)
         persistGuestCreds(session.id, participant.id, guestToken)
+        registerGuestSessionProps({
+          sessionId: session.id,
+          participantId: participant.id,
+          isHost: participant.is_host,
+          tableId: session.table_id,
+        })
+        track("session_created", {
+          session_id: session.id,
+          participant_id: participant.id,
+          phone_provided: Boolean(trimmedPhone),
+        })
         sessionId = session.id
       }
       router.push(`/session/${sessionId}`)
@@ -140,6 +173,7 @@ export default function TableEntryPage({ params }: Props) {
           <label className="eyebrow" style={{ display: "block", marginBottom: 10, fontSize: 10 }}>Your name</label>
           <form onSubmit={handleSubmit}>
             <input
+              data-ph-mask
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Aanya"
@@ -159,6 +193,7 @@ export default function TableEntryPage({ params }: Props) {
               Phone <span style={{ color: "var(--ink-4)", textTransform: "none", letterSpacing: 0 }}>· optional</span>
             </label>
             <input
+              data-ph-mask
               type="tel"
               inputMode="tel"
               value={phone}

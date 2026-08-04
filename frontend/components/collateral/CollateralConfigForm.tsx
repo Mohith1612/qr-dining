@@ -35,6 +35,7 @@ function TextField({ field, label, placeholder, config, set, disabled }: {
     <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
       <span style={labelStyle}>{label}</span>
       <input
+        data-ph-mask={field === "wifiPassword" ? true : undefined}
         type="text"
         value={String(config[field] ?? "")}
         maxLength={FIELD_LIMITS[field as string]}

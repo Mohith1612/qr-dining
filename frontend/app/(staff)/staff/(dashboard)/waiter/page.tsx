@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useStaffStore } from "@/store/staff"
+import { track } from "@/lib/product-analytics/events"
 import { assistanceApi } from "@/lib/api/assistance"
 import { ordersApi } from "@/lib/api/orders"
 import { staffApi } from "@/lib/api/staff"
@@ -245,6 +246,7 @@ export default function WaiterPage() {
     setActingKey(`serve:${orderId}`)
     try {
       await ordersApi.updateStatus(orderId, "served", token)
+      track("order_served", { order_id: orderId })
       setReadyOrders((prev) => prev.filter((o) => o.id !== orderId))
       toast.success("Marked served")
     } catch {
@@ -258,7 +260,15 @@ export default function WaiterPage() {
     if (!token) return
     setActingKey(`settle:${paymentId}`)
     try {
+      const payment = payments.find((item) => item.id === paymentId)
       await paymentsApi.settle(paymentId, token)
+      if (payment) {
+        track("payment_settled", {
+          session_id: payment.session_id,
+          method: payment.method,
+          amount: Number(payment.amount),
+        })
+      }
       setPayments((prev) => prev.filter((p) => p.id !== paymentId))
       toast.success("Payment confirmed")
     } catch {
@@ -272,6 +282,7 @@ export default function WaiterPage() {
     if (!token) return
     setActingKey(`assist:${id}`)
     try {
+      const request = requests.find((item) => item.id === id)
       const updated =
         action === "ack"
           ? await assistanceApi.acknowledge(id, token)
@@ -281,6 +292,14 @@ export default function WaiterPage() {
           ? prev.filter((r) => r.id !== id)
           : prev.map((r) => (r.id === id ? { ...r, ...updated } : r))
       )
+      if (action === "ack" && request) {
+        const elapsed = Math.max(0, Math.round((Date.now() - new Date(request.created_at).getTime()) / 1000))
+        track("assistance_acknowledged", {
+          request_id: request.id,
+          assistance_type: request.type,
+          ...(Number.isFinite(elapsed) ? { seconds_to_ack: elapsed } : {}),
+        })
+      }
       toast.success(action === "ack" ? "On your way!" : "Resolved")
     } catch {
       toast.error("Action failed. Please try again.")

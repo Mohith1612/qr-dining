@@ -123,6 +123,19 @@ if (apiUrl && !apiBase) {
       "include your API host. Set it to the same origin as NEXT_PUBLIC_API_URL.",
   );
 }
+if (process.env.NEXT_PUBLIC_POSTHOG_KEY && !process.env.NEXT_PUBLIC_POSTHOG_HOST) {
+  warnings.push(
+    "NEXT_PUBLIC_POSTHOG_KEY is set without NEXT_PUBLIC_POSTHOG_HOST; the CSP connect-src will block analytics ingest.",
+  );
+}
+if (
+  process.env.NEXT_PUBLIC_POSTHOG_REPLAY === "1" &&
+  process.env.NEXT_PUBLIC_POSTHOG_ENV === "production"
+) {
+  warnings.push(
+    "Session replay is enabled for the production analytics environment; policy limits replay to beta builds.",
+  );
+}
 
 for (const w of warnings) console.warn(`[check-prod-env] warning: ${w}`);
 

@@ -82,15 +82,17 @@ export default function CollateralPage() {
   useEffect(() => { loadBranch() }, [loadBranch])
 
   async function handleSave(next: CollateralConfig) {
-    if (!token || !branchId) return
+    if (!token || !branchId) return false
     try {
       const { collateral } = await platformApi.setBranchCollateral(branchId, next, token)
       setConfig(normalizeCollateralConfig(collateral))
       toast.success("Collateral saved.")
+      return true
     } catch (e) {
       if (e instanceof ApiError && e.code === "VALIDATION_ERROR") toast.error(e.message)
       else if (e instanceof ApiError && e.code === "FORBIDDEN") toast.error("You don't have permission to save collateral.")
       else toast.error("Couldn't save collateral.")
+      return false
     }
   }
 
@@ -135,6 +137,7 @@ export default function CollateralPage() {
           onConfigChange={setConfig}
           onSave={handleSave}
           canManage={canManage}
+          mountedFrom="platform"
         />
       )}
     </div>

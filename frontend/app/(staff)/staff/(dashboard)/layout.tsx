@@ -6,6 +6,7 @@ import { useStaffStore } from "@/store/staff"
 import { useBrandingStore } from "@/store/branding"
 import { staffApi } from "@/lib/api/staff"
 import { StaffBar } from "@/components/staff/StaffBar"
+import { track } from "@/lib/product-analytics/events"
 
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -39,6 +40,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
     if (token) {
       try { await staffApi.logout(token) } catch {}
     }
+    track("staff_logout", {})
     clear()
     router.replace("/staff/login")
   }

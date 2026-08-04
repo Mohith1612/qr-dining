@@ -14,9 +14,13 @@ import type { NextConfig } from "next";
 //   locked to 'self'.
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 const R2_PUBLIC_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ?? "";
+const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "";
+const POSTHOG_ASSET_HOST = process.env.NEXT_PUBLIC_POSTHOG_ASSET_HOST ?? "";
+const POSTHOG_REPLAY = process.env.NEXT_PUBLIC_POSTHOG_REPLAY === "1";
 
 const connectSources = ["'self'"];
 const imgSources = ["'self'", "data:", "blob:", "https:"];
+const scriptSources = ["'self'"];
 if (API_BASE) {
   connectSources.push(API_BASE);
   // The API host also accepts WebSocket upgrades; allow ws/wss to the same host.
@@ -26,6 +30,12 @@ if (API_BASE) {
 }
 if (R2_PUBLIC_BASE) {
   imgSources.push(R2_PUBLIC_BASE);
+}
+if (POSTHOG_HOST) {
+  connectSources.push(POSTHOG_HOST);
+}
+if (POSTHOG_REPLAY && POSTHOG_ASSET_HOST) {
+  scriptSources.push(POSTHOG_ASSET_HOST);
 }
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -37,7 +47,7 @@ const csp = [
   "default-src 'self'",
   // Inline script directive is required by Next.js hydration today. Tracked
   // for Phase C nonce migration.
-  `script-src 'self' ${isDev ? "'unsafe-eval'" : ""} 'unsafe-inline'`.trim(),
+  `script-src ${scriptSources.join(" ")} ${isDev ? "'unsafe-eval'" : ""} 'unsafe-inline'`.trim(),
   "style-src 'self' 'unsafe-inline'",
   `img-src ${imgSources.join(" ")}`,
   "font-src 'self' data:",
@@ -46,6 +56,7 @@ const csp = [
   "base-uri 'self'",
   "form-action 'self'",
   "object-src 'none'",
+  ...(POSTHOG_REPLAY ? ["worker-src 'self' blob:"] : []),
   "upgrade-insecure-requests",
 ].join("; ");
 

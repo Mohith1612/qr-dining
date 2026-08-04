@@ -22,6 +22,27 @@ const eslintConfig = [
       "next-env.d.ts",
     ],
   },
+  {
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "posthog-js",
+              message: "Use the typed product analytics modules under lib/product-analytics instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["lib/product-analytics/**/*.ts"],
+    rules: {
+      "no-restricted-imports": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

@@ -18,6 +18,7 @@ import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { CustomerOptIn } from "@/components/shared/CustomerOptIn"
 import { BillBreakdown } from "@/components/shared/BillBreakdown"
 import { BottomSheet } from "@/components/shared/BottomSheet"
+import { track } from "@/lib/product-analytics/events"
 
 const PAYMENT_OPTIONS: {
   method: PaymentMethod
@@ -136,9 +137,14 @@ export default function PaymentPage() {
       setAppliedPromo(result)
       setAppliedPromoCode(code)
       setAppliedPromoPhone(phone)
+      track("promo_applied", { promo_code: code, discount_amount: result.discount_amount })
       setPromoCode("")
       setPromoSheetOpen(false)
     } catch (err) {
+      track("promo_apply_failed", {
+        promo_code: promoCode.trim().toUpperCase(),
+        error_code: err instanceof ApiError ? err.code : "UNKNOWN",
+      })
       if (err instanceof ApiError) {
         const msgs: Record<string, string> = {
           PROMO_NOT_FOUND:      "This promo code isn't valid right now.",
@@ -157,6 +163,7 @@ export default function PaymentPage() {
   }
 
   function handleRemovePromo() {
+    if (appliedPromoCode) track("promo_removed", { promo_code: appliedPromoCode })
     setAppliedPromo(null)
     setAppliedPromoCode("")
     setAppliedPromoPhone(undefined)
@@ -175,6 +182,7 @@ export default function PaymentPage() {
       const payment = await paymentsApi.initiate(session.id, total, method, generateIdempotencyKey(), undefined, guestToken, promo)
       setPaidTotal(total)
       setSubmitted({ method, status: payment.status })
+      track("payment_initiated", { method, amount: total })
       toast.success(
         payment.status === "completed"
           ? "Payment completed."
@@ -365,7 +373,7 @@ export default function PaymentPage() {
               textAlign: "center",
             }}
           >
-            <p style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)", marginBottom: 4 }}>
+            <p data-ph-mask style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)", marginBottom: 4 }}>
               {hostName ? `${hostName} settles the bill` : "The table host settles the bill"}
             </p>
             <p style={{ fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
@@ -454,6 +462,7 @@ export default function PaymentPage() {
                 display: "flex", alignItems: "center", fontSize: 14, color: "var(--ink-2)", flexShrink: 0,
               }}>🇮🇳 +91</div>
               <input
+                data-ph-mask
                 type="tel" inputMode="numeric" maxLength={10}
                 value={promoPhone}
                 onChange={(e) => { setPromoPhone(e.target.value.replace(/\D/g, "")); setPromoError(null) }}

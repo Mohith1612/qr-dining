@@ -13,6 +13,8 @@ import { cartApi } from "@/lib/api/cart"
 import { toast } from "sonner"
 import type { WSEventHandlerMap } from "@/types/ws"
 import type { Participant, Order, AssistanceRequest, Payment, SessionSnapshot } from "@/types/api"
+import { track } from "@/lib/product-analytics/events"
+import { registerGuestSessionProps, unregisterGuestSessionProps } from "@/lib/product-analytics/identity"
 
 export function useWebSocket(sessionId: string) {
   const connRef = useRef<WSConnection | null>(null)
@@ -20,7 +22,11 @@ export function useWebSocket(sessionId: string) {
   useEffect(() => {
     const handlers: WSEventHandlerMap = {
       SESSION_CLOSED: () => {
+        if (useSessionStore.getState().isHost) {
+          track("session_ended", { session_id: sessionId })
+        }
         useSessionStore.getState().markClosed()
+        unregisterGuestSessionProps()
       },
 
       SESSION_REACTIVATED: () => {
@@ -37,6 +43,12 @@ export function useWebSocket(sessionId: string) {
 
       PAYMENT_COMPLETED: (payload) => {
         const payment = payload as Payment
+        if (useSessionStore.getState().isHost) {
+          track("payment_completed", {
+            method: payment.method,
+            amount: Number(payment.amount),
+          })
+        }
         useSessionStore.getState().setCompletedPayment(payment)
       },
 
@@ -71,7 +83,16 @@ export function useWebSocket(sessionId: string) {
         const newHost = payload as Participant
         const wasHost = useSessionStore.getState().isHost
         useSessionStore.getState().applyHostChanged(newHost)
-        if (useSessionStore.getState().isHost && !wasHost) {
+        const state = useSessionStore.getState()
+        if (state.session && state.participant) {
+          registerGuestSessionProps({
+            sessionId: state.session.id,
+            participantId: state.participant.id,
+            isHost: state.isHost,
+            tableId: state.session.table_id,
+          })
+        }
+        if (state.isHost && !wasHost) {
           toast.info("You're now the table host — you can send orders and request the bill.")
         }
       },

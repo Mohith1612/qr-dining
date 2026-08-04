@@ -16,6 +16,7 @@ import { StatsSkeleton } from "@/components/shared/LoadingSkeleton"
 import { StaffPerformanceTables } from "@/components/staff-performance/StaffPerformanceTables"
 import { Activity, Lock } from "lucide-react"
 import { toast } from "sonner"
+import { track } from "@/lib/product-analytics/events"
 
 // Manager-facing staff performance. Derived from existing operational events;
 // "sessions" means sessions the staff member touched (no assignment system).
@@ -45,6 +46,7 @@ export function PerformanceTab() {
       setSummary(s.summary)
     } catch (err) {
       if (err instanceof ApiError && err.code === "STAFF_ANALYTICS_DISABLED") {
+        track("upsell_gate_viewed", { feature: "staff_performance" })
         setGated(true)
       } else {
         toast.error("Couldn't load staff performance.")

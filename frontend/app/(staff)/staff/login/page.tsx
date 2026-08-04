@@ -10,6 +10,8 @@ import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { ApiError } from "@/lib/api/client"
 import type { StaffRole } from "@/types/api"
+import { identifyStaff } from "@/lib/product-analytics/identity"
+import { track } from "@/lib/product-analytics/events"
 
 const ROLE_REDIRECT: Record<StaffRole, string> = {
   kitchen: "/staff/kitchen",
@@ -45,8 +47,11 @@ export default function StaffLoginPage() {
     try {
       const session = await staffApi.auth(branchCode.trim(), staffCode.trim(), pin)
       setAuth(session.token, session.staff_id, session.branch_id, session.role)
+      identifyStaff(session.staff_id, session.role, session.branch_id)
+      track("staff_login_succeeded", { role: session.role, branch_id: session.branch_id })
       router.replace(ROLE_REDIRECT[session.role])
     } catch (err) {
+      track("staff_login_failed", { error_code: err instanceof ApiError ? err.code : "UNKNOWN" })
       if (err instanceof ApiError && err.status === 423) {
         setLockedFor(err.retryAfter && err.retryAfter > 0 ? err.retryAfter : 120)
         toast.error("Too many attempts. The correct PIN will work again once the timer ends.")
@@ -98,6 +103,7 @@ export default function StaffLoginPage() {
             {/* Branch Code */}
             <p className="eyebrow" style={{ marginBottom: 8 }}>Branch Code</p>
             <input
+              data-ph-mask
               type="text"
               autoComplete="username"
               placeholder="main-restaurant"
@@ -117,6 +123,7 @@ export default function StaffLoginPage() {
             {/* Staff Code */}
             <p className="eyebrow" style={{ marginBottom: 8 }}>Staff Code</p>
             <input
+              data-ph-mask
               type="text"
               autoComplete="username"
               placeholder="your-staff-code"
@@ -154,6 +161,7 @@ export default function StaffLoginPage() {
                 ))}
               </div>
               <input
+                data-ph-mask
                 type="password"
                 inputMode="numeric"
                 autoComplete="current-password"

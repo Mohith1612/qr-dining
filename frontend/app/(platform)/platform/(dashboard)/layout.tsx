@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { usePlatformStore } from "@/store/platform"
 import { platformApi } from "@/lib/api/platform"
 import { PlatformShell } from "@/components/platform/PlatformShell"
+import { track } from "@/lib/product-analytics/events"
 
 export default function PlatformDashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -31,6 +32,7 @@ export default function PlatformDashboardLayout({ children }: { children: React.
         await platformApi.logout(token)
       } catch {}
     }
+    track("platform_logout", {})
     clear()
     router.replace("/platform/login")
   }

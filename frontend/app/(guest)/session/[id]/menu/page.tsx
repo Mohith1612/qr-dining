@@ -23,6 +23,7 @@ import { SearchBar } from "@/components/shared/SearchBar"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { useFilteredMenu } from "@/hooks/useFilteredMenu"
 import type { MenuItem, ItemModifier, DietaryFlag, ItemBadge } from "@/types/api"
+import { track } from "@/lib/product-analytics/events"
 
 interface SheetState {
   item: MenuItem
@@ -398,6 +399,11 @@ export default function MenuPage({ params }: Props) {
   }
 
   function openSheet(item: MenuItem, categoryName?: string) {
+    track("item_viewed", {
+      item_id: item.id,
+      item_name: item.name,
+      category_id: item.category_id,
+    })
     setSheet({ item, quantity: 1, selectedModifiers: [], note: "", isBeverage: isBeverageCategory(categoryName ?? "") })
   }
 
@@ -438,7 +444,15 @@ export default function MenuPage({ params }: Props) {
     if (!sheet) return
     setAdding(true)
     try {
-      await addItem(sheet.item.id, sheet.quantity, sheet.selectedModifiers, sheet.note || undefined)
+      const added = await addItem(sheet.item.id, sheet.quantity, sheet.selectedModifiers, sheet.note || undefined)
+      if (!added) return
+      track("item_added", {
+        item_id: sheet.item.id,
+        item_name: sheet.item.name,
+        quantity: sheet.quantity,
+        unit_price: Number(sheet.item.price),
+        modifiers_count: sheet.selectedModifiers.length,
+      })
       toast.success(`${sheet.item.name} added`)
       setSheet(null)
     } catch (err) {

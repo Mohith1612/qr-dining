@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Gift, Lock, Search, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { track } from "@/lib/product-analytics/events"
 
 // Manager-facing loyalty: program rule (X points per ₹Y), customer balance
 // lookup, ledger-only redeem/adjust, and a participation summary. Redemption
@@ -64,6 +65,7 @@ export function LoyaltyTab() {
       setAnalytics(a)
     } catch (err) {
       if (err instanceof ApiError && err.code === "LOYALTY_DISABLED") {
+        track("upsell_gate_viewed", { feature: "loyalty" })
         setGated(true)
       } else {
         toast.error("Couldn't load loyalty settings.")
@@ -157,6 +159,7 @@ export function LoyaltyTab() {
       if (err instanceof ApiError && err.code === "LOYALTY_INSUFFICIENT_POINTS") {
         toast.error("Not enough points.")
       } else if (err instanceof ApiError && err.code === "LOYALTY_DISABLED") {
+        track("upsell_gate_viewed", { feature: "loyalty" })
         toast.error("Redemption is not enabled for this organization.")
       } else {
         toast.error("Redeem failed.")
@@ -188,6 +191,7 @@ export function LoyaltyTab() {
       if (err instanceof ApiError && err.code === "LOYALTY_INSUFFICIENT_POINTS") {
         toast.error("Balance can't go below zero.")
       } else if (err instanceof ApiError && err.code === "LOYALTY_DISABLED") {
+        track("upsell_gate_viewed", { feature: "loyalty" })
         toast.error("Manual adjustments are not enabled for this organization.")
       } else {
         toast.error("Adjustment failed.")

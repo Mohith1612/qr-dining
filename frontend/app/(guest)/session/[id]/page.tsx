@@ -13,6 +13,7 @@ import { FeaturedCarousel } from "@/components/shared/FeaturedCarousel"
 import { useOrdersStore } from "@/store/orders"
 import type { Participant, MenuItem } from "@/types/api"
 import { UtensilsCrossed, ClipboardList, Bell, Receipt, ChevronRight, Crown } from "lucide-react"
+import { track } from "@/lib/product-analytics/events"
 
 interface Props {
   params: Promise<{ id: string }>
@@ -55,6 +56,7 @@ export default function SessionLandingPage({ params }: Props) {
     const guestToken = sessionStorage.getItem("guest_access_token") ?? ""
     try {
       await sessionsApi.transferHost(session.id, target.id, guestToken)
+      track("host_transferred", { to_participant_id: target.id })
       toast.success(`${target.display_name} is now the host.`)
     } catch (e) {
       const code = e instanceof ApiError ? e.code : ""
@@ -83,7 +85,7 @@ export default function SessionLandingPage({ params }: Props) {
       {/* Greeting */}
       <div style={{ marginBottom: 22 }}>
         <p className="eyebrow">Good evening</p>
-        <h1 className="serif" style={{ fontSize: "clamp(28px, 8vw, 36px)", fontWeight: 600, letterSpacing: "-0.02em", color: "var(--ink-1)", lineHeight: 1.1, margin: "6px 0 0" }}>
+        <h1 data-ph-mask className="serif" style={{ fontSize: "clamp(28px, 8vw, 36px)", fontWeight: 600, letterSpacing: "-0.02em", color: "var(--ink-1)", lineHeight: 1.1, margin: "6px 0 0" }}>
           {participant ? `Welcome, ${participant.display_name}.` : "Welcome."}
         </h1>
         <p style={{ color: "var(--ink-2)", fontSize: 15, marginTop: 6 }}>Seated at {tableLabel}</p>
@@ -109,9 +111,9 @@ export default function SessionLandingPage({ params }: Props) {
           {participants.slice(0, 6).map((p) => {
             const isYou = p.id === participant?.id
             return (
-              <div key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 12px 5px 5px", borderRadius: 999, background: "var(--bg-sunken)", border: "1px solid var(--line-1)" }}>
+              <div data-ph-mask key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 12px 5px 5px", borderRadius: 999, background: "var(--bg-sunken)", border: "1px solid var(--line-1)" }}>
                 <Avatar name={p.display_name} size={24} />
-                <span style={{ fontSize: 12.5, color: "var(--ink-1)", fontWeight: 500 }}>{p.display_name}</span>
+                <span data-ph-mask style={{ fontSize: 12.5, color: "var(--ink-1)", fontWeight: 500 }}>{p.display_name}</span>
                 {p.is_host && (
                   <span
                     title="Session host — sends orders and settles the bill"

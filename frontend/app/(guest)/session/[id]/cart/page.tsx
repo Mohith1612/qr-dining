@@ -14,6 +14,7 @@ import { Trash2, ShoppingCart, ChevronRight, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
 import type { CartItem } from "@/types/api"
+import { track } from "@/lib/product-analytics/events"
 
 interface Props {
   params: Promise<{ id: string }>
@@ -66,10 +67,10 @@ function CartItemRow({ item, addedBy, onRemove }: { item: CartItem; addedBy?: st
           </p>
         )}
         {item.note && (
-          <p style={{ fontSize: 12.5, fontStyle: "italic", color: "var(--ink-3)", marginTop: 2 }}>&quot;{item.note}&quot;</p>
+          <p data-ph-mask style={{ fontSize: 12.5, fontStyle: "italic", color: "var(--ink-3)", marginTop: 2 }}>&quot;{item.note}&quot;</p>
         )}
         {addedBy && (
-          <p style={{ fontSize: 11.5, color: "var(--ink-4)", marginTop: 4 }}>Added by {addedBy}</p>
+          <p data-ph-mask style={{ fontSize: 11.5, color: "var(--ink-4)", marginTop: 4 }}>Added by {addedBy}</p>
         )}
       </div>
 
@@ -127,7 +128,11 @@ export default function CartPage({ params }: Props) {
 
   async function handleRemove(itemId: number) {
     try {
-      await removeItem(itemId)
+      const removed = items.find((item) => item.id === itemId)
+      const succeeded = await removeItem(itemId)
+      if (succeeded && removed) {
+        track("cart_item_removed", { item_id: removed.menu_item_id, quantity: removed.quantity })
+      }
     } catch (err) {
       toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't remove item.")
     }
@@ -137,7 +142,7 @@ export default function CartPage({ params }: Props) {
     if (items.length === 0) return
     setPlacing(true)
     try {
-      await placeOrder(
+      const result = await placeOrder(
         items.map((item) => ({
           menu_item_id: item.menu_item_id,
           quantity: item.quantity,
@@ -145,6 +150,16 @@ export default function CartPage({ params }: Props) {
           note: item.note || undefined,
         }))
       )
+      if (!result) {
+        setPlacing(false)
+        return
+      }
+      const itemCount = items.reduce((sum, item) => sum + item.quantity, 0)
+      const subtotal = items.reduce((sum, item) => {
+        const modifiers = item.selected_modifiers.reduce((value, modifier) => value + modifier.price_delta, 0)
+        return sum + ((item.item_price ?? 0) + modifiers) * item.quantity
+      }, 0)
+      track("order_placed", { order_id: result.order.id, item_count: itemCount, subtotal })
       useCartStore.getState().clear()
       toast.success("Order placed!")
       router.push(`/session/${sessionId}/orders`)
@@ -266,7 +281,7 @@ export default function CartPage({ params }: Props) {
           </>
         ) : (
           <div style={{ textAlign: "center", padding: "2px 4px 4px" }}>
-            <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink-1)", marginBottom: 2 }}>
+            <p data-ph-mask style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink-1)", marginBottom: 2 }}>
               {hostName ? `${hostName} sends the order` : "The table host sends the order"}
             </p>
             <p style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.5 }}>

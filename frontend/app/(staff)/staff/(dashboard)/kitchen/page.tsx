@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useStaffStore } from "@/store/staff"
+import { track } from "@/lib/product-analytics/events"
 import { staffApi } from "@/lib/api/staff"
 import { ordersApi } from "@/lib/api/orders"
 import { EmptyState } from "@/components/shared/EmptyState"
@@ -210,7 +211,9 @@ export default function KitchenPage() {
     if (!token) return
     setAdvancing(orderId)
     try {
+      const fromStatus = orders.find((order) => order.id === orderId)?.status
       const updated = await ordersApi.updateStatus(orderId, next, token)
+      if (fromStatus) track("order_advanced", { order_id: orderId, from_status: fromStatus, to_status: next })
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o)))
     } catch {
       toast.error("Couldn't update status. Please try again.")
@@ -224,7 +227,9 @@ export default function KitchenPage() {
     if (!confirm("Cancel this order? The guest is notified and it leaves the board.")) return
     setCanceling(orderId)
     try {
+      const fromStatus = orders.find((order) => order.id === orderId)?.status
       await ordersApi.updateStatus(orderId, "cancelled", token)
+      if (fromStatus) track("order_cancelled", { order_id: orderId, from_status: fromStatus })
       setOrders((prev) => prev.filter((o) => o.id !== orderId))
       toast.success("Order cancelled.")
     } catch {

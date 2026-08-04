@@ -13,6 +13,7 @@ import { CollateralThemeScope } from "./CollateralThemeScope"
 import { FormatRenderer } from "./FormatRenderer"
 import { CollateralConfigForm } from "./CollateralConfigForm"
 import { CollateralPrintContainer } from "./CollateralPrintContainer"
+import { track } from "@/lib/product-analytics/events"
 
 const QRCodeCanvas = dynamic(() => import("qrcode.react").then((m) => m.QRCodeCanvas), { ssr: false })
 const QRCodeSVG = dynamic(() => import("qrcode.react").then((m) => m.QRCodeSVG), { ssr: false })
@@ -30,14 +31,16 @@ export function CollateralStudio({
   onConfigChange,
   onSave,
   canManage = true,
+  mountedFrom,
 }: {
   branding: CollateralBranding
   theme: ThemeConfig | null
   tables: CollateralTable[]
   config: CollateralConfig
   onConfigChange: (config: CollateralConfig) => void
-  onSave?: (config: CollateralConfig) => Promise<void>
+  onSave?: (config: CollateralConfig) => Promise<boolean>
   canManage?: boolean
+  mountedFrom: "staff_admin" | "platform"
 }) {
   const [previewIdx, setPreviewIdx] = useState(0)
   const [saving, setSaving] = useState(false)
@@ -63,13 +66,15 @@ export function CollateralStudio({
     if (!onSave) return
     setSaving(true)
     try {
-      await onSave(config)
+      const saved = await onSave(config)
+      if (saved) track("collateral_saved", { template_id: config.format, mounted_from: mountedFrom })
     } finally {
       setSaving(false)
     }
   }
 
   function handlePrint() {
+    track("collateral_printed", { kind: config.format, mounted_from: mountedFrom })
     setPrinting(true)
     // Let the print container mount, then invoke the browser print dialog.
     setTimeout(() => {
@@ -89,6 +94,7 @@ export function CollateralStudio({
         branding,
         config,
       })
+      track("collateral_exported", { kind: config.format, mounted_from: mountedFrom })
     } finally {
       setExporting(false)
     }
@@ -136,7 +142,7 @@ export function CollateralStudio({
         <div style={{ background: "var(--bg-elev-2)", border: "1px solid var(--line-2)", borderRadius: "var(--rad-lg)", padding: 24, display: "flex", justifyContent: "center", overflow: "auto" }}>
           {hasTables && previewTable ? (
             <div style={{ transform: `scale(${previewScale})`, transformOrigin: "top center" }}>
-              <CollateralThemeScope ref={themeNodeRef} theme={theme} style={{ boxShadow: "var(--shadow-3)", borderRadius: meta.key === "sticker" ? "50%" : 12, overflow: "hidden" }}>
+              <CollateralThemeScope data-ph-mask ref={themeNodeRef} theme={theme} style={{ boxShadow: "var(--shadow-3)", borderRadius: meta.key === "sticker" ? "50%" : 12, overflow: "hidden" }}>
                 <FormatRenderer config={config} branding={branding} table={previewTable} tables={tables} />
               </CollateralThemeScope>
             </div>
@@ -151,7 +157,7 @@ export function CollateralStudio({
       </div>
 
       {/* Hidden export grid: one QR canvas + svg per table, in table order. */}
-      <div ref={exportGridRef} aria-hidden style={{ position: "absolute", left: -99999, top: 0, width: 1, height: 1, overflow: "hidden" }}>
+      <div ref={exportGridRef} className="ph-no-capture" aria-hidden style={{ position: "absolute", left: -99999, top: 0, width: 1, height: 1, overflow: "hidden" }}>
         {tables.map((t) => (
           <div key={t.id}>
             <QRCodeCanvas value={buildQRUrl(t.qr_code_token, branding.slug)} size={420} level="M" fgColor="#11100E" bgColor="#FFFFFF" />
@@ -162,7 +168,9 @@ export function CollateralStudio({
 
       {/* Print container (rendered only while printing). */}
       {printing && hasTables ? (
-        <CollateralPrintContainer config={config} branding={branding} theme={theme} tables={tables} />
+        <div data-ph-mask>
+          <CollateralPrintContainer config={config} branding={branding} theme={theme} tables={tables} />
+        </div>
       ) : null}
     </div>
   )

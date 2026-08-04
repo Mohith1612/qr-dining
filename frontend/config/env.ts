@@ -10,4 +10,9 @@ export const env = {
   // Falls back to the current browser origin so local/dev QR codes resolve to
   // whatever port the frontend is actually served on.
   guestUrl: process.env.NEXT_PUBLIC_GUEST_URL ?? null,
+  posthogKey: process.env.NEXT_PUBLIC_POSTHOG_KEY ?? null,
+  posthogHost: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? null,
+  posthogEnv: process.env.NEXT_PUBLIC_POSTHOG_ENV ?? process.env.NEXT_PUBLIC_ENV ?? "development",
+  posthogReplay: process.env.NEXT_PUBLIC_POSTHOG_REPLAY === "1",
+  appVersion: process.env.NEXT_PUBLIC_COMMIT_SHA ?? null,
 } as const

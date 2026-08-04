@@ -76,14 +76,16 @@ export function CollateralTab() {
   useEffect(() => { load() }, [load])
 
   async function handleSave(next: CollateralConfig) {
-    if (!branchId || !token) return
+    if (!branchId || !token) return false
     try {
       const { collateral } = await staffApi.setCollateral(branchId, next, token)
       setConfig(normalizeCollateralConfig(collateral))
       toast.success("Collateral saved.")
+      return true
     } catch (e) {
       if (e instanceof ApiError && e.code === "VALIDATION_ERROR") toast.error(e.message)
       else toast.error("Couldn't save collateral.")
+      return false
     }
   }
 
@@ -104,7 +106,7 @@ export function CollateralTab() {
       onConfigChange={setConfig}
       onSave={handleSave}
       canManage={canManage}
+      mountedFrom="staff_admin"
     />
   )
 }
-

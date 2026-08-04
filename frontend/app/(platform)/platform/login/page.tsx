@@ -8,6 +8,9 @@ import { isMFAChallenge, type PlatformSession } from "@/types/platform"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { Loader2, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
+import { ApiError } from "@/lib/api/client"
+import { identifyPlatform } from "@/lib/product-analytics/identity"
+import { track } from "@/lib/product-analytics/events"
 
 const fieldStyle: React.CSSProperties = {
   display: "block", width: "100%", fontSize: 16, boxSizing: "border-box",
@@ -28,7 +31,7 @@ export default function PlatformLoginPage() {
   const [mfaChallenge, setMfaChallenge] = useState<string | null>(null)
   const [mfaCode, setMfaCode] = useState("")
 
-  function commitSession(s: PlatformSession) {
+  function commitSession(s: PlatformSession, mfaUsed: boolean) {
     setSession({
       token: s.token,
       platformUserId: s.platform_user_id,
@@ -37,6 +40,8 @@ export default function PlatformLoginPage() {
       roles: s.roles,
       expiresAt: s.expires_at,
     })
+    identifyPlatform(s.platform_user_id, s.roles)
+    track("platform_login_succeeded", { mfa_used: mfaUsed })
     router.replace("/platform")
   }
 
@@ -50,9 +55,10 @@ export default function PlatformLoginPage() {
         setMfaChallenge(res.mfa_challenge)
         toast.info("Enter your authenticator code to continue.")
       } else {
-        commitSession(res)
+        commitSession(res, false)
       }
-    } catch {
+    } catch (err) {
+      track("platform_login_failed", { error_code: err instanceof ApiError ? err.code : "UNKNOWN", stage: "credentials" })
       toast.error("Invalid credentials.")
     } finally {
       setLoading(false)
@@ -65,8 +71,9 @@ export default function PlatformLoginPage() {
     setLoading(true)
     try {
       const s = await platformApi.completeMFA(mfaChallenge, mfaCode.trim())
-      commitSession(s)
-    } catch {
+      commitSession(s, true)
+    } catch (err) {
+      track("platform_login_failed", { error_code: err instanceof ApiError ? err.code : "UNKNOWN", stage: "mfa" })
       toast.error("Invalid or expired code.")
     } finally {
       setLoading(false)
@@ -106,12 +113,14 @@ export default function PlatformLoginPage() {
             <form onSubmit={handleLogin}>
               <p className="eyebrow" style={{ marginBottom: 8 }}>Email</p>
               <input
+                data-ph-mask
                 type="email" autoComplete="username" placeholder="ops@example.com"
                 value={email} onChange={(e) => setEmail(e.target.value)} required style={fieldStyle}
               />
               <div style={{ height: 20 }} />
               <p className="eyebrow" style={{ marginBottom: 8 }}>Password</p>
               <input
+                data-ph-mask
                 type="password" autoComplete="current-password" placeholder="••••••••"
                 value={password} onChange={(e) => setPassword(e.target.value)} required style={fieldStyle}
               />
@@ -122,6 +131,7 @@ export default function PlatformLoginPage() {
             <form onSubmit={handleMFA}>
               <p className="eyebrow" style={{ marginBottom: 8 }}>Authentication code</p>
               <input
+                data-ph-mask
                 type="text" inputMode="numeric" autoComplete="one-time-code" placeholder="123456"
                 value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} required autoFocus style={fieldStyle}
               />

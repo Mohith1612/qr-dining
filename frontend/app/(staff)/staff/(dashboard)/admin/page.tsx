@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
 import { PerformanceTab } from "@/components/staff-performance/PerformanceTab"
 import { LoyaltyTab } from "@/components/loyalty/LoyaltyTab"
@@ -14,6 +14,7 @@ import { PlanTab } from "@/components/admin/tabs/PlanTab"
 import { PromosTab } from "@/components/admin/tabs/PromosTab"
 import { AppearanceTab } from "@/components/admin/tabs/AppearanceTab"
 import { SettingsTab } from "@/components/admin/tabs/SettingsTab"
+import { track } from "@/lib/product-analytics/events"
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,15 @@ const TABS = [
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("sessions")
 
+  useEffect(() => {
+    track("admin_tab_viewed", { tab: "sessions" })
+  }, [])
+
+  function selectTab(tab: string) {
+    setActiveTab(tab)
+    track("admin_tab_viewed", { tab })
+  }
+
   return (
     <div className="screen-enter bg-[var(--bg-base)] text-[var(--ink-1)] min-h-screen px-5 py-6">
       {/* Heading */}
@@ -47,7 +57,7 @@ export default function AdminPage() {
           {TABS.map(({ id, label }) => (
             <button
               key={id}
-              onClick={() => setActiveTab(id)}
+              onClick={() => selectTab(id)}
               className={cn(
                 "press px-[18px] py-2 rounded-full border-0 text-[13px] cursor-pointer whitespace-nowrap transition-[background,color,box-shadow] duration-[var(--dur-fast)]",
                 activeTab === id
