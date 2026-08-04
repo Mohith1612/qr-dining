@@ -1,11 +1,18 @@
 # Release Readiness Report — 2026-08-04
 
-**Release Candidate:** `feature/signoz-observability` @ `c4aeb4b`
+**Release Candidate:** `feature/signoz-observability` @ `9f97a54`
 **Pull Request:** [#1](https://github.com/Mohith1612/qr-dining/pull/1) → `main` (open, **not merged**)
 **Scope of this report:** merge readiness only. Tagging, deployment, and the RC soak are
 the next phase and were deliberately not started.
 
-## Merge recommendation
+> **Update — dependency security round complete.** Blocker B1 is **closed**. `x/text`,
+> `grpc`, and Next.js are patched, and a `govulncheck` gate now runs on every PR. The
+> pipeline is green at **11/11** checks. The recommendation below is upgraded from
+> *Conditional GO* to **READY TO MERGE**. See
+> `dependency-security-report-2026-08-04.md` for the full investigation, and the
+> "Recommendation" section at the end of this document for the current position.
+
+## Merge recommendation (superseded — see the update above and the final section)
 
 **Conditional GO — merge is safe; one security item should be resolved first.**
 
@@ -129,22 +136,91 @@ gap I would most want closed before or during the soak.
 **The pipeline is now trustworthy in what it asserts.** Its remaining weakness is scope,
 not correctness: it tells the truth about the backend, and stays silent about the browser.
 
-## Recommended next steps
+---
 
-In order:
+# Recommendation (2026-08-04, after the dependency security round)
 
-1. **Resolve B1** — bump `golang.org/x/text` to ≥ v0.39.0 and `google.golang.org/grpc` to
-   ≥ v1.82.1, push, and confirm the pipeline stays green. Small and low-risk.
-2. **Add `govulncheck` to CI** so B1-class findings cannot recur silently. This is the
-   highest-value workflow still missing, and it is cheap.
-3. **Configure branch protection on `main`** with the 7 CI jobs required, and decide the
-   `frontend-ci.yml` required-checks question at the same time.
-4. **Merge PR #1** once 1–3 are settled.
-5. **Tag the release** and watch the publish path closely — it has never executed.
-6. **Take a verified backup**, then apply migrations through `000039`.
-7. **Begin the RC soak on the artifact built from this commit**, not a prior binary.
-8. **Later, not blocking:** run Playwright against a real stack in CI, add SBOM
-   generation, and SHA-pin actions.
+## READY TO MERGE
 
-Items 5–7 are the next release phase and were deliberately not started here. No merge, no
-tag, no deploy, and no soak was performed in this session.
+### What changed since the section above was written
+
+| Item | Then | Now |
+|---|---|---|
+| Go vulnerabilities affecting code | 2 (B1) | **0** |
+| Next.js direct advisories | 8 | **0** |
+| Vulnerability scanning in CI | none | `govulncheck` gate, green |
+| CI checks | 10/10 | **11/11** |
+
+`x/text` → v0.39.0, `grpc` → v1.82.1, Next.js → 15.5.22, and a pinned `govulncheck` job
+that fails only on reachable findings. Investigation and risk analysis are in
+`dependency-security-report-2026-08-04.md`.
+
+### Justification
+
+- **B1 is closed at its root, not worked around.** The vulnerable code is gone, and the
+  gate that would have caught it now exists and is proven to fail when a reachable
+  vulnerability is present.
+- **The merge is mechanically safe.** `MERGEABLE` / `CLEAN`, 0 commits behind `main`, so
+  still a clean fast-forward. Working tree clean, no accidental files.
+- **The RC content did not move.** Migrations, `sqlc` output, and `openapi.yaml` are
+  byte-identical to the previously certified tree. This round changed six files:
+  `ci.yml`, `go.mod`, `go.sum`, `package.json`, `package-lock.json`, and one doc. The
+  release candidate itself is the same software, with patched dependencies.
+- **The pipeline was re-proven, not assumed.** 11/11 green, and the `govulncheck` job
+  verified to run on go1.26.5 — the same patch the Docker builder resolves — so the scan
+  describes the artifact that ships.
+
+### Remaining blockers before merge
+
+**None that are engineering blockers.** One item is a decision rather than work:
+
+- **Branch protection on `main` is still not configured**, so nothing mechanically
+  enforces these 11 checks before a merge. This is a repository setting, not a code
+  change. Configure it, and decide at the same time whether the path-filtered
+  `frontend-ci.yml` jobs are required — if they are, backend-only PRs will block on
+  skipped runs.
+
+### Accepted risks carried into the merge
+
+Stated plainly so the merge is an informed decision rather than an optimistic one:
+
+1. **Playwright still does not execute in CI.** 387 tests across 106 files, including
+   `tenancy/T-04..06` and `webhook/W-01..07`. This is unchanged and remains the largest
+   gap in the release. End-to-end evidence for the isolation and settlement guarantees is
+   manual testing, not the pipeline.
+2. **Twelve transitive npm advisories remain**, in the build and adapter chain rather than
+   served code. Clearing them requires next 16 — a framework major immediately pre-soak,
+   which is a worse trade. Planned for after the soak.
+3. **npm dependencies are not scanned in CI.** `govulncheck` is Go-only.
+4. **`setup-go` and the Dockerfile resolve `"1.26"` independently.** They agree today at
+   go1.26.5. Nothing enforces that they continue to.
+5. **`000039` remains forward-only**, and the publish path has still never executed.
+
+None of these are new, and none are made worse by merging. They are soak-phase and
+post-soak work.
+
+### Confidence
+
+**High** for the merge, and higher than at the start of this round: the dependency
+posture went from two known-reachable vulnerabilities with no detection, to zero with a
+working gate.
+
+**Moderate, unchanged, for the system as a whole** — for the same reason as before. The
+pipeline tells the truth about the backend and stays silent about the browser. Merging is
+safe; that silence is what the soak and manual certification exist to cover.
+
+## Next steps
+
+1. **Configure branch protection on `main`** with the 8 `ci.yml` jobs required, and settle
+   the `frontend-ci.yml` required-checks question.
+2. **Merge PR #1.**
+3. **Tag the release** and watch the publish path closely — it has never executed.
+4. **Take a verified backup**, then apply migrations through `000039`.
+5. **Begin the RC soak on the artifact built from this commit**, not a prior binary.
+6. **After the soak, not blocking:** run Playwright against a real stack in CI, plan the
+   next 16 upgrade to clear the transitive advisories, add npm scanning, unify the Go
+   patch version across `setup-go` and the Dockerfile, add SBOM generation, and SHA-pin
+   actions.
+
+Steps 3–5 are the next release phase and were deliberately not started. No merge, no tag,
+no deploy, and no soak was performed in this session.

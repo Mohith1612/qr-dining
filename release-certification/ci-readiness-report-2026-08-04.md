@@ -130,10 +130,9 @@ not cover.
 
 ### Not covered at all
 
-- **No vulnerability scanning** — no CodeQL, `govulncheck`, or dependency review, on a
-  release whose premise is closing a security review. Running `govulncheck` by hand
-  against the release toolchain found 2 reachable module vulnerabilities; see the
-  Release Readiness Report. CI would not have caught them.
+- ~~**No vulnerability scanning**~~ — **CLOSED.** A pinned `govulncheck` job now gates
+  every PR; see the addendum below. Still absent: CodeQL, dependency review, and any
+  scanning of the npm trees.
 - **No branch protection on `main`.** Nothing enforces that these 10 checks pass before a
   merge. The pipeline is currently advisory, so its trustworthiness depends on process
   discipline rather than mechanism.
@@ -171,3 +170,74 @@ Builds are reproducible in the sense that matters for this gate — the lint gat
 floats, and the toolchain is fixed to a minor. They are **not** bit-reproducible: base
 image patch tags, `lts/*`, and unpinned action SHAs all float. `sha_pinning_required` is
 off on the repository. Tightening these is a hardening exercise, not a merge blocker.
+
+---
+
+# Addendum — 2026-08-04, dependency security round
+
+**Commit:** `9f97a54` · **Checks: 11/11 green** (was 10/10)
+
+## Updated job matrix
+
+| Workflow | Job | Result |
+|---|---|---|
+| CI | Lint | pass |
+| CI | Build and Unit Test | pass |
+| CI | **Vulnerability Scan** (new) | pass |
+| CI | sqlc Drift Check | pass |
+| CI | Migration Check | pass |
+| CI | Integration Tests | pass |
+| CI | OpenAPI Lint | pass |
+| CI | Docker Build | pass |
+| Frontend CI | Frontend Lint and Build | pass |
+| Frontend CI | Marketing Build | pass |
+| Frontend CI | E2E Test Discovery | pass |
+
+## The govulncheck job
+
+Added to `ci.yml`, running `go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...`.
+
+**Deterministic.** The scanner is version-pinned, so the analysis is reproducible.
+
+**Fails only on actionable findings, with no custom filtering.** govulncheck's default
+source mode already has exactly the required semantics: it exits non-zero only when a
+vulnerable symbol is reachable from this module's call graph, and exits 0 when a
+vulnerable module is merely required but never called. Adding an allowlist would be
+actively harmful — it would suppress the reachable findings that are the point.
+
+**Verified in both directions before committing**, because a gate that cannot fail is
+worthless:
+
+- With the `x/text` and `grpc` upgrades reverted → **non-zero, job fails**, reporting both.
+- With the upgrades applied → **exit 0**, while two unreachable module advisories remain
+  present and correctly stay informational.
+
+**On the Go version.** This job does *not* pin an exact Go patch, which deviates from a
+literal reading of "pinned Go version". The reason is that pinning it would make the scan
+less correct, not more. govulncheck reports standard-library findings against whatever
+toolchain it runs on, so a scanner pinned to a patch the release image does not use would
+report on a binary that is never shipped. Concretely: scanning this tree on go1.26.0
+reports 19 standard-library vulnerabilities that do not exist in the shipped image.
+
+Using the same `"1.26"` spec as every other job and as `backend/docker/Dockerfile` keeps
+the scan describing the artifact. **Confirmed empirically in CI:** the job logged
+`GOVERSION='go1.26.5'`, the same patch the Docker builder resolves.
+
+**The residual gap this leaves.** `setup-go` and the Dockerfile resolve `"1.26"`
+independently. They agree today; nothing enforces it. If they diverge, the gate keeps
+passing while describing a different binary than the one shipped. Deriving both from one
+pinned patch is the correct fix and is not done. Documented in `docs/dependency-upgrades.md`.
+
+## Confirmation that nothing else moved
+
+Six files changed in this round: `ci.yml`, `go.mod`, `go.sum`, `package.json`,
+`package-lock.json`, and `docs/dependency-upgrades.md`. `backend/migrations/`,
+`backend/internal/db/sqlc/`, and `openapi.yaml` are byte-identical to the previously
+certified tree — verified by `git diff --name-only`, not assumed. No generated drift, no
+accidental files.
+
+## Remaining risks — unchanged
+
+Everything in the "A green pipeline is still not sufficient proof" section above still
+stands. **Playwright still does not execute**, and that remains the largest gap in this
+release. The npm trees are still unscanned in CI; `govulncheck` covers Go only.
