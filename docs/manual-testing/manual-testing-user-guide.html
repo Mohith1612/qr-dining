@@ -364,7 +364,7 @@ Hanken Grotesk + Cormorant Garamond. This is the <b>only</b> surface that gets t
 <dl class="kv">
 <dt>Why it exists</dt><dd>Turns a physical sticker into a digital session. The only unauthenticated entry point to the whole guest experience.</dd>
 <dt>Who uses it</dt><dd>Every diner, every time. Zero prior knowledge assumed.</dd>
-<dt>How to access</dt><dd><code>http://localhost:3000/table/&lt;qr_code_token&gt;</code> — live tokens on the dashboard.</dd>
+<dt>How to access</dt><dd><code>https://qr-beta.mohith16.com/table/&lt;qr_code_token&gt;</code> — live tokens on the dashboard.</dd>
 <dt>Permissions</dt><dd>None. The token <em>is</em> the credential.</dd>
 <dt>Endpoints</dt><dd><code>GET /tables/by-qr/:token</code> → <code>GET /branches/:id/theme</code> → then either <code>POST /sessions</code> (create) or <code>POST /sessions/:id/join</code>.</dd>
 </dl>
@@ -1050,8 +1050,8 @@ disagrees with the snapshot, the client has invented state — a genuine bug.</d
 <p>Three signals are live in this stack:</p>
 <table>
 <tr><th>Signal</th><th>Where</th><th>Notes</th></tr>
-<tr><td class="k">Traces</td><td>SigNoz → <a href="http://localhost:3301">http://localhost:3301</a></td><td>Services <code>qr-dining-backend-mtest-1</code> and <code>-mtest-2</code>, sample ratio 1.0</td></tr>
-<tr><td class="k">Metrics</td><td><a href="http://localhost:8090/metrics">:8090/metrics</a> · <a href="http://localhost:8095/metrics">:8095/metrics</a></td><td>Raw Prometheus text. No Prometheus server runs locally — <code>curl | grep</code> is the workflow.</td></tr>
+<tr><td class="k">Traces</td><td>SigNoz → <code>ssh -L 3301:127.0.0.1:3301 appuser</code>, then <a href="http://localhost:3301">http://localhost:3301</a></td><td>Services <code>qr-dining-backend</code> and <code>-mtest-2</code>, sample ratio 1.0</td></tr>
+<tr><td class="k">Metrics</td><td><a href="http://localhost:9090">Prometheus via <code>ssh -L 9090:127.0.0.1:9090 appuser</code></a> (job <code>qr-dining</code>, labels <code>instance_name=app-1|app-2</code>) — <code>/metrics</code> is not publicly reachable<span style="display:none">:8095/metrics</a></td><td>Raw Prometheus text. No Prometheus server runs locally — <code>curl | grep</code> is the workflow.</td></tr>
 <tr><td class="k">Logs</td><td><code>/tmp/qrapp-mtest-1.log</code>, <code>-2.log</code></td><td>zerolog JSON with <code>request_id</code> + <code>trace_id</code> + <code>span_id</code></td></tr>
 </table>
 
@@ -1267,13 +1267,13 @@ Teardown only ever touches the <code>manual-testing</code> project.</div>
 <h3>What is running right now</h3>
 <table>
 <tr><th>Component</th><th>Where</th><th>State</th></tr>
-<tr><td class="k">Frontend A</td><td><a href="http://localhost:3000">localhost:3000</a> → app-1</td><td><code>next dev</code></td></tr>
-<tr><td class="k">Frontend B</td><td><a href="http://localhost:3001">localhost:3001</a> → app-2</td><td><code>next dev</code> (cross-instance tests)</td></tr>
+<tr><td class="k">Frontend</td><td><a href="https://qr-beta.mohith16.com">qr-beta.mohith16.com</a></td><td>Cloudflare Worker (OpenNext)</td></tr>
+<tr><td class="k">API</td><td><a href="https://qr-api-beta.mohith16.com/readyz">qr-api-beta</a> · <a href="https://qr-api-beta-1.mohith16.com/readyz">-1</a> · <a href="https://qr-api-beta-2.mohith16.com/readyz">-2</a></td><td>balanced, plus per-instance pins for cross-instance tests</td></tr>
 <tr><td class="k">Backend app-1</td><td>:8090 · <code>WORKER_REGION=mtest-1</code></td><td>audit ON · <b>OTEL ON @ ratio 1.0</b></td></tr>
 <tr><td class="k">Backend app-2</td><td>:8095 · <code>WORKER_REGION=mtest-2</code></td><td>audit ON · <b>OTEL ON @ ratio 1.0</b></td></tr>
-<tr><td class="k">Postgres</td><td><code>postgres://mtest:mtest_pass@localhost:25432/qrdining_mtest</code></td><td>schema v38</td></tr>
-<tr><td class="k">Redis</td><td><code>redis://localhost:26379/0</code></td><td>shared by both backends</td></tr>
-<tr><td class="k">SigNoz</td><td><a href="http://localhost:3301">localhost:3301</a>, collector :4317</td><td>eval stack, project <code>qr-dining-signoz-eval</code></td></tr>
+<tr><td class="k">Postgres</td><td><code>docker exec -it qr_dining_postgres psql -U qrdining -d qrdining</code> (on the VM)</td><td>schema v39</td></tr>
+<tr><td class="k">Redis</td><td><code>docker exec -it qr_dining_redis redis-cli</code> (on the VM)</td><td>shared by both backends — carries WS tickets and the pub/sub fan-out</td></tr>
+<tr><td class="k">SigNoz</td><td>tunnel to <a href="http://localhost:3301">localhost:3301</a>, collector <code>signoz-otel-collector:4317</code></td><td>VM stack, project <code>qr-dining-signoz-eval</code></td></tr>
 </table>
 <p>Both backends share the DB, Redis and one <code>GUEST_TOKEN_SECRET</code>, so guest tokens and realtime
 events cross instances. Logs: <code>/tmp/qrapp-mtest-{1,2}.log</code>, <code>/tmp/frontend-{a,b}.log</code>.</p>
@@ -1309,7 +1309,7 @@ re-seeds, and <b>regenerates every QR token</b>. Refresh the dashboard afterward
 <h3>Restarting the backends with tracing on</h3>
 <p>The up-script does not set the OTel vars. If you restart the stack, relaunch the backends with:</p>
 <pre><code>pkill -f '^/tmp/qrapp-mtest$'   # note the anchors — a bare pattern also kills your own shell
-/tmp/start-mtest-otel.sh        # launches both with OTEL_ENABLED=true → localhost:4317</code></pre>
+OTEL is already enabled on the beta (OTEL_ENABLED=true, sampling 1.0) — nothing to launch.</code></pre>
 
 <!-- ══════════════════════════════════════════════════════ -->
 <h2 id="errors">17. Guest-facing error codes</h2>

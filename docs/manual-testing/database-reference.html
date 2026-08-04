@@ -40,7 +40,7 @@
 <div class="wrap">
 <div class="kicker">QR Dining · Certification</div>
 <h1>Database Reference</h1>
-<p class="sub">The live schema of the isolated testing database — for an engineer investigating issues during certification. Regenerated from <code>qrdining_mtest</code> at migration <b>v38</b> (adds promo-at-payment redemption, modifier single-select, serene preset).</p>
+<p class="sub">The live schema of the isolated testing database — for an engineer investigating issues during certification. Regenerated from <code>qrdining_mtest</code> at migration <b>v38</b> (adds promo-at-payment redemption, modifier single-select, serene preset). The beta database runs migration <b>v39</b>; v39 is a <i>data-only</i> backfill (canonicalises <code>promo_redemptions.phone_e164</code>) with no DDL, so every structure below still matches the deployed schema exactly — verified against the beta on 2026-08-04: 59 tables, 14 enums.</p>
 <p class="top"><a href="testing-dashboard.html">← Dashboard</a><a href="manual-testing-user-guide.html">User Guide</a><a href="manual-testing-checklist.html">Checklist →</a></p>
 
 <div class="stats">
@@ -51,7 +51,7 @@
   <div class="stat"><b>25</b><span>check</span></div>
   <div class="stat"><b>14</b><span>enums</span></div>
 </div>
-<p class="note"><b>Connect:</b> <code>docker exec -e PGPASSWORD=mtest_pass manual-testing-postgres psql -U mtest -d qrdining_mtest</code>. Authoritative source of truth is Postgres; Redis holds only ephemeral state (presence, tickets, rate limits, cache) and is reconstructible.</p>
+<p class="note"><b>Connect (beta):</b> <code>ssh appuser</code> then <code>docker exec -it qr_dining_postgres psql -U qrdining -d qrdining</code> — Postgres publishes no host port and sits on an internal docker network, so this is the only route in. <b>Connect (local manual-testing):</b> <code>docker exec -e PGPASSWORD=mtest_pass manual-testing-postgres psql -U mtest -d qrdining_mtest</code>. Authoritative source of truth is Postgres; Redis holds only ephemeral state (presence, tickets, rate limits, cache) and is reconstructible.</p>
 
 <h2>Tenancy &amp; Identity</h2>
 <table>
@@ -186,7 +186,7 @@
 <div class="flow"><b>Support</b><br><span class="chain">search → inspect (sanitized) → audit (internal + tenant-visible critical)</span><br><span style="color:var(--muted);font-size:13px">Read-only; never exposes <code>session_token</code>/<code>device_fingerprint</code>; every deep read is audited.</span></div>
 
 <footer style="margin-top:48px;border-top:1px solid var(--line);padding-top:18px;color:var(--dim);font-size:12.5px">
-  Schema snapshot from the isolated <code>qrdining_mtest</code> DB · migration v38 · 59 tables · 1 immutability trigger · soak (project <code>qr-dining</code>) untouched.
+  Schema snapshot · structure valid at migration v38 and unchanged at v39 (data-only backfill) · 59 tables · 14 enums · 1 immutability trigger · verified against the beta database 2026-08-04.
 </footer>
 </div>
 </body>

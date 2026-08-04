@@ -62,14 +62,15 @@
 <div class="wrap">
 
 <header class="hero">
-  <div class="kicker">QR Dining · Pre-Deployment Certification</div>
+  <div class="kicker">QR Dining · Beta Certification Environment</div>
   <h1>Manual Testing <span>Dashboard</span></h1>
-  <p class="sub">The operator landing page for end-to-end manual certification. Three isolated tenants, two backend instances, and two frontends — fully separated from the protected R1 soak. Start here, then follow the guide and work the checklist.</p>
+  <p class="sub">The operator landing page for end-to-end manual certification. This now points at the <b>internal beta on the Oracle VM</b> — real hostnames, real TLS, testable from any device — not the laptop stack. Three isolated tenants and two backend instances behind one nginx vhost; the protected R1 soak is untouched. Start here, then follow the guide and work the checklist.</p>
+  <div style="margin:14px 0;padding:11px 14px;border-left:3px solid var(--gold);background:#fff;border-radius:0 8px 8px 0;font-size:13px"><b>Beta, not production.</b> App <a href="https://qr-beta.mohith16.com">qr-beta.mohith16.com</a> · API <a href="https://qr-api-beta.mohith16.com/readyz">qr-api-beta.mohith16.com</a>. Staff login needs <b>branch code + staff code + PIN</b> (PIN alone is rejected). Read <code>release-certification/beta-certification-readiness-2026-08-04.md</code> first.</div>
   <div>
-    <span class="pill ok">● 2 backends + 2 frontends (one command)</span>
+    <span class="pill ok">● 2 backend instances · 1 frontend (Cloudflare Worker)</span>
     <span class="pill ok">● 3 tenants seeded</span>
     <span class="pill warn">⚠ soak untouched</span>
-    <span class="pill">migration v38</span>
+    <span class="pill">migration v39</span>
     <span class="pill">UI redesign: serene (guest) + ops (staff/platform)</span>
     <span class="pill">audit: ON · staff-perf/loyalty: gated</span>
     <span class="pill ok">● OTEL tracing ON → SigNoz :3301</span>
@@ -118,22 +119,24 @@
     <h3>URLs &amp; Instances</h3>
     <table>
       <tr><th>Surface</th><th>URL</th><th>Backend</th></tr>
-      <tr><td class="k">Frontend A</td><td><a href="http://localhost:3000">localhost:3000</a></td><td>app-1 · :8090</td></tr>
-      <tr><td class="k">Frontend B</td><td><a href="http://localhost:3001">localhost:3001</a></td><td>app-2 · :8095</td></tr>
+      <tr><td class="k">Frontend</td><td><a href="https://qr-beta.mohith16.com">qr-beta.mohith16.com</a></td><td>Cloudflare Worker · single deployment</td></tr>
+      <tr><td class="k">API (balanced)</td><td><a href="https://qr-api-beta.mohith16.com/readyz">qr-api-beta.mohith16.com</a></td><td>split by client IP across both instances</td></tr>
+      <tr><td class="k">API instance 1</td><td><a href="https://qr-api-beta-1.mohith16.com/readyz">qr-api-beta-1.mohith16.com</a></td><td>pinned to <code>qr_dining_app</code></td></tr>
+      <tr><td class="k">API instance 2</td><td><a href="https://qr-api-beta-2.mohith16.com/readyz">qr-api-beta-2.mohith16.com</a></td><td>pinned to <code>qr_dining_app_2</code> — use with instance 1 for cross-instance tests</td></tr>
       <tr><td class="k">Guest entry</td><td><code>/table/&lt;qr_token&gt;</code></td><td>via QR table token</td></tr>
-      <tr><td class="k">Staff login</td><td><a href="http://localhost:3000/staff/login">/staff/login</a></td><td>→ admin/waiter/kitchen</td></tr>
-      <tr><td class="k">Platform login</td><td><a href="http://localhost:3000/platform/login">/platform/login</a></td><td>control plane</td></tr>
-      <tr><td class="k">Health</td><td><a href="http://localhost:8090/readyz">:8090/readyz</a> · <a href="http://localhost:8095/readyz">:8095/readyz</a></td><td>postgres+redis</td></tr>
-      <tr><td class="k">Metrics</td><td><a href="http://localhost:8090/metrics">:8090/metrics</a> · <a href="http://localhost:8095/metrics">:8095/metrics</a></td><td>Prometheus text</td></tr>
-      <tr><td class="k">Traces</td><td><a href="http://localhost:3301">SigNoz :3301</a></td><td>collector :4317</td></tr>
+      <tr><td class="k">Staff login</td><td><a href="https://qr-beta.mohith16.com/staff/login">/staff/login</a></td><td>→ admin/waiter/kitchen</td></tr>
+      <tr><td class="k">Platform login</td><td><a href="https://qr-beta.mohith16.com/platform/login">/platform/login</a></td><td>control plane</td></tr>
+      <tr><td class="k">Health</td><td><a href="https://qr-api-beta-1.mohith16.com/readyz">:8090/readyz</a> · <a href="https://qr-api-beta-2.mohith16.com/readyz">:8095/readyz</a></td><td>postgres+redis</td></tr>
+      <tr><td class="k">Metrics</td><td><a href="http://127.0.0.1:9090  (Prometheus; /metrics is not public)">:8090/metrics</a> · <a href="http://127.0.0.1:9090  (Prometheus; /metrics is not public)">:8095/metrics</a></td><td>Prometheus text</td></tr>
+      <tr><td class="k">Traces</td><td><a href="http://127.0.0.1:3301 (via SSH tunnel)">SigNoz :3301</a></td><td>collector :4317</td></tr>
     </table>
   </div>
   <div class="card">
     <h3>Data Stores (isolated)</h3>
     <table>
       <tr><th>Store</th><th>DSN</th></tr>
-      <tr><td class="k">Postgres</td><td class="mono">postgres://mtest:mtest_pass@localhost:25432/qrdining_mtest</td></tr>
-      <tr><td class="k">Redis</td><td class="mono">redis://localhost:26379/0</td></tr>
+      <tr><td class="k">Postgres</td><td class="mono">ssh appuser → docker exec -it qr_dining_postgres psql -U qrdining -d qrdining<br><span class="sub">No published port: the datastore sits on an internal docker network and is unreachable from the internet by design.</span></td></tr>
+      <tr><td class="k">Redis</td><td class="mono">ssh appuser → docker exec -it qr_dining_redis redis-cli</td></tr>
       <tr><td class="k">Compose</td><td class="mono">project <b>manual-testing</b></td></tr>
     </table>
     <div class="legend" style="margin-top:14px">Both backends share this DB + Redis and a single <code>GUEST_TOKEN_SECRET</code>, so guest tokens and realtime events cross instances. Distinct <code>WORKER_REGION</code> (mtest-1 / mtest-2).</div>
@@ -167,7 +170,7 @@
     </table>
   </div>
   <div class="card">
-    <h3>Staff <span style="color:var(--dim);font-size:13px">— POST /staff/auth (branch_id + pin)</span></h3>
+    <h3>Staff <span style="color:var(--dim);font-size:13px">— POST /staff/auth (branch_code + staff_code + pin)</span></h3>
     <table>
       <tr><th>Role</th><th>PIN</th><th>Capability</th></tr>
       <tr><td class="k">owner</td><td class="mono">1111</td><td>full branch + org governance</td></tr>
@@ -175,14 +178,14 @@
       <tr><td class="k">waiter</td><td class="mono">3333</td><td>serve, assist, settle payments</td></tr>
       <tr><td class="k">kitchen</td><td class="mono">4444</td><td>order cooking lifecycle</td></tr>
     </table>
-    <div class="legend" style="margin-top:12px">Same PINs in every branch; <code>branch_id</code> scopes the login. Owner exists only on each tenant's <b>primary</b> branch (and is its org owner). Guests need no login — they enter via a table QR token.</div>
+    <div class="legend" style="margin-top:12px">Same PINs in every branch. <b>The beta runs <code>AUTH_STAFF_CODE_REQUIRED=true</code>, so PIN alone is rejected with <code>400 "branch_code and staff_code are required"</code></b> — send the branch code and staff code too. Staff codes are <code>&lt;BRANCH_CODE&gt;-OWN|-MGR|-WTR|-KIT</code> (e.g. <code>SAFF-BND-OWN</code>, <code>COPR-KOR-WTR</code>); branch codes appear beside each branch below. Owner exists only on each tenant's <b>primary</b> branch (and is its org owner). Guests need no login — they enter via a table QR token.</div>
   </div>
 </div>
 
 <!-- RESTAURANTS -->
 <h2>Restaurants, Branches &amp; QR Tokens</h2>
-<p class="legend" style="border-left:3px solid #d9a441;padding:6px 10px;background:#2a2410">⚠ QR tokens &amp; seeded session states are <b>regenerated on every <code>--reset</code> seed</b> (crypto-random tokens). The links below match the <b>current seed</b>. After any re-seed, refresh with: <code>docker exec manual-testing-postgres psql -U mtest -d qrdining_mtest -tAc "select branch_id, identifier, qr_code_token from tables order by 1,2;"</code></p>
-<p class="legend">Click a table to open the guest flow on Frontend A. Each <code>branch_id</code> is what you pass to <code>/staff/auth</code>. Use the three tenants for cross-tenant isolation tests.</p>
+<p class="legend" style="border-left:3px solid #d9a441;padding:6px 10px;background:#2a2410">⚠ QR tokens &amp; seeded session states are <b>regenerated on every <code>--reset</code> seed</b> (crypto-random tokens). The links below match the <b>current seed</b>. After any re-seed, refresh with: <code>ssh appuser → docker exec qr_dining_postgres psql -U qrdining -d qrdining -tAc "select branch_id, identifier, qr_code_token from tables order by 1,2;"</code></p>
+<p class="legend">Click a table to open the guest flow on the beta frontend. Each <code>branch_id</code> is what you pass to <code>/staff/auth</code>. Use the three tenants for cross-tenant isolation tests.</p>
 
 <!-- Alpha -->
 <div class="card" style="margin-bottom:16px">
@@ -192,27 +195,27 @@
     <h4>Bandra — <code>SAFF-BND</code> · branch_id 1 <span style="color:var(--green)">(primary · has live data)</span></h4>
     <div class="bmeta">Linking Road, Bandra West, Mumbai</div>
     <table>
-      <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/766aa2b654b4480a5bfa63f026987643be5fabaec9d5d3bf9793ee0026d73ddf">766aa2b6…d73ddf</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending (settle it from the waiter board to free the table)</span></td></tr>
-      <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/b872b55a62a828d0da8f2402d1869a7c15fd875a242ee543e6055df17d76b8da">b872b55a…76b8da</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending + payment awaiting staff confirmation</span></td></tr>
-      <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/6889f2f2aa512b3c0fae9ad29db80f1be2eae4ced8c4b71cc01872c19317f511">6889f2f2…17f511</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending</span></td></tr>
+      <tr><td class="k">T1</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/ff7347f248dbe21927eff99af331d640e7645444af96353037f53a0963b74cb5">ff7347f2…b74cb5</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending (settle it from the waiter board to free the table)</span></td></tr>
+      <tr><td class="k">T2</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/6b492228f192aae495b9dbb503a09d5c7d62f52e44433b7059bb4ab2b7ba2aa2">6b492228…ba2aa2</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending + payment awaiting staff confirmation</span></td></tr>
+      <tr><td class="k">T3</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/ae8670b51c04907372fa8c621bea8c6644b3b9a6b0bbc73a1b5d1caa1e36e6f8">ae8670b5…36e6f8</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending</span></td></tr>
     </table>
   </div>
   <div class="branch">
     <h4>Indiranagar — <code>SAFF-IND</code> · branch_id 2</h4>
     <div class="bmeta">100 Feet Road, Indiranagar, Bengaluru</div>
     <table>
-      <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/0485e3edc301b4acb69cfb9217ebde589c62fb6a4a0f0b1cfffc4a4abdff153d">0485e3ed…ff153d</a></td></tr>
-      <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/bd6d2496651d7df4dfae2c66758f67c2a760416492747fcf80da2887ed96bc0e">bd6d2496…96bc0e</a></td></tr>
-      <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/07fa3d359831aa102b46f81068a93a572e26cc5c5fc67ca90f935b9c5a4cf8ae">07fa3d35…4cf8ae</a></td></tr>
+      <tr><td class="k">T1</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/53ede8df6268d82c4da4c8116f066b5d91a34dafe838d780fb8039bdf631066f">53ede8df…31066f</a></td></tr>
+      <tr><td class="k">T2</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/ac27ad06f1a024bebdbc00477c30b604fef7aa9a00165d2c1ea910a90375a8bd">ac27ad06…75a8bd</a></td></tr>
+      <tr><td class="k">T3</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/f3b2c4aff05d6e178fd5ab43a49a4937793740bfbdae47ca3177af66ec38a31c">f3b2c4af…38a31c</a></td></tr>
     </table>
   </div>
   <div class="branch">
     <h4>Connaught Place — <code>SAFF-CP</code> · branch_id 3</h4>
     <div class="bmeta">Block A, Connaught Place, New Delhi</div>
     <table>
-      <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/b21a7cf936dae8a824d6d1c8ab7bfedd76c6dba10d5e0e66b16d0b530ddc7ac4">b21a7cf9…dc7ac4</a></td></tr>
-      <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/0a8833df73918d0df2b8b797eaff2add6e0548382e6ceaedcb16bccd9100119c">0a8833df…00119c</a></td></tr>
-      <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/36a59f08e159eef0eb808d0af39f5675ade23bf646c8f92770e7e7fdace7871d">36a59f08…e7871d</a></td></tr>
+      <tr><td class="k">T1</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/17c843562b511da0a56986979680c3513a76c9db6b78e7c359026881ce52cf18">17c84356…52cf18</a></td></tr>
+      <tr><td class="k">T2</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/99add35c2f735d266114765ee487f5b2c26c27b6cd1c924d5c5c96462e908478">99add35c…908478</a></td></tr>
+      <tr><td class="k">T3</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/3839f792550048bc0ecb5002fdb8874a87aa78f7b137adc583b0c46af6ca1133">3839f792…ca1133</a></td></tr>
     </table>
   </div>
 </div>
@@ -226,9 +229,9 @@
       <h4>Koramangala — <code>COPR-KOR</code> · branch_id 4 <span style="color:var(--green)">(primary · live data)</span></h4>
       <div class="bmeta">5th Block, Koramangala, Bengaluru</div>
       <table>
-        <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/ca07b0421d4067193badd3509027b3a212ce5c72b0077c55a8d0de2170c43976">ca07b042…c43976</a></td></tr>
-        <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/1f2f3bc6f1f97525cbce9b4a7b8dfa43dd0384bd9bdf9a309d8cea9b45cccd18">1f2f3bc6…cccd18</a></td></tr>
-        <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/7dd50f404c28bbc6103e581dfd210814189590437a35afae9077e10bb31d4a0c">7dd50f40…1d4a0c</a></td></tr>
+        <tr><td class="k">T1</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/8c4d97693a0d55067231523e67ffd15d5d19ec35650ae51c4de3de9ce4cb438e">8c4d9769…cb438e</a></td></tr>
+        <tr><td class="k">T2</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/1a1305b54eff3e7a04701b3f09c821bc52722664351c9b54b1ccf13f59a61fe9">1a1305b5…a61fe9</a></td></tr>
+        <tr><td class="k">T3</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/a2c07dbfd5131b964951d936aa843d00a0ff638ef283b5c2df6a0cb05c8e4430">a2c07dbf…8e4430</a></td></tr>
       </table>
     </div>
   </div>
@@ -239,9 +242,9 @@
       <h4>Cyber Hub — <code>BREW-CYB</code> · branch_id 5 <span style="color:var(--green)">(primary · live data)</span></h4>
       <div class="bmeta">DLF Cyber Hub, Gurugram · café menu</div>
       <table>
-        <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/4bb0a6ac2dfd4fef4adfd950914cec2ee3d60a0e3490765766550d66265ecf7c">4bb0a6ac…5ecf7c</a></td></tr>
-        <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/b717c7f6aaa691b3abe6716520737bcaaf3c7422606c8f92f5641c486133fd58">b717c7f6…33fd58</a></td></tr>
-        <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/59122cf3aaa7ca789e43b0b554f34ec75bc476a5eecc4a87957ccb70d19d5dda">59122cf3…9d5dda</a></td></tr>
+        <tr><td class="k">T1</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/b34290bc523ca6659d5172f682c8817b5b5437e17a1d951b4bb0f61cf13b3011">b34290bc…3b3011</a></td></tr>
+        <tr><td class="k">T2</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/fbd0ea64c992ae28df62ce5fe75564a7a2d70fb207f16061dacec060d38002ee">fbd0ea64…8002ee</a></td></tr>
+        <tr><td class="k">T3</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/9a930ef477709034bab74a0d75b65c46c4e37233395b72ef58182038bb7801f1">9a930ef4…7801f1</a></td></tr>
       </table>
     </div>
   </div>
@@ -258,8 +261,8 @@
     <h3>SigNoz <span style="color:var(--dim);font-size:13px">— traces, project <code>qr-dining-signoz-eval</code></span></h3>
     <table>
       <tr><th>What</th><th>Where</th></tr>
-      <tr><td class="k">UI</td><td><a href="http://localhost:3301">http://localhost:3301</a></td></tr>
-      <tr><td class="k">Collector</td><td><code>localhost:4317</code> (OTLP/gRPC)</td></tr>
+      <tr><td class="k">UI</td><td><a href="http://127.0.0.1:3301 (via SSH tunnel)">http://127.0.0.1:3301 (via SSH tunnel)</a></td></tr>
+      <tr><td class="k">Collector</td><td><code>signoz-otel-collector:4317</code> (OTLP/gRPC, docker network only)</td></tr>
       <tr><td class="k">Services</td><td><code>qr-dining-backend-mtest-1</code> · <code>qr-dining-backend-mtest-2</code></td></tr>
       <tr><td class="k">Sampling</td><td><code>OTEL_TRACES_SAMPLE_RATIO=1.0</code> (everything)</td></tr>
     </table>
