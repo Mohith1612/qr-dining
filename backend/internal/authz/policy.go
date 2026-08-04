@@ -13,6 +13,11 @@ type Decision struct {
 	ActorScope    Scope
 	ResourceScope Scope
 	AuditHint     string
+	// ScopeViolation marks a denial caused by tenant scope (the actor's branch or
+	// organization does not own the resource) rather than by role policy. Cross-branch
+	// and cross-organization access is never legitimate traffic, so callers enforce
+	// these denials unconditionally instead of deferring to the rollout flag.
+	ScopeViolation bool
 }
 
 type Authorizer struct {
@@ -55,10 +60,12 @@ func (a *Authorizer) Authorize(actor Actor, action Action, resource Resource) De
 
 	if requiresSameBranch(action) && !actor.Scope.SameBranch(resource.Scope) {
 		decision.Reason = "actor branch does not match resource branch"
+		decision.ScopeViolation = true
 		return decision
 	}
 	if requiresSameOrganization(action) && !actor.Scope.SameOrganization(resource.Scope) {
 		decision.Reason = "actor organization does not match resource organization"
+		decision.ScopeViolation = true
 		return decision
 	}
 

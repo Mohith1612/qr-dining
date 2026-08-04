@@ -198,6 +198,9 @@ func (h *MenuAdminHandler) UpdateItem(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuItemUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
+	if !requireActorBranch(c, sess, target.BranchID) {
+		return
+	}
 
 	validDietary := map[string]bool{"vegetarian": true, "vegan": true, "jain": true, "egg": true, "non-veg": true}
 	validBadges := map[string]bool{"chef-special": true, "bestseller": true, "seasonal": true, "new": true}
@@ -299,6 +302,9 @@ func (h *MenuAdminHandler) ToggleAvailability(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuItemToggleAvailable, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
+	if !requireActorBranch(c, sess, target.BranchID) {
+		return
+	}
 
 	if err := h.svc.ToggleAvailability(c.Request.Context(), itemID, target.BranchID, req.Available, sess.Role); err != nil {
 		menuAdminError(c, err)
@@ -349,6 +355,9 @@ func (h *MenuAdminHandler) ToggleFeatured(c *gin.Context) {
 		return
 	}
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuItemToggleAvailable, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
+		return
+	}
+	if !requireActorBranch(c, sess, target.BranchID) {
 		return
 	}
 
@@ -427,6 +436,9 @@ func (h *MenuAdminHandler) DeleteMenuItem(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuItemUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
+	if !requireActorBranch(c, sess, target.BranchID) {
+		return
+	}
 
 	if err := h.svc.DeleteMenuItem(c.Request.Context(), itemID, target.BranchID, sess.Role); err != nil {
 		menuAdminError(c, err)
@@ -473,6 +485,9 @@ func (h *MenuAdminHandler) DeleteMenuCategory(c *gin.Context) {
 		return
 	}
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuCategoryUpdate, authz.MenuCategoryResource(target.ID, target.BranchID, orgID)) {
+		return
+	}
+	if !requireActorBranch(c, sess, target.BranchID) {
 		return
 	}
 
@@ -534,6 +549,9 @@ func (h *MenuAdminHandler) UpdateMenuCategory(c *gin.Context) {
 		return
 	}
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuCategoryUpdate, authz.MenuCategoryResource(target.ID, target.BranchID, orgID)) {
+		return
+	}
+	if !requireActorBranch(c, sess, target.BranchID) {
 		return
 	}
 
@@ -606,6 +624,9 @@ func (h *MenuAdminHandler) AddItemModifier(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuModifierUpdate, authz.MenuItemResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
+	if !requireActorBranch(c, sess, target.BranchID) {
+		return
+	}
 
 	mod, err := h.svc.AddModifier(c.Request.Context(), services.CreateModifierParams{
 		ItemID:        itemID,
@@ -658,6 +679,9 @@ func (h *MenuAdminHandler) UpdateItemModifier(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuModifierUpdate, authz.MenuModifierResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
+	if !requireActorBranch(c, sess, target.BranchID) {
+		return
+	}
 
 	mod, err := h.svc.UpdateModifier(c.Request.Context(), modifierID, target.BranchID, services.CreateModifierParams{
 		Name:          req.Name,
@@ -699,6 +723,9 @@ func (h *MenuAdminHandler) DeleteItemModifier(c *gin.Context) {
 		return
 	}
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionMenuModifierUpdate, authz.MenuModifierResource(target.ID, target.BranchID, orgID)) {
+		return
+	}
+	if !requireActorBranch(c, sess, target.BranchID) {
 		return
 	}
 

@@ -188,6 +188,9 @@ func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, action, authz.OrderResource(target.ID, target.BranchID, target.SessionID, orgID)) {
 		return
 	}
+	if !requireActorBranch(c, staffSession, target.BranchID) {
+		return
+	}
 	order, err := h.svc.UpdateOrderStatus(c.Request.Context(), orderID, target.BranchID, newStatus, staffSession.StaffID)
 	if err != nil {
 		switch {

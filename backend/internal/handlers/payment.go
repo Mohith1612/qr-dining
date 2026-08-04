@@ -284,6 +284,9 @@ func (h *PaymentHandler) Settle(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionPaymentSettleStaff, resource) {
 		return
 	}
+	if !requireActorBranch(c, staffSession, payment.BranchID) {
+		return
+	}
 	updated, err := h.svc.SettlePaymentByStaff(c.Request.Context(), paymentID, staffSession.StaffID, staffSession.BranchID)
 	if err != nil {
 		switch {

@@ -116,6 +116,9 @@ func (h *AssistanceHandler) Acknowledge(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionAssistanceAck, authz.AssistanceResource(target.ID, session.BranchID, target.SessionID, orgID)) {
 		return
 	}
+	if !requireActorBranch(c, staffSession, session.BranchID) {
+		return
+	}
 	ar, err := h.svc.Acknowledge(c.Request.Context(), id, session.BranchID, staffSession.StaffID)
 	if err != nil {
 		assistanceError(c, err)
@@ -155,6 +158,9 @@ func (h *AssistanceHandler) Resolve(c *gin.Context) {
 		return
 	}
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionAssistanceResolve, authz.AssistanceResource(target.ID, session.BranchID, target.SessionID, orgID)) {
+		return
+	}
+	if !requireActorBranch(c, staffSession, session.BranchID) {
 		return
 	}
 	ar, err := h.svc.Resolve(c.Request.Context(), id, session.BranchID, staffSession.StaffID)

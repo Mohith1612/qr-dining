@@ -244,6 +244,9 @@ func (h *StaffHandler) RotatePIN(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionStaffPinUpdate, authz.StaffResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
+	if !requireActorBranch(c, sess, target.BranchID) {
+		return
+	}
 
 	var req rotatePINRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -412,6 +415,9 @@ func (h *StaffHandler) DeactivateStaff(c *gin.Context) {
 		return
 	}
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionStaffDeactivate, authz.StaffResource(target.ID, target.BranchID, orgID)) {
+		return
+	}
+	if !requireActorBranch(c, sess, target.BranchID) {
 		return
 	}
 
