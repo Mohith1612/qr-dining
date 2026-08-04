@@ -69,6 +69,39 @@ jobs:
       - name: Unit tests (with race detector)
         run: go test -count=1 -race ./...
 
+  govulncheck:
+    name: Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # go-version is deliberately the same "1.26" spec used by every other job
+      # and by backend/docker/Dockerfile (golang:1.26-alpine), NOT an exact patch
+      # pin. govulncheck reports standard-library vulnerabilities against the
+      # toolchain it runs on, so pinning the scanner to a patch the release image
+      # does not use would report on a binary we never ship — in either
+      # direction. Matching the artifact is what makes this scan meaningful.
+      #
+      # Concretely: scanning this tree on go1.26.0 reports 19 stdlib
+      # vulnerabilities that do not exist in the shipped image, because CI and
+      # the Docker builder both resolve to go1.26.5.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      # The scanner itself IS pinned, so the analysis is reproducible.
+      #
+      # No custom filtering: govulncheck's default source-mode behaviour is
+      # already "fail only on what is actionable". It exits non-zero only when a
+      # vulnerable symbol is actually reachable from this module's call graph,
+      # and exits 0 when a vulnerable module is merely required but never called.
+      # Verified both directions locally before this job was added — reverting
+      # the x/text and grpc upgrades makes it fail, restoring them makes it pass.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+
   sqlc-check:
     name: sqlc Drift Check
     runs-on: ubuntu-latest
