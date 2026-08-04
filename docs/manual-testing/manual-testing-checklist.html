@@ -3,243 +3,1319 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QR Dining — Master Testing Checklist</title>
+<title>QR Dining — RC Certification Checklist</title>
 <style>
-  :root{--ink:#1a1410;--muted:#6b5f4f;--line:#e3dccf;--gold:#a9802f;--bg:#fbf8f2;--zebra:#f4efe5;--green:#2f8f5b}
+  :root{--ink:#1a1410;--ink2:#4a4031;--muted:#6b5f4f;--line:#e3dccf;--line2:#cfc4ae;
+        --gold:#a9802f;--bg:#fbf8f2;--panel:#fff;--zebra:#faf7f0;
+        --green:#2f8f5b;--greenbg:#edf7f1;--red:#a8321f;--redbg:#fbeeea;--amber:#b57d18;--amberbg:#fdf6e4;
+        --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-  .wrap{max-width:1040px;margin:0 auto;padding:34px 22px 70px}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--gold)}
+  .wrap{max-width:1280px;margin:0 auto;padding:26px 20px 90px}
   .kicker{font:700 11px/1 sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--gold)}
-  h1{font-size:27px;margin:8px 0 4px}
-  .sub{color:var(--muted)}
-  .top a{margin-right:16px;font-size:13px;color:var(--gold)}
-  .meta{margin:14px 0 6px;color:var(--muted);font-size:13px}
-  .meta input{border:1px solid var(--line);border-radius:6px;padding:4px 8px;font:inherit;margin-left:6px}
-  h2{font-size:15px;margin:30px 0 6px;color:#fff;background:var(--ink);padding:7px 12px;border-radius:7px;letter-spacing:.04em}
-  table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{background:#efe8da;color:#4a4031;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
-  tr:nth-child(even) td{background:var(--zebra)}
-  td.pass{text-align:center;width:46px}
-  td.notes{width:200px;color:var(--muted)}
-  .chk{width:18px;height:18px;border:1.5px solid var(--gold);border-radius:4px;display:inline-block}
-  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#7a5a16}
-  .legend{color:var(--muted);font-size:12px;margin:6px 0 0}
+  h1{font-size:28px;margin:8px 0 4px;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 12px}
+  .top a{margin-right:16px;font-size:13px}
+  .runmeta{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;background:var(--panel);
+           border:1px solid var(--line);border-radius:9px;padding:12px 16px;margin:14px 0}
+  .runmeta label{font-size:12px;color:var(--muted);font-weight:600}
+  .runmeta input{border:1px solid var(--line2);border-radius:6px;padding:5px 9px;font:inherit;font-size:13px;margin-left:6px}
+  .bar{position:sticky;top:0;z-index:20;background:rgba(251,248,242,.96);backdrop-filter:blur(6px);
+       border-bottom:1px solid var(--line);padding:10px 0;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .bar button,.bar select{border:1px solid var(--line2);background:var(--panel);border-radius:7px;
+      padding:6px 11px;font:inherit;font-size:13px;cursor:pointer;color:var(--ink)}
+  .bar button:hover{background:#f2ece0}
+  .bar button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .stat{margin-left:auto;display:flex;gap:14px;align-items:center;font-size:13px;font-variant-numeric:tabular-nums}
+  .stat b{font-size:16px}
+  .barfill{height:7px;width:190px;border-radius:4px;background:#e8e0d0;overflow:hidden}
+  .barfill i{display:block;height:100%;background:var(--green);width:0}
+  h2{font-size:15px;margin:34px 0 0;color:#fff;background:var(--ink);padding:9px 14px;border-radius:8px 8px 0 0;
+     letter-spacing:.04em;display:flex;align-items:center;gap:10px;flex-wrap:wrap;scroll-margin-top:60px}
+  h2 .cnt{margin-left:auto;font-weight:400;font-size:12px;opacity:.8}
+  h2 .why{font-weight:400;font-size:12px;opacity:.85}
+  .item{background:var(--panel);border:1px solid var(--line);border-top:0}
+  .item:last-of-type{border-radius:0 0 8px 8px}
+  .ihead{display:flex;gap:10px;align-items:flex-start;padding:11px 14px 8px}
+  .id{font:700 11px/1.6 var(--mono);color:var(--gold);white-space:nowrap;padding-top:1px}
+  .title{font-weight:600;flex:1;min-width:0}
+  .sev{font:700 10px/1.7 sans-serif;letter-spacing:.06em;padding:1px 8px;border-radius:10px;border:1px solid;white-space:nowrap}
+  .sev.s0{background:var(--redbg);border-color:#e0b3a9;color:var(--red)}
+  .sev.s1{background:var(--redbg);border-color:#e0b3a9;color:#8c3b12}
+  .sev.s2{background:var(--amberbg);border-color:#e2cf9d;color:var(--amber)}
+  .sev.s3{background:#f0ece2;border-color:var(--line2);color:var(--muted)}
+  .ibody{padding:0 14px 12px;display:grid;grid-template-columns:1fr 1fr;gap:4px 22px}
+  .fld{font-size:13px}
+  .fld b{display:block;font:700 10px/1.8 sans-serif;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+  .fld ol{margin:2px 0 0;padding-left:18px}
+  .fld li{margin:1px 0}
+  .impact{grid-column:1/-1;font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:7px;margin-top:4px}
+  .res{grid-column:1/-1;display:grid;grid-template-columns:96px 1fr 1fr;gap:10px;align-items:start;
+       background:var(--zebra);border:1px solid var(--line);border-radius:7px;padding:9px 11px;margin-top:8px}
+  .res textarea{width:100%;border:1px solid var(--line2);border-radius:6px;padding:5px 8px;font:inherit;font-size:12.5px;
+                resize:vertical;min-height:34px;background:#fff}
+  .pf{display:flex;flex-direction:column;gap:4px}
+  .pf button{border:1px solid var(--line2);background:#fff;border-radius:6px;padding:3px 0;font:700 11px/1.6 sans-serif;
+             cursor:pointer;letter-spacing:.05em}
+  .pf button.on-pass{background:var(--green);border-color:var(--green);color:#fff}
+  .pf button.on-fail{background:var(--red);border-color:var(--red);color:#fff}
+  .pf button.on-na{background:var(--muted);border-color:var(--muted);color:#fff}
+  .item.pass{border-left:4px solid var(--green)}
+  .item.fail{border-left:4px solid var(--red)}
+  .item.na{border-left:4px solid var(--line2)}
+  code{font-family:var(--mono);font-size:12px;background:#f2ecdf;border:1px solid var(--line);
+       padding:0 4px;border-radius:3px;color:#6d4f14}
+  .hint{background:#fdf6e4;border-left:4px solid var(--gold);padding:9px 14px;border-radius:0 7px 7px 0;margin:12px 0;font-size:13.5px}
+  .danger{background:var(--redbg);border-left:4px solid var(--red);padding:9px 14px;border-radius:0 7px 7px 0;margin:12px 0;font-size:13.5px}
+  .legend{font-size:12.5px;color:var(--muted);margin:8px 0}
+  @media(max-width:900px){.ibody{grid-template-columns:1fr}.res{grid-template-columns:1fr}}
   @media print{
-    body{background:#fff}
-    .wrap{padding:0}
-    h2{background:#222 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    th{background:#eee !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    .top,.noprint{display:none}
-    table{page-break-inside:auto}
-    tr{page-break-inside:avoid}
+    .bar,.top{display:none} body{background:#fff;font-size:10px}
+    .wrap{max-width:none;padding:0} .item{page-break-inside:avoid} h2{page-break-after:avoid}
+    .res textarea{min-height:26px} a{color:#000;text-decoration:none}
   }
 </style>
 </head>
 <body>
 <div class="wrap">
-<div class="kicker">QR Dining · Certification</div>
-<h1>Master Testing Checklist</h1>
-<p class="sub">Tick each item once verified. Print to PDF/paper for sign-off. □ = not yet · ✔ = pass.</p>
-<p class="top noprint"><a href="testing-dashboard.html">← Dashboard</a><a href="manual-testing-user-guide.html">User Guide →</a><a href="database-reference.html">Database Reference</a></p>
-<div class="meta">Tester: <input style="width:180px"> &nbsp; Date: <input style="width:120px"> &nbsp; Build: <code>feature/certification-fixes-ui-redesign (Serene guest redesign + ops/platform redesign + Phase-0 fixes) · migration v38</code></div>
-<p class="legend">Environment: Frontend A <code>:3000</code>/app-1 · Frontend B <code>:3001</code>/app-2 · isolated PG <code>:25432</code> / Redis <code>:26379</code> · soak (project <code>qr-dining</code>) untouched.</p>
+
+<div class="kicker">Release Candidate · Final Human Gate</div>
+<h1>QR-Dining — Manual Certification Checklist</h1>
+<p class="sub">Branch <code>feature/signoz-observability</code> · schema v38 · every item carries purpose,
+steps, expected result, severity and impact. Answers save to this browser automatically.</p>
+<p class="top">
+  <a href="testing-dashboard.html">← Testing dashboard</a>
+  <a href="manual-testing-user-guide.html">Read the user guide first</a>
+  <a href="database-reference.html">Database reference</a>
+</p>
+
+<div class="runmeta">
+  <span><label>Tester<input id="m-tester" size="16" placeholder="name"></label></span>
+  <span><label>Date<input id="m-date" size="12" placeholder="YYYY-MM-DD"></label></span>
+  <span><label>Build / commit<input id="m-build" size="14" placeholder="git rev-parse --short HEAD"></label></span>
+  <span><label>Environment<input id="m-env" size="18" value="manual-testing (local)"></label></span>
+</div>
+
+<div class="danger"><b>Before you start:</b> read the
+<a href="manual-testing-user-guide.html">user guide</a>. Several items below will look like bugs if you do not
+know they are deliberate — staff polling at 10s, governance running inert, R2 uploads returning 503, the
+audit hash-chain being NULL, and org suspension not blocking anything.</div>
+
+<div class="hint"><b>Severity scale.</b>
+<b>SEV-0</b> = blocks the RC, do not soak · <b>SEV-1</b> = blocks Restaurant #1, must fix before pilot ·
+<b>SEV-2</b> = fix in the first week of pilot · <b>SEV-3</b> = backlog.
+Mark <b>N/A</b> for anything genuinely out of scope in this environment — an honest N/A is worth more than a
+generous pass.</div>
+
+<div class="bar">
+  <button class="primary" onclick="expandAll(true)">Expand all</button>
+  <button onclick="expandAll(false)">Collapse all</button>
+  <select id="filter" onchange="applyFilter()">
+    <option value="all">Show: all items</option>
+    <option value="todo">Only unanswered</option>
+    <option value="fail">Only failures</option>
+    <option value="pass">Only passes</option>
+    <option value="s01">Only SEV-0 / SEV-1</option>
+  </select>
+  <button onclick="exportMd()">Export findings (Markdown)</button>
+  <button onclick="exportJson()">Export raw (JSON)</button>
+  <button onclick="window.print()">Print / PDF</button>
+  <button onclick="resetAll()">Reset run</button>
+  <span class="stat">
+    <span class="barfill"><i id="pbar"></i></span>
+    <span><b id="s-pass">0</b> pass</span>
+    <span><b id="s-fail">0</b> fail</span>
+    <span><b id="s-na">0</b> n/a</span>
+    <span><b id="s-todo">0</b> left</span>
+  </span>
+</div>
+
+<div id="out"></div>
+
+<p class="legend" id="footnote"></p>
+</div>
 
 <script>
-const sections = {
-"Guest":[
- ["Scan a free Saffron table QR → name entry → create session","Serene landing (\"Welcome.\"); session opens with host badge"],
- ["Welcome screen","Serene UI: \"Welcome, {name}.\", View Menu hero + Orders/Help/Bill tiles, presence list, Currently Popular"],
- ["Browse menu (filters + sections), open item sheet, add to order","Item sheet: qty stepper, modifiers, note, sticky \"Add to order\"; cart shows item + price"],
- ["Cart \"Review order\" → host places order","Order created (pending), shows on guest tracker + KDS"],
- ["Non-host attempts to place order","Blocked in UI and rejected server-side"],
- ["Bill page","\"Total due\" hero + itemized breakdown (GST/service); Pay-Full only (Cash/Card/UPI)"],
- ["Apply a promo AT THE BILL (not the cart)","Promo field on the bill; per-guest promo prompts for phone (PROMO_PHONE_REQUIRED); discount folds into the bill"],
- ["Host initiates cash/UPI payment","Cart freezes, session → payment_pending, awaits confirmation"],
- ["Customer opt-in during payment","customers row created/linked"],
- ["Order tracker advances as kitchen cooks","Node stepper Sent→Confirmed→Preparing→Ready→Served live, no refresh (F-6)"],
-],
-"Participant":[
- ["Second guest joins same table token","Two participants, only one is_host"],
- ["Participant adds/removes cart item","Host sees the change within ~1s (CART_UPDATED)"],
- ["Presence updates on join/leave","List reflects participants live"],
- ["Host leaves → host reassigned","HOST_CHANGED; new host gains ordering rights"],
-],
-"Waiter":[
- ["Login branch_id 1 PIN 3333","Waiter dashboard with 3 queues"],
- ["Acknowledge then resolve assistance","Seeded pending assistance clears"],
- ["Mark a ready order served","Order leaves ready queue; guest sees served"],
- ["Settle the seeded pending cash payment (T2)","payments.status=completed, settled_by_staff_id set, guest notified, session closes"],
- ["Attempt a kitchen-only action","Rejected (waiter cannot advance cooking states)"],
-],
-"Kitchen":[
- ["Login (Branch SAFF-BND · Staff SAFF-BND-KIT · PIN 4444)","KDS \"Order pass\" Kanban shows orders"],
- ["Ticket renders item contents (C2)","Each ticket lists \"N× <item>\" lines + table — NOT just an order ID"],
- ["Advance confirmed→preparing→ready","Each step pushes WS event; guest tracker moves"],
- ["Attempt to mark served as kitchen","Server rejects (waiter-only)"],
- ["Elapsed-time / overdue colouring","Older tickets colour-escalate (overdue ring + minutes elapsed)"],
-],
-"Manager":[
- ["Login (Branch SAFF-BND · Staff SAFF-BND-MGR · PIN 2222)","Ops admin dashboard (no org governance); fixed ops theme, no dark-mode reset on refresh"],
- ["Create/edit menu item + modifier; image upload","Persists; visible to guests; image upload graceful 503 if R2 unconfigured"],
- ["Single-select modifier group (C10)","Group edited as single-select renders as radios for the guest; cart rejects multi-pick (422 MODIFIER_CONFLICT)"],
- ["Toggle item availability","Guest at that branch sees it live; other branch unaffected"],
- ["Staff tab: roster + Reset PIN + Deactivate (C16)","Roster lists staff with role; manager may Reset PIN of waiter/kitchen; cannot reset self; create-staff hidden from managers (owner-only)"],
- ["\"Change PIN\" (self) in the staff bar","Current+new PIN; old PIN invalidated"],
- ["Add table / refresh QR","New token works, old token 404s; QR points at the guest frontend (not the API)"],
- ["Create promo; validate as guest at the bill","Discount applies at payment initiation"],
-],
-"Organization Owner":[
- ["Login Saffron owner PIN 1111 (branch 1)","Sees all 3 Saffron branches"],
- ["Open org analytics","Aggregates Bandra+Indiranagar+Connaught Place"],
- ["Single-branch owner (Copper/Urban)","Sees only their one branch"],
- ["Read org/branch audit log","Audit entries present"],
-],
-"Platform Admin":[
- ["Login admin@platform.local","super_admin console; staff tokens rejected here"],
- ["List orgs (3) and create a 4th","Returns org+restaurant"],
- ["Create branch w/ initial tables+owner","Tables return QR tokens; owner can log in"],
- ["Suspend then activate an org","Status flips (resolve-only, not yet enforced)"],
- ["Cross-tenant platform analytics","Per-org figures, no tenant merge"],
-],
-"Support":[
- ["Login support@platform.local","Support console; no billing access"],
- ["Search a session / order / payment","Found by reference"],
- ["Inspect a Saffron session detail","Sanitized: no session_token / device_fingerprint"],
- ["Attempt any mutation","403 (read-only)"],
- ["Deep read emits tenant-visible audit row","audit_log critical-risk entry for the tenant"],
-],
-"Billing":[
- ["Login billing@platform.local","Billing area accessible"],
- ["Edit billing profile (GST/currency INR)","Persists"],
- ["Attempt to open support console","Excluded / 403"],
-],
-"Themes":[
- ["Default preset is serene","No-row / unset tenant resolves to Serene Hospitality (migration 000038 default)"],
- ["Each tenant guest UI shows its preset","Saffron dark-luxury · Copper warm-cafe · Urban vibrant (seeded presets, re-derived on the serene component system)"],
- ["Guest UI is theme-aware; staff/platform are fixed ops surfaces","Tenant theming applies to guest only; staff/platform use fixed ops tokens (no dark reset)"],
- ["Change a tenant preset in platform","That tenant's guest adopts the new theme; others unchanged"],
- ["Custom token edit (premium tenant)","14 governed tokens apply; preset bridge intact"],
-],
-"Collateral":[
- ["Open a branch collateral studio (platform)","Renders per tenant theme"],
- ["Each tenant's distinct format","Saffron standing_card · Copper table_tent · Urban sticker"],
- ["Staff-admin collateral tab writes same row","Platform + staff share one branch_collateral row"],
- ["Export (print→PDF / QR bundle)","Produces themed output"],
-],
-"Analytics":[
- ["Branch analytics reflect seeded data","Orders/payments counted for that branch only"],
- ["Premium analytics.advanced present","Saffron exposes advanced; free tenant limited"],
- ["No cross-branch / cross-org bleed","Numbers scoped correctly"],
-],
-"Subscriptions":[
- ["Saffron=premium/active, Copper=standard/active, Urban=free/trial","Statuses as seeded"],
- ["Activate / renew / suspend / cancel","Valid transitions only; recorded"],
- ["Trial→active path","Allowed; reflected in status"],
-],
-"Feature Flags":[
- ["Set a global flag override","Resolves globally (shadow)"],
- ["Set org + branch override","More specific scope wins (global→org→branch)"],
- ["Flags remain resolve-only","No operational enforcement yet"],
-],
-"Realtime":[
- ["Order lifecycle events push to guest","Live without refresh"],
- ["Menu availability toggle pushes","MENU_ITEM_AVAILABILITY_CHANGED live"],
- ["Assistance/payment events push","Waiter queues update live"],
- ["Cart is refetch-driven","CART_UPDATED triggers getCart; cart not in snapshot"],
-],
-"Multi-Instance":[
- ["Session created on app-1 readable on app-2","HTTP 200 with same guest token"],
- ["Order placed on A appears on B KDS","Within ~1s, both directions"],
- ["Distinct WORKER_REGION mtest-1/mtest-2","Both /readyz ok"],
-],
-"Cross-Tenant Isolation":[
- ["Saffron owner cannot see Copper/Urban","Denied everywhere"],
- ["Saffron guest token on Copper session","Rejected"],
- ["Snapshot scoped to its own session/tenant","No cross-session/tenant data (T-01 class)"],
- ["Analytics never merge orgs","Per-tenant only"],
-],
-"Security":[
- ["Staff token on /platform/* route","Rejected"],
- ["Guest token on staff route","Rejected"],
- ["Tampered guest token","Validation fails"],
- ["Body > 1 MB","Rejected"],
- ["Server-side host gating","Non-host order/payment rejected even if UI bypassed"],
-],
-"Recovery":[
- ["Kill+restart a backend (test only)","Reconnects; clients re-snapshot; no data loss"],
- ["Redis flush (test only)","Presence/tickets reset; business data intact; clients recover"],
- ["Terminal session readable 60 min","Closed/abandoned session still readable in window"],
-],
-"Reconnect":[
- ["Reload mid-session","Snapshot restores cart/orders/participants; no dup orders"],
- ["Idle into awaiting_reactivation then return","Recovers via ws-ticket 409 → snapshot (F-1)"],
- ["Sequence numbers don't regress","Dedup by sequence holds"],
-],
-"Audit":[
- ["Mutations emit audit rows (V2 on)","session.create / payment.initiate etc. recorded"],
- ["audit_log immutability","UPDATE/DELETE on audit_log rejected by trigger"],
- ["Support deep read audited","Tenant-visible critical entry"],
-],
-"Support Grants":[
- ["support_admin granted read scope","Can read sessions/orders/payments/audit"],
- ["billing_admin excluded from support","403 on support endpoints"],
- ["read_only_auditor write attempt","403"],
-],
-"Billing State Machines":[
- ["Subscription status transitions valid","trial/active/suspended/cancelled/expired/past_due as allowed"],
- ["Invalid transition rejected","e.g. cancel→renew handled correctly"],
- ["Each transition recorded/audited","Visible in subscription history"],
-],
-"MFA":[
- ["Enroll TOTP for a platform user","Returns secret/QR"],
- ["Confirm with valid code","Enabled; mfa_required honored"],
- ["Re-login challenges MFA","POST /platform/auth/mfa step required"],
- ["MFA not configured path","503 MFA_NOT_CONFIGURED, not 500 (PT-03)"],
- ["Disable MFA","Subsequent login no longer challenged"],
-],
-"Guest Credential Enforcement":[
- ["Default (R6 off) guest flows work","Create/join/order/pay all succeed"],
- ["With AUTH_GUEST_CREDENTIALS_REQUIRED on (test instance)","Guest flows still work with credentials"],
-],
-"Snapshot Security":[
- ["Snapshot for own session","Returns full authoritative state"],
- ["Snapshot with no token","Rejected"],
- ["Snapshot with another session's token","Rejected (cross-session)"],
- ["session_token stripped in snapshot","Always empty (F-8), R6 off and on"],
-],
-"Pilot-Remediation Regressions":[
- ["Re-scan an OCCUPIED table's QR","Joins the existing session (no SESSION_ALREADY_ACTIVE error)"],
- ["Re-scan an idle (awaiting_reactivation) table","Session resumes (SESSION_REACTIVATED), order history intact"],
- ["Re-scan a payment_pending table","Join permitted; payment state untouched"],
- ["Host uses the manual \"Make host\" control","HOST_CHANGED fires; new host can order; old host cannot"],
- ["\"Make host\" while payment_pending","Refused (HOST_TRANSFER_LOCKED)"],
- ["Per-guest promo without phone","PROMO_PHONE_REQUIRED; with phone the cap is enforced (limit reached → rejected)"],
- ["session_token never in any guest response","Create/Get/Join/Reactivate/snapshot all strip it (F-8)"],
-],
-"Gated Features (Staff Performance & Loyalty)":[
- ["Admin \"Performance\" tab (manager/owner)","Clean gated empty state; API returns 403 STAFF_ANALYTICS_DISABLED"],
- ["Admin \"Loyalty\" tab (manager/owner)","Clean gated empty state; API returns 403 LOYALTY_DISABLED"],
- ["Performance/Loyalty tabs as waiter/kitchen","Owner-or-manager-only message (no data, no crash)"],
- ["Complete a payment with loyalty gate OFF","Payment settles normally; zero rows in customer_loyalty_* tables"],
- ["OPTIONAL deep-dive: enable via platform overrides","Entitlement override + branch flag override → tab shows data; earn credits floor(amount/rate) points once per payment; redeem cannot overdraw"],
- ["Platform staff-performance read","GET /platform/analytics/staff-performance?branch_id= works for operator roles regardless of tenant gate"],
-],
-"OpenAPI Contract":[
- ["openapi.yaml is v2.2.0 and lints clean","npx @redocly/cli lint → 0 errors (9 doc-quality warnings)"],
- ["Spot-check 3 documented routes vs reality","Status codes + response shapes match the spec (e.g. /sessions 201, settle 200, gated 403 codes)"],
- ["Error codes match spec examples","Stable code strings (SESSION_NOT_FOUND, LOYALTY_DISABLED, …) as documented"],
- ["No phantom/missing routes for new surfaces","Staff-perf + loyalty + platform staff-perf routes all present and documented"],
-],
-};
-const W=document.write.bind(document);
-for(const [name,rows] of Object.entries(sections)){
-  W(`<h2>${name}</h2><table><tr><th>Test case</th><th>Expected result</th><th class="pass">Pass</th><th class="notes">Notes</th></tr>`);
-  for(const [t,e] of rows){ W(`<tr><td>${t}</td><td>${e}</td><td class="pass"><span class="chk"></span></td><td class="notes"></td></tr>`); }
-  W(`</table>`);
+/* Each item: id, t(itle), p(urpose), s(teps), e(xpected), sev 0-3, imp(act if it fails). */
+const SECTIONS = [
+
+{id:"env", name:"0 · Environment sanity", why:"Prove the stack is real before trusting any result below.", items:[
+ {id:"ENV-01", t:"Both backends are ready", sev:0,
+  p:"A half-up stack produces false failures for the rest of the run.",
+  s:["curl http://localhost:8090/readyz","curl http://localhost:8095/readyz"],
+  e:'Both return status ready with postgres:ok and redis:ok.',
+  imp:"Every subsequent result is untrustworthy."},
+ {id:"ENV-02", t:"Both frontends compile and serve", sev:0,
+  p:"next dev compiles lazily; a broken build shows only on first hit.",
+  s:["Open http://localhost:3000/staff/login","Open http://localhost:3001/staff/login"],
+  e:"Both render the login form with no console errors.",
+  imp:"Cannot test anything."},
+ {id:"ENV-03", t:"Schema is at v38", sev:1,
+  p:"Certifying an older schema certifies the wrong product.",
+  s:["docker exec manual-testing-postgres psql -U mtest -d qrdining_mtest -tAc 'select version, dirty from schema_migrations'"],
+  e:"Returns 38 and dirty = false.",
+  imp:"Findings may not map to the RC."},
+ {id:"ENV-04", t:"Seed data is present and coherent", sev:1,
+  p:"Three tenants with different plans and themes are what makes isolation testable.",
+  s:["Query counts: organizations=3, branches=5, tables=15, staff=18, platform_users=4"],
+  e:"Counts match; Saffron=Premium, Copper Pot=Standard, Urban Brew=Free/trial.",
+  imp:"Cross-tenant and entitlement tests become meaningless."},
+ {id:"ENV-05", t:"Soak stack is untouched", sev:0,
+  p:"The protected R1 soak must never be disturbed by testing.",
+  s:["docker ps | grep qr-dining","Confirm qr-app-soak, qr-dining-postgres-1 and qr-dining-redis-1 are still Up with their original uptime"],
+  e:"All three still running; uptime not reset.",
+  imp:"Destroying soak evidence costs days and invalidates the R1 lineage."},
+ {id:"ENV-06", t:"Tracing is exporting to SigNoz", sev:2,
+  p:"Section 10 of this checklist depends on it.",
+  s:["Hit any endpoint","Open http://localhost:3301 and look for service qr-dining-backend-mtest-1"],
+  e:"Traces appear within seconds; log lines carry a trace_id.",
+  imp:"The observability section becomes N/A."},
+ {id:"ENV-07", t:"QR tokens on the dashboard match the database", sev:2,
+  p:"Tokens are regenerated on every --reset; a stale dashboard wastes an hour.",
+  s:["Compare one dashboard token with: select branch_id, identifier, qr_code_token from tables order by 1,2"],
+  e:"They match exactly.",
+  imp:"Guest tests fail with 'invalid QR' for entirely the wrong reason."},
+]},
+
+{id:"guest", name:"1 · Guest — the only role that creates data", why:"Run first: every other surface consumes what this produces.", items:[
+ {id:"GST-01", t:"QR resolves and the tenant theme paints instantly", sev:1,
+  p:"First impression, and proof the QR payload carries a preset for instant paint before the authoritative theme arrives.",
+  s:["Open /table/<token> for a Saffron table","Watch the very first frame","Repeat for Copper Pot and Urban Brew"],
+  e:"Tenant colours from the first paint — no white flash, no default-theme flicker. The three tenants look distinctly different.",
+  imp:"A branded product that flashes generic white looks broken to a paying restaurant."},
+ {id:"GST-02", t:"Invalid QR token fails gracefully", sev:2,
+  p:"Damaged stickers and mistyped URLs will happen.",
+  s:["Open /table/deadbeef"],
+  e:"'This QR code is invalid or has expired.' No stack trace, no blank page, no infinite spinner.",
+  imp:"A guest at a real table with no way forward and no explanation."},
+ {id:"GST-03", t:"Session creation on a free table", sev:0,
+  p:"The core entry path.",
+  s:["Scan a free table QR","Enter a name","Continue"],
+  e:"Lands on /session/<uuid>. DB shows a new active session, a participant flagged host, tables.status=occupied, an empty cart and a human-readable session_number.",
+  imp:"The product does not function."},
+ {id:"GST-04", t:"Second guest joins the same table", sev:0,
+  p:"Multi-guest sessions are the differentiator.",
+  s:["From a second device, scan the same table QR","Confirm the copy says 'Join the party'","Enter a different name and continue"],
+  e:"Same session UUID as guest 1. Both see two participant avatars. Exactly one host.",
+  imp:"The collaborative model — the whole point of the product — is broken."},
+ {id:"GST-05", t:"Optional phone accepts valid and rejects invalid input", sev:2,
+  p:"The phone field is the loyalty/customer hook and the likeliest input-validation defect.",
+  s:["Join with a valid 10-digit number","Join another session with '123'","Join a third leaving it blank"],
+  e:"Valid links a customers row; invalid shows the INVALID_PHONE inline message; blank proceeds normally.",
+  imp:"Guests blocked at the door by a field that is supposed to be optional."},
+ {id:"GST-06", t:"Menu loads with categories, images and modifiers", sev:1,
+  p:"The menu is what the guest actually came for.",
+  s:["Open Menu","Scroll every category","Open an item with modifier groups"],
+  e:"All categories render; items with and without images both look right; modifier groups display correctly.",
+  imp:"Guests cannot order."},
+ {id:"GST-07", t:"Single-select modifier group enforces exactly one choice", sev:2,
+  p:"Migration 000037 added this; it is new behaviour worth re-proving.",
+  s:["Open an item with a single-select group","Try to select two options"],
+  e:"Selecting the second deselects the first, or the request is refused with MODIFIER_CONFLICT.",
+  imp:"The kitchen receives contradictory instructions — 'medium AND extra spicy'."},
+ {id:"GST-08", t:"Add to cart broadcasts live to every participant", sev:0,
+  p:"The realtime shared cart is the product's core claim.",
+  s:["On device A add an item","Watch device B without refreshing"],
+  e:"Item appears on B within about a second, attributed to A's name.",
+  imp:"Shared ordering silently degrades to single-device ordering."},
+ {id:"GST-09", t:"Remove from cart broadcasts live", sev:1,
+  p:"Removal is the mirror path and is easier to get wrong.",
+  s:["On B, remove an item A added","Watch A"],
+  e:"Disappears on A without refresh; totals update on both.",
+  imp:"Guests are served things they removed."},
+ {id:"GST-10", t:"Non-host cannot send the order", sev:1,
+  p:"Host gating is deliberate. It is also the #1 predicted support ticket, so the messaging must be excellent.",
+  s:["As the non-host guest, open Cart","Attempt to send the order"],
+  e:"NOT_SESSION_HOST → 'Only the table host can do this. Ask the host to send the order or request the bill.' The affordance is explained, not merely dead.",
+  imp:"Guests conclude the app is broken and call a waiter — exactly what the product exists to avoid."},
+ {id:"GST-11", t:"Host sends the order successfully", sev:0,
+  p:"The single most important transaction in the product.",
+  s:["As host, send the order"],
+  e:"Cart empties; an order appears in the tracker with a human-readable number; ORDER_PLACED reaches every participant.",
+  imp:"No revenue path."},
+ {id:"GST-12", t:"Double-submit produces exactly one order", sev:1,
+  p:"Idempotency under a slow network and an impatient thumb.",
+  s:["Tap 'Send order' twice as fast as possible","Check the orders list and the DB"],
+  e:"Exactly one order row. idempotency_replays_total increments, or the second returns ORDER_ALREADY_PLACED.",
+  imp:"The kitchen cooks twice and the guest is billed twice."},
+ {id:"GST-13", t:"Empty cart cannot be ordered", sev:3,
+  p:"Trivial guard, cheap to check.",
+  s:["Empty the cart","Attempt to send"],
+  e:"CART_EMPTY, handled inline.",
+  imp:"Empty orders confuse the kitchen."},
+ {id:"GST-14", t:"Host transfer works and reassigns powers", sev:1,
+  p:"Host transfer is how a table recovers when the host leaves or their phone dies.",
+  s:["As host on A, transfer host to B","Observe both devices"],
+  e:"HOST_CHANGED within about a second; B gains the send and pay affordances, A loses them.",
+  imp:"A table is stranded when the host walks out."},
+ {id:"GST-15", t:"Order tracker advances live through every state", sev:0,
+  p:"Proves the end-to-end realtime chain across two trust domains.",
+  s:["Have kitchen confirm, prepare and mark ready","Have the waiter mark served","Watch the guest tracker without refreshing"],
+  e:"Each transition appears on the guest device within about a second of the staff action.",
+  imp:"Guests ask staff 'is my food coming?' — the exact problem the product sells against."},
+ {id:"GST-16", t:"Assistance request reaches the waiter board", sev:1,
+  p:"The digital 'call waiter' button.",
+  s:["Request assistance","Watch the waiter board (poll cycle up to 10s)"],
+  e:"Appears within one poll cycle; the guest sees acknowledgement then resolution as the waiter acts.",
+  imp:"Guests wave at staff — the analogue fallback."},
+ {id:"GST-17", t:"Assistance rate limit degrades cleanly", sev:3,
+  p:"6 per minute per session cap.",
+  s:["Tap assist 8 times quickly"],
+  e:"After 6, a clear rate-limit message. The UI stays usable.",
+  imp:"Frustrated guest, ugly error."},
+ {id:"GST-18", t:"Bill breakdown is arithmetically correct", sev:0,
+  p:"Money correctness. Persistence is exact NUMERIC but arithmetic is float — worth eyeballing.",
+  s:["Order several items with modifiers","Open the bill","Add up subtotal + tax + service + tip by hand"],
+  e:"Every line reconciles to the total, to the paisa.",
+  imp:"Overcharging a real guest. Unrecoverable trust damage."},
+ {id:"GST-19", t:"Promo code applies at payment, not at order", sev:1,
+  p:"Migration 000036 moved redemption to payment initiation. Deliberate and counter-intuitive.",
+  s:["Create a promo in admin","Place an order and note the price","Apply the promo on the payment page"],
+  e:"Order confirmation shows pre-discount pricing; the bill shows post-discount. PROMO_APPLIED broadcasts.",
+  imp:"Discount applied twice, or not at all."},
+ {id:"GST-20", t:"Promo respects the branch timezone window", sev:2,
+  p:"A promo timezone bug was found and fixed during certification — this is its regression test.",
+  s:["Create a promo whose window has already ended in Asia/Kolkata","Try to apply it","Then apply one that is currently valid"],
+  e:"Expired one rejected; valid one accepted.",
+  imp:"Expired discounts honoured, or valid ones refused at the till."},
+ {id:"GST-21", t:"Only the host can initiate payment", sev:1,
+  p:"Money is host-gated for the same anti-chaos reason as ordering.",
+  s:["As non-host, attempt to pay"],
+  e:"NOT_SESSION_HOST with the helpful message.",
+  imp:"Multiple guests initiating conflicting payments."},
+ {id:"GST-22", t:"Payment initiation freezes the cart for everyone", sev:0,
+  p:"PAYMENT_INITIATED must reach every participant, not just the host.",
+  s:["Host initiates payment","On the other device, try to add an item"],
+  e:"The other device's cart is visibly frozen; the mutation fails with PAYMENT_IN_PROGRESS.",
+  imp:"Items added after the bill is frozen are eaten but never billed."},
+ {id:"GST-23", t:"Bill snapshot is immutable after initiation", sev:0,
+  p:"The payment-correctness cornerstone: the bill the guest agreed to is frozen.",
+  s:["Initiate payment","In admin, change a price on an ordered item and deactivate the applied promo","Reload the guest bill"],
+  e:"The frozen bill is unchanged in every line.",
+  imp:"The amount charged differs from the amount agreed. The worst class of defect in the product."},
+ {id:"GST-24", t:"Session terminal screen after settlement", sev:1,
+  p:"The guest must be told the meal is over, not left on a stale screen.",
+  s:["Have the waiter settle the payment","Watch the guest device"],
+  e:"Terminal 'session ended' screen within about a second. No 404, no infinite spinner.",
+  imp:"Guests stare at a dead app while walking out."},
+ {id:"GST-25", t:"Split payment leaves the session open until covered", sev:1,
+  p:"Split settlement is supported and is how real tables pay.",
+  s:["Initiate a payment for half the bill and settle it","Check session status","Initiate and settle the remainder"],
+  e:"Session stays open after the first; closes only when completed payments cover the bill.",
+  imp:"Table closed with money outstanding, or never closes at all."},
+ {id:"GST-26", t:"Browser refresh at every step restores exact state", sev:1,
+  p:"Backend-authoritative recovery — the snapshot is the source of truth.",
+  s:["Refresh on: session home, menu, cart with items, orders, payment page"],
+  e:"State identical after every refresh. Cart contents, host identity and order statuses all survive.",
+  imp:"A guest who locks their phone loses their order."},
+ {id:"GST-27", t:"Mobile viewport is genuinely usable", sev:1,
+  p:"This is a phone product first; desktop testing hides real defects.",
+  s:["Set 375x812, or use a real phone","Walk the full flow: join, menu, cart, order, bill"],
+  e:"No horizontal scroll, no clipped controls, comfortable tap targets, modals fit.",
+  imp:"Unusable on the device 100% of guests will use."},
+ {id:"GST-28", t:"Menu item made unavailable mid-session is handled", sev:2,
+  p:"Kitchens run out of things mid-service. Constantly.",
+  s:["Add an item to the cart","In admin, toggle it unavailable","Watch the guest, then try to order"],
+  e:"MENU_ITEM_AVAILABILITY_CHANGED reaches the guest; the order fails cleanly with MENU_ITEM_UNAVAILABLE, never a 500.",
+  imp:"Guest orders something that does not exist; kitchen confusion at peak time."},
+ {id:"GST-29", t:"Reactivation banner offers a way back", sev:1,
+  p:"Sessions must never die silently. Finding F-1 was a reconnect dead-end.",
+  s:["Leave a session idle past the presence grace, or lower session_timeout_minutes in Settings","Return to the tab"],
+  e:"'Still here?' banner with a working reactivate button and a call-waiter fallback. Session returns to active.",
+  imp:"A live table is abandoned mid-meal and the guests cannot order dessert."},
+ {id:"GST-30", t:"Two guests scanning the same free table simultaneously", sev:1,
+  p:"One-active-session-per-table is a DB constraint; the joinability predicate must agree with it.",
+  s:["Have two devices submit the join/create form at the same instant"],
+  e:"One creates, one joins. Never two sessions on one table; never a raw constraint error shown to a guest.",
+  imp:"A table split across two sessions produces two bills — certification finding #11's failure mode."},
+]},
+
+{id:"kitchen", name:"2 · Kitchen — consumes guest orders", why:"Directional: kitchen owns confirmed→preparing→ready. Test before the waiter.", items:[
+ {id:"KIT-01", t:"Kitchen login lands on the KDS", sev:1,
+  p:"Role-based landing.",
+  s:["Log in with branch_id and PIN 4444"],
+  e:"Lands on /staff/kitchen. No admin or payment affordances anywhere.",
+  imp:"Kitchen staff wander into surfaces they should not touch."},
+ {id:"KIT-02", t:"New order appears within one poll cycle", sev:1,
+  p:"Staff poll every 10s by design. Measure it, do not assume it.",
+  s:["Place a guest order","Start a timer","Watch the KDS"],
+  e:"Appears within 10s. Record the actual measured time.",
+  imp:"Food starts late; the product's headline benefit evaporates."},
+ {id:"KIT-03", t:"Modifiers and item notes are legible", sev:2,
+  p:"A real cook reads this at arm's length in a hot kitchen.",
+  s:["Order an item with several modifiers and a note","Read the card from about a metre away"],
+  e:"Modifiers and notes are visible and unambiguous.",
+  imp:"Wrong food cooked; allergy notes missed."},
+ {id:"KIT-04", t:"Confirm, preparing and ready transitions work", sev:0,
+  p:"The kitchen's entire job.",
+  s:["Advance an order through each state","Watch the card move columns"],
+  e:"Each transition succeeds; the card moves; the guest tracker updates.",
+  imp:"Orders cannot be worked."},
+ {id:"KIT-05", t:"Ready orders leave the kitchen board", sev:2,
+  p:"'Served' was deliberately removed from kitchen — the waiter owns it.",
+  s:["Mark an order ready"],
+  e:"Card leaves the active kitchen board. No 'mark served' button exists here.",
+  imp:"The kitchen board fills with completed work and cooks lose the queue."},
+ {id:"KIT-06", t:"Invalid transitions are refused server-side", sev:2,
+  p:"The state machine must be enforced in the backend, not just hidden in the UI.",
+  s:["Via curl, PATCH an order from confirmed straight to served"],
+  e:"Rejected with an invalid-transition error.",
+  imp:"Orders skip preparation and are marked served without existing."},
+ {id:"KIT-07", t:"Cancel an order and the guest is told", sev:2,
+  p:"Cancellation is reachable from pending, confirmed and preparing only.",
+  s:["Cancel a confirmed order","Watch the guest tracker and the bill"],
+  e:"ORDER_CANCELLED reaches the guest; the bill excludes it.",
+  imp:"Guest billed for food that was never made."},
+ {id:"KIT-08", t:"KDS survives 20 minutes open", sev:2,
+  p:"A KDS runs all service. A polling leak surfaces only over time.",
+  s:["Leave the tab open 20 minutes with intermittent orders","Watch memory in devtools"],
+  e:"No unbounded memory growth, no duplicate cards, no stacked timers.",
+  imp:"The kitchen display dies mid-rush — the worst possible moment."},
+ {id:"KIT-09", t:"Kitchen sees only its own branch", sev:1,
+  p:"Branch scoping.",
+  s:["Log in as Bandra kitchen","Confirm no Indiranagar or Copper Pot orders appear"],
+  e:"Strictly one branch's orders.",
+  imp:"Cross-branch order leakage — a data-isolation defect with commercial consequences."},
+ {id:"KIT-10", t:"Kitchen cannot settle payments", sev:1,
+  p:"Role separation for money.",
+  s:["Via curl with a kitchen token, PATCH /payments/:id/settle"],
+  e:"Refused with 403 / INSUFFICIENT_ROLE.",
+  imp:"Anyone with the kitchen PIN can close bills."},
+]},
+
+{id:"waiter", name:"3 · Waiter — closes the loop", why:"Serves and settles; settlement produces the closed sessions later sections need.", items:[
+ {id:"WTR-01", t:"Waiter login lands on the service floor", sev:1,
+  p:"Role-based landing.",
+  s:["Log in with PIN 3333"],
+  e:"Lands on /staff/waiter with tables, ready-to-serve and settlement queues.",
+  imp:"Staff cannot find their tools."},
+ {id:"WTR-02", t:"Ready orders appear in the serve queue", sev:1,
+  p:"The handoff from kitchen to floor.",
+  s:["Have kitchen mark an order ready","Watch the waiter board"],
+  e:"Appears within one poll cycle with table identifier and items.",
+  imp:"Food sits under the lamp getting cold."},
+ {id:"WTR-03", t:"Mark served completes the order lifecycle", sev:0,
+  p:"The only place ready→served happens.",
+  s:["Mark a ready order served","Watch the guest tracker"],
+  e:"Order reaches served; the guest sees it within about a second; order_lifecycle_duration_seconds is observed.",
+  imp:"Orders never complete; analytics and the guest tracker both stall."},
+ {id:"WTR-04", t:"Acknowledge and resolve assistance", sev:2,
+  p:"Closing the assistance loop is what tells the guest help is coming.",
+  s:["Acknowledge a pending request","Then resolve it","Watch the guest at each step"],
+  e:"pending → acknowledged → resolved; the guest sees both transitions.",
+  imp:"Guests keep pressing the button because nothing acknowledges them."},
+ {id:"WTR-05", t:"Settle a cash payment", sev:0,
+  p:"With no live gateway, this IS the payment path for the pilot.",
+  s:["Guest initiates a cash payment","Waiter settles it from the queue"],
+  e:"Payment completes; payments.settled_by_staff_id is stamped; PAYMENT_COMPLETED broadcasts; the session closes if covered.",
+  imp:"No way to take money. Absolute pilot blocker."},
+ {id:"WTR-06", t:"Settle a card-manual payment", sev:1,
+  p:"Second real-world method.",
+  s:["Repeat WTR-05 with card_manual"],
+  e:"Identical behaviour to cash.",
+  imp:"Half the payment methods unusable."},
+ {id:"WTR-07", t:"Concurrent settlement of the same payment", sev:1,
+  p:"Two waiters, one bill — a real floor scenario.",
+  s:["Open the settlement queue in two browsers as different waiters","Click settle at the same instant"],
+  e:"Exactly one succeeds; the other gets a clean invalid-transition error. No 500, no double-settle.",
+  imp:"Double-settled payments corrupt the money record."},
+ {id:"WTR-08", t:"Settlement queue shows only unsettled payments", sev:2,
+  p:"Queue hygiene.",
+  s:["Settle one payment","Refresh the queue"],
+  e:"The settled payment leaves the queue.",
+  imp:"Waiters try to settle already-settled bills."},
+ {id:"WTR-09", t:"Waiter is branch-scoped", sev:1,
+  p:"Isolation.",
+  s:["Log in as Bandra waiter","Look for other branches' work"],
+  e:"Only Bandra sessions, orders, assistance and payments.",
+  imp:"Cross-branch data leakage."},
+ {id:"WTR-10", t:"Waiter cannot manage staff or menu", sev:1,
+  p:"RBAC.",
+  s:["Attempt POST /branches/:id/staff and PATCH /menu/items/:id with a waiter token"],
+  e:"Both refused.",
+  imp:"Any waiter can edit prices."},
+ {id:"WTR-11", t:"Logout revokes the token immediately", sev:1,
+  p:"R4 (AUTH_STAFF_SESSION_DB_REQUIRED) is on — revocation must be real.",
+  s:["Capture the bearer token","Log out","Replay the token with curl"],
+  e:"401.",
+  imp:"A stolen tablet stays authenticated forever."},
+ {id:"WTR-12", t:"PIN brute-force lockout engages", sev:1,
+  p:"The PIN space is tiny; lockout is the only real defence.",
+  s:["Enter a wrong PIN repeatedly until locked","Then enter the CORRECT PIN"],
+  e:"Lockout message; the correct PIN is still refused until the window passes.",
+  imp:"A four-digit PIN with unlimited attempts is trivially brute-forced."},
+ {id:"WTR-13", t:"Staff surface is NOT tenant-themed", sev:2,
+  p:"Theming is scoped to guest only — this structurally killed the 'staff theme resets' bug class.",
+  s:["Log into Saffron (dark-luxury) staff, then Copper Pot (warm-cafe) staff"],
+  e:"Both use the identical Harmony ops design. No tenant colours.",
+  imp:"Regression of a bug class that was deliberately designed out."},
+ {id:"WTR-14", t:"Deactivated staff lose access immediately", sev:1,
+  p:"Firing someone must take effect at once.",
+  s:["Log in as a waiter","As owner, deactivate that waiter","Have the waiter make any request"],
+  e:"The request fails and re-login is refused.",
+  imp:"A dismissed employee retains access to live tables and money."},
+ {id:"WTR-15", t:"Waiter witnesses a loyalty redemption (if enabled)", sev:3,
+  p:"Redemption is staff-witnessed and ledger-only.",
+  s:["Enable the loyalty gate (section 7)","Look up a customer and redeem points"],
+  e:"Points deducted from the ledger. THE BILL DOES NOT CHANGE.",
+  imp:"If redemption alters bill or payment math it violates the ledger-only invariant — a serious money defect."},
+]},
+
+{id:"admin", name:"4 · Manager & Owner — the 12 admin tabs", why:"Configures what guests see next round. Local and reversible, so test before platform.", items:[
+ {id:"ADM-01", t:"Manager and owner both reach /staff/admin", sev:1,
+  p:"Landing and tab visibility.",
+  s:["Log in as manager (2222), then as owner (1111)"],
+  e:"Both land on the admin console; all 12 tabs are present.",
+  imp:"Restaurant cannot configure itself."},
+ {id:"ADM-02", t:"Sessions tab reflects live floor state", sev:2,
+  p:"The manager's situational awareness.",
+  s:["Open the Sessions tab with active sessions running","Close one elsewhere"],
+  e:"The board matches reality; the closed session disappears within a poll.",
+  imp:"Manager makes decisions on stale data."},
+ {id:"ADM-03", t:"Create, edit and delete a menu category", sev:1,
+  p:"Menu management is the most-used admin function.",
+  s:["Create a category","Rename it","Delete it"],
+  e:"All three succeed and are reflected on the guest menu.",
+  imp:"Restaurant cannot maintain its own menu."},
+ {id:"ADM-04", t:"Create and edit a menu item with modifiers", sev:1,
+  p:"Full item lifecycle including the modifier editor.",
+  s:["Create an item with price and description","Add a multi-select and a single-select modifier group","Edit it, then verify on the guest menu"],
+  e:"Item and modifiers appear correctly for guests; the single-select flag is honoured.",
+  imp:"Menu cannot represent the real menu."},
+ {id:"ADM-05", t:"Availability toggle reaches live guests", sev:2,
+  p:"MENU_ITEM_AVAILABILITY_CHANGED is the only staff-to-guest realtime push.",
+  s:["With a guest on the menu page, toggle an item unavailable"],
+  e:"The guest sees it grey out without refreshing.",
+  imp:"Guests order sold-out items all evening."},
+ {id:"ADM-06", t:"Featured toggle changes the guest carousel", sev:3,
+  p:"Merchandising.",
+  s:["Feature an item","Reload the guest session home"],
+  e:"Appears in the popular-items carousel.",
+  imp:"Merchandising control does not work."},
+ {id:"ADM-07", t:"Image upload fails gracefully without R2", sev:3,
+  p:"R2 is unconfigured here — a clean 503 is the CORRECT behaviour.",
+  s:["Attempt a menu item image upload"],
+  e:"A clear message, not a crash or a silent failure. Mark N/A for the upload itself.",
+  imp:"Confusing failure during real onboarding when credentials are wrong."},
+ {id:"ADM-08", t:"Deleting an item that sits in an open cart", sev:2,
+  p:"Referential edge case that real restaurants will hit.",
+  s:["Guest adds item X to cart","Admin deletes item X","Guest attempts to order"],
+  e:"Clean handled error; cart and bill remain coherent; no 500.",
+  imp:"Corrupted carts and unbillable orders."},
+ {id:"ADM-09", t:"Create, rename and delete a table", sev:2,
+  p:"Table management.",
+  s:["Create a table","Rename it","Delete it"],
+  e:"All succeed; the new table's QR resolves.",
+  imp:"Cannot reconfigure the floor plan."},
+ {id:"ADM-10", t:"QR refresh invalidates the old token immediately", sev:1,
+  p:"This is the security control for a QR that leaked — photographed, screenshotted or posted online.",
+  s:["Note a table's QR URL","Refresh the QR","Open the OLD URL"],
+  e:"The old token fails immediately; the new one works.",
+  imp:"A leaked QR grants indefinite access to a table's sessions."},
+ {id:"ADM-11", t:"Deleting a table with an active session", sev:2,
+  p:"Destructive edge case.",
+  s:["Start a session on a table","Attempt to delete that table"],
+  e:"Refused with a clear reason, or handled explicitly. No orphaned session.",
+  imp:"Orphaned sessions and stranded guests."},
+ {id:"ADM-12", t:"Only the owner can create staff", sev:2,
+  p:"Intended RBAC that surprised manual-testing round 4 — certified as correct.",
+  s:["As manager (2222), attempt to add a staff member"],
+  e:"Refused with a clear message ('only owners can create staff'), not a silent failure.",
+  imp:"Either managers cannot staff their branch, or anyone can mint credentials."},
+ {id:"ADM-13", t:"Manager may reset only waiter and kitchen PINs", sev:2,
+  p:"Fine-grained RBAC worth proving precisely.",
+  s:["As manager, reset a waiter PIN (should work)","As manager, reset the owner PIN (should fail)","As owner, reset anyone's PIN"],
+  e:"Exactly that pattern.",
+  imp:"A manager could seize the owner account."},
+ {id:"ADM-14", t:"Owner can deactivate staff", sev:2,
+  p:"Offboarding.",
+  s:["As owner, deactivate a waiter","Confirm they cannot log in"],
+  e:"is_active=false; login refused; the existing session is revoked.",
+  imp:"Cannot remove a departed employee."},
+ {id:"ADM-15", t:"Stats reconcile with reality", sev:2,
+  p:"Analytics that lie are worse than no analytics.",
+  s:["Note exactly what you ordered today","Open Stats: top items, busy hours, order volume"],
+  e:"Numbers match what you created. Empty ranges render an empty state, not NaN or a broken chart.",
+  imp:"Owner makes purchasing decisions on wrong data."},
+ {id:"ADM-16", t:"Performance tab is inert by default", sev:2,
+  p:"FeatureGate default-off. Visible-but-empty is a UX defect; cleanly disabled is correct.",
+  s:["Open the Performance tab with no entitlement and no flag"],
+  e:"A clear disabled or unavailable state — not a spinner, not an error, not a blank chart.",
+  imp:"Restaurants think a paid feature is broken rather than unpurchased."},
+ {id:"ADM-17", t:"Loyalty tab is inert by default", sev:2,
+  p:"Same gate, different feature.",
+  s:["Open the Loyalty tab with no entitlement and no flag"],
+  e:"Clean disabled state.",
+  imp:"Same as above."},
+ {id:"ADM-18", t:"Plan tab shows the correct subscription", sev:3,
+  p:"Reads the legacy restaurant-subscription route, which is still live.",
+  s:["Check Plan for all three tenants"],
+  e:"Saffron Premium, Copper Pot Standard, Urban Brew Free/trial.",
+  imp:"Tenant sees the wrong plan; support confusion."},
+ {id:"ADM-19", t:"Create a percentage promo and a flat promo", sev:2,
+  p:"Both discount shapes.",
+  s:["Create 10% off","Create a flat 100 off","Apply each on a guest bill"],
+  e:"Both compute correctly against the subtotal.",
+  imp:"Wrong discounts on real bills."},
+ {id:"ADM-20", t:"Deactivate and reactivate a promo", sev:2,
+  p:"Promo lifecycle.",
+  s:["Deactivate an active promo","Try to apply it as a guest","Reactivate it"],
+  e:"Inactive promos are refused; reactivated ones work again.",
+  imp:"Expired campaigns keep discounting."},
+ {id:"ADM-21", t:"Deactivating a promo does not alter a frozen bill", sev:1,
+  p:"Snapshot immutability from the promo direction.",
+  s:["Guest applies a promo and initiates payment","Admin deactivates that promo","Reload the guest bill"],
+  e:"The frozen bill keeps the discount.",
+  imp:"The amount charged changes after the guest agreed to it."},
+ {id:"ADM-22", t:"Collateral config saves and previews faithfully", sev:2,
+  p:"This is what gets printed and glued to a table.",
+  s:["Set welcome text, WiFi and socials","Preview each format","Print one to PDF"],
+  e:"Preview matches the print output; no clipping or overflow.",
+  imp:"Printed collateral is wrong — and printing is expensive and slow to redo."},
+ {id:"ADM-23", t:"Collateral holds no theme tokens", sev:3,
+  p:"Theme is single-source by design; collateral holds physical and content config only.",
+  s:["Inspect the collateral payload"],
+  e:"Format, text, WiFi and socials — no colour tokens.",
+  imp:"Two sources of truth for branding drift apart."},
+ {id:"ADM-24", t:"Appearance changes affect the guest surface only", sev:2,
+  p:"Theming scope.",
+  s:["Change branch appearance","Check the guest surface, then the staff console"],
+  e:"Guest changes; staff stays Harmony.",
+  imp:"Ops surfaces become unreadable in a tenant's brand colours."},
+ {id:"ADM-25", t:"Lowering session_timeout_minutes shortens expiry", sev:2,
+  p:"The fastest way to exercise StaleSessionCleaner without waiting two hours.",
+  s:["Set session_timeout_minutes to 1","Start a session and leave it idle","Wait for the cleaner (5 min cadence)"],
+  e:"The session becomes abandoned and the table is freed.",
+  imp:"Tables stay 'occupied' forever, or live sessions get killed too early."},
+ {id:"ADM-26", t:"order_prefix change affects only new orders", sev:3,
+  p:"Historical IDs must never be rewritten.",
+  s:["Note an existing order number","Change order_prefix","Place a new order"],
+  e:"The new order uses the new prefix; the old number is unchanged.",
+  imp:"Historical records mutate — an audit problem."},
+ {id:"ADM-27", t:"Timezone change is respected by promos and business dates", sev:2,
+  p:"India-only today, but the field exists and is used.",
+  s:["Change branch timezone","Create a time-windowed promo","Check business dates on new sessions"],
+  e:"Both honour the new timezone.",
+  imp:"Promos open and close at the wrong hours."},
+ {id:"ADM-28", t:"Branch audit log is readable and scoped", sev:2,
+  p:"GET /branches/:id/audit — the restaurant's own forensic view.",
+  s:["Perform several mutations","Read the branch audit log"],
+  e:"All mutations present with actor and result; no other branch's rows.",
+  imp:"No local forensics, and possible cross-branch leakage."},
+ {id:"ADM-29", t:"Rotate my own PIN from the staff bar", sev:3,
+  p:"Self-service credential rotation.",
+  s:["Rotate your PIN","Log out and back in with the new PIN"],
+  e:"Old PIN refused, new PIN works.",
+  imp:"Staff cannot rotate a shoulder-surfed PIN."},
+ {id:"ADM-30", t:"Admin cannot reach another branch by URL", sev:1,
+  p:"BranchTenantGuard.",
+  s:["As Bandra manager, change the branch id in an admin API call to Copper Pot's"],
+  e:"Refused.",
+  imp:"Cross-tenant administrative access — the most commercially damaging defect class."},
+]},
+
+{id:"platform", name:"5 · Platform Admin — the control plane", why:"Global, and destructive to earlier assumptions; test after the tenant baseline is proven.", items:[
+ {id:"PLT-01", t:"Platform login works for all four roles", sev:1,
+  p:"Four distinct trust levels.",
+  s:["Log in as each of admin, support, billing and auditor"],
+  e:"All four succeed; each sees a role-appropriate navigation set.",
+  imp:"Operator cannot run the business."},
+ {id:"PLT-02", t:"Staff tokens are rejected by the platform domain", sev:0,
+  p:"The trust-domain split is a hard security boundary.",
+  s:["Capture a staff bearer token","curl GET /platform/organizations with it"],
+  e:"401. Not 403, and definitely not data.",
+  imp:"Any restaurant employee reaches cross-tenant platform data. Catastrophic."},
+ {id:"PLT-03", t:"Overview KPIs match the seeded reality", sev:2,
+  p:"Sanity of the cross-tenant analytics.",
+  s:["Open /platform"],
+  e:"3 organizations, 5 branches, and session/order counts consistent with your testing.",
+  imp:"Operator flies blind."},
+ {id:"PLT-04", t:"Onboarding wizard creates a working tenant end-to-end", sev:1,
+  p:"This is the exact path Restaurant #1 will be onboarded through.",
+  s:["Run /platform/onboarding: org, branch, batch tables, assign plan, activate subscription, billing profile, activate org","Collect the QR package","Scan one of the new QR codes as a guest"],
+  e:"A brand-new tenant is fully usable end-to-end, including a working guest session.",
+  imp:"Cannot onboard a paying customer without manual SQL."},
+ {id:"PLT-05", t:"Organization list and detail render correctly", sev:2,
+  p:"Basic navigation.",
+  s:["Open /platform/organizations and drill into each"],
+  e:"Status, branches and entitlements all render.",
+  imp:"Operator cannot inspect tenants."},
+ {id:"PLT-06", t:"Suspending an org is INERT", sev:1,
+  p:"Lifecycle is deliberately unenforced. Confirming it does NOT bite is the actual test.",
+  s:["Suspend Copper Pot","Immediately start a guest session at a Copper Pot table and order"],
+  e:"Status flips to suspended and an audit row is written, but the guest flow keeps working normally.",
+  imp:"If suspension DOES block traffic, unplanned enforcement has shipped — it could take a paying restaurant offline by accident."},
+ {id:"PLT-07", t:"Suspending a branch is INERT", sev:1,
+  p:"Same at branch scope.",
+  s:["Suspend one Saffron branch","Use that branch as a guest and as staff"],
+  e:"Status flips and is audited; traffic unaffected.",
+  imp:"Same as PLT-06."},
+ {id:"PLT-08", t:"Reactivate org and branch", sev:2,
+  p:"The reverse path must exist and be audited.",
+  s:["Activate both again"],
+  e:"Status returns to active; both actions audited.",
+  imp:"An operator can suspend but not restore."},
+ {id:"PLT-09", t:"Plan CRUD works", sev:2,
+  p:"Plans are the commercial model.",
+  s:["Create a plan","Edit its price and name","Set its entitlements"],
+  e:"All persist and are audited.",
+  imp:"Cannot define what is being sold."},
+ {id:"PLT-10", t:"Editing plan entitlements changes what orgs resolve", sev:1,
+  p:"The cleanest proof of the entitlement resolver.",
+  s:["Add analytics.advanced to the Standard plan","Read GET /platform/organizations/2/entitlements"],
+  e:"Copper Pot now resolves analytics.advanced without any per-org change.",
+  imp:"Plans are decorative and every tenant needs manual overrides."},
+ {id:"PLT-11", t:"Org entitlement override beats the plan", sev:1,
+  p:"Override precedence.",
+  s:["Override custom.theme = true for Copper Pot with a reason","Read the resolved entitlements","Clear the override"],
+  e:"Override wins while present; clearing falls back to the plan; the reason is persisted and audited.",
+  imp:"Cannot make a commercial exception for a customer."},
+ {id:"PLT-12", t:"Assigning a plan takes effect immediately", sev:2,
+  p:"Plan changes are how upgrades happen.",
+  s:["Assign Urban Brew (Free) to Premium","Read its resolved entitlements"],
+  e:"multi_branch, analytics.advanced and unlimited limits all resolve.",
+  imp:"Upgrades do not deliver what was sold."},
+ {id:"PLT-13", t:"Limits are resolve-only, not enforced", sev:2,
+  p:"Confirming the inert boundary, deliberately.",
+  s:["Set org override limit.tables = 2 for Urban Brew","Add a 4th table"],
+  e:"The add SUCCEEDS. The observability page shows where it would have bitten.",
+  imp:"If it is enforced, unplanned enforcement could block a legitimate restaurant mid-service."},
+ {id:"PLT-14", t:"Flag precedence: branch beats org beats global beats default", sev:1,
+  p:"The single most valuable governance test in the product.",
+  s:["Set global loyalty ON","Set org 1 loyalty OFF","Set branch 1 loyalty ON","Read branch 1, branch 2 and an org-2 branch","Delete branch override and re-read; delete org and re-read; delete global and re-read"],
+  e:"Branch wins, then org, then global, then the catalog default (false) — at every step.",
+  imp:"Operators cannot reason about who has what. Feature rollout becomes guesswork."},
+ {id:"PLT-15", t:"Create a new platform flag", sev:3,
+  p:"Operators can add flags without a deploy.",
+  s:["Create a flag with a default","Set and clear a global override"],
+  e:"Persisted and audited.",
+  imp:"Every new gate needs a code change."},
+ {id:"PLT-16", t:"Theme preset change repaints the guest surface", sev:2,
+  p:"Theming is a sellable feature.",
+  s:["Change Copper Pot's preset to serene","Reload a Copper Pot guest session"],
+  e:"Guest repaints; staff and platform unaffected.",
+  imp:"Tenant branding does not work."},
+ {id:"PLT-17", t:"Custom tokens require the custom.theme entitlement", sev:1,
+  p:"One of only three places governance actually bites today.",
+  s:["Try to save a custom token for Copper Pot (no entitlement)","Grant the entitlement and retry"],
+  e:"Refused first, accepted second.",
+  imp:"A premium feature is given away, or a paying tenant is denied it."},
+ {id:"PLT-18", t:"Theme token allowlist rejects hostile input", sev:1,
+  p:"Tokens become inline CSS variables on the guest page — an injection surface.",
+  s:["Try a non-hex colour value","Try a token key that is not on the allowlist","Try a javascript: value"],
+  e:"All three rejected server-side, not merely hidden by the UI.",
+  imp:"CSS or script injection into every guest's phone for that tenant."},
+ {id:"PLT-19", t:"Theme never leaks across a branch switch", sev:2,
+  p:"Themes are applied to the html element and never persisted.",
+  s:["Open a Saffron guest session, then a Copper Pot one in the same browser"],
+  e:"No residual Saffron colours; the theme is cleared on switch.",
+  imp:"One tenant's brand appears in another tenant's restaurant."},
+ {id:"PLT-20", t:"Collateral studio produces print-faithful output", sev:2,
+  p:"Physical artefacts are expensive to redo.",
+  s:["Configure a branch","Render sticker, table-tent, square, standing and bulk","Print each to PDF at A4"],
+  e:"Correct margins and bleed; nothing clipped; the QR sits fully inside the safe area.",
+  imp:"A print run is wasted."},
+ {id:"PLT-21", t:"Printed QR scans from paper", sev:1,
+  p:"The single most physical failure mode in the product.",
+  s:["Print at least one format on real paper","Scan it with a real phone camera at normal table distance in typical restaurant lighting"],
+  e:"Scans first time, every time.",
+  imp:"Guests cannot enter the product at all. Absolute pilot blocker."},
+ {id:"PLT-22", t:"ZIP export contains what it claims", sev:3,
+  p:"Bulk onboarding convenience.",
+  s:["Export the collateral ZIP","Open it"],
+  e:"All expected files present and correct.",
+  imp:"Onboarding friction."},
+ {id:"PLT-23", t:"Platform collateral and admin collateral agree", sev:2,
+  p:"Two surfaces edit the same config — known accidental debt.",
+  s:["Set collateral in the platform studio","Open the admin Collateral tab for the same branch"],
+  e:"Identical values and schema; edits in either surface round-trip.",
+  imp:"Config silently diverges and printed output disagrees with what the restaurant configured."},
+ {id:"PLT-24", t:"Platform analytics org filter genuinely scopes", sev:2,
+  p:"Cross-tenant reporting must not blend tenants.",
+  s:["Open /platform/analytics with and without the organization_id filter"],
+  e:"Filtered numbers are strictly a subset and match that org.",
+  imp:"Operator reports mix tenant data."},
+ {id:"PLT-25", t:"Enforcement observability is read-only and honest", sev:2,
+  p:"It shows where enforcement WOULD bite.",
+  s:["Suspend an org","Open /platform/observability"],
+  e:"The org appears as would-be-blocked; the page offers no mutation; guests keep ordering.",
+  imp:"Operators cannot assess flip risk before a rollout wave."},
+ {id:"PLT-26", t:"MFA enrolment, or a clean fail-closed", sev:2,
+  p:"MFA_ENCRYPTION_KEY is unset here, so fail-closed is the expected result.",
+  s:["Open /platform/security and attempt enrolment"],
+  e:"Either a full enrol, confirm, re-login and disable cycle works, or it fails closed with a clear message. Record which; mark N/A if fail-closed.",
+  imp:"Platform accounts protected by password alone."},
+ {id:"PLT-27", t:"read_only_auditor cannot mutate anything", sev:1,
+  p:"The weakest platform role is the sharpest RBAC test.",
+  s:["Log in as auditor","Attempt: suspend an org, set a flag, edit a plan, issue an invoice, set a theme","Verify at least two of these via curl, not just the UI"],
+  e:"All refused by the BACKEND with 403, not merely hidden in the UI.",
+  imp:"A read-only account can change production governance."},
+ {id:"PLT-28", t:"support_admin cannot mutate anything", sev:1,
+  p:"Support is 'observability, not control'.",
+  s:["As support, attempt any mutation via curl"],
+  e:"Refused.",
+  imp:"Support staff can alter tenant state during a call."},
+ {id:"PLT-29", t:"billing_admin is scoped to billing", sev:2,
+  p:"Role separation.",
+  s:["As billing, attempt to set a feature flag or a theme"],
+  e:"Refused; billing surfaces still work.",
+  imp:"Over-broad role grants."},
+ {id:"PLT-30", t:"super_admin bypass is deliberate and total", sev:3,
+  p:"Documented behaviour worth confirming rather than discovering later.",
+  s:["As super_admin, exercise every section"],
+  e:"Everything is permitted.",
+  imp:"None if intended — but it must be a known property, not a surprise."},
+]},
+
+{id:"support", name:"6 · Support & Billing consoles", why:"Read-only forensics, and the shadow billing surface.", items:[
+ {id:"SUP-01", t:"Cross-tenant support search finds real records", sev:2,
+  p:"The tool you will use on every support call.",
+  s:["Search by session number, order number and payment reference across tenants"],
+  e:"Finds the right records regardless of tenant.",
+  imp:"Support is blind; every ticket needs psql."},
+ {id:"SUP-02", t:"Session detail shows the full picture", sev:2,
+  p:"Diagnosis without a database client.",
+  s:["Open a settled session's detail"],
+  e:"Participants, events, orders, bill snapshot and payment history all present.",
+  imp:"Cannot answer 'what happened at table 4?'."},
+ {id:"SUP-03", t:"No guest credentials leak into support payloads", sev:0,
+  p:"Regression test for finding F-8, where the snapshot leaked session_token.",
+  s:["Open session, order and payment detail","Inspect the raw JSON in devtools Network"],
+  e:"NO session_token, guest access token or credential material anywhere.",
+  imp:"A support operator, or anyone who sees that response, can impersonate a guest session."},
+ {id:"SUP-04", t:"Support console offers no mutations", sev:1,
+  p:"'Observability, not control' must be structurally true.",
+  s:["Walk every support page looking for any write affordance"],
+  e:"None exists.",
+  imp:"Support accidentally mutates a live tenant mid-service."},
+ {id:"SUP-05", t:"Opening a support session is itself audited", sev:2,
+  p:"Who looked at what, and when.",
+  s:["Create a support session","Check platform_support_sessions and the audit log"],
+  e:"Both record it.",
+  imp:"No accountability for support access to customer data."},
+ {id:"SUP-06", t:"Audit explorer contains this entire run", sev:1,
+  p:"The forensic record is the product's memory.",
+  s:["Open /platform/support/audit","Filter by org","Find mutations from every earlier section"],
+  e:"All present with actor, action, resource, result and correlation id.",
+  imp:"No forensics after an incident."},
+ {id:"BIL-01", t:"Subscription lifecycle actions all work and audit", sev:2,
+  p:"Shadow, but it must record correctly.",
+  s:["Activate, suspend, renew, extend trial, change plan and cancel"],
+  e:"Each persists and writes an audit row. None affect guest traffic.",
+  imp:"Operator cannot represent commercial state."},
+ {id:"BIL-02", t:"Invoice lifecycle: draft, issued, paid", sev:2,
+  p:"The full happy path of the shadow billing system.",
+  s:["Create an invoice","Issue it","Mark it paid"],
+  e:"Each transition persists and audits.",
+  imp:"Cannot represent what a customer owes."},
+ {id:"BIL-03", t:"Cancelling a paid invoice is refused", sev:2,
+  p:"State-machine discipline in billing.",
+  s:["Attempt to cancel an invoice already marked paid"],
+  e:"Refused.",
+  imp:"Financial records can be rewritten after the fact."},
+ {id:"BIL-04", t:"Billing profile round-trips", sev:3,
+  p:"Basic persistence.",
+  s:["Set a billing profile","Reload"],
+  e:"Values persist.",
+  imp:"Re-entry on every visit."},
+ {id:"BIL-05", t:"Billing NEVER charges anyone", sev:1,
+  p:"Shadow-only is a commitment. Pilot billing is manual.",
+  s:["Complete the whole billing flow","Confirm no external payment call is attempted anywhere"],
+  e:"Purely internal record-keeping. No gateway interaction exists.",
+  imp:"Accidentally charging a pilot customer through an uncertified billing system."},
+]},
+
+{id:"gates", name:"7 · Feature flags & entitlements (the AND gate)", why:"Needs a working feature to prove the gate turns it off. Run after both consoles.", items:[
+ {id:"GAT-01", t:"Baseline: both gated features are off", sev:2,
+  p:"Default-off is the safety property.",
+  s:["With no overrides, check the Performance and Loyalty tabs and the guest CustomerOptIn"],
+  e:"All inert. Guest opt-in returns FEATURE_DISABLED with the friendly copy.",
+  imp:"Unpurchased features leak to tenants."},
+ {id:"GAT-02", t:"Entitlement alone does NOT enable the feature", sev:1,
+  p:"The test most people get wrong: it is AND, not OR.",
+  s:["Grant org 1 loyalty.enabled via override","Leave the flag at its default (off)","Check the Loyalty tab"],
+  e:"STILL OFF.",
+  imp:"Half a gate is no gate — features escape before they are ready."},
+ {id:"GAT-03", t:"Flag alone does NOT enable the feature", sev:1,
+  p:"The mirror case.",
+  s:["Clear the entitlement","Set global flag loyalty = true","Check an org with no entitlement (Copper Pot)"],
+  e:"STILL OFF for Copper Pot.",
+  imp:"Same as GAT-02, from the other direction."},
+ {id:"GAT-04", t:"Both halves on enables the feature", sev:1,
+  p:"Completing the truth table.",
+  s:["Grant the entitlement AND enable the flag for org 1","Open the Loyalty tab"],
+  e:"The feature becomes available. Cache TTL is 60s but operator mutations flush it — record the actual latency.",
+  imp:"A sold feature cannot be delivered."},
+ {id:"GAT-05", t:"Same four-cell table for staff performance analytics", sev:2,
+  p:"Two gated features, two proofs.",
+  s:["Repeat GAT-01 to GAT-04 with analytics.staff_performance and staff_performance_analytics"],
+  e:"Identical behaviour; the Performance tab populates only in the (on,on) cell.",
+  imp:"Sensitive staff data exposed to tenants who did not buy it."},
+ {id:"GAT-06", t:"Gate is tenant-isolated", sev:1,
+  p:"Enabling for one tenant must not enable for another.",
+  s:["Enable loyalty fully for Saffron only","Check Copper Pot and Urban Brew"],
+  e:"Unaffected.",
+  imp:"A per-tenant feature becomes a global one."},
+ {id:"GAT-07", t:"Loyalty earn is idempotent per payment", sev:1,
+  p:"A partial unique index guarantees one earn per payment.",
+  s:["With loyalty on, settle a payment for a phone-linked customer","Attempt to trigger accrual again by replaying the settle or the webhook"],
+  e:"Exactly one earn row in customer_loyalty_transactions.",
+  imp:"Points inflate and the loyalty programme costs the restaurant real money."},
+ {id:"GAT-08", t:"Loyalty balance can never go negative", sev:1,
+  p:"CHECK (points_balance >= 0) is a hard DB invariant.",
+  s:["Attempt to redeem more points than the balance"],
+  e:"Refused cleanly — not a 500, and definitely not a negative balance.",
+  imp:"Negative balances corrupt the ledger permanently."},
+ {id:"GAT-09", t:"Redemption is ledger-only — the bill never moves", sev:0,
+  p:"The defining invariant of the loyalty design.",
+  s:["Note the bill total","Redeem points","Re-read the bill and the payment"],
+  e:"Points deducted. Bill and payment amounts IDENTICAL.",
+  imp:"Loyalty silently discounts real money outside the bill-snapshot guarantee."},
+ {id:"GAT-10", t:"Loyalty failure never breaks payment", sev:1,
+  p:"Accrual is error-isolated by design.",
+  s:["Force a loyalty failure if you can, for example by flipping the gate off mid-settlement","Settle a payment"],
+  e:"Payment completes normally; loyalty_accrual_failures_total may increment.",
+  imp:"A loyalty bug takes down the ability to take money."},
+ {id:"GAT-11", t:"Manual adjustment requires its own entitlement", sev:2,
+  p:"Three separate loyalty capabilities exist for a reason.",
+  s:["With loyalty.enabled but not loyalty.manual_adjustment, attempt an adjustment"],
+  e:"Refused.",
+  imp:"Staff can mint points arbitrarily."},
+ {id:"GAT-12", t:"Restore all gates to default before continuing", sev:2,
+  p:"Leaving gates on poisons the regression sweep.",
+  s:["Clear every override and entitlement you added in this section","Re-verify GAT-01"],
+  e:"Back to fully inert.",
+  imp:"Later sections test a configuration you did not intend."},
+]},
+
+{id:"tenancy", name:"8 · Cross-tenant isolation", why:"Only meaningful once the happy path works. Commercially the most damaging failure class.", items:[
+ {id:"TEN-01", t:"Staff token cannot reach another tenant's branch", sev:0,
+  p:"BranchTenantGuard is the isolation boundary.",
+  s:["Capture a Saffron waiter token","curl GET /branches/4/orders/active (Copper Pot) with it"],
+  e:"Refused.",
+  imp:"One restaurant reads another's live orders and revenue. Business-ending."},
+ {id:"TEN-02", t:"Staff token cannot reach a sibling branch of the same org", sev:1,
+  p:"Branch, not org, is the isolation boundary.",
+  s:["As Bandra waiter, request Indiranagar's active sessions"],
+  e:"Refused.",
+  imp:"Branch managers see each other's numbers."},
+ {id:"TEN-03", t:"Guest token cannot read another session", sev:0,
+  p:"The core guest isolation property.",
+  s:["Capture guest A's token","curl GET /sessions/<B>/snapshot and the cart endpoint with it"],
+  e:"Refused, with no data in the response body.",
+  imp:"Any guest reads any other table's orders and bill."},
+ {id:"TEN-04", t:"Tampered guest token is rejected", sev:0,
+  p:"HMAC signature verification.",
+  s:["Change one character of the signature segment","Replay it"],
+  e:"Refused; guest_token_validation_failed_total increments.",
+  imp:"Forgeable guest identity."},
+ {id:"TEN-05", t:"Expired guest token is rejected", sev:1,
+  p:"12h TTL.",
+  s:["Craft or wait for an expired token, or bump credential_version","Replay it"],
+  e:"Refused.",
+  imp:"Tokens valid forever."},
+ {id:"TEN-06", t:"QR of tenant A cannot create a session in tenant B", sev:1,
+  p:"Token to branch binding.",
+  s:["Try mixing a Saffron QR token with Copper Pot branch parameters"],
+  e:"Refused.",
+  imp:"Sessions created in the wrong restaurant."},
+ {id:"TEN-07", t:"Menu and theme reads are branch-scoped", sev:2,
+  p:"Public endpoints still need guarding.",
+  s:["Request menus and themes for several branch ids"],
+  e:"Each returns only its own branch's data.",
+  imp:"Tenants' menus and branding leak."},
+ {id:"TEN-08", t:"Audit logs never contain another tenant's rows", sev:1,
+  p:"Forensics must respect isolation too.",
+  s:["Read branch and org audit logs as staff from each tenant"],
+  e:"Strictly own-scope rows.",
+  imp:"Audit becomes a cross-tenant data leak."},
+]},
+
+{id:"failure", name:"9 · Failure & recovery scenarios", why:"Destructive — run only after the happy paths pass.", items:[
+ {id:"FAI-01", t:"Wi-Fi loss mid-session recovers cleanly", sev:1,
+  p:"Restaurant Wi-Fi is unreliable; this WILL happen daily.",
+  s:["With items in the cart, disable the network for about 30s","Re-enable it"],
+  e:"Reconnect indicator, backoff, then snapshot reconciliation. No lost cart items, no duplicate participant.",
+  imp:"Guests lose their order every time the network hiccups."},
+ {id:"FAI-02", t:"Long disconnection routes to reactivation, not a dead end", sev:1,
+  p:"Finding F-1 was a reconnect dead-end.",
+  s:["Airplane mode for 3+ minutes","Return"],
+  e:"Reactivation offered, or the current UI stays visible with an explicit Retry. Never a blank or frozen screen.",
+  imp:"A table is permanently stuck with no recovery path."},
+ {id:"FAI-03", t:"Redis outage: HTTP survives, realtime pauses", sev:0,
+  p:"Postgres is authoritative; Redis is disposable. Chaos-validated before — re-prove it on the RC.",
+  s:["docker stop manual-testing-redis","Browse the menu and read the bill","Try to add to cart and observe","Attempt a staff login"],
+  e:"HTTP reads keep working; realtime pauses; sensitive limiters FAIL CLOSED so staff login is refused rather than left unprotected.",
+  imp:"A Redis blip takes the whole restaurant offline — or worse, silently disables brute-force protection."},
+ {id:"FAI-04", t:"Redis recovery is automatic", sev:1,
+  p:"No human step should be required.",
+  s:["docker start manual-testing-redis","Wait","Add an item to the cart"],
+  e:"Realtime resumes by itself; redis_pubsub_reconnects_total increments; redis_pubsub_connected returns to 1.",
+  imp:"Every blip needs a manual restart at 9pm on a Saturday."},
+ {id:"FAI-05", t:"Postgres outage flips /readyz but not /health", sev:1,
+  p:"Liveness versus readiness — the load balancer depends on the difference.",
+  s:["docker stop manual-testing-postgres","curl /health and /readyz","Restart it"],
+  e:"/health 200, /readyz 503; recovers automatically after restart.",
+  imp:"The LB either keeps routing to a dead app or kills a healthy one."},
+ {id:"FAI-06", t:"Backend restart mid-session recovers in about 12s", sev:1,
+  p:"Deploys happen. Migrations run at boot and are idempotent.",
+  s:["With an active session, kill and relaunch app-1","Watch the guest"],
+  e:"Reconnect and snapshot reconciliation restore exact state within about 15s.",
+  imp:"Every deploy strands every live table."},
+ {id:"FAI-07", t:"Cross-instance realtime works", sev:1,
+  p:"Proves Redis fan-out across instances — the multi-pod property.",
+  s:["Guest A on :3000 (app-1) and guest B on :3001 (app-2), same session","Add an item on A"],
+  e:"B sees it. Events cross instances.",
+  imp:"Multi-instance deployment silently breaks the shared cart."},
+ {id:"FAI-08", t:"Collector outage does not affect the app", sev:2,
+  p:"Telemetry must never be load-bearing.",
+  s:["docker stop qr-dining-signoz-eval-signoz-otel-collector-1","Drive a full guest flow","Restart it"],
+  e:"Every request succeeds; only Warn logs from the otel error handler.",
+  imp:"An observability outage becomes a product outage — the worst kind of irony."},
+ {id:"FAI-09", t:"Session expiry frees the table", sev:1,
+  p:"Stranded tables were an original audit finding.",
+  s:["Set session_timeout_minutes to 1","Idle a session","Wait for StaleSessionCleaner (5 min cadence)"],
+  e:"Session becomes abandoned; tables.status returns to available; a new guest can scan and start fresh.",
+  imp:"Tables become permanently unusable and need SQL to recover."},
+ {id:"FAI-10", t:"Payment escalation fires and changes NOTHING", sev:0,
+  p:"Alert-only is a design commitment: humans stay the authority for money.",
+  s:["Initiate a payment and leave it unsettled 15+ minutes","Watch metrics, logs, event_log and the WS stream","Then check payment and session status"],
+  e:"Warn at about 5 min, critical at about 15 min. payment_pending_escalations_total increments; WS PAYMENT_SETTLEMENT_STALLED fires; an audit row appears. Payment and session status are UNCHANGED.",
+  imp:"If automation mutates money state, the entire payment-correctness model is void."},
+ {id:"FAI-11", t:"Reconnect storm is bounded", sev:2,
+  p:"12 admissions per minute per session; the rest 429.",
+  s:["Force about 15 reconnects in a minute on one session"],
+  e:"429s after the bound; the client backs off rather than hanging.",
+  imp:"One misbehaving phone can exhaust connections for a whole branch."},
+ {id:"FAI-12", t:"WS ticket is single-use", sev:1,
+  p:"R5 is the WS admission control.",
+  s:["Request a ticket via curl","Connect with it","Replay the same ticket"],
+  e:"The second use is refused with 409; the client routes through snapshot reactivation.",
+  imp:"A captured ticket grants repeat access to a session's realtime stream."},
+ {id:"FAI-13", t:"Webhook replay is idempotent", sev:1,
+  p:"payment_webhook_events is the idempotency table.",
+  s:["Post a correctly signed webhook","Post the identical event again"],
+  e:"One state change; the second recorded as a replay.",
+  imp:"Duplicate provider callbacks double-complete payments."},
+ {id:"FAI-14", t:"Webhook rejects bad signature, amount, currency and session", sev:0,
+  p:"Four independent verifications on the money-inbound path.",
+  s:["Post four malformed webhooks, each breaking one property"],
+  e:"All four rejected.",
+  imp:"Anyone who can reach the endpoint can mark bills paid."},
+ {id:"FAI-15", t:"Rate limits degrade cleanly, not catastrophically", sev:2,
+  p:"Six different per-key caps exist.",
+  s:["Exceed each: assist 6/min, order 12/min, payment-init 6/min, host-transfer 6/min, ws-ticket 12/min, staff-auth 10/min"],
+  e:"Clear messages; the UI stays usable; no crash and no lockout of legitimate use.",
+  imp:"Either abuse is unbounded, or normal guests get blocked."},
+ {id:"FAI-16", t:"Two tabs as the same guest stay consistent", sev:2,
+  p:"Common real behaviour.",
+  s:["Open the same session in two tabs","Act in each"],
+  e:"Both consistent; no duplicate participant; presence correct.",
+  imp:"Confusing duplicate identities in the participant list."},
+ {id:"FAI-17", t:"Cleared localStorage does not escalate privileges", sev:1,
+  p:"Guest identity lives in the token, not the browser.",
+  s:["Clear localStorage mid-session","Refresh"],
+  e:"Treated as unauthenticated or new. Never silently granted host powers.",
+  imp:"Any guest becomes host by clearing storage."},
+ {id:"FAI-18", t:"Deep-link into a session without the QR", sev:2,
+  p:"URLs get shared.",
+  s:["Paste /session/<uuid>/payment into a fresh browser with no credentials"],
+  e:"Refused or redirected to entry. No bill data shown.",
+  imp:"A shared URL exposes another table's bill."},
+ {id:"FAI-19", t:"Back-navigation into a closed session", sev:2,
+  p:"Terminal states must be sticky.",
+  s:["After the session closes, press Back repeatedly"],
+  e:"The terminal screen persists; no zombie interactive UI.",
+  imp:"Guests order into a closed session and the orders vanish."},
+ {id:"FAI-20", t:"Audit log is truly immutable", sev:0,
+  p:"The R1 soak certified the trigger. Re-prove it on the RC.",
+  s:["UPDATE audit_log SET action='x' WHERE id=(SELECT min(id) FROM audit_log)","Then try a DELETE"],
+  e:"Both raise the immutability trigger error.",
+  imp:"The forensic record can be rewritten — audit becomes worthless."},
+ {id:"FAI-21", t:"Slow 3G is survivable", sev:2,
+  p:"Restaurant cellular is often terrible.",
+  s:["Throttle to Slow 3G","Load the menu and place an order"],
+  e:"Usable with visible loading states; no duplicate submissions from impatient tapping.",
+  imp:"The product only works on office Wi-Fi."},
+ {id:"FAI-22", t:"Concurrent cart mutation by two guests", sev:2,
+  p:"Two people, one cart, same moment.",
+  s:["Both devices add and remove simultaneously"],
+  e:"The final cart is coherent on both devices and matches the DB.",
+  imp:"Cart divergence — the guests and the kitchen disagree about the order."},
+ {id:"FAI-23", t:"Order cancelled after the bill was frozen", sev:1,
+  p:"Interaction between two invariants.",
+  s:["Freeze a bill via payment initiation","Cancel one of its orders","Re-read the bill"],
+  e:"The frozen bill still governs; the behaviour is explicit and explainable to a guest.",
+  imp:"Guest charged for cancelled food, or the restaurant loses the money, with no clear rule."},
+ {id:"FAI-24", t:"Cancel a payment and re-initiate", sev:2,
+  p:"Guests change their mind about how to pay.",
+  s:["Initiate payment, cancel it, initiate again"],
+  e:"The session returns to a workable state and a fresh snapshot is created.",
+  imp:"Tables stuck in payment_pending forever."},
+ {id:"FAI-25", t:"Host leaves permanently — the table can still pay", sev:1,
+  p:"Real scenario: the host goes to the toilet or their battery dies.",
+  s:["Have the host close their browser entirely","From another guest's device, attempt to pay","Use host transfer or staff intervention to recover"],
+  e:"A documented recovery path exists and works.",
+  imp:"A table physically cannot pay and staff must resort to psql — the worst possible pilot moment."},
+]},
+
+{id:"obs", name:"10 · Observability", why:"Needs a rich history to pivot through; also the fastest proof everything was recorded.", items:[
+ {id:"OBS-01", t:"Full session flow produces one stitched trace", sev:2,
+  p:"Phase 1 acceptance criterion for the tracing work.",
+  s:["Drive create, join, order and payment","Open SigNoz and find the traces"],
+  e:"Gin server spans with child pgx and redis spans under one trace id per request.",
+  imp:"Traces without DB and Redis spans cannot localise latency — the whole point of adopting SigNoz."},
+ {id:"OBS-02", t:"Infra endpoints are excluded from tracing", sev:3,
+  p:"They are scraped every few seconds and would swamp the sampler.",
+  s:["Hit /health, /readyz and /metrics repeatedly","Look for spans"],
+  e:"No spans for any of the three.",
+  imp:"Trace storage fills with noise and retention collapses."},
+ {id:"OBS-03", t:"Access logs carry trace_id and span_id", sev:2,
+  p:"The log-to-trace pivot.",
+  s:["grep trace_id /tmp/qrapp-mtest-1.log"],
+  e:"Present on request-scoped lines and on handler logs using the request logger.",
+  imp:"Cannot get from a log line to a trace during an incident."},
+ {id:"OBS-04", t:"Audit correlation_id resolves to a real trace", sev:2,
+  p:"Audit-to-trace pivot with no schema change — the cleverest part of the design.",
+  s:["Perform a mutation with NO X-Correlation-ID header","Read its audit_log.correlation_id","Search that id in SigNoz"],
+  e:"Lands on the exact trace for that request.",
+  imp:"Incident forensics requires manual timestamp correlation."},
+ {id:"OBS-05", t:"Client X-Correlation-ID still takes precedence", sev:3,
+  p:"The backfill must not clobber an explicit header.",
+  s:["Send a request with X-Correlation-ID: mytest-123","Check the audit row"],
+  e:"correlation_id is mytest-123, not the trace id.",
+  imp:"Breaks existing support-search behaviour."},
+ {id:"OBS-06", t:"Core business metrics move as expected", sev:2,
+  p:"Prometheus remains the alerting authority.",
+  s:["curl :8090/metrics before and after a full flow","Diff active_sessions_total, orders_total, ws_connections_active and http_requests_total"],
+  e:"All move in the expected direction by the expected amount.",
+  imp:"Alerts fire on metrics that do not reflect reality."},
+ {id:"OBS-07", t:"Rollout-gate metrics are visible and sane", sev:2,
+  p:"These gate future flag flips: they must read zero before R2 and R3.",
+  s:["curl :8090/metrics and grep legacy_authz_bypass, legacy_identity_usage and policy_shadow_mismatch"],
+  e:"All three present. Record their values — legacy_identity_usage_total being non-zero is EXPECTED while R2 is off.",
+  imp:"Flipping a rollout wave blind, with no evidence gate."},
+ {id:"OBS-08", t:"Zero audit write failures across the whole run", sev:1,
+  p:"The single most important operational counter.",
+  s:["At the end of the run: curl :8090/metrics | grep audit_write_failures_total"],
+  e:"0.",
+  imp:"Silent gaps in the forensic record."},
+ {id:"OBS-09", t:"Zero worker panics across the whole run", sev:1,
+  p:"Workers are panic-isolated, but a panic is still a defect.",
+  s:["curl :8090/metrics | grep background_worker_panics_total","Also grep both logs for 'panic'"],
+  e:"0.",
+  imp:"A crashing worker means sessions are not reconciled or escalated."},
+ {id:"OBS-10", t:"Both instances report independently", sev:3,
+  p:"Multi-instance observability.",
+  s:["Compare :8090/metrics with :8095/metrics","Check both services in SigNoz"],
+  e:"Distinct WORKER_REGION labels and distinct service names; worker locks prevent duplicate work.",
+  imp:"Cannot attribute an incident to an instance."},
+]},
+
+{id:"regress", name:"11 · Regression sweep (run LAST)", why:"You changed themes, flags, plans, menus and timeouts. Prove your own configuration did not break the product.", items:[
+ {id:"REG-01", t:"Restore every setting you changed", sev:2,
+  p:"A clean end state makes the next run trustworthy.",
+  s:["Revert: session_timeout_minutes, order_prefix, themes, plans, entitlement overrides, flag overrides, suspended orgs and branches, menu edits"],
+  e:"The environment matches the documented baseline.",
+  imp:"The next tester certifies a configuration nobody chose."},
+ {id:"REG-02", t:"Full guest happy path still works end-to-end", sev:0,
+  p:"The single highest-yield item in this document.",
+  s:["Repeat GST-01 through GST-24 in one clean pass on a fresh table"],
+  e:"Everything behaves exactly as it did the first time.",
+  imp:"A configuration change silently broke the core flow — and you would have shipped it."},
+ {id:"REG-03", t:"Kitchen and waiter flows still work", sev:1,
+  p:"Staff regression.",
+  s:["Drive one order through the kitchen and settle it as waiter"],
+  e:"Unchanged behaviour.",
+  imp:"Staff surfaces broken by admin or platform changes."},
+ {id:"REG-04", t:"Themes are back to their seeded presets", sev:2,
+  p:"Theming is highly visible.",
+  s:["Check all three tenants' guest surfaces"],
+  e:"dark-luxury, warm-cafe and vibrant as seeded.",
+  imp:"Tenants show the wrong brand."},
+ {id:"REG-05", t:"All gated features are inert again", sev:2,
+  p:"Default-off must be the resting state.",
+  s:["Re-run GAT-01"],
+  e:"Fully inert.",
+  imp:"Unpurchased features left switched on."},
+ {id:"REG-06", t:"No orphaned sessions or stuck tables remain", sev:2,
+  p:"Testing creates debris.",
+  s:["Query sessions by status and tables by status","Reconcile them"],
+  e:"No table is 'occupied' without a live session.",
+  imp:"The baseline for the next run is wrong — exactly the state this run started in."},
+ {id:"REG-07", t:"Error budget review", sev:1,
+  p:"A whole-run health read.",
+  s:["Grep both logs for level=error and panic","Check http_requests_total by status code"],
+  e:"No unexplained 5xx. Every error traced to a deliberate test.",
+  imp:"Latent errors ship to the pilot."},
+ {id:"REG-08", t:"Soak stack STILL untouched", sev:0,
+  p:"Close the loop on the one thing that must not change.",
+  s:["docker ps | grep qr-dining","Confirm uptime was never reset"],
+  e:"All three containers still up with continuous uptime.",
+  imp:"Soak evidence destroyed; the R1 lineage is broken and must be re-earned."},
+ {id:"REG-09", t:"Write the certification verdict", sev:0,
+  p:"A checklist without a decision is just notes.",
+  s:["Export findings","Classify every failure by severity","State the verdict: GO, CONDITIONAL GO or NO-GO for the RC soak"],
+  e:"An explicit, written, defensible verdict.",
+  imp:"The decision gets made implicitly and nobody owns it."},
+]},
+];
+
+/* ────────────────────────── rendering & state ────────────────────────── */
+const KEY = "qrd-cert-rc-v2";
+let state = JSON.parse(localStorage.getItem(KEY) || "{}");
+const SEVL = ["SEV-0","SEV-1","SEV-2","SEV-3"];
+let total = 0;
+
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function rich(s){return esc(s).replace(/`([^`]+)`/g,"<code>$1</code>")}
+
+function render(){
+  const out = document.getElementById("out");
+  let html = ""; total = 0;
+  for(const sec of SECTIONS){
+    html += `<h2 id="sec-${sec.id}">${esc(sec.name)}<span class="why">— ${esc(sec.why)}</span><span class="cnt">${sec.items.length} items</span></h2>`;
+    for(const it of sec.items){
+      total++;
+      const st = state[it.id] || {};
+      const cls = st.v === "pass" ? "pass" : st.v === "fail" ? "fail" : st.v === "na" ? "na" : "";
+      html += `<div class="item ${cls}" data-id="${it.id}" data-sev="${it.sev}" data-v="${st.v||""}">
+        <div class="ihead">
+          <span class="id">${it.id}</span>
+          <span class="title">${rich(it.t)}</span>
+          <span class="sev s${it.sev}">${SEVL[it.sev]}</span>
+        </div>
+        <div class="ibody">
+          <div class="fld"><b>Purpose</b>${rich(it.p)}</div>
+          <div class="fld"><b>Steps</b><ol>${it.s.map(x=>`<li>${rich(x)}</li>`).join("")}</ol></div>
+          <div class="fld" style="grid-column:1/-1"><b>Expected result</b>${rich(it.e)}</div>
+          <div class="impact"><b style="font-size:10px;letter-spacing:.11em;text-transform:uppercase">Impact if it fails · </b>${rich(it.imp)}</div>
+          <div class="res">
+            <div class="pf">
+              <button data-v="pass" class="${st.v==="pass"?"on-pass":""}" onclick="setV('${it.id}','pass')">PASS</button>
+              <button data-v="fail" class="${st.v==="fail"?"on-fail":""}" onclick="setV('${it.id}','fail')">FAIL</button>
+              <button data-v="na"   class="${st.v==="na"?"on-na":""}"   onclick="setV('${it.id}','na')">N/A</button>
+            </div>
+            <label class="fld" style="margin:0"><b>Actual result</b>
+              <textarea oninput="setT('${it.id}','actual',this.value)">${esc(st.actual||"")}</textarea></label>
+            <label class="fld" style="margin:0"><b>Notes</b>
+              <textarea oninput="setT('${it.id}','notes',this.value)">${esc(st.notes||"")}</textarea></label>
+          </div>
+        </div>
+      </div>`;
+    }
+  }
+  out.innerHTML = html;
+  document.getElementById("footnote").textContent =
+    `${total} certification items across ${SECTIONS.length} sections. Answers persist in this browser under "${KEY}". Export before clearing site data.`;
+  tally();
 }
+
+function save(){localStorage.setItem(KEY, JSON.stringify(state))}
+function setV(id,v){
+  state[id] = state[id]||{};
+  state[id].v = state[id].v === v ? "" : v;
+  save();
+  const el = document.querySelector(`.item[data-id="${id}"]`);
+  el.className = "item " + (state[id].v||"");
+  el.dataset.v = state[id].v||"";
+  el.querySelectorAll(".pf button").forEach(b=>{
+    b.className = (state[id].v === b.dataset.v) ? ("on-"+b.dataset.v) : "";
+  });
+  tally(); applyFilter();
+}
+function setT(id,f,val){state[id]=state[id]||{}; state[id][f]=val; save()}
+
+function tally(){
+  let p=0,f=0,n=0;
+  for(const sec of SECTIONS) for(const it of sec.items){
+    const v=(state[it.id]||{}).v;
+    if(v==="pass")p++; else if(v==="fail")f++; else if(v==="na")n++;
+  }
+  set("s-pass",p); set("s-fail",f); set("s-na",n); set("s-todo",total-p-f-n);
+  const bar = document.getElementById("pbar");
+  bar.style.width = (total ? (p+f+n)/total*100 : 0)+"%";
+  bar.style.background = f>0 ? "#a8321f" : "#2f8f5b";
+  function set(id,v){document.getElementById(id).textContent=v}
+}
+
+function expandAll(open){
+  document.querySelectorAll(".ibody").forEach(b=>b.style.display = open?"grid":"none");
+}
+function applyFilter(){
+  const m = document.getElementById("filter").value;
+  document.querySelectorAll(".item").forEach(el=>{
+    const v = el.dataset.v, sev = +el.dataset.sev;
+    let show = true;
+    if(m==="todo") show = !v;
+    else if(m==="fail") show = v==="fail";
+    else if(m==="pass") show = v==="pass";
+    else if(m==="s01")  show = sev<=1;
+    el.style.display = show?"":"none";
+  });
+}
+
+function meta(){
+  const g=id=>document.getElementById(id).value;
+  return {tester:g("m-tester"),date:g("m-date"),build:g("m-build"),env:g("m-env")};
+}
+["m-tester","m-date","m-build","m-env"].forEach(id=>{
+  const el=document.getElementById(id);
+  const saved=(state.__meta||{})[id];
+  if(saved!==undefined) el.value=saved;
+  el.addEventListener("input",()=>{state.__meta=state.__meta||{};state.__meta[id]=el.value;save()});
+});
+
+function exportMd(){
+  const m=meta();
+  let out=`# QR-Dining RC Manual Certification — Results\n\n`;
+  out+=`- Tester: ${m.tester||"—"}\n- Date: ${m.date||"—"}\n- Build: ${m.build||"—"}\n- Environment: ${m.env||"—"}\n\n`;
+  let p=0,f=0,n=0,t=0;
+  for(const sec of SECTIONS) for(const it of sec.items){t++;const v=(state[it.id]||{}).v;
+    if(v==="pass")p++;else if(v==="fail")f++;else if(v==="na")n++;}
+  out+=`**${p} pass · ${f} fail · ${n} n/a · ${t-p-f-n} unanswered** (of ${t})\n\n`;
+  const fails=[];
+  for(const sec of SECTIONS) for(const it of sec.items)
+    if((state[it.id]||{}).v==="fail") fails.push({sec,it,st:state[it.id]});
+  if(fails.length){
+    out+=`## Failures (most severe first)\n\n`;
+    fails.sort((a,b)=>a.it.sev-b.it.sev);
+    for(const {sec,it,st} of fails){
+      out+=`### ${it.id} — ${it.t}\n\n`;
+      out+=`**${SEVL[it.sev]}** · ${sec.name}\n\n`;
+      out+=`- Expected: ${it.e}\n- Actual: ${st.actual||"(not recorded)"}\n- Notes: ${st.notes||"—"}\n- Impact: ${it.imp}\n\n`;
+    }
+  } else out+=`## Failures\n\nNone recorded.\n\n`;
+  const nas=[];
+  for(const sec of SECTIONS) for(const it of sec.items) if((state[it.id]||{}).v==="na") nas.push(it);
+  if(nas.length){
+    out+=`## Marked N/A (out of scope in this environment)\n\n`;
+    for(const it of nas) out+=`- ${it.id} — ${it.t}${(state[it.id].notes?" — "+state[it.id].notes:"")}\n`;
+    out+="\n";
+  }
+  const todo=[];
+  for(const sec of SECTIONS) for(const it of sec.items) if(!(state[it.id]||{}).v) todo.push(it);
+  if(todo.length){
+    out+=`## Unanswered\n\n`;
+    for(const it of todo) out+=`- ${it.id} — ${it.t} (${SEVL[it.sev]})\n`;
+  }
+  dl(out,"rc-certification-results.md","text/markdown");
+}
+function exportJson(){dl(JSON.stringify({meta:meta(),state},null,2),"rc-certification-raw.json","application/json")}
+function dl(text,name,type){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([text],{type}));
+  a.download=name;a.click();URL.revokeObjectURL(a.href);
+}
+function resetAll(){
+  if(!confirm("Clear every pass/fail, actual result and note for this run?")) return;
+  const meta = state.__meta;
+  state={}; if(meta) state.__meta=meta;
+  save(); render();
+}
+render();
 </script>
-<p class="legend" style="margin-top:24px">29 categories · generated from the live 3-tenant environment (refreshed 2026-06-25 for migration v38 / branch <code>feature/certification-fixes-ui-redesign</code>: Serene guest redesign + ops/platform redesign, promo-at-bill, staff roster &amp; PIN reset, kitchen item contents, modifier single-select, OpenAPI 2.2.0). Sign-off: ____________________ &nbsp; Date: __________</p>
-</div>
 </body>
 </html>

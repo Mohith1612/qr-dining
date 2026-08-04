@@ -3,246 +3,1363 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QR Dining — Manual Testing User Guide</title>
+<title>QR Dining — Manual Certification User Guide (RC)</title>
 <style>
   :root{
-    --bg:#0e0b08;--panel:#1a1410;--panel2:#221a13;--line:#3a2e22;--ink:#f4ece0;--muted:#b6a994;--dim:#8c7d68;
-    --gold:#d8a94b;--gold2:#f0cf86;--green:#5fbf86;--amber:#e0a13c;--red:#e07a5f;--blue:#6fa8d8;
-    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --bg:#fbf8f2; --panel:#fff; --panel2:#f4efe5; --ink:#1a1410; --ink2:#4a4031; --muted:#6b5f4f; --dim:#8a7c68;
+    --line:#e3dccf; --line2:#cfc4ae; --gold:#a9802f; --goldbg:#fdf6e4;
+    --red:#a8321f; --redbg:#fbeeea; --green:#2f8f5b; --greenbg:#edf7f1;
+    --blue:#2c5578; --bluebg:#eef3f9; --code:#f2ecdf;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,#241a12,var(--bg) 55%);color:var(--ink);font:15px/1.65 var(--sans)}
-  a{color:var(--gold2)}
-  .wrap{max-width:980px;margin:0 auto;padding:40px 24px 90px}
-  .kicker{font:600 12px/1 var(--sans);letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin-bottom:12px}
-  h1{font-size:32px;margin:0 0 8px;letter-spacing:-.02em}
-  .sub{color:var(--muted);max-width:720px}
-  .top a{margin-right:16px;font-size:13px}
-  nav.toc{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:28px 0 8px;columns:2;column-gap:30px}
-  @media(max-width:720px){nav.toc{columns:1}}
-  nav.toc a{display:block;color:var(--muted);font-size:13.5px;padding:3px 0}
-  nav.toc a:hover{color:var(--gold2)}
-  h2{font-size:21px;margin:46px 0 6px;padding-top:10px;border-top:1px solid var(--line);color:var(--gold2)}
-  h2 .dom{font:600 11px var(--mono);color:var(--dim);letter-spacing:.06em;margin-left:8px}
-  h3{font-size:16px;margin:26px 0 8px;color:var(--ink)}
-  p{margin:8px 0}
-  code{font-family:var(--mono);font-size:12.5px;background:#0000;color:var(--gold2)}
-  ol,ul{margin:8px 0 8px 4px;padding-left:22px}
-  li{margin:5px 0}
-  .box{border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:12px 0;background:var(--panel)}
-  .box.exp{border-left:3px solid var(--green)}
-  .box.fail{border-left:3px solid var(--red)}
-  .box.ver{border-left:3px solid var(--blue)}
-  .box .lab{font:700 11px var(--sans);letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px}
-  .exp .lab{color:var(--green)}.fail .lab{color:var(--red)}.ver .lab{color:var(--blue)}
-  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
-  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{color:var(--dim);font:600 11px var(--sans);letter-spacing:.08em;text-transform:uppercase}
-  .note{background:#1b130c;border:1px solid #4a3a1c;border-radius:10px;padding:12px 16px;color:var(--muted)}
-  .note b{color:var(--ink)}
-  footer{margin-top:50px;border-top:1px solid var(--line);padding-top:18px;color:var(--dim);font-size:12.5px}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--gold)}
+  .wrap{display:flex;align-items:flex-start;max-width:1520px;margin:0 auto}
+  /* ---- TOC ---- */
+  nav{position:sticky;top:0;flex:0 0 290px;height:100vh;overflow-y:auto;
+      padding:22px 15px 60px;border-right:1px solid var(--line);background:var(--panel2)}
+  nav h4{margin:18px 0 5px;font:700 10.5px/1 sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+  nav a{display:block;padding:3px 8px;border-radius:5px;color:var(--ink2);text-decoration:none;font-size:13px}
+  nav a:hover{background:#e8e0d0;color:var(--ink)}
+  nav .brand{font-weight:700;font-size:16px;color:var(--ink)}
+  nav .brandsub{font-size:11.5px;color:var(--muted);margin-bottom:6px}
+  /* ---- MAIN ---- */
+  main{flex:1;min-width:0;padding:30px 46px 140px;max-width:1090px}
+  h1{font-size:31px;line-height:1.2;margin:0 0 6px;letter-spacing:-.02em}
+  h2{font-size:23px;margin:52px 0 12px;padding-bottom:8px;border-bottom:2px solid var(--line2);letter-spacing:-.01em;scroll-margin-top:16px}
+  h3{font-size:17.5px;margin:30px 0 8px;letter-spacing:-.01em;scroll-margin-top:16px}
+  h4{font-size:14.5px;margin:20px 0 6px;color:var(--ink2)}
+  p{margin:9px 0}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--code);padding:1px 5px;border-radius:4px;
+       border:1px solid var(--line);color:#6d4f14;white-space:nowrap}
+  pre{background:#231d15;color:#f0e7d6;padding:13px 15px;border-radius:8px;overflow-x:auto;font-size:12.5px;
+      font-family:var(--mono);line-height:1.55}
+  pre code{background:none;border:none;color:inherit;padding:0;white-space:pre}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px;background:var(--panel)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:#efe8da;font:600 11.5px/1.4 sans-serif;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2)}
+  td.k{white-space:nowrap;font-weight:600}
+  .mono{font-family:var(--mono);font-size:12.5px}
+  ul,ol{margin:8px 0;padding-left:22px}
+  li{margin:3px 0}
+  .note{border-left:4px solid var(--blue);background:var(--bluebg);padding:11px 15px;border-radius:0 7px 7px 0;margin:14px 0}
+  .warn{border-left:4px solid var(--gold);background:var(--goldbg);padding:11px 15px;border-radius:0 7px 7px 0;margin:14px 0}
+  .danger{border-left:4px solid var(--red);background:var(--redbg);padding:11px 15px;border-radius:0 7px 7px 0;margin:14px 0}
+  .ok{border-left:4px solid var(--green);background:var(--greenbg);padding:11px 15px;border-radius:0 7px 7px 0;margin:14px 0}
+  .lede{font-size:16.5px;color:var(--muted);margin:14px 0 4px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:11px;font:700 11px/1.6 sans-serif;letter-spacing:.04em;
+        vertical-align:1px;border:1px solid}
+  .pill.pr{background:var(--greenbg);border-color:#b3d9c3;color:var(--green)}
+  .pill.pi{background:var(--goldbg);border-color:#e0cd9b;color:var(--gold)}
+  .pill.df{background:#efeade;border-color:var(--line2);color:var(--muted)}
+  .pill.ex{background:var(--redbg);border-color:#e3bab0;color:var(--red)}
+  .pagecard{border:1px solid var(--line2);border-radius:9px;background:var(--panel);padding:2px 18px 16px;margin:18px 0}
+  .pagecard h3{margin-top:16px;border-bottom:1px dashed var(--line);padding-bottom:7px}
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:2px 14px;font-size:13.5px;margin:10px 0}
+  .kv dt{font-weight:600;color:var(--ink2)}
+  .kv dd{margin:0}
+  .verify{background:var(--panel2);border:1px dashed var(--line2);border-radius:7px;padding:10px 14px;margin:12px 0}
+  .verify b:first-child{display:block;font:700 10.5px/1.6 sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:4px}
+  hr{border:0;border-top:1px solid var(--line);margin:34px 0}
+  .small{font-size:12.5px;color:var(--muted)}
+  @media print{
+    nav{display:none} main{max-width:none;padding:0}
+    body{font-size:10.5px;background:#fff} pre{background:#f4f2ec;color:#000;border:1px solid #ccc}
+    h2{page-break-after:avoid} .pagecard{page-break-inside:avoid} a{color:#000;text-decoration:none}
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-<div class="kicker">QR Dining · Certification</div>
-<h1>Manual Testing — User Guide</h1>
-<p class="sub">A role-by-role handbook for certifying every meaningful workflow. Each journey lists the steps, the <b style="color:var(--green)">expected result</b>, <b style="color:var(--red)">common failure modes</b>, and <b style="color:var(--blue)">what to verify</b>.</p>
-<p class="top"><a href="testing-dashboard.html">← Dashboard</a><a href="manual-testing-checklist.html">Checklist →</a><a href="database-reference.html">Database Reference</a></p>
+<nav>
+  <div class="brand">QR-Dining</div>
+  <div class="brandsub">Certification Guide · RC · schema v38</div>
 
-<nav class="toc">
-  <a href="#how">How to use this guide</a>
-  <a href="#guest">1 · Guest journey</a>
-  <a href="#participant">2 · Participant journey</a>
-  <a href="#waiter">3 · Waiter journey</a>
-  <a href="#kitchen">4 · Kitchen journey</a>
-  <a href="#manager">5 · Manager journey</a>
-  <a href="#owner">6 · Owner / Org owner</a>
-  <a href="#platform">7 · Platform admin</a>
-  <a href="#subroles">8 · Support / Billing / Auditor</a>
-  <a href="#multi">9 · Multi-instance realtime</a>
-  <a href="#isolation">10 · Cross-tenant isolation</a>
-  <a href="#security">11 · Security</a>
-  <a href="#regressions">12 · Pilot-finding regressions</a>
+  <h4>Orientation</h4>
+  <a href="#what">1. What this product is</a>
+  <a href="#arch">2. Architecture</a>
+  <a href="#trust">3. Trust domains &amp; auth</a>
+  <a href="#session">4. Session state machine</a>
+  <a href="#inventory">5. Feature inventory</a>
+
+  <h4>Teaching the pages</h4>
+  <a href="#guest">6. Guest surface</a>
+  <a href="#staff">7. Waiter &amp; kitchen</a>
+  <a href="#admin">8. Admin console (12 tabs)</a>
+  <a href="#platform">9. Platform control plane</a>
+
+  <h4>Governance</h4>
+  <a href="#flags">10. Every feature flag</a>
+  <a href="#entitlements">11. Every entitlement</a>
+
+  <h4>Behaviour</h4>
+  <a href="#realtime">12. Realtime &amp; WS events</a>
+  <a href="#obs">13. Observability per workflow</a>
+  <a href="#failure">14. Failure scenarios</a>
+  <a href="#order">15. Testing order &amp; why</a>
+
+  <h4>Reference</h4>
+  <a href="#env">16. Environment &amp; seed data</a>
+  <a href="#errors">17. Error codes</a>
+  <a href="#cant">18. Out of scope</a>
+
+  <h4>Companions</h4>
+  <a href="testing-dashboard.html">▸ Testing dashboard</a>
+  <a href="manual-testing-checklist.html">▸ Certification checklist</a>
+  <a href="database-reference.html">▸ Database reference</a>
+  <a href="how-to-use.html">▸ How to use this suite</a>
 </nav>
 
-<h2 id="how">How to use this guide</h2>
-<p>Open the <a href="testing-dashboard.html">Dashboard</a> for live URLs, credentials, and QR table tokens. Drive the <b>guest</b> flows on <b>Frontend A</b> (<code>localhost:3000</code> → app-1). For multi-instance tests, open <b>Frontend B</b> (<code>localhost:3001</code> → app-2) in a second browser/profile. Three tenants exist for cross-tenant work:</p>
-<table>
-  <tr><th>Tenant</th><th>Slug</th><th>Plan</th><th>Theme</th><th>Branches</th></tr>
-  <tr><td><b>Saffron House</b> (Alpha)</td><td><code>saffron-house</code></td><td>premium / active</td><td>dark-luxury (default: serene)</td><td>Bandra(1) · Indiranagar(2) · Connaught Place(3)</td></tr>
-  <tr><td><b>Copper Pot Kitchen</b> (Beta)</td><td><code>copper-pot-kitchen</code></td><td>standard / active</td><td>warm-cafe</td><td>Koramangala(4)</td></tr>
-  <tr><td><b>Urban Brew Café</b> (Gamma)</td><td><code>urban-brew-cafe</code></td><td>free / trial</td><td>vibrant</td><td>Cyber Hub(5)</td></tr>
-</table>
-<p class="note"><b>Staff PINs:</b> owner 1111 · manager 2222 · waiter 3333 · kitchen 4444 (scoped by <code>branch_id</code>). <b>Platform:</b> admin/support/billing/auditor @platform.local — see Dashboard.</p>
+<main>
 
-<h2 id="guest">1 · Guest journey <span class="dom">trust domain: guest</span></h2>
-<p>The guest is the heart of the product: scan a table QR, join a session, collaborate on a shared cart, and (as host) order and pay.</p>
+<h1>QR-Dining — Manual Certification User Guide</h1>
+<p class="lede">Everything that exists in this application, why it exists, and how to prove it works.
+Written for someone who has never seen the product, to be read <em>before</em> the certification run.</p>
+<p class="small">Branch <code>feature/signoz-observability</code> (strict superset of
+<code>feature/certification-fixes-ui-redesign</code>, the RC) · schema v38 · 172 routes ·
+OpenAPI 2.2.0 / 171 operations · Generated 2026-08-04</p>
 
-<h3>1.1 Scan QR &amp; create a session</h3>
-<ol>
-  <li>From the Dashboard, click a free Saffron House table (e.g. Bandra <code>T3</code>), or visit <code>localhost:3000/table/&lt;token&gt;</code>.</li>
-  <li>The resolved table shows the branch and the Serene guest UI with its tenant theme (dark-luxury for Saffron House).</li>
-  <li>Enter a display name (phone optional) and create the session. You become the <b>host</b>.</li>
-</ol>
-<div class="box exp"><div class="lab">Expected</div>Session opens; the page shows your name as host; the table theme (colours) is applied; the menu is reachable.</div>
-<div class="box fail"><div class="lab">Common failure modes</div>"Table not found" (wrong/expired token) · theme not applied (theme bridge) · scanning an occupied/idle table must <b>join or resume</b> the existing session (incl. <code>payment_pending</code> / <code>awaiting_reactivation</code>) — a <code>SESSION_ALREADY_ACTIVE</code> error here is the regression the occupied-table fix closed.</div>
-<div class="box ver"><div class="lab">Verify</div>Returned <code>session.session_token</code> is empty in the network response (F-8 — credential never leaks). A host badge appears. <code>session_number</code> looks like <code>SAFF-BND-S-YYYYMMDD-NNN</code>.</div>
+<div class="danger">
+<b>The one fact that frames this whole exercise.</b> The Release Candidate <b>has never been soaked</b>.
+The 124-hour soak that passed on 2026-06-04 ran the <em>pre-redesign</em> June binary. Everything since —
+~18 certification bug fixes, migrations 000036–000038, the entire Serene (guest) + Harmony (ops) redesign,
+and now the OTel instrumentation — is unproven under sustained load. That is the standing SEV-0.
+<b>This manual certification is the human gate that decides whether the RC is worth soaking.</b>
+You are not looking for polish. You are looking for anything that would embarrass you in front of Restaurant #1.
+</div>
 
-<h3>1.2 Join an existing session (second guest)</h3>
-<ol>
-  <li>In a second browser, open the <b>same</b> table token (a seeded live table like Bandra <code>T1</code>, or a session you created on T3).</li>
-  <li>Enter a different name and join.</li>
-</ol>
-<div class="box exp"><div class="lab">Expected</div>Both participants appear in the presence list; the second joiner is <b>not</b> host; the shared cart is identical for both.</div>
-<div class="box fail"><div class="lab">Common failure modes</div>Second guest sees an empty/different cart (cart not shared) · join silently creates a second session on the table.</div>
-<div class="box ver"><div class="lab">Verify</div>One session, two <code>session_participants</code> rows; only one <code>is_host=true</code>.</div>
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="what">1. What this product actually is</h2>
 
-<h3>1.3 Reconnect</h3>
-<ol><li>Mid-session, reload the page or toggle network off/on briefly.</li></ol>
-<div class="box exp"><div class="lab">Expected</div>A reconnecting banner appears, then state restores from the authoritative snapshot — cart, orders, and participants are intact. No duplicate orders.</div>
-<div class="box fail"><div class="lab">Common failure modes</div>"Connection lost" dead-end (F-1) · cart empties on reconnect (snapshot refetches cart separately) · stale order statuses.</div>
-<div class="box ver"><div class="lab">Verify</div>After reload the order tracker still shows current statuses; sequence numbers don't regress.</div>
+<p>QR-Dining is a <b>session-centric, realtime, multi-tenant dine-in operating system</b>. A guest scans a QR
+code glued to a physical table. From that instant the <b>table session</b> — not the diner, not the order —
+is the unit of truth.</p>
 
-<h3>1.4 Order (host only)</h3>
-<ol>
-  <li>Add items to the shared cart from the menu.</li>
-  <li>As host, place the order. As a non-host, confirm the "only the host can send orders" gate.</li>
-</ol>
-<div class="box exp"><div class="lab">Expected</div>Order is created (<code>pending</code>), appears in the guest order tracker and on the kitchen display. Non-host cannot place it (UI disabled <i>and</i> server rejects).</div>
-<div class="box fail"><div class="lab">Common failure modes</div>Non-host able to order (host gate is server-authoritative) · duplicate orders on double-tap (idempotency) · price drift after menu change (order snapshots price).</div>
-<div class="box ver"><div class="lab">Verify</div>As the order advances (kitchen side) the guest tracker moves <code>confirmed→preparing→ready→served</code> <b>without a manual refresh</b> (F-6).</div>
+<p>This is the single most important idea in the codebase. Almost every bug class you will hunt is a
+violation of it. Concretely:</p>
 
-<h3>1.5 Payment &amp; customer linking (host only)</h3>
-<ol>
-  <li>Open Pay, review the bill (subtotal/tax/total — an immutable snapshot is captured).</li>
-  <li>Choose cash or UPI and initiate. Optionally opt in as a customer (name/phone).</li>
-  <li>For cash/UPI the status becomes "awaiting confirmation" until a waiter settles.</li>
-</ol>
-<div class="box exp"><div class="lab">Expected</div>Cart freezes (session → <code>payment_pending</code>); guest waits for real confirmation; on waiter settlement guest sees <code>PAYMENT_COMPLETED</code> and the session closes.</div>
-<div class="box fail"><div class="lab">Common failure modes</div>False "payment success" before settlement · bill changes after initiation · session abandoned while payment pending (must <b>not</b> happen).</div>
-<div class="box ver"><div class="lab">Verify</div>No fabricated settlement — the guest only completes after a staff/webhook event. Customer opt-in creates/links a <code>customers</code> row.</div>
-
-<h2 id="participant">2 · Participant journey <span class="dom">guest (non-host)</span></h2>
-<div class="box exp"><div class="lab">Expected</div><b>Shared cart:</b> any participant adds/removes items; everyone converges via <code>CART_UPDATED</code> refetch. <b>Presence:</b> joins/leaves update the list live. <b>Reconnect:</b> a participant reload restores the same shared session.</div>
-<div class="box fail"><div class="lab">Common failure modes</div>Cart diverges between participants · a left participant still shown present · participant accidentally gets host powers.</div>
-<div class="box ver"><div class="lab">Verify</div>Add an item as participant B → it appears for host A within ~1s. Host hand-off (host leaves) reassigns host via <code>HOST_CHANGED</code>; the new host gains ordering rights. Also test the <b>manual</b> path: the host's "Make host" control transfers the role to another participant (refused while <code>payment_pending</code> — <code>HOST_TRANSFER_LOCKED</code>).</div>
-
-<h2 id="waiter">3 · Waiter journey <span class="dom">staff · pin 3333</span></h2>
-<ol>
-  <li>Login at <code>/staff/login</code> with <code>branch_id</code> 1 (Bandra) and PIN <code>3333</code> → waiter dashboard.</li>
-  <li>Three queues: <b>assistance</b>, <b>ready-to-serve orders</b>, <b>pending payments</b> (the seeded T2 payment shows here).</li>
-  <li>Acknowledge then resolve an assistance request; mark a <code>ready</code> order <code>served</code>; settle a pending cash payment.</li>
-</ol>
-<div class="box exp"><div class="lab">Expected</div>Settling a payment completes it, notifies the guest (<code>PAYMENT_COMPLETED</code>), and closes the session. Serving moves the order out of the ready queue.</div>
-<div class="box fail"><div class="lab">Common failure modes</div>Pending-payments queue empty when it shouldn't be (seeded T2) · waiter can advance cooking states (kitchen-only) · settlement doesn't reach the guest.</div>
-<div class="box ver"><div class="lab">Verify</div>The seeded "awaiting confirmation" payment on each primary branch's T2 is visible and settleable. After settle, <code>payments.status=completed</code> and <code>settled_by_staff_id</code> is set.</div>
-
-<h2 id="kitchen">4 · Kitchen journey <span class="dom">staff · pin 4444</span></h2>
-<ol>
-  <li>Login with <code>branch_id</code> 1, PIN <code>4444</code> → KDS Kanban (pending / confirmed / preparing / ready).</li>
-  <li>Advance the seeded confirmed order: <code>confirmed→preparing→ready</code>. Note kitchen <b>cannot</b> mark <code>served</code>.</li>
-</ol>
-<div class="box exp"><div class="lab">Expected</div>Each transition pushes a WS event; the guest tracker and waiter queue update live. "Served" is absent/blocked for kitchen.</div>
-<div class="box fail"><div class="lab">Common failure modes</div>Kitchen able to serve (waiter-only, server-enforced) · elapsed-time colouring stuck · order skips states.</div>
-<div class="box ver"><div class="lab">Verify</div>Try to PATCH an order to <code>served</code> as kitchen → server rejects. Order only reaches <code>ready</code> from the kitchen.</div>
-
-<h2 id="manager">5 · Manager journey <span class="dom">staff · pin 2222</span></h2>
-<p>Login with <code>branch_id</code> 1, PIN <code>2222</code>. The manager runs branch operations without org-level governance.</p>
-<table>
-  <tr><th>Area</th><th>Do</th><th>Expected</th></tr>
-  <tr><td>Menu</td><td>create/edit category &amp; item; toggle availability/featured; add modifier</td><td>changes persist; availability toggles push <code>MENU_ITEM_AVAILABILITY_CHANGED</code> live to guests</td></tr>
-  <tr><td>Staff</td><td>create staff, rotate PIN, deactivate</td><td>new staff can log in; rotated PIN invalidates old; deactivated cannot log in</td></tr>
-  <tr><td>Tables</td><td>add table, refresh QR token</td><td>refreshed token works, old token 404s</td></tr>
-  <tr><td>Promos</td><td>create flat/percentage promo; set "Uses per guest"</td><td>guest applies the promo <b>at the bill</b> (not the cart); a per-guest-limited promo without a phone returns <code>PROMO_PHONE_REQUIRED</code>; the cap is enforced per phone; discount folds into the bill at payment initiation</td></tr>
-  <tr><td>Analytics</td><td>open branch analytics</td><td>numbers reflect seeded orders/payments for <b>this branch only</b></td></tr>
-  <tr><td>Customers</td><td>view history; delete (GDPR)</td><td>opted-in customers listed; delete removes PII</td></tr>
-  <tr><td>Performance tab</td><td>open the new "Performance" admin tab</td><td><b>gated off by default</b> — clean empty state ("Staff performance not enabled"), backend returns 403 <code>STAFF_ANALYTICS_DISABLED</code>; no errors/crashes</td></tr>
-  <tr><td>Loyalty tab</td><td>open the new "Loyalty" admin tab</td><td><b>gated off by default</b> — empty state ("Loyalty not enabled"), 403 <code>LOYALTY_DISABLED</code>; payments still complete with zero loyalty side effects</td></tr>
-</table>
-<div class="box fail"><div class="lab">Common failure modes</div>Menu edit on branch 1 leaks to another branch · availability toggle needs guest refresh · manager can reach org governance (should be owner-only).</div>
-<div class="box ver"><div class="lab">Verify</div>Toggle a Bandra item's availability → a guest seated at Bandra sees it grey out live; an Indiranagar guest is unaffected.</div>
-
-<h2 id="owner">6 · Owner / Organization owner <span class="dom">staff owner · pin 1111</span></h2>
-<p>Saffron House is multi-branch, so its owner exercises real org governance. Login with <code>branch_id</code> 1, PIN <code>1111</code>.</p>
 <ul>
-  <li><b>Branch governance:</b> view/govern all three Saffron branches; cross-branch oversight.</li>
-  <li><b>Org analytics:</b> aggregate across Bandra + Indiranagar + Connaught Place.</li>
-  <li><b>Audit:</b> read the branch/org audit log (richer when <code>AUDIT_LOG_V2_ENABLED</code> is on).</li>
-  <li>Everything a manager can do, plus the above.</li>
+  <li>Several guests join <b>one</b> session and share <b>one</b> live cart over WebSockets.</li>
+  <li>Exactly one participant is the <b>host</b>. Only the host may submit the order, request the bill, or
+      initiate payment. Everyone else can browse and add to the cart. This is deliberate anti-chaos design
+      for group dining, and it is the #1 source of "is this broken?" confusion in the field.</li>
+  <li>Staff (waiter / kitchen / manager / owner) work a PIN-authenticated console that <b>polls REST every
+      10 seconds</b> — deliberately not realtime. Guests are realtime; staff are not.</li>
+  <li>A completely separate <b>platform trust domain</b> (super admin / support / billing / auditor) governs
+      tenants, entitlements, flags, themes, billing and support. Almost all of it is intentionally in
+      <b>shadow / observe-only</b> mode.</li>
 </ul>
-<div class="box exp"><div class="lab">Expected</div>Org analytics sum the three branches; a single-branch owner (Copper Pot / Urban Brew) sees only their one branch.</div>
-<div class="box fail"><div class="lab">Common failure modes</div>Org owner sees another org's branches (cross-tenant leak) · org analytics include only the primary branch.</div>
-<div class="box ver"><div class="lab">Verify</div>Saffron owner cannot see Copper Pot or Urban Brew branches/data anywhere.</div>
 
-<h2 id="platform">7 · Platform admin <span class="dom">platform · super_admin</span></h2>
-<p>Login at <code>/platform/login</code> as <code>admin@platform.local</code> / <code>Platform!admin1</code>. This is a separate trust domain — staff tokens are rejected here.</p>
-<table>
-  <tr><th>Console area</th><th>Do</th><th>Expected</th></tr>
-  <tr><td>Organizations</td><td>list 3 orgs; create a 4th; suspend/activate</td><td>create returns org+restaurant; suspend flips status (resolve-only — not yet enforced)</td></tr>
-  <tr><td>Branches</td><td>create a branch with initial tables + owner</td><td>tables come back with QR tokens; initial owner can log in</td></tr>
-  <tr><td>Plans &amp; entitlements</td><td>inspect free/standard/premium + entitlement keys</td><td>premium has multi_branch + advanced analytics; free is limited</td></tr>
-  <tr><td>Subscriptions</td><td>activate/renew/suspend/cancel a subscription</td><td>status transitions recorded &amp; audited (state machine)</td></tr>
-  <tr><td>Billing</td><td>view/edit billing profile, invoices</td><td>GST/currency persist; INR currency</td></tr>
-  <tr><td>Support console</td><td>search a session/order/payment; inspect</td><td>read-only sanitized detail; deep reads emit a tenant-visible audit row</td></tr>
-  <tr><td>Feature flags</td><td>set a global/org/branch flag override</td><td>targeting resolves (resolve-only/shadow)</td></tr>
-  <tr><td>Themes</td><td>change a tenant's preset/tokens</td><td>guest UI for that tenant adopts the new theme</td></tr>
-  <tr><td>Collateral</td><td>open a branch's collateral studio</td><td>renders per the tenant theme; five print formats; export</td></tr>
-  <tr><td>Analytics</td><td>cross-tenant platform analytics</td><td>on-demand Postgres aggregation across orgs</td></tr>
-  <tr><td>MFA</td><td>enroll/confirm TOTP, then disable</td><td>enroll returns a secret/QR; confirm requires a valid code; re-login challenges MFA</td></tr>
-</table>
-<div class="box exp"><div class="lab">Expected</div>Each Saffron/Copper/Urban tenant is governed independently; theme/collateral changes reflect on the matching guest UI; support reads are sanitized (no <code>session_token</code>/fingerprint).</div>
-<div class="box fail"><div class="lab">Common failure modes</div>Staff token accepted on a platform route · support detail exposes guest credentials · theme change bleeds across tenants · subscription transition skips audit.</div>
-<div class="box ver"><div class="lab">Verify</div>Change Urban Brew's theme to a different preset → a guest at Cyber Hub sees it; Saffron/Copper guests unchanged. Support inspect of a Saffron session never returns Copper Pot data.</div>
-
-<h2 id="subroles">8 · Support / Billing / Read-only auditor <span class="dom">platform sub-roles</span></h2>
-<table>
-  <tr><th>Sub-role</th><th>Login</th><th>Should be able to</th><th>Must NOT</th></tr>
-  <tr><td>support_admin</td><td>support@platform.local / Support!admin1</td><td>search + read sessions/orders/payments/audit; tenant health</td><td>mutate anything; touch billing</td></tr>
-  <tr><td>billing_admin</td><td>billing@platform.local / Billing!admin1</td><td>subscriptions, billing profiles, invoices</td><td>open the support console</td></tr>
-  <tr><td>read_only_auditor</td><td>auditor@platform.local / Auditor!admin1</td><td>read observability/audit</td><td>any write</td></tr>
-</table>
-<div class="box ver"><div class="lab">Verify</div>billing_admin is rejected from support endpoints; support_admin gets 403 on any mutation; auditor can read but every write 403s. Each deep support read appears in the tenant's own audit log.</div>
-
-<h2 id="multi">9 · Multi-instance realtime <span class="dom">app-1 ⇄ app-2</span></h2>
+<h3>Who it serves</h3>
 <ol>
-  <li>Guest: open a Saffron table on <b>Frontend A</b> (:3000 → app-1), create a session, add a cart item.</li>
-  <li>Staff: open <b>Frontend B</b> (:3001 → app-2), log in as kitchen/waiter for branch 1.</li>
-  <li>Place an order on A; advance it on B; watch both update.</li>
+  <li><b>Dine-in restaurants in India.</b> INR default, UPI/cash/card-manual payment reality, Oracle Cloud
+      Ampere arm64 cost profile. No app install for the guest.</li>
+  <li><b>Groups of diners.</b> The collaborative shared-cart/host model is built for a table of six, not a
+      solo QR menu.</li>
+  <li><b>A future platform operator</b> (you). The console, entitlements, billing and support tooling are
+      the skeleton of a SaaS business, currently running dark.</li>
 </ol>
-<div class="box exp"><div class="lab">Expected</div>Events cross instances both ways (shared Postgres + Redis + guest-token secret). A session created on app-1 is fully readable on app-2 with the same guest token.</div>
-<div class="box fail"><div class="lab">Common failure modes</div>Events only visible on the originating instance (Redis pub/sub not shared) · guest token rejected on the other instance (secret mismatch) · CSP blocks the cross-port WS (dev allows localhost).</div>
-<div class="box ver"><div class="lab">Verify</div>Order placed on A appears on B's KDS within ~1s and vice-versa. (Pre-verified at the API layer: app-1 create → app-2 snapshot returns HTTP 200.)</div>
 
-<h2 id="isolation">10 · Cross-tenant isolation <span class="dom">Alpha / Beta / Gamma</span></h2>
+<h3>What differentiates it — and therefore what must not break</h3>
 <ol>
-  <li>As Saffron owner (branch 1), attempt to view Copper Pot (branch 4) or Urban Brew (branch 5) data anywhere — branches, menu, sessions, analytics, audit.</li>
-  <li>Take a Saffron guest token and try to read a Copper Pot session/snapshot.</li>
-  <li>In platform analytics, confirm per-org figures don't merge tenants.</li>
+  <li>The session state machine — 6 states, enforced transitions, cart frozen during <code>payment_pending</code>,
+      reactivation instead of silent expiry.</li>
+  <li>Collaborative ordering — shared cart, host-gated submission, live presence.</li>
+  <li>Operational honesty — payment escalation <b>never</b> mutates state; the audit log is trigger-immutable;
+      every risky behaviour sits behind a reversible flag.</li>
+  <li>Rollout discipline — shadow before strict, metrics that must read zero before a flag flips.</li>
 </ol>
-<div class="box exp"><div class="lab">Expected</div>Every cross-tenant attempt is denied or scoped out. A guest token is bound to its own session/branch/org and cannot read another tenant's session (the T-01 class of bug must not reproduce).</div>
-<div class="box fail"><div class="lab">Common failure modes</div>Snapshot of session A returns data when queried with a token from a different session/tenant · branch-scoped admin lists another branch · analytics aggregate across orgs.</div>
-<div class="box ver"><div class="lab">Verify</div>Saffron token on a Copper Pot session → rejected. Owner of one org never sees another org's branches.</div>
 
-<h2 id="security">11 · Security</h2>
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="arch">2. Architecture — how a request actually flows</h2>
+
+<pre><code>Guest phone ──HTTPS/WSS──┐
+Staff tablet ──HTTPS─────┤   nginx (WS-aware, /metrics CIDR-locked)
+Platform console ─HTTPS──┘        │
+                                  ▼
+                        Go/Gin app (single binary, stateless)
+                        handlers → services → repositories → sqlc
+                          │                │
+                          ▼                ▼
+                    PostgreSQL 17     Redis 7 (AOF, 256MB LRU)
+                    (AUTHORITATIVE)   pub/sub · presence · cache ·
+                          ▲           rate-limit · lockout · ws-tickets ·
+                          │           worker locks · escalation dedup
+                    6 workers (Redis-lock-guarded, panic-isolated)</code></pre>
+
+<div class="ok"><b>Postgres is authoritative for everything; Redis is disposable.</b> Chaos-validated: a
+sustained Redis outage degrades gracefully — realtime pauses, HTTP keeps working, sensitive rate limiters
+fail <em>closed</em> — and recovers by itself. App restart recovery is ~12s with idempotent migrations at boot.
+This is a property you should personally verify (§14).</div>
+
+<h3>Middleware chain — order matters</h3>
+<p><code>Recover → [otelgin] → RequestID → audit → Logger → Metrics → SecurityHeaders → CORS →
+MaxBodySize(1MB) → Tenant</code>, then per-group rate limits and auth
+(<code>StaffAuth</code>, <code>PlatformAuth</code>, <code>BranchTenantGuard</code>).</p>
+<p>Two consequences you can observe: a panic in any handler returns a clean 500 and never kills the process;
+and every response carries an <code>X-Request-ID</code>, with the access log also carrying
+<code>trace_id</code> when tracing is on.</p>
+
+<h3>The six background workers</h3>
+<table>
+<tr><th>Worker</th><th>What it does</th><th>Default cadence</th><th>How you see it</th></tr>
+<tr><td class="k">StaleSessionCleaner</td><td>Abandons sessions past the branch timeout</td><td>5 min</td><td>Session → <code>abandoned</code>; table freed</td></tr>
+<tr><td class="k">SessionExpiryWarner</td><td>Emits <code>SESSION_EXPIRING_SOON</code> 5 min ahead</td><td>—</td><td>Guest "still here?" banner</td></tr>
+<tr><td class="k">PresenceExpiry</td><td><span class="pill ex">STUB</span> debug log only</td><td>60 s</td><td>Nothing. Real handling lives in the reactivation pipeline.</td></tr>
+<tr><td class="k">SessionTableReconciler</td><td>Repairs session↔table drift</td><td>5 min</td><td>Stranded "occupied" tables get freed</td></tr>
+<tr><td class="k">ReactivationPipeline</td><td><code>active → awaiting_reactivation → abandoned</code>. Never bypasses <code>payment_pending</code>.</td><td>60 s grace + 5 min window</td><td>Guest reactivation screen</td></tr>
+<tr><td class="k">PaymentPendingEscalation</td><td><b>Alert-only.</b> Warn @5 min, critical @15 min</td><td>1 min</td><td>Metric + log + <code>event_log</code> + WS <code>PAYMENT_SETTLEMENT_STALLED</code> + audit row</td></tr>
+</table>
+
+<div class="warn"><b>Test this property explicitly:</b> the escalation worker <b>never</b> mutates payment or
+session state. A human settles or cancels. If you ever see a payment change status without a human action,
+that is a SEV-0 finding.</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="trust">3. Three trust domains that must never mix</h2>
+
+<table>
+<tr><th>Domain</th><th>Mechanism</th><th>Roles</th><th>What must be true</th></tr>
+<tr><td class="k">Guest</td>
+    <td>Bespoke HMAC-SHA256 signed token (<em>not</em> a JWT — no <code>alg</code> header, so immune to
+        alg-confusion). Claims: session / branch / tenant / org / participant / credential-version / exp / jti.
+        Audience <code>qr-dining-guest</code>, 12h TTL.</td>
+    <td>participant, host</td>
+    <td>A token from session A must never read session B. WS admission requires a single-use Redis ticket.</td></tr>
+<tr><td class="k">Staff</td>
+    <td>PIN login → <b>opaque DB-backed</b> session token (<code>staff_sessions</code>). Brute-force lockout
+        + 10 RPM sensitive limiter that <b>fails closed</b>.</td>
+    <td>owner, manager, waiter, kitchen</td>
+    <td>Branch-scoped absolutely. A staff token must be rejected by every <code>/platform/*</code> route.</td></tr>
+<tr><td class="k">Platform</td>
+    <td>Email+password → optional TOTP MFA (AES-GCM encrypted secrets) → opaque platform session.
+        <code>middleware/platform_auth.go</code> explicitly rejects staff tokens.</td>
+    <td>super_admin (global bypass), support_admin, billing_admin, read_only_auditor</td>
+    <td>Tenant-agnostic but fully audited. The support console is read-only by design.</td></tr>
+</table>
+
+<p>The frontend keeps <b>three separate bearer tokens</b> that are never mixed
+(<code>frontend/lib/api/client.ts</code>). In local dev it also sends <code>X-Tenant-Slug</code>.</p>
+
+<div class="verify"><b>Verify this yourself</b>
+Copy a staff bearer token out of devtools and call <code>GET /platform/organizations</code> with it →
+must be 401. Copy a guest token from session A and call <code>GET /sessions/&lt;B&gt;/snapshot</code> →
+must be refused, never data. These are the two cheapest tenancy proofs in the product.</div>
+
+<h3>Central authz engine — shadow mode</h3>
+<p><code>internal/authz/</code> evaluates <em>every</em> guarded action, but
+<code>AUTHZ_CENTRAL_POLICY_ENFORCE=false</code> means a denial is <b>recorded and then allowed</b>
+(the audit row shows success with a shadow note; <code>policy_shadow_mismatch_total</code> increments).
+Per-handler role checks are what actually enforce today. So: if a role check is missing in a handler, the
+shadow engine will <em>not</em> save you. Test RBAC as if the engine did not exist.</p>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="session">4. The session state machine — the spine</h2>
+
+<table>
+<tr><th>State</th><th>Meaning</th><th>May transition to</th></tr>
+<tr><td class="k">active</td><td>Normal dining</td><td>payment_pending · awaiting_reactivation · closed · abandoned · expired</td></tr>
+<tr><td class="k">payment_pending</td><td>Bill frozen, <b>cart frozen</b></td><td>active · awaiting_reactivation · closed · abandoned · expired</td></tr>
+<tr><td class="k">awaiting_reactivation</td><td>Presence lost, "still here?"</td><td>active · payment_pending · abandoned · expired · closed</td></tr>
+<tr><td class="k">closed</td><td>Settled &amp; done</td><td><b>terminal</b></td></tr>
+<tr><td class="k">abandoned</td><td>Walked away / timed out</td><td><b>terminal</b></td></tr>
+<tr><td class="k">expired</td><td>Past branch timeout</td><td><b>terminal</b></td></tr>
+</table>
+
+<h4>Adjacent machines</h4>
+<table>
+<tr><th>Entity</th><th>Transitions</th></tr>
+<tr><td class="k">Order</td><td><code>pending → confirmed → preparing → ready → served</code>; <code>cancelled</code> reachable from pending/confirmed/preparing only. <code>ready → served</code> is the <b>waiter's</b> action, not the kitchen's.</td></tr>
+<tr><td class="k">Payment</td><td>9 states. <code>pending/requested → provider_pending | requires_staff_confirmation → completed | failed | cancelled</code>; <code>completed → refunded | partially_refunded</code>; <code>failed</code> may retry back to <code>pending/requested</code>.</td></tr>
+<tr><td class="k">Assistance</td><td><code>pending → acknowledged → resolved</code> (pending may jump straight to resolved).</td></tr>
+</table>
+
+<h3>Invariants you are certifying — never change casually</h3>
+<ol>
+  <li><b>The transition table is law.</b> Every worker, handler and the frontend's terminal-state screens assume it.
+      <code>payment_pending</code> can never be bypassed by lifecycle automation.</li>
+  <li><b>One active session per table</b> (DB constraint). The joinability predicate must stay aligned with it —
+      misalignment was certification finding #11.</li>
+  <li><b>Bill snapshot immutability.</b> The bill a guest agreed to is frozen at payment initiation.
+      Promos and loyalty never retroactively edit it.</li>
+  <li><b>Audit log immutability</b>, enforced by the DB trigger <code>trg_audit_log_immutable</code>.</li>
+  <li><b>Loyalty ledger</b> append-only, signed points, <code>CHECK (points_balance &gt;= 0)</code>,
+      earn-idempotent per payment.</li>
+  <li><b>Webhook idempotency</b> via <code>payment_webhook_events</code>.</li>
+</ol>
+
+<div class="verify"><b>Verify this yourself — SQL, 30 seconds</b>
+<pre><code>docker exec manual-testing-postgres psql -U mtest -d qrdining_mtest \
+  -c "update audit_log set action='tampered' where id=(select min(id) from audit_log);"
+# MUST fail with the immutability trigger error.</code></pre></div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="inventory">5. Complete feature inventory</h2>
+<p class="small">Legend: <span class="pill pr">PR</span> production ready ·
+<span class="pill pi">PI</span> pilot ready · <span class="pill df">DF</span> deferred/shadow ·
+<span class="pill ex">EX</span> experimental · 🎫 gated by FeatureGate (entitlement AND flag) ·
+🚩 behind an env strict-rollout flag</p>
+
+<h3>Core restaurant</h3>
+<table>
+<tr><th>Feature</th><th>Status</th><th>Notes for the tester</th></tr>
+<tr><td class="k">QR → table resolution → session create/join</td><td><span class="pill pr">PR</span></td><td>The entry point for everything. A legacy theme preset rides in the QR payload for instant paint.</td></tr>
+<tr><td class="k">Shared session cart (multi-guest, live)</td><td><span class="pill pr">PR</span></td><td>Test with two real devices, not two tabs alone.</td></tr>
+<tr><td class="k">Host-controlled ordering + host transfer</td><td><span class="pill pr">PR</span></td><td>Low rate cap (6/min/session) on transfer.</td></tr>
+<tr><td class="k">Menu: categories, modifiers (incl. single-select), availability, featured, images</td><td><span class="pill pr">PR</span></td><td>Single-select enforcement is migration 000037; <code>MODIFIER_CONFLICT</code> is its error.</td></tr>
+<tr><td class="k">Order lifecycle</td><td><span class="pill pr">PR</span></td><td>Human-readable numbers via <code>order_sequences</code>.</td></tr>
+<tr><td class="k">Kitchen display</td><td><span class="pill pi">PI</span></td><td>10s polling. Up to 10s latency is <b>expected, not a bug</b>.</td></tr>
+<tr><td class="k">Waiter board (serve + settlement queues)</td><td><span class="pill pi">PI</span></td><td>Same polling.</td></tr>
+<tr><td class="k">Assistance requests</td><td><span class="pill pr">PR</span></td><td>6/min/session cap.</td></tr>
+<tr><td class="k">Bill snapshot + promos-at-payment</td><td><span class="pill pr">PR</span></td><td>Promos apply at <b>payment initiation</b>, not order placement (migration 000036 — deliberate).</td></tr>
+<tr><td class="k">Split payments; cash/card-manual staff settlement</td><td><span class="pill pr">PR</span></td><td>Session auto-closes only when completed payments cover the bill.</td></tr>
+<tr><td class="k">Digital payment via generic webhook</td><td><span class="pill pi">PI</span></td><td>No real gateway. Signature + amount/currency/session verification + idempotency table.</td></tr>
+<tr><td class="k">Payment escalation (alert-only)</td><td><span class="pill pr">PR</span></td><td>Never mutates state.</td></tr>
+<tr><td class="k">Session reactivation / "still here?"</td><td><span class="pill pr">PR</span></td><td>Timings tuned after the dress rehearsal found them too aggressive.</td></tr>
+<tr><td class="k">Human-readable operational IDs, business dates</td><td><span class="pill pr">PR</span></td><td>e.g. <code>SAFF-BND-S-20260803-002</code>.</td></tr>
+</table>
+
+<h3>Platform &amp; governance</h3>
+<table>
+<tr><th>Feature</th><th>Status</th><th>Gating</th></tr>
+<tr><td class="k">Org/branch model + memberships</td><td><span class="pill pr">PR</span> data</td><td>🚩 <code>TENANCY_ORGANIZATIONS_ENABLED</code> (R2, off)</td></tr>
+<tr><td class="k">Central authz policy engine</td><td><span class="pill df">DF</span> shadow</td><td>🚩 R3 pair (off)</td></tr>
+<tr><td class="k">Entitlements (catalog / plans / overrides)</td><td><span class="pill pi">PI</span> resolve-only</td><td>—</td></tr>
+<tr><td class="k">Feature-flag targeting (branch &gt; org &gt; global)</td><td><span class="pill pi">PI</span></td><td>—</td></tr>
+<tr><td class="k">Org/branch suspend &amp; activate</td><td><span class="pill df">DF</span></td><td>Inert — status flips + audit rows only</td></tr>
+<tr><td class="k">Subscription billing + invoices</td><td><span class="pill df">DF</span></td><td><b>Shadow. Pilot bills manually. Do not charge anyone through this.</b></td></tr>
+<tr><td class="k">Enforcement observability endpoints</td><td><span class="pill pr">PR</span></td><td>—</td></tr>
+<tr><td class="k">Platform onboarding workflow</td><td><span class="pill pi">PI</span></td><td>—</td></tr>
+<tr><td class="k">Platform MFA (TOTP)</td><td><span class="pill pr">PR</span></td><td>Not enrolled in the seed</td></tr>
+</table>
+
+<h3>Operations, analytics, branding, support</h3>
+<table>
+<tr><th>Feature</th><th>Status</th><th>Gating</th></tr>
+<tr><td class="k">Immutable audit log v2</td><td><span class="pill pr">PR</span></td><td>🚩 <code>AUDIT_LOG_V2_ENABLED</code> — R1, live &amp; soaked, <b>ON in this stack</b></td></tr>
+<tr><td class="k">Prometheus metrics + 27 alerts + Grafana</td><td><span class="pill pr">PR</span></td><td>Rules committed; real receiver still pending (SEV-1)</td></tr>
+<tr><td class="k">OpenTelemetry tracing → SigNoz</td><td><span class="pill pi">PI</span></td><td>🚩 <code>OTEL_ENABLED</code> — default off; <b>ON in this stack</b></td></tr>
+<tr><td class="k">Nightly backups + verified restore</td><td><span class="pill pr">PR</span></td><td>Real-R2 round-trip passed 2026-07-18</td></tr>
+<tr><td class="k">Staff performance analytics</td><td><span class="pill pi">PI</span></td><td>🎫 <code>analytics.staff_performance</code> + flag <code>staff_performance_analytics</code></td></tr>
+<tr><td class="k">Customer loyalty (ledger earn/redeem)</td><td><span class="pill pi">PI</span></td><td>🎫 <code>loyalty.*</code> + flag <code>loyalty</code></td></tr>
+<tr><td class="k">Restaurant stats (busy hours, top items, volume)</td><td><span class="pill pr">PR</span></td><td>—</td></tr>
+<tr><td class="k">Platform cross-tenant analytics</td><td><span class="pill pi">PI</span></td><td>—</td></tr>
+<tr><td class="k">Tenant themes (5 presets + custom tokens)</td><td><span class="pill pr">PR</span></td><td>🎫 <code>custom.theme</code> for custom tokens only</td></tr>
+<tr><td class="k">Serene guest / Harmony ops design systems</td><td><span class="pill pr">PR</span></td><td>Unsoaked — this certification is their first hard look</td></tr>
+<tr><td class="k">Premium QR collateral studio + print/ZIP</td><td><span class="pill pi">PI</span></td><td>Two surfaces (platform studio + admin tab) — watch for divergence</td></tr>
+<tr><td class="k">Support console (read-only)</td><td><span class="pill pr">PR</span></td><td>"Observability, not control"</td></tr>
+<tr><td class="k">Presence-expiry worker</td><td><span class="pill ex">EX</span></td><td>Stub — do not expect behaviour</td></tr>
+<tr><td class="k">Audit hash-chain (<code>row_hash</code>)</td><td><span class="pill df">DF</span></td><td>Columns exist, always NULL. <b>Not a bug.</b></td></tr>
+</table>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="guest">6. Guest surface — page by page</h2>
+<p>Route group <code>(guest)</code>. Design system: <b>Serene</b> — alabaster <code>#FAF9F5</code>, charcoal ink,
+Hanken Grotesk + Cormorant Garamond. This is the <b>only</b> surface that gets tenant theming.</p>
+
+<div class="pagecard">
+<h3>6.1 <code>/table/[token]</code> — QR landing</h3>
+<dl class="kv">
+<dt>Why it exists</dt><dd>Turns a physical sticker into a digital session. The only unauthenticated entry point to the whole guest experience.</dd>
+<dt>Who uses it</dt><dd>Every diner, every time. Zero prior knowledge assumed.</dd>
+<dt>How to access</dt><dd><code>http://localhost:3000/table/&lt;qr_code_token&gt;</code> — live tokens on the dashboard.</dd>
+<dt>Permissions</dt><dd>None. The token <em>is</em> the credential.</dd>
+<dt>Endpoints</dt><dd><code>GET /tables/by-qr/:token</code> → <code>GET /branches/:id/theme</code> → then either <code>POST /sessions</code> (create) or <code>POST /sessions/:id/join</code>.</dd>
+</dl>
+<h4>What every control does</h4>
 <ul>
-  <li><b>Trust-domain rejection:</b> staff token on a <code>/platform/*</code> route → rejected; guest token on staff routes → rejected.</li>
-  <li><b>Token tampering:</b> mutate a guest token byte → validation fails; revoke participant → credential-version bump invalidates token.</li>
-  <li><b>Lockout / rate limits:</b> repeated bad staff PINs → lockout; hammer <code>/staff/auth</code> or <code>/platform/auth</code> → fail-closed sensitive rate limit (10 rpm).</li>
-  <li><b>Host gating (server):</b> non-host order/payment attempt rejected server-side even if the UI is bypassed.</li>
-  <li><b>Body-size limit:</b> &gt;1 MB body → rejected.</li>
+<li><b>Name field</b> (required) — becomes <code>session_participants.display_name</code>, shown on shared cart lines.</li>
+<li><b>Phone field</b> (optional) — links a <code>customers</code> row (<code>UNIQUE(restaurant_id, phone_e164)</code>), the loyalty opt-in hook. Invalid input → <code>INVALID_PHONE</code> with a friendly inline message, <b>not</b> a crash.</li>
+<li><b>Continue</b> — the branch point. If the table already has a non-terminal session the copy flips to <em>"Join the party"</em> and it calls <code>join</code>; otherwise it calls <code>create</code>.</li>
 </ul>
-<div class="box ver"><div class="lab">Verify</div>Each control fails closed. Rate limiting on auth routes stays enforced even under Redis pressure.</div>
+<h4>State &amp; data changes</h4>
+<p><b>Create:</b> new <code>sessions</code> row (status <code>active</code>, number allocated from
+<code>session_sequences</code>), a <code>session_participants</code> row flagged host,
+<code>tables.status → occupied</code>, an empty <code>carts</code> row, and <code>SESSION_CREATED</code> published.
+<b>Join:</b> only a participant row + a <code>PARTICIPANT_JOINED</code> broadcast. Both return a
+<code>guest_access_token</code> persisted to localStorage.</p>
+<h4>Observability</h4>
+<p>Trace: <code>POST /sessions</code> root span with child pgx INSERT spans and a redis PUBLISH span.
+Metrics: <code>active_sessions_total</code> ↑, <code>http_requests_total{route="/sessions"}</code> ↑.
+The log line carries <code>trace_id</code> + <code>request_id</code>; an audit row records the creation.</p>
+<div class="verify"><b>Specifically verify</b>
+<ul>
+<li>Theme paints <b>instantly</b> in tenant colours (no white flash), then refines. Compare Saffron (dark-luxury), Copper Pot (warm-cafe), Urban Brew (vibrant).</li>
+<li>A garbage token shows "This QR code is invalid or has expired." — never a stack trace or blank page.</li>
+<li>Joining an existing session shows the <b>join</b> copy and lands you in the same session id as the first guest.</li>
+<li>Scanning a table whose session is <code>payment_pending</code>: you join (reads allowed) but find the cart frozen.</li>
+<li>Editing the session UUID in the URL to another session's id must be rejected.</li>
+</ul></div>
+<h4>What could go wrong</h4>
+<p>The classic failure is <code>TABLE_OCCUPIED</code> / <code>SESSION_ALREADY_ACTIVE</code> when the joinability
+predicate disagrees with the one-active-session-per-table constraint. Also watch for a stale seeded session
+making a "free" table unusable — that is environment state, not a bug (§16).</p>
+</div>
 
-<h2 id="regressions">12 · Pilot-finding regressions</h2>
+<div class="pagecard">
+<h3>6.2 <code>/session/[id]</code> — session home</h3>
+<dl class="kv">
+<dt>Why</dt><dd>The hub: presence, host identity, popular-items carousel, navigation to menu/cart/orders/payment.</dd>
+<dt>Endpoints</dt><dd><code>GET /sessions/:id/snapshot</code> (via SessionProvider), <code>GET /branches/:id/menu</code>, <code>POST /sessions/:id/host</code>, <code>GET /branches/:id/theme</code>.</dd>
+</dl>
+<h4>What every control does</h4>
+<ul>
+<li><b>Participant avatars</b> — live presence from Redis TTL keys refreshed by WS pings. A guest who closes their browser should fade out within the presence grace (60s default).</li>
+<li><b>Host transfer</b> — <code>POST /sessions/:id/host</code>, broadcasts <code>HOST_CHANGED</code>. Rate-capped 6/min/session. Only the current host may hand off.</li>
+<li><b>Popular items carousel</b> — featured menu items; tapping deep-links into the menu.</li>
+<li><b>Nav</b> to Menu / Cart / Orders / Bill.</li>
+</ul>
+<div class="verify"><b>Specifically verify</b>
+<ul>
+<li>Open the same session on two devices. Both see both avatars. Transfer host on A → B updates within a second, B gains the "Send order" affordance and A loses it.</li>
+<li>SessionProvider owns terminal-state screens: close the session from staff → both guests get "session ended", not a 404.</li>
+<li>Hard-refresh mid-session → snapshot reload restores identical state (backend-authoritative recovery).</li>
+</ul></div>
+</div>
+
+<div class="pagecard">
+<h3>6.3 <code>/session/[id]/menu</code> — menu &amp; item detail</h3>
+<dl class="kv">
+<dt>Endpoints</dt><dd><code>GET /branches/:id/menu</code> (Redis-cached), <code>POST /sessions/:id/cart/items</code></dd>
+</dl>
+<ul>
+<li><b>Category tabs / scroll spy</b> — client-side, from <code>menu_categories</code>.</li>
+<li><b>Item card → detail dialog</b> — quantity stepper, modifier groups, notes. Multi-select groups allow many; <b>single-select groups allow exactly one</b> (migration 000037), and violating that returns <code>MODIFIER_CONFLICT</code>.</li>
+<li><b>Add to cart</b> — writes <code>cart_items</code>, publishes <code>ITEM_ADDED</code> + <code>CART_UPDATED</code> to every participant.</li>
+<li><b>Unavailable items</b> — greyed, not addable. Toggling availability from admin broadcasts <code>MENU_ITEM_AVAILABILITY_CHANGED</code> live.</li>
+</ul>
+<div class="verify"><b>Specifically verify</b>
+<ul>
+<li>Add an item on device A → it appears on device B <b>without refresh</b>, attributed to A's name.</li>
+<li>Toggle an item unavailable in admin while a guest holds it in the cart → guest sees the event; placing the order must fail cleanly with <code>MENU_ITEM_UNAVAILABLE</code>, not a 500.</li>
+<li>Change a price in admin; note how long the menu takes to reflect it (Redis cache) and whether it invalidates immediately.</li>
+<li>Items with and without images both render. Check the images-left / images-right / card layout variants from the redesign.</li>
+</ul></div>
+</div>
+
+<div class="pagecard">
+<h3>6.4 <code>/session/[id]/cart</code> — the shared cart</h3>
+<dl class="kv">
+<dt>Endpoints</dt><dd><code>GET /sessions/:id/cart</code>, <code>DELETE /sessions/:id/cart/items/:item_id</code>, <code>POST /sessions/:id/orders</code></dd>
+</dl>
+<ul>
+<li><b>Line items</b> grouped by who added them.</li>
+<li><b>Remove</b> — <code>ITEM_REMOVED</code> + <code>CART_UPDATED</code> broadcast.</li>
+<li><b>Send order</b> — <span class="pill pi">HOST ONLY</span>. Non-hosts get <code>NOT_SESSION_HOST</code>. Creates <code>orders</code> + <code>order_items</code>, allocates a number from <code>order_sequences</code>, empties the cart, publishes <code>ORDER_PLACED</code>. Rate-capped 12/min/session.</li>
+</ul>
+<div class="verify"><b>Specifically verify</b>
+<ul>
+<li>Non-host sees a clear explanation, not a dead button. <b>This is the #1 predicted field support ticket.</b></li>
+<li>Double-tap "Send order" fast → exactly one order. Check <code>idempotency_replays_total</code>.</li>
+<li>Empty cart → <code>CART_EMPTY</code>.</li>
+<li>During <code>payment_pending</code>, add/remove/order must all fail with <code>PAYMENT_IN_PROGRESS</code>.</li>
+</ul></div>
+</div>
+
+<div class="pagecard">
+<h3>6.5 <code>/session/[id]/orders</code> — live order tracker</h3>
+<p>Reads <code>GET /sessions/:id/orders</code> and updates from
+<code>ORDER_CONFIRMED / PREPARING / READY / SERVED / CANCELLED</code>. Each order shows its human-readable
+number, items with modifiers, and a status timeline.</p>
+<div class="verify"><b>Specifically verify</b>
+Drive the order from the kitchen console and watch the guest tracker advance <b>without refresh</b> at every
+step. Then cancel an order from staff → the guest sees it cancelled and the bill excludes it.</div>
+</div>
+
+<div class="pagecard">
+<h3>6.6 <code>/session/[id]/payment</code> — bill &amp; payment</h3>
+<dl class="kv">
+<dt>Endpoints</dt><dd><code>GET /sessions/:id/bill</code>, <code>POST /sessions/:id/promos/validate</code>, <code>POST /sessions/:id/payments</code></dd>
+</dl>
+<ul>
+<li><b>Bill breakdown</b> — subtotal, discount, tax, service, tip, total, and the source order IDs.</li>
+<li><b>Promo code → Apply</b> — <code>POST /sessions/:id/promos/validate</code> previews the discount and broadcasts <code>PROMO_APPLIED</code>. The redemption itself is recorded <b>at payment</b>.</li>
+<li><b>Tip selector</b> — folded into the snapshot at initiation.</li>
+<li><b>Payment method</b> — <code>cash</code> / <code>card_manual</code> → <code>requires_staff_confirmation</code>; <code>digital</code> → <code>provider_pending</code>; <code>upi</code> → either, by config.</li>
+<li><b>Pay / Request bill</b> — <span class="pill pi">HOST ONLY</span>. Freezes a <code>bill_snapshots</code> row, moves the session to <code>payment_pending</code>, publishes <code>PAYMENT_INITIATED</code> (which freezes every participant's cart UI). Rate-capped 6/min/session plus a 30/min sensitive limiter.</li>
+</ul>
+<h4>Split payments</h4>
+<p>Multiple <code>payments</code> rows per session are supported. The session auto-closes only when completed
+payments cover the bill (<code>maybeCloseSettledSession</code>). Partial settlement must leave the session open.</p>
+<div class="verify"><b>Specifically verify</b>
+<ul>
+<li><b>Bill snapshot immutability</b>: initiate payment, then have staff change a menu price or deactivate the promo. The frozen bill must not move. This is the payment-correctness cornerstone.</li>
+<li>Non-host cannot initiate.</li>
+<li>Two payments covering half each → the session closes only after the second completes.</li>
+<li>Promo applies at payment, not at order: the order confirmation shows pre-discount pricing, the bill post-discount.</li>
+<li>Leave a payment unsettled 5 minutes → warn escalation; 15 minutes → critical. Confirm <b>no state changed</b>, only alerts.</li>
+</ul></div>
+</div>
+
+<div class="pagecard">
+<h3>6.7 <code>/session/[id]/assist</code> — call the waiter</h3>
+<p><code>POST /sessions/:id/assist</code>, capped 6/min/session. Creates an <code>assistance_requests</code> row
+and publishes <code>ASSISTANCE_REQUESTED</code>. The guest sees acknowledgement, then resolution, as the waiter acts.</p>
+<div class="verify"><b>Specifically verify</b> Spam the button — after 6 you must get a clean rate-limit
+message, not a broken UI. Then confirm the waiter board shows the request within one poll cycle (≤10s).</div>
+</div>
+
+<div class="pagecard">
+<h3>6.8 Cross-cutting guest components</h3>
+<ul>
+<li><b>SessionTimeoutBanner</b> — the "still here?" banner. Its buttons call <code>POST /sessions/:id/reactivate</code> and <code>POST /sessions/:id/assist</code>. Appears on <code>SESSION_EXPIRING_SOON</code> and in <code>awaiting_reactivation</code>.</li>
+<li><b>CustomerOptIn</b> — <code>POST /sessions/:id/customer</code>, links the phone to a <code>customers</code> row. With loyalty off it must degrade gracefully (<code>FEATURE_DISABLED</code>).</li>
+<li><b>Terminal-state screens</b> — owned by SessionProvider for closed / abandoned / expired.</li>
+</ul>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="staff">7. Staff surface — login, waiter, kitchen</h2>
+<p>Route group <code>(staff)</code>. Design system: <b>Harmony</b> — a static ops design
+(<code>styles/surfaces.css</code>, <code>[data-surface="ops"]</code>). <b>Tenant theming deliberately does not
+apply here.</b> That scoping decision structurally killed the "staff theme resets" bug class — so tenant
+colours bleeding into staff screens is a regression.</p>
+
+<div class="pagecard">
+<h3>7.1 <code>/staff/login</code></h3>
+<p><code>POST /staff/auth</code> with <code>branch_id</code> + <code>pin</code>. A 10 RPM sensitive limiter that
+<b>fails closed</b> if Redis is down, plus a sliding-window brute-force lockout.</p>
+<div class="verify"><b>Specifically verify</b>
+Enter a wrong PIN repeatedly → lockout engages with a clear message, and the <em>correct</em> PIN stays
+refused until the window passes. Confirm each role lands on its correct default page
+(kitchen → <code>/staff/kitchen</code>, waiter → <code>/staff/waiter</code>, manager/owner → <code>/staff/admin</code>).</div>
+</div>
+
+<div class="pagecard">
+<h3>7.2 <code>/staff/waiter</code> — the service floor</h3>
+<dl class="kv">
+<dt>Endpoints</dt><dd><code>GET /branches/:id/orders/active</code> · <code>GET /branches/:id/assist/active</code> · <code>GET /branches/:id/payments</code> · <code>PATCH /orders/:id/status</code> · <code>PATCH /assist/:id/ack</code> · <code>PATCH /assist/:id/resolve</code> · <code>PATCH /payments/:id/settle</code></dd>
+<dt>Refresh</dt><dd>REST poll every 10s. No WebSocket. Expected.</dd>
+</dl>
+<h4>Every button</h4>
+<ul>
+<li><b>Mark served</b> — <code>ready → served</code>. The <em>only</em> place this transition happens; it was deliberately removed from the kitchen board.</li>
+<li><b>Acknowledge assistance</b> — <code>pending → acknowledged</code>, broadcast to the guest.</li>
+<li><b>Resolve assistance</b> — → <code>resolved</code>.</li>
+<li><b>Settle payment</b> — on a <code>requires_staff_confirmation</code> payment → <code>completed</code>. Stamps <code>payments.settled_by_staff_id</code> (the field staff analytics later derives from), publishes <code>PAYMENT_COMPLETED</code>, and may close the session.</li>
+</ul>
+<div class="verify"><b>Specifically verify</b>
+<ul>
+<li>Settling a cash payment closes the session and the guest sees the terminal screen within a second — the guest is realtime even though you are not.</li>
+<li>Two waiters settling the same payment concurrently → exactly one succeeds; the other gets a clean invalid-transition error.</li>
+<li>The board shows only <b>this branch's</b> work. Log in as the Bandra waiter; Indiranagar sessions must be invisible.</li>
+</ul></div>
+</div>
+
+<div class="pagecard">
+<h3>7.3 <code>/staff/kitchen</code> — the KDS</h3>
+<dl class="kv">
+<dt>Endpoints</dt><dd><code>GET /branches/:id/orders/active</code> · <code>PATCH /orders/:id/status</code></dd>
+</dl>
+<ul>
+<li><b>Columns</b>: confirmed → preparing → ready, with item-level detail, modifiers and notes.</li>
+<li><b>Confirm</b> — <code>pending → confirmed</code> where the flow starts at pending.</li>
+<li><b>Start preparing</b> — <code>confirmed → preparing</code>.</li>
+<li><b>Mark ready</b> — <code>preparing → ready</code>. The card then leaves the kitchen board; the waiter owns "served".</li>
+</ul>
+<div class="verify"><b>Specifically verify</b>
+<ul>
+<li>Latency: a guest order appears within ≤10s. <b>Time it.</b> 30s is a finding.</li>
+<li>Modifiers and item notes are legible — a real cook reads this at arm's length.</li>
+<li>No payment or table affordances exist on this surface.</li>
+<li>Leave the tab open 20 minutes; the poll must not leak memory or stack duplicate cards.</li>
+</ul></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="admin">8. Restaurant admin console — all 12 tabs</h2>
+<p><code>/staff/admin</code>, manager and owner. Tabs are client-side; every tab is branch-scoped and
+tenant-guarded server-side.</p>
+
 <table>
-  <tr><th>ID</th><th>Check</th><th>Expected</th></tr>
-  <tr><td>F-8</td><td>Inspect every guest session response (create/get/join/reactivate/snapshot)</td><td><code>session_token</code> is always empty — the dormant credential never leaks, independent of the R6 flag</td></tr>
-  <tr><td>F-6</td><td>Advance an order from the kitchen while watching the guest tracker</td><td>tracker advances live, no manual refresh ({order:{…}} envelope handled)</td></tr>
-  <tr><td>F-1</td><td>Idle a session into <code>awaiting_reactivation</code>, then return/reload</td><td>ws-ticket 409 routes through snapshot reactivation and recovers — no "Connection lost" dead-end</td></tr>
+<tr><th>Tab</th><th>Who</th><th>What it does, the endpoints behind it, and what to verify</th></tr>
+
+<tr><td class="k">Sessions</td><td>manager, owner</td>
+<td><code>GET /branches/:id/sessions/active</code>. Read-only live board of tables and their sessions.
+<b>Verify:</b> states match reality; a session closed elsewhere disappears within one poll.</td></tr>
+
+<tr><td class="k">Menu</td><td>manager, owner</td>
+<td><code>GET /branches/:id/menu/full</code>, <code>POST /branches/:id/menu/categories</code>,
+<code>POST /branches/:id/menu/items</code>, <code>PATCH|DELETE /menu/items/:id</code>,
+<code>PATCH /menu/items/:id/availability</code>, <code>/featured</code>,
+<code>POST|PATCH|DELETE /menu/modifiers</code>, <code>PATCH|DELETE /menu/categories/:id</code>,
+image presign via <code>POST /upload/menu-item-image</code>.
+<b>Buttons:</b> add/edit/delete category; add/edit/delete item (modal: price, description, image upload,
+featured toggle, availability toggle); add/edit/delete modifier groups with the single-select flag.
+<b>Verify:</b> availability toggle broadcasts to live guests; deleting an item that sits in an open cart must
+not corrupt the cart or bill; image upload returns 503 gracefully when R2 is unconfigured
+(<b>it is unconfigured here — that 503 is expected</b>).</td></tr>
+
+<tr><td class="k">Tables</td><td>manager, owner</td>
+<td><code>GET|POST /branches/:id/tables</code>, <code>PATCH|DELETE /tables/:id</code>,
+<code>PATCH /tables/:id/qr-refresh</code>.
+<b>Verify:</b> QR refresh kills the old token immediately — open the old URL, it must fail; deleting a table
+with an active session must be refused or handled explicitly.</td></tr>
+
+<tr><td class="k">Collateral</td><td>manager, owner</td>
+<td><code>GET|PUT /branches/:id/collateral</code> plus theme and table reads. The restaurant-side mirror of the
+platform studio: format (sticker / table-tent / square / standing / bulk), welcome text, WiFi, socials.
+<b>Only physical/content config — never theme tokens</b> (theme stays single-source).
+<b>Verify:</b> print preview is faithful; the config schema matches the platform studio — divergence between
+the two surfaces is known accidental debt worth checking.</td></tr>
+
+<tr><td class="k">Staff</td><td><b>owner only</b> for create/deactivate</td>
+<td><code>GET|POST /branches/:id/staff</code>, <code>POST /staff/:id/pin/reset</code>,
+<code>PATCH /staff/:id/pin</code>, <code>PATCH /staff/:id/deactivate</code>.
+<b>RBAC worth memorising:</b> only owners create staff; only owners deactivate; a <b>manager may reset only
+waiter/kitchen PINs</b>, an owner may reset anyone in the branch.
+<b>Verify:</b> log in as manager (PIN 2222) and confirm create is refused with a clear message — this
+surprised manual-testing round 4 and was certified as <em>intended</em>. Confirm a deactivated staff member's
+existing session is revoked.</td></tr>
+
+<tr><td class="k">Stats</td><td>manager, owner</td>
+<td><code>GET /branches/:id/analytics/top-items|busy-hours|order-volume</code> (Recharts).
+<b>Verify:</b> numbers reconcile with what you just created; empty ranges render an empty state, not NaN.</td></tr>
+
+<tr><td class="k">Performance</td><td>manager, owner</td>
+<td>🎫 <code>GET /branches/:id/analytics/staff/waiters|kitchen|summary</code>. Gated by
+<code>analytics.staff_performance</code> AND flag <code>staff_performance_analytics</code>.
+<b>Default OFF, so this tab should be inert out of the box.</b> Derived from <code>event_log</code> +
+<code>payments.settled_by_staff_id</code> + <code>staff_sessions</code> — no new event capture.
+<b>Verify:</b> off → clean disabled state; then enable both halves in the platform console and confirm it
+populates (operator mutations flush the FeatureGate cache, so it should be near-immediate).</td></tr>
+
+<tr><td class="k">Loyalty</td><td>manager, owner (waiter witnesses redemption)</td>
+<td>🎫 <code>GET|PUT /branches/:id/loyalty/program</code>, <code>GET /branches/:id/loyalty/customers</code>,
+<code>GET /branches/:id/loyalty/accounts/:id/transactions</code>, <code>POST .../redeem</code>,
+<code>POST .../adjust</code>, <code>GET /branches/:id/analytics/loyalty</code>.
+Org-level earn rule; append-only signed-points ledger.
+<b>Redemption is ledger-only</b> — it deducts points and never touches bill or payment math.
+<b>Verify:</b> earn is idempotent per payment; balance can never go negative (over-redeem → DB CHECK refuses);
+adjust requires <code>loyalty.manual_adjustment</code>.</td></tr>
+
+<tr><td class="k">Plan</td><td>manager, owner</td>
+<td><code>GET /restaurants/:id/subscription</code> — the <b>legacy</b> restaurant-subscription route, still live
+and still routed. Read-only.
+<b>Verify:</b> Saffron shows Premium, Copper Pot Standard, Urban Brew Free/trial.</td></tr>
+
+<tr><td class="k">Promos</td><td>manager, owner</td>
+<td><code>GET|POST /branches/:id/promos</code>, <code>PATCH|DELETE /branches/:id/promos/:promo_id</code>,
+<code>POST /branches/:id/promos/:promo_id/activate</code>.
+<b>Verify:</b> create a percentage and a flat promo; validity windows respect the <b>branch timezone</b>
+(Asia/Kolkata) — a promo timezone bug was found and fixed during certification, so this is a regression check;
+deactivating a promo already applied to a frozen bill must not alter that bill.</td></tr>
+
+<tr><td class="k">Appearance</td><td>manager, owner</td>
+<td><code>PATCH /branches/:id</code> plus logo presign.
+<b>Verify:</b> changes affect the <b>guest</b> surface only; staff and platform stay Harmony.</td></tr>
+
+<tr><td class="k">Settings</td><td>manager, owner</td>
+<td><code>GET|PATCH /branches/:id</code> — name, address, timezone, <code>session_timeout_minutes</code>,
+<code>order_prefix</code>.
+<b>Verify:</b> lowering the session timeout genuinely shortens expiry (the fastest way to exercise
+StaleSessionCleaner without waiting two hours); changing <code>order_prefix</code> affects new order numbers
+but never rewrites old ones.</td></tr>
 </table>
 
-<footer>QR Dining manual testing certification · 3 tenants · 5 branches · migration v38 · branch <code>feature/certification-fixes-ui-redesign</code> (Serene + ops/platform redesign, Phase-0 fixes) · strict-rollout flags default-off · soak (project <code>qr-dining</code>) untouched.</footer>
+<div class="note"><b>Also on the staff shell:</b> <code>StaffBar</code> exposes <b>rotate my PIN</b>
+(<code>PATCH /staff/:id/pin</code>) and logout (<code>POST /staff/logout</code>). Verify that after logout the
+old token is dead — replay it with curl and expect 401.</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="platform">9. Platform control plane — every page</h2>
+<p>Route group <code>(platform)</code>, base <code>/platform</code>. A separate trust domain; staff tokens are
+rejected outright. Navigation is role-filtered in <code>lib/platform-rbac.ts</code>, mirroring backend
+<code>PlatformHasRole</code> — <b>super_admin bypasses every check</b>. Hiding an item is UX only; the backend
+remains authoritative.</p>
+
+<table>
+<tr><th>Page</th><th>Visible to</th><th>Purpose, endpoints, and what to verify</th></tr>
+
+<tr><td class="k">/platform/login</td><td>everyone</td>
+<td><code>POST /platform/auth</code> → optional <code>POST /platform/auth/mfa</code>.
+<b>No MFA is enrolled in the seed</b>, so login is one step today.
+<b>Verify:</b> wrong password locks out; a staff token cannot be swapped in.</td></tr>
+
+<tr><td class="k">/platform (Overview)</td><td>all roles</td>
+<td><code>GET /platform/analytics/usage|revenue|health</code>. Cross-tenant KPI tiles.
+<b>Verify:</b> counts match the three seeded tenants.</td></tr>
+
+<tr><td class="k">/platform/onboarding</td><td>super_admin</td>
+<td>The guided "new restaurant" wizard: <code>POST /platform/organizations</code> →
+<code>POST /platform/organizations/:id/branches</code> → <code>POST /platform/branches/:id/tables</code> (batch)
+→ <code>PUT /platform/organizations/:id/plan</code> → <code>POST .../subscription/activate</code> or
+<code>extend-trial</code> → <code>PUT .../billing-profile</code> → <code>POST .../activate</code> → QR package.
+<b>Verify:</b> run it end-to-end and create a 4th tenant — this is the exact path Restaurant #1 will take.
+Known gap: <b>no first-super-admin bootstrap UI</b> (a one-shot CLI ships in the production image). Not a new
+finding.</td></tr>
+
+<tr><td class="k">/platform/support</td><td>support_admin, read_only_auditor, super</td>
+<td><code>GET /platform/support/search</code>, <code>POST|GET /platform/support/sessions</code>. Cross-tenant
+search over sessions/orders/payments. <b>Read-only by design — "observability, not control."</b> Support
+sessions are themselves audited.
+<b>Verify:</b> no mutating affordance exists anywhere in this section; opening a support session writes a
+<code>platform_support_sessions</code> row and an audit row.</td></tr>
+
+<tr><td class="k">/platform/support/sessions|orders|payments/[id]</td><td>same</td>
+<td><code>GET /platform/sessions|orders|payments/:id</code>. Deep inspection: participants, events, bill
+snapshot, payment history.
+<b>Verify:</b> <b>no <code>session_token</code> or guest credential appears in any payload</b> — a snapshot
+token leak (finding F-8) was fixed here; this is its regression check.</td></tr>
+
+<tr><td class="k">/platform/support/audit</td><td>same</td>
+<td><code>GET /platform/audit</code>. The audit explorer, with an org filter.
+<b>Verify:</b> every mutation from this certification run appears with actor, action, result and correlation
+id. With tracing on, that correlation id <b>is the trace id</b> when no <code>X-Correlation-ID</code> header
+was sent — paste it into SigNoz and land on the exact trace.</td></tr>
+
+<tr><td class="k">/platform/organizations</td><td>all</td>
+<td><code>GET /platform/organizations</code>. List with status.</td></tr>
+
+<tr><td class="k">/platform/organizations/[orgId]</td><td>all read; super mutates</td>
+<td><code>GET|PATCH /platform/organizations/:id</code>, branch list/detail,
+<code>PATCH /platform/branches/:id</code>, and four lifecycle buttons: <b>Suspend org · Activate org ·
+Suspend branch · Activate branch</b> (<code>POST .../suspend|activate</code>).
+<div class="warn" style="margin:8px 0"><b>These are inert.</b> They flip <code>status</code> and write audit
+rows. <b>Nothing is enforced.</b> Suspending an org must <em>not</em> stop its guests ordering. If suspension
+actually blocks traffic, that is unplanned enforcement — report it.</div></td></tr>
+
+<tr><td class="k">/platform/organizations/[orgId]/billing</td><td>billing_admin, super</td>
+<td>The full shadow billing surface: <code>GET .../subscription</code> plus activate / suspend / renew /
+cancel / extend-trial / change-plan; <code>GET|PUT .../billing-profile</code>;
+<code>GET|POST .../payments</code>; invoices <code>GET|POST .../invoices</code>,
+<code>GET .../invoices/:id</code>, <code>issue</code>, <code>mark-paid</code>, <code>cancel</code>.
+<div class="danger" style="margin:8px 0"><b>Shadow only. Pilot billing is manual. Do not charge anyone through
+this.</b> Every action here is "recorded and audited, not enforced."</div>
+<b>Verify:</b> the whole invoice lifecycle (draft → issued → paid / cancelled) is reachable and audited; a
+<code>read_only_auditor</code> gets 403 on every mutation; cancelling a paid invoice is refused.</td></tr>
+
+<tr><td class="k">/platform/plans · /plans/[planId]</td><td>billing_admin, super</td>
+<td><code>GET|POST /platform/plans</code>, <code>PATCH /platform/plans/:id</code>,
+<code>PUT /platform/plans/:id/entitlements</code>, <code>GET /platform/entitlements</code>.
+<b>Verify:</b> editing plan entitlements changes what orgs on that plan resolve — the cleanest proof of the
+entitlement resolver.</td></tr>
+
+<tr><td class="k">/platform/entitlements</td><td>super_admin</td>
+<td><code>GET /platform/entitlements</code> (catalog),
+<code>GET /platform/organizations/:id/entitlements</code> (resolved),
+<code>PUT /platform/organizations/:id/plan</code>,
+<code>PUT /platform/organizations/:id/entitlements/:key</code> (override with a reason).
+<b>Verify:</b> an override beats the plan grant; clearing it falls back; the reason string is persisted and
+audited.</td></tr>
+
+<tr><td class="k">/platform/analytics</td><td>all</td>
+<td><code>GET /platform/analytics/usage|revenue|health|staff-performance</code>, optional
+<code>?organization_id=</code>.
+<b>Verify:</b> the org filter genuinely scopes; staff-performance respects the FeatureGate.</td></tr>
+
+<tr><td class="k">/platform/observability</td><td>all</td>
+<td><code>GET /platform/observability/subscriptions|entitlements|flags</code>. <b>Read-only.</b> Shows
+<em>where enforcement would bite</em> if the deferred flags were flipped.
+<b>Verify:</b> it never mutates; suspend an org and watch it appear here as "would be blocked" while guests
+keep ordering.</td></tr>
+
+<tr><td class="k">/platform/feature-flags</td><td>super_admin</td>
+<td><code>GET|POST /platform/flags</code>, <code>PATCH /platform/flags/:key</code>, and three override layers:
+<code>PUT|DELETE /platform/flags/:key/global</code>,
+<code>PUT|DELETE /platform/organizations/:id/flags/:key</code>,
+<code>PUT|DELETE /platform/branches/:id/flags/:key</code>, plus
+<code>GET /platform/organizations/:id/flags</code> and <code>GET /platform/branches/:id/flags</code>.
+Resolution: <b>branch &gt; org &gt; global &gt; catalog default</b>.
+<b>Verify:</b> set global ON, org OFF, branch ON → branch wins. Delete branch → org wins. Delete org → global
+wins. Delete global → catalog default. This is the single most valuable governance test in the product.</td></tr>
+
+<tr><td class="k">/platform/themes</td><td>super_admin</td>
+<td><code>GET /platform/theme/presets</code>, <code>GET|PUT /platform/organizations/:id/theme</code>, plus an
+entitlement read that decides whether custom tokens are allowed. Five presets: dark-luxury, modern-minimal,
+warm-cafe, vibrant, <b>serene (default since 000038)</b>.
+<b>Verify:</b> a preset change repaints the guest surface on next load; a custom-token edit is refused for an
+org without <code>custom.theme</code>; an invalid hex or non-allowlisted key is rejected server-side — try
+injecting <code>javascript:</code> or a non-hex value and confirm the allowlist holds.</td></tr>
+
+<tr><td class="k">/platform/collateral</td><td>super_admin</td>
+<td><code>GET|PUT /platform/branches/:id/collateral</code> plus branch/table/theme reads. The premium studio:
+sticker, table-tent, square, standing, bulk sheet; ZIP export; print-faithful renderers.
+<b>Verify:</b> print each format to PDF at A4 and check bleed, margins and QR scannability from a real phone —
+a QR that will not scan off paper is a pilot blocker.</td></tr>
+
+<tr><td class="k">/platform/security</td><td>all (self-service)</td>
+<td><code>POST /platform/mfa/enroll|confirm|disable</code>. TOTP with AES-GCM encrypted secrets.
+<b>Verify:</b> enrol MFA on <code>admin@platform.local</code>, log out, log back in and complete the challenge,
+then disable. Note <code>MFA_ENCRYPTION_KEY</code> is unset in this stack — if enrolment fails, that is
+expected fail-closed behaviour, to be recorded as out-of-scope rather than as a crash.</td></tr>
+</table>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="flags">10. Every feature flag, individually</h2>
+
+<p>There are <b>two entirely separate flag systems</b>. Confusing them is the most common mistake.</p>
+<ol>
+<li><b>Env strict-rollout flags</b> (9, plus tracing) — process-level booleans read once at boot from the
+environment (<code>backend/internal/config/config.go</code>). Changing one requires a restart. They gate
+<em>security and correctness enforcement</em>.</li>
+<li><b>Platform product flags</b> (2 seeded) — rows in <code>platform_feature_flags</code>, resolved per
+request with branch &gt; org &gt; global &gt; default. They gate <em>product features</em>, combined with
+entitlements.</li>
+</ol>
+
+<h3>10.1 The env strict-rollout flags</h3>
+
+<div class="pagecard">
+<h3><code>AUDIT_LOG_V2_ENABLED</code> — wave R1</h3>
+<dl class="kv">
+<dt>Default</dt><dd><code>false</code> in code · <b><code>true</code> in this stack</b> · <code>true</code> in production</dd>
+<dt>Status</dt><dd><span class="pill pr">LIVE &amp; SOAKED</span> flipped 2026-05-25; soak closed PASS 2026-06-04</dd>
+<dt>Why it exists</dt><dd>Audit v2 introduced the immutable, trigger-protected audit log. The flag let the writer be enabled without risking boot on a schema that predates it.</dd>
+<dt>Code paths</dt><dd><code>audit.NewWriter(...)</code> in <code>server.go</code>; every handler taking <code>auditWriter</code>.</dd>
+<dt>Enabled</dt><dd>Every mutation writes an <code>audit_log</code> row (actor, action, resource, result, correlation id). Write failures increment <code>audit_write_failures_total</code> and log — they never fail the request.</dd>
+<dt>Disabled</dt><dd>No audit rows; the support audit explorer goes blank.</dd>
+<dt>Pilot safe?</dt><dd><b>Must stay ON.</b> It is the only forensic record you will have.</dd>
+<dt>Caveat</dt><dd>Any migration touching <code>audit_log</code> invalidates the R1 soak lineage.</dd>
+<dt>Metrics</dt><dd><code>audit_write_failures_total</code> — must read 0</dd>
+<dt>Manual verification</dt><dd>Perform any staff mutation → find it in <code>/platform/support/audit</code> with the right actor and result. Then try to UPDATE that row in psql; the trigger must refuse.</dd>
+</dl>
+</div>
+
+<div class="pagecard">
+<h3><code>TENANCY_ORGANIZATIONS_ENABLED</code> — wave R2</h3>
+<dl class="kv">
+<dt>Default</dt><dd><code>false</code>; deferred in production</dd>
+<dt>Status</dt><dd><span class="pill df">DEFERRED</span> — needs a <code>branches.organization_id</code> backfill plus a soak</dd>
+<dt>Why</dt><dd>The schema carries a <b>dual tenancy model</b>: legacy <code>restaurants</code> and modern <code>organizations → branches</code>. This flag switches tenant resolution and the branch guard onto the org model.</dd>
+<dt>Code paths</dt><dd><code>middleware.TenantMiddleware(...)</code> and every <code>middleware.BranchTenantGuard(...)</code> registration.</dd>
+<dt>Enabled</dt><dd>Tenant resolution and branch-ownership checks run against the organization graph.</dd>
+<dt>Disabled (today)</dt><dd>Legacy restaurant-based resolution. Both paths exist; only one is exercised.</dd>
+<dt>Pilot safe?</dt><dd><b>Leave OFF.</b> Flipping it without the backfill is how you strand a tenant.</dd>
+<dt>Dependencies</dt><dd>The backfill, and alert <code>LegacyIdentityUsagePresent</code> reading zero.</dd>
+<dt>Metrics</dt><dd><code>tenant_resolution_failures_total</code>, <code>legacy_identity_usage_total</code></dd>
+<dt>Manual verification</dt><dd>Do <b>not</b> flip it. Verify the off-path instead: cross-tenant isolation still holds (Saffron staff cannot see Copper Pot), and <code>legacy_identity_usage_total</code> increments, proving the legacy path is what is live.</dd>
+</dl>
+</div>
+
+<div class="pagecard">
+<h3><code>AUTHZ_CENTRAL_POLICY_ENFORCE</code> + <code>STRICT_BRANCH_SCOPED_MUTATIONS</code> — wave R3 (paired)</h3>
+<dl class="kv">
+<dt>Default</dt><dd>both <code>false</code></dd>
+<dt>Status</dt><dd><span class="pill df">SHADOW</span> — flip only after 48h of zero mismatches</dd>
+<dt>Why</dt><dd>Role checks live in ~47 handlers. The central engine is the intended future single point of truth; running it in shadow first proves it agrees with the handlers before it gets veto power.</dd>
+<dt>Code paths</dt><dd><code>authz.NewEnforcingAuthorizer(...)</code>, <code>requireAuthorized(...)</code> in <code>handlers/authz.go</code>.</dd>
+<dt>Enabled</dt><dd>A policy denial actually returns 403.</dd>
+<dt>Disabled (today)</dt><dd>Denial is <b>recorded and then allowed</b>; the audit row shows success with a shadow note, and <code>policy_shadow_mismatch_total</code> increments. Per-handler checks are the real enforcement.</dd>
+<dt>Pilot safe?</dt><dd><b>Leave OFF.</b> They must flip together — central policy without strict branch scoping is a half-enforced state.</dd>
+<dt>Metrics</dt><dd><code>authz_denied_total</code>, <code>policy_shadow_mismatch_total</code>, <code>legacy_authz_bypass_total</code> (a rollout-gate alert requires this at zero)</dd>
+<dt>Manual verification</dt><dd>Attempt a forbidden action (manager creating staff). Confirm the 403 comes <b>from the handler</b>, and that a shadow record also appears. Then watch <code>policy_shadow_mismatch_total</code> — a growing value means the engine disagrees with the handlers somewhere, which is exactly the signal R3 is waiting on.</dd>
+</dl>
+</div>
+
+<div class="pagecard">
+<h3><code>AUTH_STAFF_CODE_REQUIRED</code> + <code>AUTH_STAFF_SESSION_DB_REQUIRED</code> — wave R4 (paired)</h3>
+<dl class="kv">
+<dt>Default</dt><dd>both <code>true</code>, and explicitly <code>true</code> in the production template</dd>
+<dt>Status</dt><dd><span class="pill pr">ON FOR LAUNCH</span></dd>
+<dt>Why</dt><dd>The original audit found "PIN-only ambiguous staff identity". These force an unambiguous staff code and a real DB-backed session row rather than a self-describing token.</dd>
+<dt>Code paths</dt><dd><code>staffSvc.SetRequireSessionDBRow(...)</code>; the staff auth handler.</dd>
+<dt>Enabled</dt><dd>Every staff request is validated against a live <code>staff_sessions</code> row, so revocation is instant and real.</dd>
+<dt>Disabled</dt><dd>Rollback-only legacy path. Do not run a pilot here.</dd>
+<dt>Pilot safe?</dt><dd><b>Must stay ON.</b> No decay window is needed — the only client already speaks this protocol.</dd>
+<dt>Manual verification</dt><dd>Log in as a waiter, capture the bearer token, log out, replay it with curl → <b>401</b>. Then deactivate a staff member while they are logged in → their next request must fail.</dd>
+</dl>
+</div>
+
+<div class="pagecard">
+<h3><code>WS_TICKET_AUTH_REQUIRED</code> — wave R5</h3>
+<dl class="kv">
+<dt>Default</dt><dd><code>true</code></dd>
+<dt>Status</dt><dd><span class="pill pr">ON FOR LAUNCH</span></dd>
+<dt>Why</dt><dd>Without it, WebSocket admission trusted query parameters. Tickets are short-lived, single-use Redis entries.</dd>
+<dt>Code paths</dt><dd><code>POST /sessions/:id/ws-ticket</code> (60/min sensitive + 12/min/session) → <code>GET /ws</code>.</dd>
+<dt>Enabled</dt><dd>No valid ticket, no socket. A reused ticket is refused (409), which the client routes through snapshot reactivation.</dd>
+<dt>Disabled</dt><dd>Rollback only.</dd>
+<dt>Pilot safe?</dt><dd><b>Must stay ON.</b> Open item: per-IP connection-cap sizing.</dd>
+<dt>Metrics</dt><dd><code>ws_ticket_consume_failed_total</code>, <code>ws_connections_active</code>, <code>ws_reconnects_total</code></dd>
+<dt>Manual verification</dt><dd>Grab a ticket via curl, use it once (socket connects), replay it → refused. Then force ~15 reconnects in a minute on one session and confirm the 12/min admission bound produces 429s rather than a hung client.</dd>
+</dl>
+</div>
+
+<div class="pagecard">
+<h3><code>AUTH_GUEST_CREDENTIALS_REQUIRED</code> — wave R6</h3>
+<dl class="kv">
+<dt>Default</dt><dd><code>true</code>; TTL <code>GUEST_TOKEN_TTL=12h</code></dd>
+<dt>Status</dt><dd><span class="pill pr">ON FOR LAUNCH</span></dd>
+<dt>Why</dt><dd>The original audit's worst finding: guest identity was a trusted <code>X-Participant-ID</code> header — anyone could impersonate any diner.</dd>
+<dt>Code paths</dt><dd><code>auth.NewGuestTokenService(...)</code>; every guest handler takes <code>guestTokens</code> + <code>cfg.FeatureFlags</code>.</dd>
+<dt>Enabled</dt><dd>A signed HMAC token is required on guest mutations, binding session + participant + credential version.</dd>
+<dt>Disabled</dt><dd>Legacy header path — which still rejects cross-session participant IDs, but is rollback-only.</dd>
+<dt>Pilot safe?</dt><dd><b>Must stay ON.</b> 12h comfortably covers a dinner; a table sitting 13h has bigger problems.</dd>
+<dt>Metrics</dt><dd><code>guest_token_validation_failed_total</code>, <code>legacy_identity_usage_total</code></dd>
+<dt>Manual verification</dt><dd>Take guest A's token from localStorage and call session B's cart endpoint → refused. Tamper one character of the signature → refused. Clear localStorage mid-session and refresh → treated as a new/unauthenticated guest, never silently granted host powers.</dd>
+</dl>
+</div>
+
+<div class="pagecard">
+<h3><code>PAYMENT_STAFF_SETTLEMENT_REQUIRED</code> — wave R7</h3>
+<dl class="kv">
+<dt>Default</dt><dd><code>false</code></dd>
+<dt>Status</dt><dd><span class="pill df">DEFERRED</span> — needs webhook exact-replay proof in CI and a live gateway</dd>
+<dt>Why</dt><dd>Forces a human to confirm settlement even for provider-driven payments. It is "humans stay the authority for money" expressed as a switch.</dd>
+<dt>Enabled</dt><dd>Provider webhooks alone cannot complete a payment; staff must confirm.</dd>
+<dt>Disabled (today)</dt><dd>A verified webhook can complete a <code>digital</code> payment on its own. Cash and card-manual <em>always</em> require staff regardless.</dd>
+<dt>Pilot safe?</dt><dd>Irrelevant for pilot — there is <b>no live gateway</b>, so every real payment is cash / card-manual / UPI-staff-confirmed. Leave OFF.</dd>
+<dt>Manual verification</dt><dd>Confirm the cash and card-manual paths always require staff regardless of this flag. Then post a signed test webhook twice and confirm idempotency: one state change, the second recorded as a replay.</dd>
+</dl>
+</div>
+
+<div class="pagecard">
+<h3><code>OTEL_ENABLED</code> (+ <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>, <code>OTEL_SERVICE_NAME</code>, <code>OTEL_TRACES_SAMPLE_RATIO</code>)</h3>
+<dl class="kv">
+<dt>Default</dt><dd><code>false</code>; sample ratio 0.1, clamped to [0,1]</dd>
+<dt>Status</dt><dd><span class="pill pi">NEW — dark by default</span> · <b>ON in this stack at ratio 1.0</b></dd>
+<dt>Why</dt><dd>Prometheus tells you <em>that</em> something is slow; traces tell you <em>where</em>. It also fills the dead-metric hole — <code>db_query_duration_seconds</code>, <code>db_errors_total</code> and <code>redis_ops_total</code> are declared but never incremented; spans replace them.</dd>
+<dt>Code paths</dt><dd><code>observability.SetupTracing</code>; conditional <code>otelgin.Middleware</code> in <code>server.go</code>, filtered to skip <code>/health</code>, <code>/readyz</code>, <code>/metrics</code>; <code>otelpgx</code> tracer on the pgx pool; <code>redisotel</code> on the Redis client; <code>trace_id</code>/<code>span_id</code> injected into the request logger; audit <code>correlation_id</code> backfilled from the trace id when no <code>X-Correlation-ID</code> header is present.</dd>
+<dt>Enabled</dt><dd>OTLP/gRPC export to the collector; gin + pgx + redis spans stitched under one trace.</dd>
+<dt>Disabled</dt><dd>Byte-for-byte identical behaviour: no-op provider, no exporter dial, no extra goroutines. That property is the merge gate.</dd>
+<dt>Pilot safe?</dt><dd>Yes, but the VM deploy (rollout Phase 3) is <b>blocked pending an explicit Phase 0 sizing GO</b>. Do not enable it in production as part of this certification.</dd>
+<dt>Caveats</dt><dd>No WebSocket spans, no worker spans, no outbound-HTTP spans — deliberate deferrals. Killing the collector must not fail requests (Warn logs only).</dd>
+<dt>Manual verification</dt><dd>§13, then <code>docker stop qr-dining-signoz-eval-signoz-otel-collector-1</code> mid-flow: requests keep returning 200 with only warnings. Restart it afterwards.</dd>
+</dl>
+</div>
+
+<h3>10.2 The platform product flags (database-driven)</h3>
+
+<div class="pagecard">
+<h3><code>staff_performance_analytics</code></h3>
+<dl class="kv">
+<dt>Catalog default</dt><dd><code>FALSE</code> (seeded by migration 000034)</dd>
+<dt>Current overrides</dt><dd><b>none</b> — it resolves disabled everywhere</dd>
+<dt>Why</dt><dd>Staff performance data is politically sensitive and commercially tiered. Seeding the key guarantees deterministic resolution rather than "flag not found" ambiguity.</dd>
+<dt>Paired entitlement</dt><dd><code>analytics.staff_performance</code> — <b>granted by no seeded plan</b>, so both halves are off.</dd>
+<dt>Affects</dt><dd>Admin → Performance tab; <code>GET /branches/:id/analytics/staff/*</code>; <code>GET /platform/analytics/staff-performance</code>.</dd>
+<dt>Manual verification</dt><dd>Walk the four-cell truth table — (off,off) (on,off) (off,on) (on,on). Only the last may expose data. Use the entitlement override UI for one half and the flag override UI for the other.</dd>
+</dl>
+</div>
+
+<div class="pagecard">
+<h3><code>loyalty</code></h3>
+<dl class="kv">
+<dt>Catalog default</dt><dd><code>FALSE</code> (seeded by migration 000035)</dd>
+<dt>Current overrides</dt><dd><b>none</b></dd>
+<dt>Paired entitlements</dt><dd><code>loyalty.enabled</code> (accrual/balances), <code>loyalty.redeem</code> (staff-recorded redemptions), <code>loyalty.manual_adjustment</code> (manual edits) — <b>none granted by any seeded plan</b>.</dd>
+<dt>Affects</dt><dd>Admin → Loyalty tab; guest CustomerOptIn; the accrual hook on payment completion.</dd>
+<dt>Enabled</dt><dd>Payment completion accrues points, error-isolated — a loyalty failure must never alter payment semantics; failures increment <code>loyalty_accrual_failures_total</code>. Staff can look up a customer and record a redemption.</dd>
+<dt>Disabled</dt><dd>Guest opt-in returns <code>FEATURE_DISABLED</code> and the UI shows the friendly "doesn't offer saved preferences" copy.</dd>
+<dt>Caveat that matters</dt><dd><b>Redemption is ledger-only.</b> It deducts points and does <em>not</em> reduce the bill. Redemption changing a payment total would be a serious defect.</dd>
+<dt>Manual verification</dt><dd>Turn both halves on for Saffron only; confirm Copper Pot is unaffected (tenant isolation of a flag). Settle a payment → one earn row. Replay it → still one row. Over-redeem → refused by <code>CHECK (points_balance &gt;= 0)</code>.</dd>
+</dl>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="entitlements">11. Every entitlement, and how it combines with flags</h2>
+
+<div class="ok" style="font-size:16px"><b>The rule, in one line:</b>
+<code>feature enabled = organization holds the entitlement <b>AND</b> the platform flag resolves enabled for the scope</code>.
+Both default off, so a gated feature is inert until an operator deliberately does both. Decisions are cached
+60s in Redis; operator mutations flush the <code>featgate:*</code> keyspace immediately.</div>
+
+<h3>The catalog — 13 entries, verified live against the seeded database</h3>
+<table>
+<tr><th>Key</th><th>Kind</th><th>Meaning</th><th>Free</th><th>Standard</th><th>Premium</th></tr>
+<tr><td class="k">analytics.basic</td><td>capability</td><td>Basic branch/org analytics</td><td>—</td><td>✅</td><td>✅</td></tr>
+<tr><td class="k">analytics.advanced</td><td>capability</td><td>Advanced analytics surfaces</td><td>—</td><td>—</td><td>✅</td></tr>
+<tr><td class="k">analytics.staff_performance</td><td>capability</td><td>Waiter/kitchen/manager performance</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="k">custom.theme</td><td>capability</td><td>Custom theme tokens beyond presets</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="k">multi_branch</td><td>capability</td><td>Operate more than one branch</td><td>—</td><td>—</td><td>✅</td></tr>
+<tr><td class="k">advanced.audit</td><td>capability</td><td>Extended audit retention/reads</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="k">support.priority</td><td>capability</td><td>Priority operator support</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="k">api.access</td><td>capability</td><td>Programmatic API access</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="k">loyalty.enabled</td><td>capability</td><td>Loyalty accrual + balances</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="k">loyalty.redeem</td><td>capability</td><td>Staff-recorded redemptions</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="k">loyalty.manual_adjustment</td><td>capability</td><td>Manual point adjustments</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td class="k">limit.branches</td><td>limit</td><td>Max branches per org</td><td>1</td><td>3</td><td>∞</td></tr>
+<tr><td class="k">limit.staff</td><td>limit</td><td>Max staff per org</td><td>∞</td><td>∞</td><td>∞</td></tr>
+<tr><td class="k">limit.tables</td><td>limit</td><td>Max tables per branch</td><td>10</td><td>∞</td><td>∞</td></tr>
+</table>
+<p class="small">NULL <code>limit_value</code> = unlimited. Several capabilities are granted by <b>no</b> plan —
+they exist for org-level overrides and future tiers. That is intentional, not missing data.</p>
+
+<h3>How resolution actually works</h3>
+<ol>
+<li><b>Entitlement:</b> org override (<code>organization_entitlement_overrides</code>) → else the org's plan
+grant (<code>organization_plan_assignments</code>, falling back to the org's restaurant subscription) →
+<code>plan_entitlements</code> → else the plan's legacy <code>features_json</code> bridge → else denied.</li>
+<li><b>Flag:</b> branch override → org override → global override → catalog <code>default_enabled</code>.</li>
+<li><b>AND</b> them, then cache for 60s.</li>
+</ol>
+
+<h3>Worked examples you should actually run</h3>
+<table>
+<tr><th>#</th><th>Setup</th><th>Expected</th></tr>
+<tr><td>E1</td><td>Saffron (Premium). Flag <code>loyalty</code> = default (off). No entitlement.</td><td>Loyalty tab inert. Guest opt-in → <code>FEATURE_DISABLED</code>.</td></tr>
+<tr><td>E2</td><td>Grant org 1 an override <code>loyalty.enabled = true</code>. Leave the flag off.</td><td><b>Still off.</b> AND fails on the flag. This is the test most people get wrong.</td></tr>
+<tr><td>E3</td><td>Also set global flag <code>loyalty = true</code>.</td><td>On for org 1 <em>and</em> anyone else holding the entitlement. Copper Pot has none → still off. Proves AND, not OR.</td></tr>
+<tr><td>E4</td><td>Set branch override <code>loyalty = false</code> on Saffron Bandra only.</td><td>Bandra off; Indiranagar and Connaught Place on. Proves branch &gt; global.</td></tr>
+<tr><td>E5</td><td>Assign Urban Brew (Free) to Premium via Entitlements → assign plan.</td><td><code>multi_branch</code>, <code>analytics.advanced</code> and unlimited limits resolve immediately. Confirm via <code>GET /platform/organizations/3/entitlements</code>.</td></tr>
+<tr><td>E6</td><td>Set org override <code>limit.tables = 2</code> for Urban Brew, then add a 4th table.</td><td>Limits are <b>resolve-only today</b> — the add should <em>succeed</em>, and the observability page shows where it <em>would</em> have bitten. If the add is blocked, enforcement has leaked in unplanned.</td></tr>
+<tr><td>E7</td><td>Try to save a custom theme token for Copper Pot (no <code>custom.theme</code>).</td><td>Refused; presets remain selectable. This is the one entitlement that <b>does</b> bite today, alongside the FeatureGate pair.</td></tr>
+</table>
+
+<div class="warn"><b>Remember the scope of real enforcement.</b> Governance bites in exactly three places today:
+the FeatureGate pair (staff analytics, loyalty) and <code>custom.theme</code> on theme writes. Everything else
+— suspension, limits, subscription status, invoices — is recorded and audited but <b>inert</b>. Testing them
+means testing that they record correctly and <em>do not</em> block traffic.</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="realtime">12. Realtime — events, ordering, recovery</h2>
+
+<h3>Connection lifecycle</h3>
+<ol>
+<li>Guest authenticates → <code>POST /sessions/:id/ws-ticket</code> → a short-lived, single-use Redis ticket.</li>
+<li>Connect <code>GET /ws</code> with the ticket. The hub is a <b>single goroutine with no mutexes</b> — the rooms map is owned by one loop.</li>
+<li>Events flow service → Redis pub/sub → hub subscriber → room broadcast.</li>
+</ol>
+
+<h3>The ~25 event types</h3>
+<table>
+<tr><th>Group</th><th>Events</th></tr>
+<tr><td class="k">Session</td><td><code>SESSION_CREATED</code>, <code>SESSION_CLOSED</code>, <code>SESSION_EXPIRING_SOON</code></td></tr>
+<tr><td class="k">Participants</td><td><code>PARTICIPANT_JOINED</code>, <code>PARTICIPANT_LEFT</code>, <code>HOST_CHANGED</code></td></tr>
+<tr><td class="k">Cart</td><td><code>ITEM_ADDED</code>, <code>ITEM_REMOVED</code>, <code>CART_UPDATED</code></td></tr>
+<tr><td class="k">Orders</td><td><code>ORDER_PLACED</code>, <code>ORDER_CONFIRMED</code>, <code>ORDER_PREPARING</code>, <code>ORDER_READY</code>, <code>ORDER_SERVED</code>, <code>ORDER_CANCELLED</code></td></tr>
+<tr><td class="k">Assistance</td><td><code>ASSISTANCE_REQUESTED</code>, <code>ASSISTANCE_ACKNOWLEDGED</code>, <code>ASSISTANCE_RESOLVED</code></td></tr>
+<tr><td class="k">Money</td><td><code>PAYMENT_INITIATED</code>, <code>PAYMENT_COMPLETED</code>, <code>PAYMENT_SETTLEMENT_STALLED</code>, <code>PROMO_APPLIED</code></td></tr>
+<tr><td class="k">Menu</td><td><code>MENU_ITEM_AVAILABILITY_CHANGED</code></td></tr>
+<tr><td class="k">Transport</td><td><code>PING</code>, <code>PONG</code> — pings double as presence heartbeats</td></tr>
+</table>
+
+<h3>Ordering &amp; reconciliation — the core principle</h3>
+<p>Every session has a monotonic sequence (<code>session_sequences</code>). The client tracks the last sequence
+it saw; on reconnect it fetches <code>GET /sessions/:id/snapshot</code> (advertised via the
+<code>X-Reconnect-Endpoint</code> header) and reconciles.</p>
+<div class="ok"><b>The snapshot is authoritative; events are advisory.</b> If UI state survives a refresh but
+disagrees with the snapshot, the client has invented state — a genuine bug.</div>
+
+<h3>Reconnect behaviour</h3>
+<ul>
+<li>Client: exponential backoff 1s → 30s, max 10 attempts, 30s ping interval.</li>
+<li>Server: 12 admissions per minute per session; the rest 429 (chaos-validated storm bound).</li>
+<li>A ticket 409 routes through snapshot reactivation.</li>
+<li>Exhausting retries leaves the current UI visible with an explicit in-place <b>Retry</b> — <b>not</b> a dead end. (Finding F-1 was exactly a reconnect dead-end; this is its regression test.)</li>
+<li>Slow consumers are evicted immediately (non-blocking send) — one slow phone cannot stall a table.</li>
+<li>100-strike force-close on inbound abuse.</li>
+</ul>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="obs">13. Observability — what to watch per workflow</h2>
+
+<p>Three signals are live in this stack:</p>
+<table>
+<tr><th>Signal</th><th>Where</th><th>Notes</th></tr>
+<tr><td class="k">Traces</td><td>SigNoz → <a href="http://localhost:3301">http://localhost:3301</a></td><td>Services <code>qr-dining-backend-mtest-1</code> and <code>-mtest-2</code>, sample ratio 1.0</td></tr>
+<tr><td class="k">Metrics</td><td><a href="http://localhost:8090/metrics">:8090/metrics</a> · <a href="http://localhost:8095/metrics">:8095/metrics</a></td><td>Raw Prometheus text. No Prometheus server runs locally — <code>curl | grep</code> is the workflow.</td></tr>
+<tr><td class="k">Logs</td><td><code>/tmp/qrapp-mtest-1.log</code>, <code>-2.log</code></td><td>zerolog JSON with <code>request_id</code> + <code>trace_id</code> + <code>span_id</code></td></tr>
+</table>
+
+<h3>The pivot that proves it all works</h3>
+<pre><code># 1. Do something mutating in the UI, then find its audit row:
+docker exec manual-testing-postgres psql -U mtest -d qrdining_mtest \
+  -c "select action, actor_type, result, correlation_id from audit_log order by id desc limit 5;"
+
+# 2. Paste that correlation_id into SigNoz as the trace id.
+#    (With no X-Correlation-ID header, correlation_id IS the trace id.)
+
+# 3. Grep the same id in the log:
+grep &lt;correlation_id&gt; /tmp/qrapp-mtest-1.log</code></pre>
+<p>Audit row → trace → logs, with no schema change. If that three-way pivot works, the observability story is
+certified.</p>
+
+<h3>Workflow-by-workflow expectations</h3>
+<table>
+<tr><th>Workflow</th><th>Trace / spans</th><th>Metrics that move</th><th>Log / audit</th></tr>
+
+<tr><td class="k">QR scan → session create</td>
+<td>Root <code>GET /tables/by-qr/:token</code>, then <code>POST /sessions</code> with child pgx INSERT spans (sessions, participants, carts, sequences) and a redis PUBLISH span</td>
+<td><code>active_sessions_total</code> ↑ · <code>http_requests_total{route="/sessions"}</code> ↑ · <code>http_request_duration_seconds</code></td>
+<td>Access log with <code>trace_id</code>; audit row for creation</td></tr>
+
+<tr><td class="k">Join session</td>
+<td><code>POST /sessions/:id/join</code> + pgx INSERT + PUBLISH</td>
+<td><code>http_requests_total</code></td>
+<td><code>PARTICIPANT_JOINED</code> in <code>session_events</code></td></tr>
+
+<tr><td class="k">WS connect</td>
+<td>Ticket-issue span only — <b>the socket itself is not traced</b> (deliberate deferral)</td>
+<td><code>ws_connections_active</code> ↑ · <code>ws_messages_sent_total</code> ↑ · <code>ws_ticket_consume_failed_total</code> stays 0</td>
+<td>Hub connect/disconnect logs</td></tr>
+
+<tr><td class="k">Add to cart</td>
+<td><code>POST /sessions/:id/cart/items</code> + pgx + PUBLISH</td>
+<td><code>event_publish_duration_seconds</code> · <code>ws_messages_sent_total</code></td>
+<td><code>ITEM_ADDED</code> + <code>CART_UPDATED</code> in <code>session_events</code></td></tr>
+
+<tr><td class="k">Place order</td>
+<td><code>POST /sessions/:id/orders</code> — the fattest trace: sequence allocation, order + order_items inserts, cart clear, publish</td>
+<td><code>orders_total</code> ↑ · <code>idempotency_replays_total</code> on a double-tap</td>
+<td>Audit row; <code>ORDER_PLACED</code></td></tr>
+
+<tr><td class="k">Kitchen advances order</td>
+<td><code>PATCH /orders/:id/status</code> ×3</td>
+<td><code>order_lifecycle_duration_seconds</code> observed at <code>served</code></td>
+<td>Audit row per transition, with the staff actor</td></tr>
+
+<tr><td class="k">Payment initiation</td>
+<td><code>POST /sessions/:id/payments</code> — bill snapshot insert, promo redemption, session transition, publish</td>
+<td><code>http_requests_total</code>; sensitive rate-limiter counters</td>
+<td>Audit row; <code>PAYMENT_INITIATED</code>; a <code>bill_snapshots</code> row</td></tr>
+
+<tr><td class="k">Staff settlement</td>
+<td><code>PATCH /payments/:id/settle</code> plus a possible session close</td>
+<td><code>session_duration_seconds</code> observed on close · <code>loyalty_accrual_failures_total</code> stays 0</td>
+<td>Audit row with <code>settled_by_staff_id</code>; <code>PAYMENT_COMPLETED</code>; possibly <code>SESSION_CLOSED</code></td></tr>
+
+<tr><td class="k">Stalled settlement (5/15 min)</td>
+<td><b>No trace</b> — workers are not instrumented (deliberate)</td>
+<td><code>payment_pending_escalations_total{severity=...}</code> ↑ · <code>background_worker_runs_total</code></td>
+<td>Warn/critical log; <code>event_log</code> row; audit row; WS <code>PAYMENT_SETTLEMENT_STALLED</code></td></tr>
+
+<tr><td class="k">Redis outage</td>
+<td>Redis spans start erroring</td>
+<td><code>redis_pubsub_connected</code> → 0 · <code>redis_pubsub_errors_total</code> ↑ · <code>redis_pubsub_reconnects_total</code> ↑ on recovery · <code>rate_limiter_unavailable_total</code> ↑</td>
+<td>Reconnect-backoff logs. <b>HTTP must keep working.</b></td></tr>
+
+<tr><td class="k">Any authz denial</td>
+<td>Normal span with a 403 status</td>
+<td><code>authz_denied_total</code> · <code>policy_shadow_mismatch_total</code></td>
+<td>Audit row (shadow mode records success with a note)</td></tr>
+
+<tr><td class="k">Feature-gate evaluation</td>
+<td>pgx spans on a cache miss; nothing on a hit</td>
+<td><code>entitlement_evaluations_total</code> · <code>feature_flag_resolutions_total</code> · <code>cache_hits_total</code>/<code>cache_misses_total</code></td>
+<td>—</td></tr>
+</table>
+
+<div class="warn"><b>Known dead metrics — do not report as bugs.</b>
+<code>db_query_duration_seconds</code>, <code>db_errors_total</code> and <code>redis_ops_total</code> are declared
+but never incremented; OTel spans replace them. Likewise <code>audit_log.row_hash</code> is always NULL
+(hash-chain deferred) and the PresenceExpiry worker only debug-logs.</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="failure">14. Failure scenarios worth testing by hand</h2>
+<p>Grouped by what they prove. Severity guidance lives in the checklist.</p>
+
+<h3>Network &amp; transport</h3>
+<ol>
+<li><b>Wi-Fi off mid-session</b> → reconnect banner, exponential backoff, then snapshot reconciliation. No lost cart items.</li>
+<li><b>Airplane mode 3+ minutes</b> → the session may move to <code>awaiting_reactivation</code>; returning should offer reactivation, never a dead end.</li>
+<li><b>Kill the collector</b> (<code>docker stop qr-dining-signoz-eval-signoz-otel-collector-1</code>) → requests keep succeeding, Warn logs only. Restart afterwards.</li>
+<li><b>Redis outage</b> (<code>docker stop manual-testing-redis</code>) → realtime pauses, HTTP continues, sensitive limiters fail closed (login <em>refused</em>, not bypassed). Restart → automatic recovery with no manual step.</li>
+<li><b>Postgres outage</b> → <code>/readyz</code> returns 503 while <code>/health</code> stays 200.</li>
+<li><b>Backend restart mid-session</b> → guests reconnect and reconcile in ~12s.</li>
+<li><b>Cross-instance</b>: guest on :3000 (app-1) and a second guest on :3001 (app-2) in the same session. Events must cross via Redis — the multi-pod proxy test.</li>
+</ol>
+
+<h3>Client-side</h3>
+<ol start="8">
+<li><b>Browser refresh</b> at every step of the guest flow.</li>
+<li><b>Back/forward navigation</b>, including back into a closed session.</li>
+<li><b>Two tabs, same guest</b> → consistent, with no duplicate participant.</li>
+<li><b>localStorage cleared</b> mid-session → treated as unauthenticated, no silent host escalation.</li>
+<li><b>Deep-link straight to <code>/session/&lt;id&gt;/payment</code></b> without going through the QR.</li>
+<li><b>Mobile viewport</b> (375×812) on every guest page — this is a phone product first.</li>
+<li><b>Slow 3G throttling</b> on the menu page.</li>
+</ol>
+
+<h3>Concurrency</h3>
+<ol start="15">
+<li><b>Two guests add the same item simultaneously.</b></li>
+<li><b>Double-tap "Send order"</b> → exactly one order.</li>
+<li><b>Two waiters settle the same payment</b> → one wins cleanly.</li>
+<li><b>Kitchen advances an order the waiter is cancelling</b> → invalid-transition error, no corruption.</li>
+<li><b>Host transfer while the old host is mid-submit.</b></li>
+<li><b>Two guests scan the same free table at the same moment</b> → one creates, one joins; never two sessions.</li>
+</ol>
+
+<h3>Permissions &amp; tenancy</h3>
+<ol start="21">
+<li><b>Non-host</b> attempts order / bill / payment → <code>NOT_SESSION_HOST</code> with helpful copy.</li>
+<li><b>Manager</b> attempts staff creation → refused (intended).</li>
+<li><b>Kitchen</b> attempts payment settlement → refused.</li>
+<li><b>Cross-tenant</b>: a Saffron staff token against a Copper Pot branch id → refused.</li>
+<li><b>Cross-session</b>: guest A's token against session B → refused.</li>
+<li><b>Staff token</b> against <code>/platform/*</code> → 401.</li>
+<li><b>read_only_auditor</b> attempts any platform mutation → 403.</li>
+<li><b>Revoked staff session</b> replayed after logout or deactivation → 401.</li>
+<li><b>Expired guest token</b>, or one with a bumped credential version → refused.</li>
+</ol>
+
+<h3>State machine &amp; money</h3>
+<ol start="30">
+<li><b>Cart mutation during <code>payment_pending</code></b> → <code>PAYMENT_IN_PROGRESS</code>.</li>
+<li><b>Bill snapshot immutability</b> — change prices/promos after initiation; the frozen bill must not move.</li>
+<li><b>Split payment</b> covering half → session stays open; the second payment closes it.</li>
+<li><b>Cancel a payment</b>, then re-initiate → a new snapshot and clean state.</li>
+<li><b>Order cancelled after the bill was frozen</b> → the frozen bill still governs.</li>
+<li><b>Webhook replay</b> — the same signed event twice → one state change, the second recorded as a replay.</li>
+<li><b>Webhook with a bad signature / wrong amount / wrong currency / wrong session</b> → all four rejected.</li>
+<li><b>Session timeout</b> — set <code>session_timeout_minutes</code> to 1 in Settings and watch StaleSessionCleaner abandon the session and free the table.</li>
+<li><b>Payment escalation</b> at 5 and 15 minutes → alerts only, zero state change.</li>
+</ol>
+
+<h3>Governance, themes &amp; QR</h3>
+<ol start="39">
+<li><b>Flag precedence</b> branch &gt; org &gt; global &gt; default, all four layers.</li>
+<li><b>Entitlement AND flag</b> truth table for both gated features.</li>
+<li><b>Suspend an org</b> → guests keep ordering (inert by design).</li>
+<li><b>Theme change</b> → repaints the guest surface only; staff and platform unaffected.</li>
+<li><b>Invalid theme token</b> (bad hex, non-allowlisted key, <code>javascript:</code>) → rejected server-side.</li>
+<li><b>Theme never persists</b> across a branch switch — no cross-tenant colour leak.</li>
+<li><b>QR refresh</b> → the old token dies immediately.</li>
+<li><b>Deleted or archived table's QR</b> → clean error.</li>
+<li><b>Printed QR scanned from paper</b> with a real phone camera, all five collateral formats.</li>
+<li><b>Rate limits</b>: assistance 6/min/session · order 12/min/session · payment init 6/min/session · host transfer 6/min/session · ws-ticket 12/min/session · staff auth 10/min — each must degrade to a clean message.</li>
+</ol>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="order">15. Recommended testing order — and why</h2>
+
+<pre><code>0. Environment sanity           (10 min)
+        ↓
+1. GUEST happy path             (60 min)   ← generates the data everything else needs
+        ↓
+2. KITCHEN                      (30 min)   ← consumes guest orders
+        ↓
+3. WAITER                       (45 min)   ← closes the loop: serve + settle
+        ↓
+4. MANAGER / OWNER admin        (90 min)   ← configures what guests see next round
+        ↓
+5. PLATFORM control plane       (90 min)   ← governs what the tenant may do at all
+        ↓
+6. FLAGS + ENTITLEMENTS         (60 min)
+        ↓
+7. CROSS-TENANT isolation       (45 min)
+        ↓
+8. FAILURE scenarios            (90 min)   ← destructive; only after happy paths pass
+        ↓
+9. OBSERVABILITY pivot          (30 min)
+        ↓
+10. REGRESSION sweep            (45 min)   ← re-run step 1 after everything you changed</code></pre>
+
+<h3>Why this order and not another</h3>
+<dl class="kv">
+<dt>Guest first</dt><dd>It is the only role that <b>creates</b> data. Every other surface consumes sessions, orders, payments and assistance requests. Testing the kitchen board before any order exists is testing an empty state.</dd>
+<dt>Kitchen before waiter</dt><dd>The order machine is directional: kitchen owns <code>confirmed→preparing→ready</code>, the waiter owns <code>ready→served</code>. You cannot test "mark served" until the kitchen has produced a ready order.</dd>
+<dt>Waiter before admin</dt><dd>The waiter closes sessions through settlement, and settled sessions are what populate stats, performance and loyalty — the admin surfaces you test next. Analytics on zero closed sessions tells you nothing.</dd>
+<dt>Admin before platform</dt><dd>Admin changes are tenant-local and reversible; platform changes are global and can invalidate everything you already tested. Establish the tenant baseline first.</dd>
+<dt>Flags after both consoles</dt><dd>You need a working feature to prove a gate turns it off. Testing the gate first cannot distinguish "gated" from "broken".</dd>
+<dt>Cross-tenant after single-tenant</dt><dd>An isolation failure is only meaningful once the happy path works; otherwise you cannot tell isolation from a plain bug.</dd>
+<dt>Failure scenarios late</dt><dd>They are destructive — Redis outages, killed backends, expired sessions. Running them early poisons the data your happy-path tests depend on.</dd>
+<dt>Observability near the end</dt><dd>It needs a rich trace and audit history to pivot through, and it is the fastest confidence check that everything you just did was recorded.</dd>
+<dt>Regression sweep last</dt><dd>You have changed themes, flags, entitlements, menus, timeouts and plans. Re-run the guest happy path to prove your own configuration did not break it. <b>This step catches more real bugs than any other.</b></dd>
+</dl>
+
+<div class="note"><b>Two people?</b> Guest and staff flows are naturally two-handed. One person on a phone as
+the guest, one on a laptop as staff, in the same room, is worth several hours of solo tab-switching —
+especially for realtime latency, which is what a real service actually feels.</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="env">16. Environment &amp; seed data</h2>
+
+<div class="danger"><b>The soak stack is protected.</b> Compose project <code>qr-dining</code>
+(<code>qr-app-soak</code>, <code>qr-dining-postgres-1</code>, <code>qr-dining-redis-1</code>) is running and must
+never be stopped, restarted or wiped. This testing stack shares no network, volume, port or container with it.
+Teardown only ever touches the <code>manual-testing</code> project.</div>
+
+<h3>What is running right now</h3>
+<table>
+<tr><th>Component</th><th>Where</th><th>State</th></tr>
+<tr><td class="k">Frontend A</td><td><a href="http://localhost:3000">localhost:3000</a> → app-1</td><td><code>next dev</code></td></tr>
+<tr><td class="k">Frontend B</td><td><a href="http://localhost:3001">localhost:3001</a> → app-2</td><td><code>next dev</code> (cross-instance tests)</td></tr>
+<tr><td class="k">Backend app-1</td><td>:8090 · <code>WORKER_REGION=mtest-1</code></td><td>audit ON · <b>OTEL ON @ ratio 1.0</b></td></tr>
+<tr><td class="k">Backend app-2</td><td>:8095 · <code>WORKER_REGION=mtest-2</code></td><td>audit ON · <b>OTEL ON @ ratio 1.0</b></td></tr>
+<tr><td class="k">Postgres</td><td><code>postgres://mtest:mtest_pass@localhost:25432/qrdining_mtest</code></td><td>schema v38</td></tr>
+<tr><td class="k">Redis</td><td><code>redis://localhost:26379/0</code></td><td>shared by both backends</td></tr>
+<tr><td class="k">SigNoz</td><td><a href="http://localhost:3301">localhost:3301</a>, collector :4317</td><td>eval stack, project <code>qr-dining-signoz-eval</code></td></tr>
+</table>
+<p>Both backends share the DB, Redis and one <code>GUEST_TOKEN_SECRET</code>, so guest tokens and realtime
+events cross instances. Logs: <code>/tmp/qrapp-mtest-{1,2}.log</code>, <code>/tmp/frontend-{a,b}.log</code>.</p>
+
+<h3>The three tenants</h3>
+<table>
+<tr><th>Org</th><th>Plan</th><th>Theme</th><th>Branches (id · code)</th></tr>
+<tr><td class="k">1 · Saffron House Hospitality</td><td>Premium · active</td><td>dark-luxury + custom tokens</td><td>1 Bandra <code>SAFF-BND</code> · 2 Indiranagar <code>SAFF-IND</code> · 3 Connaught Place <code>SAFF-CP</code></td></tr>
+<tr><td class="k">2 · Copper Pot Kitchen</td><td>Standard · active</td><td>warm-cafe</td><td>4 Koramangala <code>COPR-KOR</code></td></tr>
+<tr><td class="k">3 · Urban Brew Cafe</td><td>Free · <b>trial</b> (ends 2026-08-20)</td><td>vibrant</td><td>5 Cyber Hub <code>BREW-CYB</code></td></tr>
+</table>
+<p>15 tables (3 per branch), 18 staff, 71 menu items, 4 platform users. Timezone <code>Asia/Kolkata</code> throughout.</p>
+
+<h3>Credentials</h3>
+<table>
+<tr><th>Surface</th><th>Credential</th></tr>
+<tr><td class="k">Staff</td><td><code>branch_id</code> + PIN — owner <code>1111</code>, manager <code>2222</code>, waiter <code>3333</code>, kitchen <code>4444</code>. Owner exists only on each tenant's primary branch (1, 4, 5).</td></tr>
+<tr><td class="k">Platform</td><td><code>admin@platform.local</code>/<code>Platform!admin1</code> (super_admin) · <code>support@platform.local</code>/<code>Support!admin1</code> · <code>billing@platform.local</code>/<code>Billing!admin1</code> · <code>auditor@platform.local</code>/<code>Auditor!admin1</code>. <b>No MFA enrolled.</b></td></tr>
+<tr><td class="k">Guest</td><td>None — enter via a table QR token. Live tokens are on the dashboard.</td></tr>
+</table>
+
+<div class="warn"><b>Current baseline state — read this before you start.</b>
+Saffron Bandra (branch 1) has <b>all three tables occupied</b> by leftover <code>payment_pending</code> sessions
+from earlier smoke runs. Free right now: Saffron Indiranagar T1–T3, Saffron Connaught Place T1–T3,
+Copper Pot T1 &amp; T3, Urban Brew T1 &amp; T3.
+<br><br>
+Those stale sessions are <em>useful</em> fixtures for the waiter settlement queue. If you want a pristine
+baseline instead, run <code>./scripts/manual-testing-up.sh --reset</code> — which wipes the isolated volumes,
+re-seeds, and <b>regenerates every QR token</b>. Refresh the dashboard afterwards with:
+<pre><code>docker exec manual-testing-postgres psql -U mtest -d qrdining_mtest -tAc \
+  "select branch_id, identifier, qr_code_token from tables order by 1,2;"</code></pre></div>
+
+<h3>Restarting the backends with tracing on</h3>
+<p>The up-script does not set the OTel vars. If you restart the stack, relaunch the backends with:</p>
+<pre><code>pkill -f '^/tmp/qrapp-mtest$'   # note the anchors — a bare pattern also kills your own shell
+/tmp/start-mtest-otel.sh        # launches both with OTEL_ENABLED=true → localhost:4317</code></pre>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="errors">17. Guest-facing error codes</h2>
+<p>Every one of these has hand-written copy in <code>frontend/lib/api/client.ts</code>. Seeing a raw code, a
+stack trace, or a generic "Something went wrong" where a specific message exists is itself a finding.</p>
+<table>
+<tr><th>Code</th><th>Guest sees</th><th>When</th></tr>
+<tr><td class="k">SESSION_NOT_FOUND</td><td>This session has ended.</td><td>Terminal or unknown session</td></tr>
+<tr><td class="k">SESSION_CLOSED</td><td>Your table session has paused. Please refresh to continue.</td><td>Session left the active set</td></tr>
+<tr><td class="k">PAYMENT_IN_PROGRESS</td><td>A payment is being processed — ordering is paused until it's settled.</td><td>Cart/order mutation during <code>payment_pending</code></td></tr>
+<tr><td class="k">MENU_ITEM_UNAVAILABLE</td><td>One of your items just became unavailable. Please review your cart.</td><td>Availability toggled mid-session</td></tr>
+<tr><td class="k">TABLE_OCCUPIED</td><td>This table already has an active session.</td><td>Create attempted on an occupied table</td></tr>
+<tr><td class="k">PARTICIPANT_UNAUTHORIZED</td><td>You're not part of this session.</td><td>Cross-session token</td></tr>
+<tr><td class="k">CART_EMPTY</td><td>Your cart is empty.</td><td>Order with no items</td></tr>
+<tr><td class="k">ORDER_ALREADY_PLACED</td><td>This order was already placed.</td><td>Idempotency replay</td></tr>
+<tr><td class="k">INSUFFICIENT_ROLE</td><td>You don't have permission to do this.</td><td>Staff RBAC denial</td></tr>
+<tr><td class="k">INVALID_PHONE</td><td>Please enter a valid 10-digit mobile number.</td><td>Phone validation</td></tr>
+<tr><td class="k">NOT_SESSION_HOST</td><td>Only the table host can do this. Ask the host to send the order or request the bill.</td><td><b>The most important one.</b> Host gating.</td></tr>
+<tr><td class="k">FEATURE_DISABLED</td><td>This restaurant doesn't offer saved preferences.</td><td>Loyalty gate off</td></tr>
+<tr><td class="k">MODIFIER_CONFLICT</td><td>Only one option may be chosen from this group.</td><td>Single-select violation</td></tr>
+</table>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<h2 id="cant">18. What you cannot certify in this environment</h2>
+<p>Record these as <b>out of scope</b>, not as passes. Claiming coverage you do not have is the one thing that
+would make this certification worse than useless.</p>
+<table>
+<tr><th>Area</th><th>Why not</th><th>Where it must be proven</th></tr>
+<tr><td class="k">Sustained load / memory behaviour</td><td>Manual testing is minutes, not days</td><td><b>The RC soak — the standing SEV-0</b></td></tr>
+<tr><td class="k">Split-origin production edge</td><td>Everything here is localhost: no Cloudflare Worker, no nginx, no TLS</td><td>Production rehearsal: CORS, CSP <code>connect-src</code>, WSS proxying, a real phone on cellular</td></tr>
+<tr><td class="k">Real payment gateway</td><td>None integrated; the webhook is generic</td><td>Post-pilot, behind the existing webhook abstraction</td></tr>
+<tr><td class="k">Real alert delivery</td><td>Alertmanager points at a placeholder webhook sink</td><td>SEV-1: wire one real app-down page before day 1</td></tr>
+<tr><td class="k">Image upload (R2)</td><td>R2 unconfigured → upload endpoints return 503 <b>by design</b></td><td>A production environment with R2 credentials</td></tr>
+<tr><td class="k">Platform MFA end-to-end</td><td><code>MFA_ENCRYPTION_KEY</code> unset → enrolment fails closed</td><td>Set the key and re-test, or defer to the production checklist</td></tr>
+<tr><td class="k">Backup / restore</td><td>Not wired to this stack</td><td>Already certified against real R2 on 2026-07-18</td></tr>
+<tr><td class="k">Multi-instance WS at scale</td><td>Two instances prove routing, not sharding</td><td>Deferred; revisit at ~50 restaurants</td></tr>
+<tr><td class="k">R2/R3/R7 enforcement behaviour</td><td>Those flags are off and must stay off</td><td>Their own rollout waves, with metric gates</td></tr>
+<tr><td class="k">Printed-QR durability</td><td>Print quality, lamination, lighting</td><td>A physical rehearsal with the real printer</td></tr>
+</table>
+
+<hr>
+<p class="small">Companions: <a href="testing-dashboard.html">testing dashboard</a> (live URLs, credentials, QR
+tokens) · <a href="manual-testing-checklist.html">certification checklist</a> (the run sheet) ·
+<a href="database-reference.html">database reference</a> · previous editions preserved in
+<code>docs/manual-testing/archive/</code>.<br>
+Deeper background: <code>STATE-OF-THE-PROJECT.md</code>, <code>docs/master-system-context-v1.md</code>,
+<code>session-lifecycle-state-machine.md</code>, <code>payment-finalization-invariants.md</code>,
+<code>realtime-reconciliation-invariants.md</code>, <code>docs/signoz-rollout-runbook.md</code>.</p>
+
+</main>
 </div>
 </body>
 </html>

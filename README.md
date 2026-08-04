@@ -290,18 +290,36 @@ Two goroutines run on the configured intervals (default 5 min):
 ## Testing
 
 ```bash
-# Unit tests (state machine validation — no DB required)
+# Unit tests only (no DB required). NOTE: this silently SKIPS every integration
+# test — a green `make test` proves very little on its own.
 make test
 # or: go test ./...
 
-# Integration tests (require a real PostgreSQL database)
-TEST_DATABASE_URL=postgres://user:pass@localhost:5432/testdb go test -tags integration ./internal/services/... ./internal/worker/...
+# Full suite (unit + integration). `-p 1` is REQUIRED: all packages share one
+# database and one Redis, so running package test binaries in parallel makes
+# them truncate each other's fixtures. Without -p 1 the suite fails with
+# deadlocks and foreign-key violations that are test-isolation artifacts, not
+# product bugs.
+TEST_DATABASE_URL=postgres://user:pass@localhost:5432/testdb \
+TEST_REDIS_URL=redis://localhost:6379/0 \
+  go test -count=1 -p 1 -tags integration ./...
 
-# Run with verbose output
-TEST_DATABASE_URL=... go test -tags integration -v ./internal/services/...
+# Same, with the race detector (what a release gate should run)
+TEST_DATABASE_URL=... TEST_REDIS_URL=... go test -count=1 -p 1 -race -tags integration ./...
+
+# Verbose, single package
+TEST_DATABASE_URL=... go test -tags integration -v -p 1 ./internal/services/...
 ```
 
-Integration tests skip automatically when `TEST_DATABASE_URL` is not set. They run migrations on the target database before executing, so they can be pointed at any empty PostgreSQL database.
+Integration tests skip automatically when `TEST_DATABASE_URL` is not set, and the
+Redis/WebSocket-ticket tests skip when `TEST_REDIS_URL` is not set. They run
+migrations on the target database before executing, so they can be pointed at any
+empty PostgreSQL database — always a **throwaway** one, never a soak or production DB.
+
+> **CI gap (as of 2026-08-04):** `.github/workflows/ci.yml` runs `go test -race ./...`
+> with no Postgres/Redis service and no `-tags integration`. The integration suite
+> therefore never executes in CI, and a green CI run does not cover it. Run the
+> command above locally before tagging a release.
 
 ---
 

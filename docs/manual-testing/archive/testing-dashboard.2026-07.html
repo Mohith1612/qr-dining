@@ -72,32 +72,21 @@
     <span class="pill">migration v38</span>
     <span class="pill">UI redesign: serene (guest) + ops (staff/platform)</span>
     <span class="pill">audit: ON · staff-perf/loyalty: gated</span>
-    <span class="pill ok">● OTEL tracing ON → SigNoz :3301</span>
   </div>
 </header>
-
-<div class="note" style="border-left:3px solid #d9a441;background:#2a2410">
-  <b>Baseline state right now (verified 2026-08-04).</b>
-  Saffron Bandra (branch 1) has <b>all three tables occupied</b> by leftover <code>payment_pending</code> sessions
-  from earlier smoke runs — useful fixtures for the waiter settlement queue, but they block a fresh guest
-  create on that branch. <b>Free tables:</b> Saffron Indiranagar T1–T3 · Saffron Connaught Place T1–T3 ·
-  Copper Pot T1 &amp; T3 · Urban Brew T1 &amp; T3.
-  For a pristine baseline run <code>./scripts/manual-testing-up.sh --reset</code> — it wipes the isolated
-  volumes, re-seeds, and <b>regenerates every QR token below</b>.
-</div>
 
 <!-- DOCS -->
 <h2>Testing Documents</h2>
 <div class="grid g3">
   <a class="card doc" href="manual-testing-user-guide.html">
     <h3>📘 User Guide</h3>
-    <div class="meta">Read this first · 18 sections</div>
-    Teaches the whole system: architecture, trust domains, the session state machine, page-by-page for guest / staff / admin / platform, <b>every feature flag and entitlement individually</b>, realtime events, observability per workflow, failure catalogue, and what is out of scope.
+    <div class="meta">Role-by-role handbook</div>
+    Every journey — guest, participant, waiter, kitchen, manager, org owner, platform &amp; sub-roles — with login, actions, <b>expected result</b>, common failure modes, and what to verify.
   </a>
   <a class="card doc" href="manual-testing-checklist.html">
-    <h3>✅ Certification Checklist</h3>
-    <div class="meta">The run sheet · 197 items</div>
-    Organised by role. Every item carries purpose, steps, expected result, <b>actual result</b>, pass/fail/na, notes, severity and impact. Saves as you go; exports findings to Markdown.
+    <h3>✅ Master Checklist</h3>
+    <div class="meta">Print-friendly certification</div>
+    Test · Expected · Pass · Notes across 28 categories incl. cross-tenant isolation, realtime, multi-instance, security, billing state machines, MFA, snapshot security.
   </a>
   <a class="card doc" href="manual-testing-session-guide.html">
     <h3>🎯 Session Guide</h3>
@@ -124,8 +113,6 @@
       <tr><td class="k">Staff login</td><td><a href="http://localhost:3000/staff/login">/staff/login</a></td><td>→ admin/waiter/kitchen</td></tr>
       <tr><td class="k">Platform login</td><td><a href="http://localhost:3000/platform/login">/platform/login</a></td><td>control plane</td></tr>
       <tr><td class="k">Health</td><td><a href="http://localhost:8090/readyz">:8090/readyz</a> · <a href="http://localhost:8095/readyz">:8095/readyz</a></td><td>postgres+redis</td></tr>
-      <tr><td class="k">Metrics</td><td><a href="http://localhost:8090/metrics">:8090/metrics</a> · <a href="http://localhost:8095/metrics">:8095/metrics</a></td><td>Prometheus text</td></tr>
-      <tr><td class="k">Traces</td><td><a href="http://localhost:3301">SigNoz :3301</a></td><td>collector :4317</td></tr>
     </table>
   </div>
   <div class="card">
@@ -192,27 +179,27 @@
     <h4>Bandra — <code>SAFF-BND</code> · branch_id 1 <span style="color:var(--green)">(primary · has live data)</span></h4>
     <div class="bmeta">Linking Road, Bandra West, Mumbai</div>
     <table>
-      <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/766aa2b654b4480a5bfa63f026987643be5fabaec9d5d3bf9793ee0026d73ddf">766aa2b6…d73ddf</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending (settle it from the waiter board to free the table)</span></td></tr>
-      <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/b872b55a62a828d0da8f2402d1869a7c15fd875a242ee543e6055df17d76b8da">b872b55a…76b8da</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending + payment awaiting staff confirmation</span></td></tr>
-      <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/6889f2f2aa512b3c0fae9ad29db80f1be2eae4ced8c4b71cc01872c19317f511">6889f2f2…17f511</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending</span></td></tr>
+      <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/3807b56bb7fd5391ec05eb71e1533b0e91d214551b16c10a03cbe653cf27901e">3807b56b…27901e</a> <span class="legend">seeded session (T1 drifts active→awaiting_reactivation) + order + assistance</span></td></tr>
+      <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/a6e239ed4fd9ffad4d2fd4da7acc6d23cc155485be51d81506573fbf0efad5c1">a6e239ed…fad5c1</a> <span class="legend">payment_pending + payment awaiting confirmation</span></td></tr>
+      <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/c107ac04e439322e1a8893028bbfd7dab5cb73b2a76663a9315076525693ae5a">c107ac04…93ae5a</a> <span class="legend">free</span></td></tr>
     </table>
   </div>
   <div class="branch">
     <h4>Indiranagar — <code>SAFF-IND</code> · branch_id 2</h4>
     <div class="bmeta">100 Feet Road, Indiranagar, Bengaluru</div>
     <table>
-      <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/0485e3edc301b4acb69cfb9217ebde589c62fb6a4a0f0b1cfffc4a4abdff153d">0485e3ed…ff153d</a></td></tr>
-      <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/bd6d2496651d7df4dfae2c66758f67c2a760416492747fcf80da2887ed96bc0e">bd6d2496…96bc0e</a></td></tr>
-      <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/07fa3d359831aa102b46f81068a93a572e26cc5c5fc67ca90f935b9c5a4cf8ae">07fa3d35…4cf8ae</a></td></tr>
+      <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/b89b5bd9cf3fa72b86cfa2e5e34b16cedcf22c4017ead6e8057d629352cc57b9">b89b5bd9…cc57b9</a></td></tr>
+      <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/576718273268ef9458a7d380b8919ea10c313119633de9ec8c318395038e6a33">57671827…8e6a33</a></td></tr>
+      <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/c78bd9e21b91d49bceb156616e356e3201659018072835df564fd86e07a6bcb5">c78bd9e2…a6bcb5</a></td></tr>
     </table>
   </div>
   <div class="branch">
     <h4>Connaught Place — <code>SAFF-CP</code> · branch_id 3</h4>
     <div class="bmeta">Block A, Connaught Place, New Delhi</div>
     <table>
-      <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/b21a7cf936dae8a824d6d1c8ab7bfedd76c6dba10d5e0e66b16d0b530ddc7ac4">b21a7cf9…dc7ac4</a></td></tr>
-      <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/0a8833df73918d0df2b8b797eaff2add6e0548382e6ceaedcb16bccd9100119c">0a8833df…00119c</a></td></tr>
-      <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/36a59f08e159eef0eb808d0af39f5675ade23bf646c8f92770e7e7fdace7871d">36a59f08…e7871d</a></td></tr>
+      <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/ec2b3f9c7020d839ac5d221affd039fdaaff3189704b9644257e0ad251f3711d">ec2b3f9c…f3711d</a></td></tr>
+      <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/1926f9661f473e6f5b31e943480e9995aafa624ddb47db5df97c87aa3b50990e">1926f966…50990e</a></td></tr>
+      <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/e9658aaf4f13776a0367d45e94456f849525afd29baeade8d237e50e5ead63fb">e9658aaf…ad63fb</a></td></tr>
     </table>
   </div>
 </div>
@@ -226,9 +213,9 @@
       <h4>Koramangala — <code>COPR-KOR</code> · branch_id 4 <span style="color:var(--green)">(primary · live data)</span></h4>
       <div class="bmeta">5th Block, Koramangala, Bengaluru</div>
       <table>
-        <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/ca07b0421d4067193badd3509027b3a212ce5c72b0077c55a8d0de2170c43976">ca07b042…c43976</a></td></tr>
-        <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/1f2f3bc6f1f97525cbce9b4a7b8dfa43dd0384bd9bdf9a309d8cea9b45cccd18">1f2f3bc6…cccd18</a></td></tr>
-        <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/7dd50f404c28bbc6103e581dfd210814189590437a35afae9077e10bb31d4a0c">7dd50f40…1d4a0c</a></td></tr>
+        <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/b9cd51a70bf3fb9fac6af89a0111d4c2077f4ce36a99adffaf515f0c5f4487ad">b9cd51a7…4487ad</a></td></tr>
+        <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/f73b9e7acb3430e8757143860db893a66e046f8cbbbe6a77f209e44de620cd6e">f73b9e7a…20cd6e</a></td></tr>
+        <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/e205c899eca0d1946f1cdb03c7dbea190d82b88def701fb52c91b382a0294789">e205c899…294789</a></td></tr>
       </table>
     </div>
   </div>
@@ -239,46 +226,16 @@
       <h4>Cyber Hub — <code>BREW-CYB</code> · branch_id 5 <span style="color:var(--green)">(primary · live data)</span></h4>
       <div class="bmeta">DLF Cyber Hub, Gurugram · café menu</div>
       <table>
-        <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/4bb0a6ac2dfd4fef4adfd950914cec2ee3d60a0e3490765766550d66265ecf7c">4bb0a6ac…5ecf7c</a></td></tr>
-        <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/b717c7f6aaa691b3abe6716520737bcaaf3c7422606c8f92f5641c486133fd58">b717c7f6…33fd58</a></td></tr>
-        <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/59122cf3aaa7ca789e43b0b554f34ec75bc476a5eecc4a87957ccb70d19d5dda">59122cf3…9d5dda</a></td></tr>
+        <tr><td class="k">T1</td><td><a class="tok" href="http://localhost:3000/table/2c4dfb97e98e74708ab180c8c01b2c17963d30e9e8a1aafb37d2b483ba083208">2c4dfb97…083208</a></td></tr>
+        <tr><td class="k">T2</td><td><a class="tok" href="http://localhost:3000/table/60856897af5c65744a8a718054864876a794d7125e7c769d4877e9c48d03af8e">60856897…03af8e</a></td></tr>
+        <tr><td class="k">T3</td><td><a class="tok" href="http://localhost:3000/table/c9cb60e37201c3ce438b1709b825ba22da315b40df12f5a45fa4739cd9e8cf0b">c9cb60e3…e8cf0b</a></td></tr>
       </table>
     </div>
   </div>
 </div>
 
 <div class="note" style="margin-top:16px">
-  <b>About the live data.</b> Each primary branch was seeded with an active session (+confirmed order +pending assistance) on T1 and a <code>payment_pending</code> session (+payment awaiting staff confirmation) on T2 — so kitchen/waiter/guest dashboards are populated immediately. The <b>active</b> T1 sessions follow the normal lifecycle: with no live presence they drift to <code>awaiting_reactivation</code> within ~1 min and <code>abandoned</code> a few minutes later (this is correct, and itself testable). The <code>payment_pending</code> sessions are protected from abandonment and <b>persist indefinitely</b> — which is why Saffron Bandra's tables are still occupied weeks later (see the baseline banner at the top). That is correct behaviour, not a defect: a table awaiting settlement must never be auto-abandoned. Re-run <code>--reset</code> to refresh.
-</div>
-
-<!-- OBSERVABILITY -->
-<h2>Observability</h2>
-<div class="grid g2">
-  <div class="card">
-    <h3>SigNoz <span style="color:var(--dim);font-size:13px">— traces, project <code>qr-dining-signoz-eval</code></span></h3>
-    <table>
-      <tr><th>What</th><th>Where</th></tr>
-      <tr><td class="k">UI</td><td><a href="http://localhost:3301">http://localhost:3301</a></td></tr>
-      <tr><td class="k">Collector</td><td><code>localhost:4317</code> (OTLP/gRPC)</td></tr>
-      <tr><td class="k">Services</td><td><code>qr-dining-backend-mtest-1</code> · <code>qr-dining-backend-mtest-2</code></td></tr>
-      <tr><td class="k">Sampling</td><td><code>OTEL_TRACES_SAMPLE_RATIO=1.0</code> (everything)</td></tr>
-    </table>
-    <div class="legend" style="margin-top:12px">Gin + pgx + Redis spans stitch under one trace. <code>/health</code>, <code>/readyz</code> and <code>/metrics</code> are deliberately excluded. WebSocket, worker and outbound-HTTP spans do <b>not</b> exist yet — that is a documented deferral, not a gap in the run.</div>
-  </div>
-  <div class="card">
-    <h3>The three-way pivot <span style="color:var(--dim);font-size:13px">— audit → trace → logs</span></h3>
-    <div class="legend">With no <code>X-Correlation-ID</code> header, <code>audit_log.correlation_id</code> <b>is</b> the trace id:</div>
-    <pre style="white-space:pre-wrap;font-size:12px;background:#120e0a;border:1px solid var(--line);border-radius:8px;padding:10px;overflow-x:auto">docker exec manual-testing-postgres psql -U mtest -d qrdining_mtest \
-  -c "select action, actor_type, result, correlation_id
-      from audit_log order by id desc limit 5;"
-
-# paste correlation_id into SigNoz, then:
-grep &lt;correlation_id&gt; /tmp/qrapp-mtest-1.log</pre>
-    <div class="legend" style="margin-top:10px"><b>Restarting with tracing on</b> — the up-script does not set the OTel vars:<br>
-      <code>pkill -f '^/tmp/qrapp-mtest$'</code> &nbsp;then&nbsp; <code>/tmp/start-mtest-otel.sh</code><br>
-      <span style="color:#e0a13c">Note the regex anchors — a bare <code>pkill -f qrapp-mtest</code> also matches (and kills) your own shell.</span>
-    </div>
-  </div>
+  <b>About the live data.</b> Each primary branch was seeded with an active session (+confirmed order +pending assistance) on T1 and a <code>payment_pending</code> session (+payment awaiting staff confirmation) on T2 — so kitchen/waiter/guest dashboards are populated immediately. The <b>active</b> T1 sessions follow the normal lifecycle: with no live presence they drift to <code>awaiting_reactivation</code> within ~1 min and <code>abandoned</code> a few minutes later (this is correct, and itself testable). The <code>payment_pending</code> T2 sessions are protected from abandonment and persist. Re-run <code>--reset</code> to refresh.
 </div>
 
 <!-- ROLES -->
