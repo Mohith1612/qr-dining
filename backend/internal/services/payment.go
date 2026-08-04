@@ -267,7 +267,11 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 			if perr != nil {
 				return perr
 			}
-			if _, perr := tx.CreatePromoRedemptionForPayment(ctx, vr.PromoID, payment.ID, req.PromoPhone); perr != nil {
+			// Store the normalized phone, not req.PromoPhone: the per-phone cap
+			// query is an exact string match, so persisting the raw client
+			// string would let "+91 98765 43210" evade a cap counted against
+			// "+919876543210" and make the promo infinitely re-redeemable.
+			if _, perr := tx.CreatePromoRedemptionForPayment(ctx, vr.PromoID, payment.ID, vr.NormalizedPhone); perr != nil {
 				return fmt.Errorf("create promo redemption: %w", perr)
 			}
 			if perr := tx.IncrementPromoRedemptionCount(ctx, vr.PromoID); perr != nil {

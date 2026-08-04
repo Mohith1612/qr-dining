@@ -52,7 +52,7 @@ func TestPaymentPromoRedemption(t *testing.T) {
 		}
 		return sess.Session.ID, sess.Participant.ID
 	}
-	initiate := func(sessionID uuid.UUID, participantID int64, idemKey string) (sqlc.Payment, error) {
+	initiate := func(sessionID uuid.UUID, participantID int64, idemKey, phoneArg string) (sqlc.Payment, error) {
 		// Bill of 100 → 10% discount = 10 → total 90 (handler-folded).
 		return paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
 			SessionID:      sessionID,
@@ -69,14 +69,14 @@ func TestPaymentPromoRedemption(t *testing.T) {
 				CreatedByActor: "guest:0",
 			},
 			PromoCode:  ptr("SAVE10"),
-			PromoPhone: ptr(phone),
+			PromoPhone: ptr(phoneArg),
 		})
 	}
 
 	// ── First redemption succeeds; discount lands in the snapshot ──
 	sessA, partA := freshSession()
 	key1 := uuid.NewString()
-	payment, err := initiate(sessA, partA, key1)
+	payment, err := initiate(sessA, partA, key1, phone)
 	if err != nil {
 		t.Fatalf("InitiatePayment with promo: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestPaymentPromoRedemption(t *testing.T) {
 	}
 
 	// ── Idempotent replay (same session + key) returns the same payment ──
-	replay, err := initiate(sessA, partA, key1)
+	replay, err := initiate(sessA, partA, key1, phone)
 	if err != nil {
 		t.Fatalf("idempotent replay: %v", err)
 	}
@@ -109,8 +109,36 @@ func TestPaymentPromoRedemption(t *testing.T) {
 
 	// ── Per-phone cap (1 use) blocks a second, fresh redemption with same phone ──
 	sessB, partB := freshSession()
-	if _, err := initiate(sessB, partB, uuid.NewString()); !errors.Is(err, domain.ErrPromoAlreadyUsed) {
+	if _, err := initiate(sessB, partB, uuid.NewString(), phone); !errors.Is(err, domain.ErrPromoAlreadyUsed) {
 		t.Fatalf("second redemption err = %v, want ErrPromoAlreadyUsed", err)
+	}
+
+	// ── The cap survives punctuation variants of the same phone ──
+	// The cap check normalizes before counting, so the redemption must be
+	// STORED normalized too. If the raw request string is persisted instead,
+	// every variant writes a row the exact-match cap query can never see and
+	// the promo becomes infinitely re-redeemable.
+	for _, variant := range []string{"+91 9876543210", "+91-9876543210", "(+91)9876543210", "+91 98765 43210", "919876543210", " +919876543210 "} {
+		sessV, partV := freshSession()
+		if _, err := initiate(sessV, partV, uuid.NewString(), variant); !errors.Is(err, domain.ErrPromoAlreadyUsed) {
+			t.Fatalf("redemption with variant %q err = %v, want ErrPromoAlreadyUsed", variant, err)
+		}
+	}
+
+	// Only the single successful redemption exists, and it is stored normalized.
+	var storedPhone string
+	var totalRedemptions int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM promo_redemptions WHERE promo_id = $1`, promoID).Scan(&totalRedemptions); err != nil {
+		t.Fatal(err)
+	}
+	if totalRedemptions != 1 {
+		t.Errorf("total redemptions = %d, want 1", totalRedemptions)
+	}
+	if err := pool.QueryRow(ctx, `SELECT phone_e164 FROM promo_redemptions WHERE promo_id = $1`, promoID).Scan(&storedPhone); err != nil {
+		t.Fatal(err)
+	}
+	if storedPhone != phone {
+		t.Errorf("stored phone = %q, want normalized %q", storedPhone, phone)
 	}
 }
 
