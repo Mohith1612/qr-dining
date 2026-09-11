@@ -156,8 +156,11 @@ type AwaitingReactivationRow struct {
 	TableID        int64
 }
 
-func (r *Repos) ListReactivationCandidates(ctx context.Context, olderThan time.Time) ([]ReactivationCandidate, error) {
-	rows, err := r.q.ListActiveSessionsForReactivationScan(ctx, olderThan)
+func (r *Repos) ListReactivationCandidates(ctx context.Context, createdBefore, idleBefore time.Time) ([]ReactivationCandidate, error) {
+	rows, err := r.q.ListActiveSessionsForReactivationScan(ctx, sqlc.ListActiveSessionsForReactivationScanParams{
+		CreatedBefore: createdBefore,
+		IdleBefore:    idleBefore,
+	})
 	if err != nil {
 		return nil, err
 	}

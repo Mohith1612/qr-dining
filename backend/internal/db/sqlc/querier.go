@@ -219,10 +219,10 @@ type Querier interface {
 	// awaiting_reactivation session still occupies its table and is relevant to
 	// staff, so the board reflects why a table reads occupied.
 	ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]Session, error)
-	// Returns active sessions older than the grace floor — candidates for the
-	// awaiting_reactivation transition. The worker still has to verify Redis
-	// presence absence before transitioning.
-	ListActiveSessionsForReactivationScan(ctx context.Context, dollar_1 time.Time) ([]ListActiveSessionsForReactivationScanRow, error)
+	// Returns active sessions older than the creation grace whose most recent
+	// durable participant heartbeat is older than the idle grace. The worker still
+	// has to verify Redis presence absence before transitioning.
+	ListActiveSessionsForReactivationScan(ctx context.Context, arg ListActiveSessionsForReactivationScanParams) ([]ListActiveSessionsForReactivationScanRow, error)
 	ListActiveStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
 	ListAllMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
 	ListAllMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error)

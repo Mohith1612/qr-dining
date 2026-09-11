@@ -19,6 +19,7 @@ type Config struct {
 	CORS         CORSConfig
 	Auth         AuthConfig
 	Payment      PaymentConfig
+	Presence     PresenceConfig
 	Worker       WorkerConfig
 	R2           R2Config
 	FeatureFlags FeatureFlags
@@ -88,14 +89,24 @@ type PaymentConfig struct {
 	WebhookTimestampTolerance time.Duration
 }
 
+type PresenceConfig struct {
+	// HostAbsenceGrace is how long the current host must be absent before an
+	// automatic transfer is allowed.
+	HostAbsenceGrace time.Duration
+}
+
 type WorkerConfig struct {
 	StaleSessionInterval     time.Duration
 	PresenceExpiryInterval   time.Duration
 	SessionReconcileInterval time.Duration
 	Region                   string
 	// SessionPresenceGrace is how long a session may be without active
-	// presence before the worker considers it eligible for awaiting_reactivation.
+	// presence after creation before the worker considers it eligible for
+	// awaiting_reactivation.
 	SessionPresenceGrace time.Duration
+	// SessionIdleGrace is how old the newest durable participant heartbeat must
+	// be before an established session may enter awaiting_reactivation.
+	SessionIdleGrace time.Duration
 	// SessionReactivationWindow is how long a session stays in
 	// awaiting_reactivation before the worker abandons it.
 	SessionReactivationWindow time.Duration
@@ -223,6 +234,7 @@ func Load() (*Config, error) {
 
 	cfg.Payment.WebhookSecrets = loadPaymentWebhookSecrets()
 	cfg.Payment.WebhookTimestampTolerance = parseDuration("PAYMENT_WEBHOOK_TIMESTAMP_TOLERANCE", 5*time.Minute)
+	cfg.Presence.HostAbsenceGrace = parseDuration("HOST_ABSENCE_GRACE", 3*time.Minute)
 
 	// Workers
 	cfg.Worker.StaleSessionInterval = parseDuration("STALE_SESSION_INTERVAL", 5*time.Minute)
@@ -230,6 +242,7 @@ func Load() (*Config, error) {
 	cfg.Worker.SessionReconcileInterval = parseDuration("SESSION_RECONCILE_INTERVAL", 5*time.Minute)
 	cfg.Worker.Region = getenv("WORKER_REGION", "default")
 	cfg.Worker.SessionPresenceGrace = parseDuration("SESSION_PRESENCE_GRACE", 60*time.Second)
+	cfg.Worker.SessionIdleGrace = parseDuration("SESSION_IDLE_GRACE", 5*time.Minute)
 	cfg.Worker.SessionReactivationWindow = parseDuration("SESSION_REACTIVATION_WINDOW", 5*time.Minute)
 	cfg.Worker.PaymentPendingEscalationInterval = parseDuration("PAYMENT_PENDING_ESCALATION_INTERVAL", time.Minute)
 	cfg.Worker.PaymentPendingWarnAfter = parseDuration("PAYMENT_PENDING_WARN_AFTER", 5*time.Minute)
@@ -323,6 +336,12 @@ func (c *Config) validate() error {
 	}
 	if c.Server.ReadTimeout >= c.Server.WriteTimeout {
 		return fmt.Errorf("READ_TIMEOUT (%s) must be less than WRITE_TIMEOUT (%s)", c.Server.ReadTimeout, c.Server.WriteTimeout)
+	}
+	if c.Presence.HostAbsenceGrace <= 0 {
+		return fmt.Errorf("HOST_ABSENCE_GRACE must be > 0, got %s", c.Presence.HostAbsenceGrace)
+	}
+	if c.Worker.SessionIdleGrace <= 0 {
+		return fmt.Errorf("SESSION_IDLE_GRACE must be > 0, got %s", c.Worker.SessionIdleGrace)
 	}
 	return nil
 }

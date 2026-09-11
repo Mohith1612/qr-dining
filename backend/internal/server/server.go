@@ -78,6 +78,7 @@ func New(
 	rateLimiter := redisPkg.NewRateLimiter(redis)
 	cache := redisPkg.NewCache(redis, metrics.CacheHitsTotal, metrics.CacheMissesTotal)
 	presence := redisPkg.NewPresence(redis)
+	presence.SetHostAbsenceGrace(cfg.Presence.HostAbsenceGrace)
 	wsTickets := redisPkg.NewWSTicketStore(redis)
 	guestTokens := auth.NewGuestTokenService(cfg.Auth.GuestTokenSecret, cfg.Auth.GuestTokenTTL)
 	authorizer := authz.NewEnforcingAuthorizer(cfg.FeatureFlags.AuthzCentralPolicyEnforce)
@@ -90,7 +91,9 @@ func New(
 
 	// ── Services ─────────────────────────────────────────────────────────────
 	sessionSvc := services.NewSessionService(repos, publisher, metrics, presence)
+	sessionSvc.SetHostAbsenceGrace(cfg.Presence.HostAbsenceGrace)
 	participantSvc := services.NewParticipantService(repos, publisher, presence)
+	participantSvc.SetLogger(logger)
 	// Client WS PINGs double as the presence heartbeat: without this, presence
 	// is never refreshed and the reactivation pipeline pauses live tables.
 	hub.SetPresenceRefresher(func(ctx context.Context, sessionID uuid.UUID, participantID int64) {

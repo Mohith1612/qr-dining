@@ -331,6 +331,8 @@ func sessionError(c *gin.Context, err error) {
 		respondError(c, http.StatusConflict, CodeHostTransferLocked, err.Error())
 	case errors.Is(err, domain.ErrParticipantNotInSession):
 		respondError(c, http.StatusBadRequest, CodeValidationError, "that guest is not part of this table")
+	case errors.Is(err, domain.ErrParticipantUnauthorized):
+		respondError(c, http.StatusForbidden, CodeForbidden, "that guest is not currently present at this table")
 	case errors.Is(err, domain.ErrParticipantNotFound):
 		respondError(c, http.StatusNotFound, CodeParticipantNotFound, err.Error())
 	case errors.Is(err, domain.ErrInvalidPhone):

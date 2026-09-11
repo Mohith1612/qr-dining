@@ -140,7 +140,7 @@ Backend vars are all read in `backend/internal/config/config.go` (`Load()`); `GI
 | `GUEST_TOKEN_TTL` | Guest token TTL | No | 12h | production template sets 12h | ✅ | Keep until refresh exists |
 | `AUTH_STAFF_COOKIE_ENABLED` | HttpOnly staff cookie | No | false | unset | ✅ | — |
 | `PAYMENT_WEBHOOK_TIMESTAMP_TOLERANCE` | Replay window | No | 5m | unset | ✅ | — |
-| Worker knobs: `STALE_SESSION_INTERVAL`, `PRESENCE_EXPIRY_INTERVAL`, `SESSION_RECONCILE_INTERVAL`, `WORKER_REGION`, `SESSION_PRESENCE_GRACE`, `SESSION_REACTIVATION_WINDOW`, `PAYMENT_PENDING_ESCALATION_INTERVAL`, `PAYMENT_PENDING_WARN_AFTER`, `PAYMENT_PENDING_CRITICAL_AFTER` | Worker/escalation timing | No | 5m/60s/5m/default/60s/5m/1m/5m/15m | partially set | ✅ (tuned post-rehearsal) | — |
+| Presence/worker knobs: `HOST_ABSENCE_GRACE`, `STALE_SESSION_INTERVAL`, `PRESENCE_EXPIRY_INTERVAL`, `SESSION_RECONCILE_INTERVAL`, `WORKER_REGION`, `SESSION_PRESENCE_GRACE`, `SESSION_IDLE_GRACE`, `SESSION_REACTIVATION_WINDOW`, `PAYMENT_PENDING_ESCALATION_INTERVAL`, `PAYMENT_PENDING_WARN_AFTER`, `PAYMENT_PENDING_CRITICAL_AFTER` | Host transfer and worker/escalation timing | No | 3m/5m/60s/5m/default/60s/5m/5m/1m/5m/15m | partially set | ✅ (tuned post-rehearsal) | — |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE` | App image uploads (all 5 or uploads 503) | No | `""` | 🟠 unset; 🔁 backup uses different R2 names | ⚠️ | Set for `qr-dining-uploads` bucket |
 
 ### A.2 Backend — the 9 strict rollout flags

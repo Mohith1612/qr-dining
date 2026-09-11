@@ -71,7 +71,7 @@ type Querier interface {
 	ReconcileSessionTables(ctx context.Context) ([]repository.SessionTableReconciliation, error)
 	LogEvent(ctx context.Context, sessionID uuid.UUID, branchID int64, eventType, actorType string, actorID int64, payload any)
 
-	ListReactivationCandidates(ctx context.Context, olderThan time.Time) ([]ReactivationCandidate, error)
+	ListReactivationCandidates(ctx context.Context, createdBefore, idleBefore time.Time) ([]ReactivationCandidate, error)
 	TransitionToAwaitingReactivation(ctx context.Context, id uuid.UUID) error
 	ListAwaitingReactivationExpired(ctx context.Context, olderThan time.Time) ([]AwaitingReactivationExpired, error)
 	HasNonTerminalPayment(ctx context.Context, sessionID uuid.UUID) (bool, error)
@@ -91,6 +91,9 @@ type Worker struct {
 	audit     *audit.Writer
 	region    string
 	logger    zerolog.Logger
+	// sessionIdleGrace is the durable no-presence interval required before an
+	// established active session may enter awaiting_reactivation.
+	sessionIdleGrace time.Duration
 }
 
 func New(
@@ -108,15 +111,24 @@ func New(
 		region = "default"
 	}
 	return &Worker{
-		db:        db,
-		queries:   queries,
-		redis:     redis,
-		publisher: publisher,
-		presence:  presence,
-		metrics:   metrics,
-		audit:     auditWriter,
-		region:    region,
-		logger:    logger.With().Str("component", "worker").Logger(),
+		db:               db,
+		queries:          queries,
+		redis:            redis,
+		publisher:        publisher,
+		presence:         presence,
+		metrics:          metrics,
+		audit:            auditWriter,
+		region:           region,
+		logger:           logger.With().Str("component", "worker").Logger(),
+		sessionIdleGrace: 5 * time.Minute,
+	}
+}
+
+// SetSessionIdleGrace overrides the five-minute default. It must be called at
+// startup before RunReactivationPipeline begins.
+func (w *Worker) SetSessionIdleGrace(grace time.Duration) {
+	if grace > 0 {
+		w.sessionIdleGrace = grace
 	}
 }
 
@@ -166,8 +178,9 @@ func (w *Worker) RunSessionExpiryWarner(ctx context.Context, interval time.Durat
 }
 
 // RunPresenceExpiry scans active sessions and publishes PARTICIPANT_LEFT for
-// participants whose last heartbeat has expired. Presence itself auto-expires
-// via Redis TTL; this worker ensures WebSocket clients get a notification.
+// participants whose last heartbeat has expired. Live presence expires by
+// field age; the Redis key TTL is storage cleanup. This worker ensures
+// WebSocket clients get a notification.
 func (w *Worker) RunPresenceExpiry(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -179,8 +192,8 @@ func (w *Worker) RunPresenceExpiry(ctx context.Context, interval time.Duration) 
 		case <-ticker.C:
 			w.runWithLock(ctx, "presence_expiry", 50*time.Second, func() {
 				w.safeRun("presence_expiry", func() {
-					// Presence TTL is managed by Redis itself; this is a no-op notification hook
-					// for future implementation when participant-left events are needed on expiry.
+					// Field-age filtering is applied by presence readers; this remains a
+					// no-op notification hook until participant-left events are needed.
 					w.logger.Debug().Msg("presence expiry worker tick")
 				})
 			})
@@ -189,8 +202,9 @@ func (w *Worker) RunPresenceExpiry(ctx context.Context, interval time.Duration) 
 }
 
 // RunReactivationPipeline drives the awaiting_reactivation lifecycle:
-//   - Active sessions whose presence has been gone past `presenceGrace` are
-//     moved to awaiting_reactivation. The table stays occupied.
+//   - Active sessions past the creation grace whose newest durable participant
+//     heartbeat is older than sessionIdleGrace and whose live Redis presence is
+//     empty are moved to awaiting_reactivation. The table stays occupied.
 //   - awaiting_reactivation sessions whose `awaiting_reactivation_at` is older
 //     than `reactivationWindow` are abandoned, unless a non-terminal payment
 //     exists (TIM-1).
@@ -320,8 +334,14 @@ func (w *Worker) markEscalated(ctx context.Context, sessionID uuid.UUID, level s
 }
 
 func (w *Worker) runReactivationPipeline(ctx context.Context, presenceGrace, reactivationWindow time.Duration) {
-	// Phase 1: active → awaiting_reactivation when presence is empty.
-	candidates, err := w.queries.ListReactivationCandidates(ctx, time.Now().UTC().Add(-presenceGrace))
+	// Phase 1: active → awaiting_reactivation only after both the creation
+	// grace and the durable participant-idle grace, with Redis still empty.
+	now := time.Now().UTC()
+	candidates, err := w.queries.ListReactivationCandidates(
+		ctx,
+		now.Add(-presenceGrace),
+		now.Add(-w.sessionIdleGrace),
+	)
 	if err != nil {
 		w.logger.Error().Err(err).Msg("list reactivation candidates")
 		w.metrics.WorkerRunsTotal.WithLabelValues("reactivation_pipeline", "error").Inc()
@@ -329,7 +349,7 @@ func (w *Worker) runReactivationPipeline(ctx context.Context, presenceGrace, rea
 	}
 	movedToAwaiting := 0
 	for _, c := range candidates {
-		present, err := w.presence.GetPresentScoped(ctx, c.OrganizationID, c.BranchID, c.ID)
+		present, err := w.presence.GetPresentForSession(ctx, c.OrganizationID, c.BranchID, c.ID)
 		if err != nil {
 			w.logger.Warn().Err(err).Str("session_id", c.ID.String()).Msg("read presence")
 			continue

@@ -149,7 +149,34 @@ openapi.yaml      API contract
 
 ## Working in this repo
 
+<<<<<<< HEAD
 Agent instructions are in [AGENTS.md](AGENTS.md). A few rules that apply to everyone:
+=======
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `DATABASE_URL` | — | yes | PostgreSQL connection string |
+| `REDIS_URL` | — | yes | Redis connection string |
+| `PORT` | `8080` | no | HTTP listen port |
+| `GIN_MODE` | `release` | no | `release` or `debug` |
+| `READ_TIMEOUT` | `10s` | no | HTTP read timeout |
+| `WRITE_TIMEOUT` | `30s` | no | HTTP write timeout |
+| `SHUTDOWN_TIMEOUT` | `15s` | no | Graceful shutdown window |
+| `TRUSTED_PROXIES` | `172.16.0.0/12` | no | Comma-separated CIDR list of upstream proxies |
+| `RATE_LIMIT_RPM` | `60` | no | Requests per minute per IP |
+| `LOG_LEVEL` | `info` | no | `debug`, `info`, `warn`, `error` |
+| `LOG_PRETTY` | `false` | no | Human-readable logs (development only) |
+| `CORS_ALLOWED_ORIGINS` | _(none)_ | no | Comma-separated allowed origins |
+| `STALE_SESSION_INTERVAL` | `5m` | no | How often the stale session cleaner runs |
+| `PRESENCE_EXPIRY_INTERVAL` | `60s` | no | How often the presence expiry worker runs |
+| `HOST_ABSENCE_GRACE` | `3m` | no | Host heartbeat age required before automatic transfer |
+| `SESSION_PRESENCE_GRACE` | `60s` | no | Creation grace before a session can be considered for pausing |
+| `SESSION_IDLE_GRACE` | `5m` | no | Durable participant-idle age required before pausing |
+| `SESSION_REACTIVATION_WINDOW` | `5m` | no | Time a paused session remains eligible for reactivation |
+| `DB_MAX_CONNS` | `20` | no | pgxpool maximum connections |
+| `DB_MIN_CONNS` | `2` | no | pgxpool minimum connections |
+| `DB_MAX_CONN_LIFETIME` | `1h` | no | Maximum age of a DB connection |
+| `DB_MAX_CONN_IDLE_TIME` | `30m` | no | Maximum idle time for a DB connection |
+>>>>>>> fix/presence-host-authority
 
 - **Additive migrations only.** This is what makes a binary rollback across a migration safe.
 - **`audit_log` is append-only**, enforced by a database trigger. Never `UPDATE` it.

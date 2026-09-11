@@ -12,7 +12,7 @@ Phase A implementation status (2026-05-22):
 Phase B implementation status (2026-05-24):
 - `awaiting_reactivation` worker pipeline is wired in `RunReactivationPipeline` (migration `000026` adds the timestamp column). Worker uses Redis presence as the liveness signal and skips sessions with a non-terminal payment (TIM-1).
 - Snapshot endpoint transitions `awaiting_reactivation → active` on reconnect within `SESSION_REACTIVATION_WINDOW` (default 5m).
-- The deeper `quiet_grace_seconds` HTTP-traffic gate from the spec is NOT yet wired; the worker uses only presence absence + `presence_grace`. Adding a per-session `last_activity_at` column updated by every HTTP handler is the deferred refinement (Phase C if needed).
+- The worker requires the newest durable participant `last_seen_at` to be older than `SESSION_IDLE_GRACE` (default 5m), in addition to empty live Redis presence and the existing creation grace. A broader per-session HTTP `last_activity_at` signal remains a deferred refinement (Phase C if needed).
 
 ## 0. Why this exists
 

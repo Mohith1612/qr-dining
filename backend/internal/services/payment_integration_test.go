@@ -5,16 +5,20 @@ package services_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
+	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/Mohith1612/qr-dining/internal/testutil"
 	"github.com/google/uuid"
 )
 
+<<<<<<< HEAD
 func TestInitiatePaymentRequiresStaffConfirmationForEveryMethod(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -65,6 +69,57 @@ func TestInitiatePaymentRequiresStaffConfirmationForEveryMethod(t *testing.T) {
 				t.Fatalf("payment status: got %s, want requires_staff_confirmation", payment.Status)
 			}
 		})
+=======
+func TestInitiatePayment_AbsentParticipantCannotBecomeHost(t *testing.T) {
+	pool := testutil.OpenTestDB(t)
+	f := testutil.SeedFixtures(t, pool)
+	repos := testutil.NewTestRepos(pool)
+	redisClient := openServiceTestRedis(t)
+	presence := redisPkg.NewPresence(redisClient)
+	pub := events.NewNoopPublisher()
+	sessionSvc := services.NewSessionService(repos, pub, testMetrics(), presence)
+	paymentSvc := newTestPaymentService(repos, pub, sessionSvc)
+	t.Cleanup(func() {
+		testutil.TruncateTables(t, pool, "sessions", "session_participants", "payments", "bill_snapshots", "idempotency_keys")
+	})
+
+	ctx := context.Background()
+	created, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	absentGuest, err := sessionSvc.JoinSession(ctx, created.Session.ID, "Bob", "fp-bob", "")
+	if err != nil {
+		t.Fatalf("JoinSession: %v", err)
+	}
+	setParticipantDBLastSeen(t, pool, created.Participant.ID, time.Now().Add(-6*time.Minute))
+
+	_, err = paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
+		SessionID:      created.Session.ID,
+		BranchID:       f.BranchID,
+		Method:         sqlc.PaymentMethodDigital,
+		IdempotencyKey: uuid.NewString(),
+		ActorType:      "participant",
+		ActorID:        absentGuest.ID,
+		Bill: services.BillSnapshotInput{
+			Total:          50,
+			Currency:       "INR",
+			CreatedByActor: "guest",
+		},
+		Provider:           "razorpay",
+		ProviderPaymentRef: "pay_absent_actor",
+	})
+	if !errors.Is(err, domain.ErrNotSessionHost) {
+		t.Fatalf("absent guest InitiatePayment: got %v, want ErrNotSessionHost", err)
+	}
+
+	var paymentCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM payments WHERE session_id = $1`, created.Session.ID).Scan(&paymentCount); err != nil {
+		t.Fatalf("count payments: %v", err)
+	}
+	if paymentCount != 0 {
+		t.Fatalf("payment count: got %d, want 0", paymentCount)
+>>>>>>> fix/presence-host-authority
 	}
 }
 

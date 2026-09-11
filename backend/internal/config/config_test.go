@@ -117,6 +117,42 @@ func TestDebug_AllowsDevDefaults(t *testing.T) {
 	}
 }
 
+func TestPresenceAndSessionIdleGraceConfig(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		setBaseEnv(t, "debug")
+		t.Setenv("HOST_ABSENCE_GRACE", "")
+		t.Setenv("SESSION_IDLE_GRACE", "")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Presence.HostAbsenceGrace != 3*time.Minute {
+			t.Fatalf("host absence grace: got %s, want 3m", cfg.Presence.HostAbsenceGrace)
+		}
+		if cfg.Worker.SessionIdleGrace != 5*time.Minute {
+			t.Fatalf("session idle grace: got %s, want 5m", cfg.Worker.SessionIdleGrace)
+		}
+	})
+
+	t.Run("environment overrides", func(t *testing.T) {
+		setBaseEnv(t, "debug")
+		t.Setenv("HOST_ABSENCE_GRACE", "4m")
+		t.Setenv("SESSION_IDLE_GRACE", "7m")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Presence.HostAbsenceGrace != 4*time.Minute {
+			t.Fatalf("host absence grace: got %s, want 4m", cfg.Presence.HostAbsenceGrace)
+		}
+		if cfg.Worker.SessionIdleGrace != 7*time.Minute {
+			t.Fatalf("session idle grace: got %s, want 7m", cfg.Worker.SessionIdleGrace)
+		}
+	})
+}
+
 func TestRelease_DotenvCannotOverrideInjectedEnvironment(t *testing.T) {
 	setBaseEnv(t, "release")
 	tempDir := t.TempDir()
