@@ -130,7 +130,7 @@ func TestStaffForceCloseSession_CancelsOutstandingPayment(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	f := newRecoveryFixture(t)
 
-	sess, tableID, payment := f.freezeSession(t, f.a, sqlc.PaymentMethodDigital)
+	sess, tableID, payment := f.freezeSession(t, f.a, sqlc.PaymentStatusProviderPending)
 
 	rec := forceClose(t, f.sessionHandler(false), f.a.owner, sess.Session.ID,
 		`{"reason":"POS crashed mid-settlement, table already gone"}`)
@@ -315,6 +315,13 @@ func TestStaffForceCloseSession_IsNotHealedBackIntoAHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("JoinSession: %v", err)
 	}
+	// Both guests are at the table and connected. The heartbeats are load-bearing
+	// twice over: TransferHost refuses a target without live presence (90s
+	// window), and pickNewHost will only ever promote a participant that is
+	// present — so without one on the first guest there would be no eligible
+	// successor at all and this test could not observe a wrong promotion.
+	f.markPresent(t, f.a, sess.Session.ID, sess.Participant.ID)
+	f.markPresent(t, f.a, sess.Session.ID, second.ID)
 	if err := f.sessionSvc.TransferHost(ctx, sess.Session.ID, sess.Participant.ID, second.ID); err != nil {
 		t.Fatalf("TransferHost: %v", err)
 	}
@@ -330,7 +337,14 @@ func TestStaffForceCloseSession_IsNotHealedBackIntoAHost(t *testing.T) {
 		t.Fatalf("force-close: got %d, want 200/204 (body: %s)", rec.Code, strings.TrimSpace(rec.Body.String()))
 	}
 
-	// The reconnect a returning guest would make.
+	// The reconnect a returning guest would make. A WebSocket reconnect writes a
+	// presence heartbeat before the client calls the snapshot endpoint, so model
+	// that order — closing clears presence, and without re-establishing it there
+	// would be no present successor and nothing for the healing path to get
+	// wrong. This is what keeps the assertion below non-vacuous.
+	f.markPresent(t, f.a, sess.Session.ID, sess.Participant.ID)
+	f.markPresent(t, f.a, sess.Session.ID, second.ID)
+
 	snap, err := f.sessionSvc.GetSnapshot(ctx, sess.Session.ID, 0)
 	if err != nil {
 		t.Fatalf("GetSnapshot after force-close: %v", err)

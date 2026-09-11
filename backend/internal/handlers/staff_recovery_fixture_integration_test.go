@@ -42,6 +42,7 @@ type recoveryFixture struct {
 
 	sessionSvc *services.SessionService
 	paymentSvc *services.PaymentService
+	presence   *redisPkg.Presence
 	cartSvc    *services.CartService
 	publisher  *events.Publisher
 	auditW     *audit.Writer
@@ -63,7 +64,8 @@ func newRecoveryFixture(t *testing.T) *recoveryFixture {
 	// every publish appends a row to session_events before hitting Redis.
 	publisher.SetEventStore(repos)
 
-	sessionSvc := services.NewSessionService(repos, publisher, metrics, nil)
+	presence := redisPkg.NewPresence(redisClient)
+	sessionSvc := services.NewSessionService(repos, publisher, metrics, presence)
 	paymentSvc := services.NewPaymentService(repos, publisher, metrics, sessionSvc, zerolog.Nop())
 	paymentSvc.SetHostAuthority(sessionSvc)
 	paymentSvc.SetPromoService(services.NewPromoService(repos))
@@ -71,6 +73,7 @@ func newRecoveryFixture(t *testing.T) *recoveryFixture {
 	f := &recoveryFixture{
 		pool:       pool,
 		repos:      repos,
+		presence:   presence,
 		sessionSvc: sessionSvc,
 		paymentSvc: paymentSvc,
 		cartSvc:    services.NewCartService(repos, publisher),
@@ -157,16 +160,20 @@ func (f *recoveryFixture) openSession(t *testing.T, br recoveryBranch) (services
 // session in payment_pending with one non-terminal payment — the stuck state
 // both recovery routes exist to resolve.
 //
-// Method drives the resulting payment status: digital lands in provider_pending
-// (the state payment 6 in qrdining_mtest is wedged in), cash in
-// requires_staff_confirmation.
-func (f *recoveryFixture) freezeSession(t *testing.T, br recoveryBranch, method sqlc.PaymentMethod) (services.CreateSessionResult, int64, sqlc.Payment) {
+// Guest initiation now lands every payment method in requires_staff_confirmation:
+// no merchant is connected, so provider_pending could never clear. Tests that
+// need a provider_pending row get one written directly below. Those rows still
+// exist in real databases (qrdining_mtest payment 6 is one) and are precisely
+// what the cancel route is for, so the state has to stay under test even though
+// nothing reaches it through the front door any more.
+func (f *recoveryFixture) freezeSession(t *testing.T, br recoveryBranch, want sqlc.PaymentStatus) (services.CreateSessionResult, int64, sqlc.Payment) {
 	t.Helper()
+	ctx := context.Background()
 	result, tableID := f.openSession(t, br)
-	payment, err := f.paymentSvc.InitiatePayment(context.Background(), services.InitiatePaymentRequest{
+	payment, err := f.paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
 		SessionID:      result.Session.ID,
 		BranchID:       br.branchID,
-		Method:         method,
+		Method:         sqlc.PaymentMethodDigital,
 		IdempotencyKey: uuid.NewString(),
 		ActorType:      "participant",
 		ActorID:        result.Participant.ID,
@@ -180,7 +187,51 @@ func (f *recoveryFixture) freezeSession(t *testing.T, br recoveryBranch, method 
 	if err != nil {
 		t.Fatalf("InitiatePayment: %v", err)
 	}
+	if payment.Status != sqlc.PaymentStatusRequiresStaffConfirmation {
+		t.Fatalf("InitiatePayment status: got %s, want requires_staff_confirmation", payment.Status)
+	}
+	if want != sqlc.PaymentStatusRequiresStaffConfirmation {
+		payment = f.forcePaymentStatus(t, payment.ID, want)
+	}
 	return result, tableID, payment
+}
+
+// forcePaymentStatus writes a payment status directly, bypassing the domain
+// transition table on purpose. It exists only to reconstruct states that real
+// databases hold but that no current code path can still produce — never to
+// shortcut a transition the service is supposed to perform.
+func (f *recoveryFixture) forcePaymentStatus(t *testing.T, paymentID int64, status sqlc.PaymentStatus) sqlc.Payment {
+	t.Helper()
+	ctx := context.Background()
+	// A real provider_pending row carries provider metadata; match the shape of
+	// the wedged rows this route has to be able to clear.
+	if _, err := f.pool.Exec(ctx,
+		`UPDATE payments
+		 SET status = $2,
+		     provider = COALESCE(provider, 'generic'),
+		     provider_payment_ref = COALESCE(provider_payment_ref, $3)
+		 WHERE id = $1`,
+		paymentID, status, "pay_"+uuid.NewString()); err != nil {
+		t.Fatalf("force payment status to %s: %v", status, err)
+	}
+	payment, err := f.repos.GetPaymentByID(ctx, paymentID)
+	if err != nil {
+		t.Fatalf("reload payment: %v", err)
+	}
+	if payment.Status != status {
+		t.Fatalf("force payment status: got %s, want %s", payment.Status, status)
+	}
+	return payment
+}
+
+// markPresent records a live heartbeat for a participant. TransferHost and the
+// snapshot host-healing path both consult presence, and a nil/empty presence
+// backend reads as "unknown", which those paths treat as refusal.
+func (f *recoveryFixture) markPresent(t *testing.T, br recoveryBranch, sessionID uuid.UUID, participantID int64) {
+	t.Helper()
+	if err := f.presence.HeartbeatScoped(context.Background(), br.orgID, br.branchID, sessionID, participantID); err != nil {
+		t.Fatalf("presence heartbeat: %v", err)
+	}
 }
 
 // ── assertion helpers ────────────────────────────────────────────────────────

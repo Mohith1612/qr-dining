@@ -51,19 +51,21 @@ func TestStaffCancelPayment_UnfreezesSession(t *testing.T) {
 	ctx := context.Background()
 
 	cases := []struct {
-		name   string
-		method sqlc.PaymentMethod
-		want   sqlc.PaymentStatus
+		name string
+		from sqlc.PaymentStatus
 	}{
-		{"provider_pending", sqlc.PaymentMethodDigital, sqlc.PaymentStatusProviderPending},
-		{"requires_staff_confirmation", sqlc.PaymentMethodCash, sqlc.PaymentStatusRequiresStaffConfirmation},
+		// Reached by ordinary guest initiation today.
+		{"requires_staff_confirmation", sqlc.PaymentStatusRequiresStaffConfirmation},
+		// No longer reachable through the front door, but live databases still
+		// hold rows in this state and clearing them is the point of the route.
+		{"provider_pending", sqlc.PaymentStatusProviderPending},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			sess, _, payment := f.freezeSession(t, f.a, tc.method)
-			if payment.Status != tc.want {
-				t.Fatalf("precondition: payment status is %s, want %s", payment.Status, tc.want)
+			sess, _, payment := f.freezeSession(t, f.a, tc.from)
+			if payment.Status != tc.from {
+				t.Fatalf("precondition: payment status is %s, want %s", payment.Status, tc.from)
 			}
 			if got := f.sessionStatus(t, sess.Session.ID); got != string(sqlc.SessionStatusPaymentPending) {
 				t.Fatalf("precondition: session status is %s, want payment_pending", got)
@@ -118,7 +120,7 @@ func TestStaffCancelPayment_AllowedRoles(t *testing.T) {
 		{"waiter", f.a.waiter},
 	} {
 		t.Run(actor.name, func(t *testing.T) {
-			_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentMethodDigital)
+			_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentStatusRequiresStaffConfirmation)
 			rec := cancelPayment(t, f.paymentHandler(false), actor.sess, payment.ID, `{"reason":"terminal declined"}`)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("got %d, want 200 (body: %s)", rec.Code, strings.TrimSpace(rec.Body.String()))
@@ -136,13 +138,13 @@ func TestStaffCancelPayment_RejectsKitchenRole(t *testing.T) {
 
 	for _, enforce := range []bool{false, true} {
 		t.Run(fmt.Sprintf("enforce=%v", enforce), func(t *testing.T) {
-			_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentMethodDigital)
+			_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentStatusRequiresStaffConfirmation)
 			rec := cancelPayment(t, f.paymentHandler(enforce), f.a.kitchen, payment.ID, `{"reason":"nope"}`)
 			if rec.Code != http.StatusForbidden {
 				t.Fatalf("got %d, want 403 (body: %s)", rec.Code, strings.TrimSpace(rec.Body.String()))
 			}
-			if got := f.paymentStatus(t, payment.ID); got != string(sqlc.PaymentStatusProviderPending) {
-				t.Errorf("payment status: got %s, want provider_pending — denied request still mutated state", got)
+			if got := f.paymentStatus(t, payment.ID); got != string(payment.Status) {
+				t.Errorf("payment status: got %s, want %s — denied request still mutated state", got, payment.Status)
 			}
 		})
 	}
@@ -156,13 +158,13 @@ func TestStaffCancelPayment_RejectsCrossBranchActor(t *testing.T) {
 
 	for _, enforce := range []bool{false, true} {
 		t.Run(fmt.Sprintf("enforce=%v", enforce), func(t *testing.T) {
-			_, _, payment := f.freezeSession(t, f.b, sqlc.PaymentMethodDigital)
+			_, _, payment := f.freezeSession(t, f.b, sqlc.PaymentStatusProviderPending)
 			rec := cancelPayment(t, f.paymentHandler(enforce), f.a.owner, payment.ID, `{"reason":"not mine to cancel"}`)
 			if rec.Code != http.StatusForbidden && rec.Code != http.StatusNotFound {
 				t.Fatalf("got %d, want 403 or 404 (body: %s)", rec.Code, strings.TrimSpace(rec.Body.String()))
 			}
-			if got := f.paymentStatus(t, payment.ID); got != string(sqlc.PaymentStatusProviderPending) {
-				t.Errorf("payment status: got %s, want provider_pending — a foreign branch cancelled it", got)
+			if got := f.paymentStatus(t, payment.ID); got != string(payment.Status) {
+				t.Errorf("payment status: got %s, want %s — a foreign branch cancelled it", got, payment.Status)
 			}
 		})
 	}
@@ -175,10 +177,14 @@ func TestStaffCancelPayment_RefusesCompletedPayment(t *testing.T) {
 	f := newRecoveryFixture(t)
 	ctx := context.Background()
 
-	_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentMethodDigital)
-	if _, err := f.repos.UpdatePaymentStatusExpected(ctx, payment.ID,
-		sqlc.PaymentStatusProviderPending, sqlc.PaymentStatusCompleted); err != nil {
-		t.Fatalf("mark payment completed: %v", err)
+	_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentStatusRequiresStaffConfirmation)
+	// Settlement is the real route to completed; use it rather than writing the
+	// status, so the test refuses a payment that genuinely was collected.
+	if _, err := f.paymentSvc.SettlePaymentByStaff(ctx, payment.ID, f.a.waiter.StaffID, f.a.branchID); err != nil {
+		t.Fatalf("settle payment: %v", err)
+	}
+	if got := f.paymentStatus(t, payment.ID); got != string(sqlc.PaymentStatusCompleted) {
+		t.Fatalf("precondition: payment status is %s, want completed", got)
 	}
 
 	rec := cancelPayment(t, f.paymentHandler(false), f.a.manager, payment.ID, `{"reason":"changed my mind"}`)
@@ -198,7 +204,7 @@ func TestStaffCancelPayment_SecondCancelConflicts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	f := newRecoveryFixture(t)
 
-	_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentMethodDigital)
+	_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentStatusRequiresStaffConfirmation)
 	h := f.paymentHandler(false)
 
 	if rec := cancelPayment(t, h, f.a.waiter, payment.ID, `{"reason":"first cancel"}`); rec.Code != http.StatusOK {
@@ -227,7 +233,7 @@ func TestStaffCancelPayment_RecordsAuditWithStaffAndReason(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	f := newRecoveryFixture(t)
 
-	_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentMethodDigital)
+	_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentStatusRequiresStaffConfirmation)
 	const reason = "UPI app never confirmed; guest paid cash instead"
 	rec := cancelPayment(t, f.paymentHandler(false), f.a.manager, payment.ID,
 		fmt.Sprintf(`{"reason":%q}`, reason))
@@ -257,14 +263,14 @@ func TestStaffCancelPayment_RequiresReason(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	f := newRecoveryFixture(t)
 
-	_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentMethodDigital)
+	_, _, payment := f.freezeSession(t, f.a, sqlc.PaymentStatusRequiresStaffConfirmation)
 	for _, body := range []string{`{}`, `{"reason":"   "}`} {
 		rec := cancelPayment(t, f.paymentHandler(false), f.a.waiter, payment.ID, body)
 		if rec.Code != http.StatusBadRequest && rec.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("body %s: got %d, want 400/422 (body: %s)", body, rec.Code, strings.TrimSpace(rec.Body.String()))
 		}
 	}
-	if got := f.paymentStatus(t, payment.ID); got != string(sqlc.PaymentStatusProviderPending) {
-		t.Errorf("payment status: got %s, want provider_pending", got)
+	if got := f.paymentStatus(t, payment.ID); got != string(payment.Status) {
+		t.Errorf("payment status: got %s, want %s — a rejected request still mutated state", got, payment.Status)
 	}
 }
