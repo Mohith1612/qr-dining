@@ -1,4 +1,9 @@
-# R3 Policy Decisions — qr-dining (v1)
+# ADR 0002 — R3 central-authz policy semantics
+
+**Status:** Accepted · **Date:** 2026-05-29 · **Outcome:** all three decisions ratified existing behaviour, so no production behaviour change was required
+
+> **Read as a record, not as current state.** R3 (`AUTHZ_CENTRAL_POLICY_ENFORCE` + `STRICT_BRANCH_SCOPED_MUTATIONS`) is still **off**, gated on 48 hours of zero shadow mismatches — see [../OPERATIONS.md §4](../OPERATIONS.md#4-rollout-flags-the-enforcement-ladder).
+
 
 > **Purpose.** This document closes the only *hard* blocker on rollout wave **R3**
 > (`master-system-context-v1.md` §11): the three policy-semantics questions that must be
@@ -190,4 +195,4 @@ always-strict path is a possible future consistency cleanup, not an R3 requireme
 - **Regression locks added:** `internal/authz/policy_test.go` now asserts the ratified
   governance boundary for staff creation, branch-settings updates, and organization scope.
 
-*End of r3-policy-decisions-v1.md.*
+*End of ADR 0002 (originally `r3-policy-decisions-v1.md`).*

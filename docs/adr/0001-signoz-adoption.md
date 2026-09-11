@@ -1,7 +1,12 @@
-# SigNoz Adoption — Decision Record
+# ADR 0001 — Adopt self-hosted SigNoz for distributed tracing
+
+**Status:** Accepted · **Date:** 2026-08-03 · **Implemented:** yes, gated on `OTEL_ENABLED` (default `false`)
+
+> **Read as a record, not as current state.** This ADR was written *before* the instrumentation existed, so it says "no OpenTelemetry anywhere in the codebase". OpenTelemetry is now implemented. The rollout runbook is [../signoz-rollout-runbook.md](../signoz-rollout-runbook.md); the code spec is archived at [../history/signoz-backend-instrumentation.md](../history/signoz-backend-instrumentation.md).
+
 
 Date: 2026-08-03 · Branch: `feature/signoz-observability` (off RC `feature/certification-fixes-ui-redesign` @ f0c7008)
-Companions: `deploy/signoz/README.md` (deployment) · `docs/signoz-backend-instrumentation.md` (code changes) · `docs/signoz-rollout-runbook.md` (phased rollout) · `alerting-setup.md` (existing Prometheus stack, stays authoritative)
+Companions: [../../deploy/signoz/README.md](../../deploy/signoz/README.md) (deployment) · [../history/signoz-backend-instrumentation.md](../history/signoz-backend-instrumentation.md) (code changes) · [../signoz-rollout-runbook.md](../signoz-rollout-runbook.md) (phased rollout) · [../OPERATIONS.md §3](../OPERATIONS.md#3-alerting) (the Prometheus stack, which stays authoritative)
 
 ## Verdict
 

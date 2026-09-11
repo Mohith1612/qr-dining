@@ -1,10 +1,33 @@
 # DEPLOYMENT.md — QR-Dining Production Deployment Guide
 
-**Canonical deployment guide.** Companions: `OPERATIONS.md` (day-2), `RECOVERY.md` (restore/disaster). Architecture background: `deployment-architecture.md`, `STATE-OF-THE-PROJECT.md`.
+**Canonical deployment guide.** Companions: [OPERATIONS.md](OPERATIONS.md) (day-2) · [RUNBOOKS.md](RUNBOOKS.md) (incidents) · [RECOVERY.md](RECOVERY.md) (restore/disaster). Architecture background: [ARCHITECTURE.md](ARCHITECTURE.md). Release gates: [RELEASE.md](RELEASE.md).
+
+> **Beta exists; production does not.** An internal beta is live on the shared VM (§0). No production environment has been provisioned, and no domain has been purchased. Read every `CHANGEME-DOMAIN.com` in this repo as a placeholder.
 
 **Model:** backend on the shared OCI Ampere VM behind the central `/opt/proxy` nginx+certbot stack (per the VM Project Deployment Reference); frontend on Cloudflare (OpenNext worker + static assets); storage on Cloudflare R2.
 
-> **Placeholders:** no domain is purchased yet. Every `CHANGEME-DOMAIN.com` in this repo is a placeholder. Bucket names `qr-dining-backups` / `qr-dining-uploads` are **temporary** and appear only in env files — see §8 for the go-live substitution list.
+> **Placeholders:** bucket names `qr-dining-backups` / `qr-dining-uploads` are **temporary** and appear only in env files — see §8 for the go-live substitution list.
+
+---
+
+## 0. The beta environment (live today)
+
+A production-shaped deployment of the release candidate on the shared OCI Ampere VM (4 vCPU / 23 GB), reachable from real devices over real TLS. It exists so manual certification can run against something real.
+
+**It is not production.** It uses beta hostnames, seeded demo data, a local alert sink, and one shared R2 credential pair.
+
+| Surface | URL |
+|---|---|
+| Frontend (guest / staff / platform) | `https://qr-beta.mohith16.com` |
+| API — balanced across both instances | `https://qr-api-beta.mohith16.com` |
+| API — pinned to instance 1 | `https://qr-api-beta-1.mohith16.com` |
+| API — pinned to instance 2 | `https://qr-api-beta-2.mohith16.com` |
+| Prometheus / Alertmanager | `ssh -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 appuser` |
+| SigNoz | `ssh -L 3301:127.0.0.1:3301 appuser` |
+
+Two backend instances share one Postgres and one Redis, which is what makes cross-instance realtime fan-out testable. The backend image is built on the VM from a branch (§3b), not pulled from a registry.
+
+Current deployed state, provenance caveats and open blockers: [../release-certification/manual-certification-preflight-2026-08-22.md](../release-certification/manual-certification-preflight-2026-08-22.md). Tester credentials and QR links live in `docs/manual-testing/testing-dashboard.html`, never in this guide.
 
 ---
 
@@ -24,7 +47,7 @@
 
 Backend image: **`ghcr.io/mohith1612/qr-dining`** — built and pushed by CI on pushes to `main` and `v*` tags (`sha-<short>`, `<tag>`, `latest`). Deploy by pinning `IMAGE_TAG` in `/opt/qr-dining/.env`. arm64-only (Ampere).
 
-> **The registry image does not exist yet.** As of 2026-08-04 nothing has been merged to `main` and no `v*` tag exists, so `ghcr.io/mohith1612/qr-dining` returns *Package not found* and `docker compose pull` in §3 **will fail**. PR builds run with `push: false`. Until the RC merges, deploy an unmerged branch by building on the VM — see **§3b**.
+> **The registry image does not exist yet.** As of 2026-08-22 nothing has been merged to `main` and no release tag exists (PR #1 is open, head `b57f746`), so `ghcr.io/mohith1612/qr-dining` returns *Package not found* and `docker compose pull` in §3 **will fail**. PR builds run with `push: false`. Until the RC merges, deploy an unmerged branch by building on the VM — see **§3b**.
 
 ## 2. VM prerequisites (one-time)
 
@@ -40,7 +63,7 @@ sudo apt install postgresql-client-17
 # docker compose v2.24+ (the observability overlay uses `ports: !override`)
 ```
 
-> Alternative without host pg tools: run backup/restore inside `postgres:17-alpine` containers (`apk add bash aws-cli`) — this pattern is fully verified; see RECOVERY.md §3.
+> Alternative without host pg tools: run backup/restore inside `postgres:17-alpine` containers (`apk add bash aws-cli`) — this pattern is fully verified; see [RECOVERY.md §3](RECOVERY.md#3-restore-procedures-verified-pattern).
 
 ## 3. Backend bring-up
 
@@ -57,7 +80,7 @@ vi .env      # fill every __GENERATE__ (openssl rand -base64 48) and CHANGEME
 docker compose pull
 docker compose up -d
 docker compose ps                        # postgres/redis/app all healthy
-docker compose logs app | grep -i migrat # migrations applied at boot (schema v38)
+docker compose logs app | grep -i migrat # migrations applied at boot (schema v39)
 ```
 
 Notes:
@@ -125,12 +148,12 @@ docker compose -f docker-compose.yml \
 ```
 
 - One compose project: prometheus/blackbox join `qr-dining_internal` so `app:8080` resolves; UIs bind to localhost only (reach via `ssh -L 9090:localhost:9090 …`).
-- **Alert delivery:** `observability/alertmanager.yml` has a single `&notify_url` anchor — the one line to change at go-live (`OPERATIONS.md` §3). Until then alerts route to a placeholder.
+- **Alert delivery:** `observability/alertmanager.yml` has a single `&notify_url` anchor — the one line to change at go-live ([OPERATIONS.md §3](OPERATIONS.md#3-alerting)). Until then alerts route to a placeholder.
 - Grafana is not deployed; import `observability/grafana-dashboard.json` into any Grafana when wanted.
 
 ## 6. Backups
 
-The systemd path below assumes root on the host. **On the shared OCI VM neither prerequisite holds** — `appuser` has no passwordless sudo, and the host has neither `pg_dump` nor the `aws` CLI (§2's `apt install` needs a password). Use the rootless containerized path instead; see `deploy/backup/README.md`. The systemd form remains correct for a host where you *are* root:
+The systemd path below assumes root on the host. **On the shared OCI VM neither prerequisite holds** — `appuser` has no passwordless sudo, and the host has neither `pg_dump` nor the `aws` CLI (§2's `apt install` needs a password). Use the rootless containerized path instead; see [../deploy/backup/README.md](../deploy/backup/README.md). The systemd form remains correct for a host where you *are* root:
 
 ```bash
 sudo mkdir -p /etc/qr-dining
@@ -145,7 +168,7 @@ sudo systemctl start qr-dining-backup.service && journalctl -u qr-dining-backup 
 
 Rootless equivalent (what the beta actually runs): `backup.env` at `/opt/qr-dining/backup.env` (mode 600, appuser-owned) and an `appuser` crontab entry driving the containerized job — no `/etc` writes, no systemd, no host tooling.
 
-Confirm `qr_dining_backup_last_run_status 0` appears in Prometheus afterward. The full flow (pg_dump → sha256 → R2 → manifest → retention → metrics) was verified end-to-end against the real R2 bucket on 2026-07-18 — see RECOVERY.md §5.
+Confirm `qr_dining_backup_last_run_status 0` appears in Prometheus afterward. The full flow (pg_dump → sha256 → R2 → manifest → retention → metrics) was verified end-to-end against the real R2 bucket on 2026-07-18 — see [RECOVERY.md §5](RECOVERY.md#5-verification-log).
 
 ## 7. Frontend (Cloudflare)
 
@@ -184,7 +207,7 @@ No code changes are required for any of these — all are env/config lines (veri
 4. Trigger one manual backup; confirm metric + object in bucket.
 5. Full guest journey: QR → join → shared cart → order → kitchen → serve → bill → cash settle → session closed.
 
-> **Release preconditions still standing (do not deploy real traffic before):** merge → `main` + tag `v1.0.0-rc.1`; fresh soak of the tagged build (SEV-0); real alert receiver. See `production-environment-checklist.md`.
+> **Release preconditions still standing (do not deploy real traffic before):** merge → `main` + tag `v1.0.0-rc.1`; fresh soak of the tagged build (SEV-0); real alert receiver. Full open list: [RELEASE.md §5](RELEASE.md#5-open-before-v10).
 
 ## 10. First super-admin bootstrap
 

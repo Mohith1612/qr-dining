@@ -1,7 +1,9 @@
 # SigNoz Rollout Runbook
 
 Date: 2026-08-03 · Branch: `feature/signoz-observability`
-Companions: `signoz-adoption-decision.md` (verdict + preflight detail) · `deploy/signoz/README.md` (deploy mechanics) · `docs/signoz-backend-instrumentation.md` (code spec)
+Companions: [adr/0001-signoz-adoption.md](adr/0001-signoz-adoption.md) (verdict + preflight detail) · [../deploy/signoz/README.md](../deploy/signoz/README.md) (deploy mechanics) · [history/signoz-backend-instrumentation.md](history/signoz-backend-instrumentation.md) (the code spec — since implemented)
+
+> **Status (2026-08-22).** OpenTelemetry **is** implemented and gated on `OTEL_ENABLED` (default `false`). SigNoz is deployed on the beta VM but its ingestion path is currently down — ClickHouse is exceeding its memory limit and the collector is dropping data. That is an open certification blocker: [RELEASE.md §5](RELEASE.md#5-open-before-v10).
 
 Phases are strictly ordered; each has entry criteria, success criteria, and a rollback. Nothing in Phases 0–3 touches the Prometheus/Alertmanager stack, the 27 alert rules, or the local soak.
 
@@ -14,7 +16,7 @@ Phases are strictly ordered; each has entry criteria, success criteria, and a ro
 ## Phase 0 — Sizing preflight (go/no-go)
 
 **Entry:** decision doc approved; VM SSH access.
-**Do:** run the preflight from `signoz-adoption-decision.md` §Phase 0 (`free -h`, `docker stats --no-stream`, `df -h /var/lib/docker`), summing container *limits*, not usage.
+**Do:** run the preflight from [adr/0001-signoz-adoption.md](adr/0001-signoz-adoption.md) §Phase 0 (`free -h`, `docker stats --no-stream`, `df -h /var/lib/docker`), summing container *limits*, not usage.
 **Go:** ≥ 3 GB genuinely free RAM and ≥ 20 GB free disk → proceed to Phase 1.
 **No-go:** record the numbers in this file's log (below), adopt Fallback A (local-eval-only; Phases 1–2 still proceed, Phase 3 blocked) or Fallback B (upsize / second VM), and re-run.
 
@@ -60,7 +62,7 @@ Then tune: raise `OTEL_TRACES_SAMPLE_RATIO` (0.1 → 0.3 → 1.0) only with RAM/
 ## Phase 4 — Later / optional (each its own decision)
 
 - **Metrics dual-scrape:** add a `prometheus` receiver to the collector scraping `app:8080/metrics`, view in SigNoz alongside Prometheus. Only after 2+ weeks of stable Phase 3.
-- **Alert consolidation:** evaluate migrating the 27 rules to SigNoz alerting. Acceptable outcome: "no — Prometheus stays forever." Do not migrate the alerts until Alertmanager's `CHANGEME` receiver is resolved anyway (see `alerting-setup.md`) — an alert stack that pages nobody is the real gap there.
+- **Alert consolidation:** evaluate migrating the 27 rules to SigNoz alerting. Acceptable outcome: "no — Prometheus stays forever." Do not migrate the alerts until Alertmanager's `CHANGEME` receiver is resolved anyway (see [OPERATIONS.md §3](OPERATIONS.md#3-alerting)) — an alert stack that pages nobody is the real gap there.
 - **Frontend RUM / browser traces:** revisit the Cloudflare-Workers-compatible OTel JS options; propagate `traceparent` from the Next.js app so guest-visible latency joins backend traces.
 - **Manual WS + worker spans:** per `docs/signoz-backend-instrumentation.md` §8, only if incidents demand.
 

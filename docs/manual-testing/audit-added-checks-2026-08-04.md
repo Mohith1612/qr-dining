@@ -1,5 +1,9 @@
 # Manual-testing checks added by the independent audit — 2026-08-04
 
+> **Incorporated 2026-08-22.** The checks in this addendum are now present in
+> `manual-testing-checklist.html` as ENV-08–11, TEN-09–15, FAI-26, OBS-11–12 and REG-10–12.
+> This file remains the root-cause/evidence companion; use the interactive checklist for sign-off.
+
 **Why this is a separate file:** `manual-testing-checklist.html`,
 `manual-testing-user-guide.html` and `testing-dashboard.html` all had uncommitted
 in-flight edits when this audit ran. Rather than collide with that work, the

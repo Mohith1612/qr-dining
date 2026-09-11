@@ -75,7 +75,7 @@
 <div class="wrap">
 <nav>
   <div class="brand">QR-Dining</div>
-  <div class="brandsub">Certification Guide · RC · schema v38</div>
+  <div class="brandsub">Deployed Beta Guide · schema v39</div>
 
   <h4>Orientation</h4>
   <a href="#what">1. What this product is</a>
@@ -117,9 +117,14 @@
 <h1>QR-Dining — Manual Certification User Guide</h1>
 <p class="lede">Everything that exists in this application, why it exists, and how to prove it works.
 Written for someone who has never seen the product, to be read <em>before</em> the certification run.</p>
-<p class="small">Branch <code>feature/signoz-observability</code> (strict superset of
-<code>feature/certification-fixes-ui-redesign</code>, the RC) · schema v38 · 172 routes ·
-OpenAPI 2.2.0 / 171 operations · Generated 2026-08-04</p>
+<p class="small">Deployed beta <code>https://qr-beta.mohith16.com</code> · schema v39 · repository preflight
+<code>feature/signoz-observability@9865a48</code> · beta backend <code>beta-b57f746</code> (known provenance mismatch) · Updated 2026-08-22</p>
+
+<div class="warn"><b>Operator override for this run.</b> Use the public beta URLs, strict
+<b>branch code + staff code + PIN</b> login, and the current <a href="testing-dashboard.html">dashboard</a>.
+Never run resets, dependency stops, Redis flushes, container restarts, nginx reloads or SigNoz reconfiguration
+on the shared VM during ordinary manual certification. Any older local-stack command later in this teaching
+guide is background/reference only; the interactive checklist marks destructive checks isolated-local-only.</div>
 
 <div class="danger">
 <b>The one fact that frames this whole exercise.</b> The Release Candidate <b>has never been soaked</b>.
@@ -291,7 +296,8 @@ shadow engine will <em>not</em> save you. Test RBAC as if the engine did not exi
 </ol>
 
 <div class="verify"><b>Verify this yourself — SQL, 30 seconds</b>
-<pre><code>docker exec manual-testing-postgres psql -U mtest -d qrdining_mtest \
+<pre><code>ssh appuser
+docker exec qr_dining_postgres psql -U qrdining -d qrdining \
   -c "update audit_log set action='tampered' where id=(select min(id) from audit_log);"
 # MUST fail with the immutability trigger error.</code></pre></div>
 
@@ -519,7 +525,8 @@ colours bleeding into staff screens is a regression.</p>
 
 <div class="pagecard">
 <h3>7.1 <code>/staff/login</code></h3>
-<p><code>POST /staff/auth</code> with <code>branch_id</code> + <code>pin</code>. A 10 RPM sensitive limiter that
+<p><code>POST /staff/auth</code> with <code>branch_code</code> + <code>staff_code</code> + <code>pin</code>.
+The beta requires all three fields; PIN-only/branch-ID payloads are rejected. A 10 RPM sensitive limiter that
 <b>fails closed</b> if Redis is down, plus a sliding-window brute-force lockout.</p>
 <div class="verify"><b>Specifically verify</b>
 Enter a wrong PIN repeatedly → lockout engages with a clear message, and the <em>correct</em> PIN stays
@@ -589,8 +596,8 @@ image presign via <code>POST /upload/menu-item-image</code>.
 <b>Buttons:</b> add/edit/delete category; add/edit/delete item (modal: price, description, image upload,
 featured toggle, availability toggle); add/edit/delete modifier groups with the single-select flag.
 <b>Verify:</b> availability toggle broadcasts to live guests; deleting an item that sits in an open cart must
-not corrupt the cart or bill; image upload returns 503 gracefully when R2 is unconfigured
-(<b>it is unconfigured here — that 503 is expected</b>).</td></tr>
+not corrupt the cart or bill; beta image upload succeeds through R2 and the public URL renders on a second
+device. A 503 is a failure in this deployed environment.</td></tr>
 
 <tr><td class="k">Tables</td><td>manager, owner</td>
 <td><code>GET|POST /branches/:id/tables</code>, <code>PATCH|DELETE /tables/:id</code>,
@@ -610,7 +617,7 @@ the two surfaces is known accidental debt worth checking.</td></tr>
 <code>PATCH /staff/:id/pin</code>, <code>PATCH /staff/:id/deactivate</code>.
 <b>RBAC worth memorising:</b> only owners create staff; only owners deactivate; a <b>manager may reset only
 waiter/kitchen PINs</b>, an owner may reset anyone in the branch.
-<b>Verify:</b> log in as manager (PIN 2222) and confirm create is refused with a clear message — this
+<b>Verify:</b> log in with the manager staff code and dashboard PIN and confirm create is refused with a clear message — this
 surprised manual-testing round 4 and was certified as <em>intended</em>. Confirm a deactivated staff member's
 existing session is revoked.</td></tr>
 
@@ -917,7 +924,7 @@ entitlements.</li>
 <dt>Disabled</dt><dd>Byte-for-byte identical behaviour: no-op provider, no exporter dial, no extra goroutines. That property is the merge gate.</dd>
 <dt>Pilot safe?</dt><dd>Yes, but the VM deploy (rollout Phase 3) is <b>blocked pending an explicit Phase 0 sizing GO</b>. Do not enable it in production as part of this certification.</dd>
 <dt>Caveats</dt><dd>No WebSocket spans, no worker spans, no outbound-HTTP spans — deliberate deferrals. Killing the collector must not fail requests (Warn logs only).</dd>
-<dt>Manual verification</dt><dd>§13, then <code>docker stop qr-dining-signoz-eval-signoz-otel-collector-1</code> mid-flow: requests keep returning 200 with only warnings. Restart it afterwards.</dd>
+<dt>Manual verification</dt><dd>On beta, make a request and prove its fresh trace/log/audit pivot in §13. Do not stop or restart the shared-VM collector. Collector-outage injection is isolated-local-only and N/A for a beta-only run.</dd>
 </dl>
 </div>
 
@@ -1047,24 +1054,27 @@ disagrees with the snapshot, the client has invented state — a genuine bug.</d
 <!-- ══════════════════════════════════════════════════════ -->
 <h2 id="obs">13. Observability — what to watch per workflow</h2>
 
-<p>Three signals are live in this stack:</p>
+<p>Three signals are configured on beta. Prometheus and container logs are usable; SigNoz fresh ingestion is a
+known failed preflight check until one of your own request IDs appears:</p>
 <table>
 <tr><th>Signal</th><th>Where</th><th>Notes</th></tr>
-<tr><td class="k">Traces</td><td>SigNoz → <code>ssh -L 3301:127.0.0.1:3301 appuser</code>, then <a href="http://localhost:3301">http://localhost:3301</a></td><td>Services <code>qr-dining-backend</code> and <code>-mtest-2</code>, sample ratio 1.0</td></tr>
-<tr><td class="k">Metrics</td><td><a href="http://localhost:9090">Prometheus via <code>ssh -L 9090:127.0.0.1:9090 appuser</code></a> (job <code>qr-dining</code>, labels <code>instance_name=app-1|app-2</code>) — <code>/metrics</code> is not publicly reachable<span style="display:none">:8095/metrics</a></td><td>Raw Prometheus text. No Prometheus server runs locally — <code>curl | grep</code> is the workflow.</td></tr>
-<tr><td class="k">Logs</td><td><code>/tmp/qrapp-mtest-1.log</code>, <code>-2.log</code></td><td>zerolog JSON with <code>request_id</code> + <code>trace_id</code> + <code>span_id</code></td></tr>
+<tr><td class="k">Traces</td><td>SigNoz → <code>ssh -L 3301:127.0.0.1:3301 appuser</code>, then <a href="http://127.0.0.1:3301">http://127.0.0.1:3301</a></td><td>Service <code>qr-dining-backend</code>, sample ratio 1.0; known ClickHouse ingestion failure as of 2026-08-22</td></tr>
+<tr><td class="k">Metrics</td><td><a href="http://127.0.0.1:9090">Prometheus via <code>ssh -L 9090:127.0.0.1:9090 appuser</code></a>; <code>/metrics</code> is not publicly reachable</td><td>Both app targets have independent instance labels.</td></tr>
+<tr><td class="k">Logs</td><td><code>docker logs qr_dining_app</code> and <code>qr_dining_app_2</code> on the VM</td><td>zerolog JSON with <code>request_id</code> + <code>trace_id</code> + <code>span_id</code></td></tr>
 </table>
 
 <h3>The pivot that proves it all works</h3>
 <pre><code># 1. Do something mutating in the UI, then find its audit row:
-docker exec manual-testing-postgres psql -U mtest -d qrdining_mtest \
+ssh appuser
+docker exec qr_dining_postgres psql -U qrdining -d qrdining \
   -c "select action, actor_type, result, correlation_id from audit_log order by id desc limit 5;"
 
 # 2. Paste that correlation_id into SigNoz as the trace id.
 #    (With no X-Correlation-ID header, correlation_id IS the trace id.)
 
-# 3. Grep the same id in the log:
-grep &lt;correlation_id&gt; /tmp/qrapp-mtest-1.log</code></pre>
+# 3. Search the same id in both beta logs:
+docker logs qr_dining_app 2&gt;&amp;1 | grep &lt;correlation_id&gt;
+docker logs qr_dining_app_2 2&gt;&amp;1 | grep &lt;correlation_id&gt;</code></pre>
 <p>Audit row → trace → logs, with no schema change. If that three-way pivot works, the observability story is
 certified.</p>
 
@@ -1146,11 +1156,8 @@ but never incremented; OTel spans replace them. Likewise <code>audit_log.row_has
 <ol>
 <li><b>Wi-Fi off mid-session</b> → reconnect banner, exponential backoff, then snapshot reconciliation. No lost cart items.</li>
 <li><b>Airplane mode 3+ minutes</b> → the session may move to <code>awaiting_reactivation</code>; returning should offer reactivation, never a dead end.</li>
-<li><b>Kill the collector</b> (<code>docker stop qr-dining-signoz-eval-signoz-otel-collector-1</code>) → requests keep succeeding, Warn logs only. Restart afterwards.</li>
-<li><b>Redis outage</b> (<code>docker stop manual-testing-redis</code>) → realtime pauses, HTTP continues, sensitive limiters fail closed (login <em>refused</em>, not bypassed). Restart → automatic recovery with no manual step.</li>
-<li><b>Postgres outage</b> → <code>/readyz</code> returns 503 while <code>/health</code> stays 200.</li>
-<li><b>Backend restart mid-session</b> → guests reconnect and reconcile in ~12s.</li>
-<li><b>Cross-instance</b>: guest on :3000 (app-1) and a second guest on :3001 (app-2) in the same session. Events must cross via Redis — the multi-pod proxy test.</li>
+<li><b>Collector/Redis/Postgres/backend outage injection</b> is isolated-local-only. Mark these N/A in a beta-only run; never stop shared-VM services without a separate operator window.</li>
+<li><b>Cross-instance</b>: create/mutate through <code>qr-api-beta-1</code> and read through <code>qr-api-beta-2</code>, then reverse the direction. Repeat the WebSocket ticket/event path both ways.</li>
 </ol>
 
 <h3>Client-side</h3>
@@ -1259,57 +1266,54 @@ especially for realtime latency, which is what a real service actually feels.</d
 <!-- ══════════════════════════════════════════════════════ -->
 <h2 id="env">16. Environment &amp; seed data</h2>
 
-<div class="danger"><b>The soak stack is protected.</b> Compose project <code>qr-dining</code>
-(<code>qr-app-soak</code>, <code>qr-dining-postgres-1</code>, <code>qr-dining-redis-1</code>) is running and must
-never be stopped, restarted or wiped. This testing stack shares no network, volume, port or container with it.
-Teardown only ever touches the <code>manual-testing</code> project.</div>
+<div class="danger"><b>The shared VM is protected.</b> Do not stop, restart, wipe or reconfigure the protected
+soak, deployed beta dependencies, shared nginx proxy, SigNoz, or another application. Normal certification uses
+the public HTTPS surfaces and read-only investigation. Failure injection belongs on the isolated local stack.</div>
 
 <h3>What is running right now</h3>
 <table>
 <tr><th>Component</th><th>Where</th><th>State</th></tr>
 <tr><td class="k">Frontend</td><td><a href="https://qr-beta.mohith16.com">qr-beta.mohith16.com</a></td><td>Cloudflare Worker (OpenNext)</td></tr>
 <tr><td class="k">API</td><td><a href="https://qr-api-beta.mohith16.com/readyz">qr-api-beta</a> · <a href="https://qr-api-beta-1.mohith16.com/readyz">-1</a> · <a href="https://qr-api-beta-2.mohith16.com/readyz">-2</a></td><td>balanced, plus per-instance pins for cross-instance tests</td></tr>
-<tr><td class="k">Backend app-1</td><td>:8090 · <code>WORKER_REGION=mtest-1</code></td><td>audit ON · <b>OTEL ON @ ratio 1.0</b></td></tr>
-<tr><td class="k">Backend app-2</td><td>:8095 · <code>WORKER_REGION=mtest-2</code></td><td>audit ON · <b>OTEL ON @ ratio 1.0</b></td></tr>
+<tr><td class="k">Backend instance 1</td><td><a href="https://qr-api-beta-1.mohith16.com/readyz">pinned beta host</a> · container <code>qr_dining_app</code></td><td><code>WORKER_REGION=beta</code> · audit/OTEL ON</td></tr>
+<tr><td class="k">Backend instance 2</td><td><a href="https://qr-api-beta-2.mohith16.com/readyz">pinned beta host</a> · container <code>qr_dining_app_2</code></td><td><code>WORKER_REGION=beta</code> · audit/OTEL ON</td></tr>
 <tr><td class="k">Postgres</td><td><code>docker exec -it qr_dining_postgres psql -U qrdining -d qrdining</code> (on the VM)</td><td>schema v39</td></tr>
 <tr><td class="k">Redis</td><td><code>docker exec -it qr_dining_redis redis-cli</code> (on the VM)</td><td>shared by both backends — carries WS tickets and the pub/sub fan-out</td></tr>
-<tr><td class="k">SigNoz</td><td>tunnel to <a href="http://localhost:3301">localhost:3301</a>, collector <code>signoz-otel-collector:4317</code></td><td>VM stack, project <code>qr-dining-signoz-eval</code></td></tr>
+<tr><td class="k">SigNoz</td><td>tunnel to <a href="http://127.0.0.1:3301">127.0.0.1:3301</a></td><td>VM stack <code>qr-dining-signoz</code>; UI up, fresh ingestion currently failed</td></tr>
 </table>
 <p>Both backends share the DB, Redis and one <code>GUEST_TOKEN_SECRET</code>, so guest tokens and realtime
-events cross instances. Logs: <code>/tmp/qrapp-mtest-{1,2}.log</code>, <code>/tmp/frontend-{a,b}.log</code>.</p>
+events cross instances. Inspect logs with <code>docker logs qr_dining_app</code> and <code>qr_dining_app_2</code>.</p>
 
 <h3>The three tenants</h3>
 <table>
 <tr><th>Org</th><th>Plan</th><th>Theme</th><th>Branches (id · code)</th></tr>
 <tr><td class="k">1 · Saffron House Hospitality</td><td>Premium · active</td><td>dark-luxury + custom tokens</td><td>1 Bandra <code>SAFF-BND</code> · 2 Indiranagar <code>SAFF-IND</code> · 3 Connaught Place <code>SAFF-CP</code></td></tr>
 <tr><td class="k">2 · Copper Pot Kitchen</td><td>Standard · active</td><td>warm-cafe</td><td>4 Koramangala <code>COPR-KOR</code></td></tr>
-<tr><td class="k">3 · Urban Brew Cafe</td><td>Free · <b>trial</b> (ends 2026-08-20)</td><td>vibrant</td><td>5 Cyber Hub <code>BREW-CYB</code></td></tr>
+<tr><td class="k">3 · Urban Brew Cafe</td><td>Free · <b>trial</b></td><td>vibrant</td><td>5 Cyber Hub <code>BREW-CYB</code></td></tr>
 </table>
-<p>15 tables (3 per branch), 18 staff, 71 menu items, 4 platform users. Timezone <code>Asia/Kolkata</code> throughout.</p>
+<p>15 tables (3 per branch), 18 staff, 71 menu items, 5 platform users. Timezone <code>Asia/Kolkata</code> throughout.</p>
 
 <h3>Credentials</h3>
 <table>
 <tr><th>Surface</th><th>Credential</th></tr>
-<tr><td class="k">Staff</td><td><code>branch_id</code> + PIN — owner <code>1111</code>, manager <code>2222</code>, waiter <code>3333</code>, kitchen <code>4444</code>. Owner exists only on each tenant's primary branch (1, 4, 5).</td></tr>
+<tr><td class="k">Staff</td><td><code>branch_code</code> + <code>staff_code</code> + PIN. Staff codes use <code>&lt;BRANCH&gt;-OWN|-MGR|-WTR|-KIT</code>; obtain intentional test PINs from the dashboard. Owner exists only on each tenant's primary branch.</td></tr>
 <tr><td class="k">Platform</td><td><code>admin@platform.local</code>/<code>Platform!admin1</code> (super_admin) · <code>support@platform.local</code>/<code>Support!admin1</code> · <code>billing@platform.local</code>/<code>Billing!admin1</code> · <code>auditor@platform.local</code>/<code>Auditor!admin1</code>. <b>No MFA enrolled.</b></td></tr>
 <tr><td class="k">Guest</td><td>None — enter via a table QR token. Live tokens are on the dashboard.</td></tr>
 </table>
 
 <div class="warn"><b>Current baseline state — read this before you start.</b>
-Saffron Bandra (branch 1) has <b>all three tables occupied</b> by leftover <code>payment_pending</code> sessions
-from earlier smoke runs. Free right now: Saffron Indiranagar T1–T3, Saffron Connaught Place T1–T3,
-Copper Pot T1 &amp; T3, Urban Brew T1 &amp; T3.
+At the 2026-08-22 preflight, Saffron Bandra T1/T3 were available and T2 was payment-pending/occupied.
+Copper Pot and Urban Brew T2 were payment-pending/occupied; their T1/T3 tables were available. All tables in
+Saffron Indiranagar and Connaught Place were available. Re-check immediately before use because this state changes.
 <br><br>
-Those stale sessions are <em>useful</em> fixtures for the waiter settlement queue. If you want a pristine
-baseline instead, run <code>./scripts/manual-testing-up.sh --reset</code> — which wipes the isolated volumes,
-re-seeds, and <b>regenerates every QR token</b>. Refresh the dashboard afterwards with:
-<pre><code>docker exec manual-testing-postgres psql -U mtest -d qrdining_mtest -tAc \
+The pending sessions are useful waiter-settlement fixtures. <b>Never reset beta.</b> Query current tokens/state with:
+<pre><code>ssh appuser
+docker exec qr_dining_postgres psql -U qrdining -d qrdining -tAc \
   "select branch_id, identifier, qr_code_token from tables order by 1,2;"</code></pre></div>
 
-<h3>Restarting the backends with tracing on</h3>
-<p>The up-script does not set the OTel vars. If you restart the stack, relaunch the backends with:</p>
-<pre><code>pkill -f '^/tmp/qrapp-mtest$'   # note the anchors — a bare pattern also kills your own shell
-OTEL is already enabled on the beta (OTEL_ENABLED=true, sampling 1.0) — nothing to launch.</code></pre>
+<h3>Tracing during certification</h3>
+<p>OTel is already enabled on beta with sampling 1.0. Do not restart or reconfigure it during the run. If your
+fresh trace is absent, mark the observability check failed and continue capturing request IDs in application logs.</p>
 
 <!-- ══════════════════════════════════════════════════════ -->
 <h2 id="errors">17. Guest-facing error codes</h2>
@@ -1339,12 +1343,9 @@ would make this certification worse than useless.</p>
 <table>
 <tr><th>Area</th><th>Why not</th><th>Where it must be proven</th></tr>
 <tr><td class="k">Sustained load / memory behaviour</td><td>Manual testing is minutes, not days</td><td><b>The RC soak — the standing SEV-0</b></td></tr>
-<tr><td class="k">Split-origin production edge</td><td>Everything here is localhost: no Cloudflare Worker, no nginx, no TLS</td><td>Production rehearsal: CORS, CSP <code>connect-src</code>, WSS proxying, a real phone on cellular</td></tr>
 <tr><td class="k">Real payment gateway</td><td>None integrated; the webhook is generic</td><td>Post-pilot, behind the existing webhook abstraction</td></tr>
-<tr><td class="k">Real alert delivery</td><td>Alertmanager points at a placeholder webhook sink</td><td>SEV-1: wire one real app-down page before day 1</td></tr>
-<tr><td class="k">Image upload (R2)</td><td>R2 unconfigured → upload endpoints return 503 <b>by design</b></td><td>A production environment with R2 credentials</td></tr>
-<tr><td class="k">Platform MFA end-to-end</td><td><code>MFA_ENCRYPTION_KEY</code> unset → enrolment fails closed</td><td>Set the key and re-test, or defer to the production checklist</td></tr>
-<tr><td class="k">Backup / restore</td><td>Not wired to this stack</td><td>Already certified against real R2 on 2026-07-18</td></tr>
+<tr><td class="k">Destructive dependency failure on beta</td><td>PostgreSQL, Redis, backends, collector and nginx share a live beta/shared VM</td><td>Use the isolated local stack; mark N/A in a beta-only run</td></tr>
+<tr><td class="k">Full backup restore into beta</td><td>Would overwrite or create operational database state</td><td>Checksum/download the backup here; restore only into a separately authorized disposable database</td></tr>
 <tr><td class="k">Multi-instance WS at scale</td><td>Two instances prove routing, not sharding</td><td>Deferred; revisit at ~50 restaurants</td></tr>
 <tr><td class="k">R2/R3/R7 enforcement behaviour</td><td>Those flags are off and must stay off</td><td>Their own rollout waves, with metric gates</td></tr>
 <tr><td class="k">Printed-QR durability</td><td>Print quality, lamination, lighting</td><td>A physical rehearsal with the real printer</td></tr>

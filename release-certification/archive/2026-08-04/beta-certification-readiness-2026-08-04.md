@@ -2,6 +2,14 @@
 
 **Date:** 2026-08-04 · Companion to `beta-deployment-report-2026-08-04.md`
 
+> **Superseded for the 2026-08-22 run.** Use
+> [`manual-certification-preflight-2026-08-22.md`](../../manual-certification-preflight-2026-08-22.md) and
+> [`docs/manual-testing/testing-dashboard.html`](../../../docs/manual-testing/testing-dashboard.html).
+> Product-flow testing may continue, but the current formal readiness verdict is **BLOCKED** by candidate
+> provenance, failed SigNoz ingestion, nine reachable advisories in the deployed backend binary, and the lack
+> of a human Alertmanager receiver. The historical statement below describes the 2026-08-04 deployment check;
+> it is not the current certification verdict.
+
 ## Can manual certification begin?
 
 **Yes.** Every operational component is deployed and verified end-to-end: backend (two instances), frontend,

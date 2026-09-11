@@ -1,6 +1,8 @@
 # RECOVERY.md — QR-Dining Backup & Disaster Recovery
 
-**Canonical recovery guide.** Companions: `DEPLOYMENT.md`, `OPERATIONS.md`. Historical certification: `restore-verification-report.md` (local-provider round trip, 2026-06-09).
+**Canonical backup and disaster-recovery guide.** Companions: [DEPLOYMENT.md](DEPLOYMENT.md) · [OPERATIONS.md](OPERATIONS.md) · [RUNBOOKS.md](RUNBOOKS.md).
+
+Archived certification evidence: [history/restore-verification-report.md](history/restore-verification-report.md) (local-provider round trip, 2026-06-09).
 
 ---
 
@@ -11,7 +13,7 @@
   - `backups/YYYY/MM/backup_YYYYMMDD_HHMMSS.dump` (UTC-named, one per run)
   - `backups/manifest.jsonl` — one JSON line per backup: `{timestamp,key,bytes,sha256,provider,retention_days}`. **The manifest is the index of record**: pick restore candidates from it and always verify sha256 after download.
 - **Provider abstraction** (`backend/scripts/lib/storage.sh`): `BACKUP_PROVIDER=r2|s3|local`, same code path (AWS CLI) for both clouds. Nothing is bucket-name-aware beyond env.
-- **RPO: ≤24h** (nightly). **RTO: minutes** for a DB-only restore at pilot volume (the verified drill below completed in seconds on a small dataset; re-measure at production volume), **~1–2h** for full-host rebuild via DEPLOYMENT.md.
+- **RPO: ≤24h** (nightly). **RTO: minutes** for a DB-only restore at pilot volume (the verified drill below completed in seconds on a small dataset; re-measure at production volume), **~1–2h** for full-host rebuild via [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## 2. Choosing a backup
 
@@ -58,15 +60,31 @@ docker run --rm --network qr-restore-drill \
 5. `docker compose start app` → app re-migrates idempotently if the dump predates newer migrations → `/readyz` 200.
 6. Verify: row counts (restore.sh prints the six core tables), one full guest journey, audit_log immutability intact (an UPDATE attempt on audit_log must fail).
 
+## 3c. Local / ad-hoc backups (development)
+
+The nightly job above is the production path. For a one-off dump on a development or throwaway database:
+
+```bash
+cd backend
+DATABASE_URL=postgres://user:pass@host:5432/db ./scripts/backup.sh
+# writes $BACKUP_DIR/backup_YYYYMMDD_HHMMSS.dump   (BACKUP_DIR defaults to ./backups)
+
+DATABASE_URL=postgres://user:pass@host:5432/db ./scripts/restore.sh ./backups/backup_YYYYMMDD_HHMMSS.dump
+```
+
+`backup.sh` prunes local dumps older than `RETENTION_DAYS`. Note that the script's own comment says the default is 7 while the code uses **30** — trust the code, and set the variable explicitly if the value matters to you. This local pruning is unrelated to the 14-day R2 retention used by `nightly-backup.sh`.
+
+These local dumps carry **no manifest and no checksum**, so they are not restore candidates for an incident. Use §2 for that.
+
 ## 4. Disaster scenarios
 
 | Scenario | Action |
 |---|---|
-| Bad deploy / app regression | Not a restore case: pin previous `IMAGE_TAG`, `docker compose up -d app` (OPERATIONS.md §2) |
+| Bad deploy / app regression | Not a restore case: pin previous `IMAGE_TAG`, `docker compose up -d app` ([OPERATIONS.md §2](OPERATIONS.md#2-deploying-a-new-version)) |
 | Postgres data corruption / bad mutation | §3b. Data loss bounded by last nightly (≤24h RPO) |
 | `qr-dining_postgres_data` volume lost | `docker compose up -d postgres` (fresh volume) → §3b into the empty DB |
 | Redis volume lost | Nothing to restore — Redis is disposable by design; restart it, realtime self-recovers |
-| Whole VM lost | Rebuild per DEPLOYMENT.md (proxy stack first) → §3b with the newest manifest entry. Secrets must come from the password manager — they are not in git |
+| Whole VM lost | Rebuild per [DEPLOYMENT.md](DEPLOYMENT.md) (proxy stack first) → §3b with the newest manifest entry. Secrets must come from the password manager — they are not in git |
 | R2 bucket lost / creds leaked | Backups are the *copy*; the live DB is intact. Create bucket + new scoped token, update `/etc/qr-dining/backup.env`, run one manual backup, roll the leaked token |
 | Backup job silently broken | `BackupTooOld` pages at >36h; `journalctl -u qr-dining-backup` for the failing step; every step is fail-hard so the journal names it |
 
@@ -74,7 +92,7 @@ docker run --rm --network qr-restore-drill \
 
 | Date | What | Result |
 |---|---|---|
-| 2026-06-09 | Full round trip, `local` provider (Phase E cert) | PASS — 56/56 tables row-identical, trigger + checksum fidelity (`restore-verification-report.md`) |
+| 2026-06-09 | Full round trip, `local` provider (Phase E cert) | PASS — 56/56 tables row-identical, trigger + checksum fidelity ([history/restore-verification-report.md](history/restore-verification-report.md)) |
 | 2026-07-18 | **Full round trip against the real R2 bucket** (temporary `qr-dining-backups`, account `16465dc4…`): containerized pg_dump 17 → upload → manifest append → fresh download → sha256 vs manifest (`fc5a2ecd…` ✓) → `restore.sh` into a second postgres:17 → content checksum source vs restored (`a2926ca4…` = `a2926ca4…` ✓) → retention pass, textfile metrics `status 0` + success timestamp | **PASS** — closes the "never tested against real R2" SEV-1. Found+fixed en route: BusyBox-incompatible `date` in the retention step (now epoch-based, portable) |
 
 Re-run the §3a drill: within week 1 of go-live (at real data volume — record the duration to update RTO), after any bucket rename, and quarterly.

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QR Dining — RC Certification Checklist</title>
+<title>QR Dining — Beta Certification Checklist</title>
 <style>
   :root{--ink:#1a1410;--ink2:#4a4031;--muted:#6b5f4f;--line:#e3dccf;--line2:#cfc4ae;
         --gold:#a9802f;--bg:#fbf8f2;--panel:#fff;--zebra:#faf7f0;
@@ -81,9 +81,9 @@
 <body>
 <div class="wrap">
 
-<div class="kicker">Release Candidate · Final Human Gate</div>
+<div class="kicker">Beta Deployment · Manual Certification</div>
 <h1>QR-Dining — Manual Certification Checklist</h1>
-<p class="sub">Branch <code>feature/signoz-observability</code> · schema v38 · every item carries purpose,
+<p class="sub">Beta at <a href="https://qr-beta.mohith16.com">qr-beta.mohith16.com</a> · schema v39 · every item carries purpose,
 steps, expected result, severity and impact. Answers save to this browser automatically.</p>
 <p class="top">
   <a href="testing-dashboard.html">← Testing dashboard</a>
@@ -95,13 +95,14 @@ steps, expected result, severity and impact. Answers save to this browser automa
   <span><label>Tester<input id="m-tester" size="16" placeholder="name"></label></span>
   <span><label>Date<input id="m-date" size="12" placeholder="YYYY-MM-DD"></label></span>
   <span><label>Build / commit<input id="m-build" size="14" placeholder="git rev-parse --short HEAD"></label></span>
-  <span><label>Environment<input id="m-env" size="18" value="manual-testing (local)"></label></span>
+  <span><label>Environment<input id="m-env" size="24" value="qr-beta deployed"></label></span>
 </div>
 
-<div class="danger"><b>Before you start:</b> read the
-<a href="manual-testing-user-guide.html">user guide</a>. Several items below will look like bugs if you do not
-know they are deliberate — staff polling at 10s, governance running inert, R2 uploads returning 503, the
-audit hash-chain being NULL, and org suspension not blocking anything.</div>
+<div class="danger"><b>Before you start:</b> this checklist targets the deployed beta. Never stop/restart
+PostgreSQL, Redis, nginx, a backend, SigNoz, or another shared-VM application while following it. Tests which
+require dependency failure or flag-mode changes say <b>isolated local stack only</b>; mark them N/A during a
+beta-only run. Known preflight findings (candidate provenance, SigNoz ingestion, human alert delivery and the
+deployed-binary vulnerability scan) must remain recorded even if you continue product testing.</div>
 
 <div class="hint"><b>Severity scale.</b>
 <b>SEV-0</b> = blocks the RC, do not soak · <b>SEV-1</b> = blocks Restaurant #1, must fix before pilot ·
@@ -147,25 +148,25 @@ const SECTIONS = [
   s:["curl https://qr-api-beta-1.mohith16.com/readyz","curl https://qr-api-beta-2.mohith16.com/readyz"],
   e:'Both return status ready with postgres:ok and redis:ok.',
   imp:"Every subsequent result is untrustworthy."},
- {id:"ENV-02", t:"Both frontends compile and serve", sev:0,
-  p:"next dev compiles lazily; a broken build shows only on first hit.",
+ {id:"ENV-02", t:"Beta frontend serves on two real devices", sev:0,
+  p:"The Cloudflare-hosted frontend and its real TLS/CSP path must work outside the development laptop.",
   s:["Open https://qr-beta.mohith16.com/staff/login on device A","Open the same URL on device B — for cross-instance coverage put A and B on different networks so they hash to different backends, or drive the API directly via qr-api-beta-1 / qr-api-beta-2"],
   e:"Both render the login form with no console errors.",
   imp:"Cannot test anything."},
- {id:"ENV-03", t:"Schema is at v38", sev:1,
+ {id:"ENV-03", t:"Schema is at v39", sev:1,
   p:"Certifying an older schema certifies the wrong product.",
-  s:["docker exec manual-testing-postgres psql -U mtest -d qrdining_mtest -tAc 'select version, dirty from schema_migrations'"],
-  e:"Returns 38 and dirty = false.",
+  s:["ssh appuser, then: docker exec qr_dining_postgres psql -U qrdining -d qrdining -tAc 'select version, dirty from schema_migrations'"],
+  e:"Returns 39 and dirty = false.",
   imp:"Findings may not map to the RC."},
  {id:"ENV-04", t:"Seed data is present and coherent", sev:1,
   p:"Three tenants with different plans and themes are what makes isolation testable.",
-  s:["Query counts: organizations=3, branches=5, tables=15, staff=18, platform_users=4"],
+  s:["On the beta DB query counts: organizations=3, branches=5, tables=15, staff=18, platform_users=5"],
   e:"Counts match; Saffron=Premium, Copper Pot=Standard, Urban Brew=Free/trial.",
   imp:"Cross-tenant and entitlement tests become meaningless."},
  {id:"ENV-05", t:"Soak stack is untouched", sev:0,
   p:"The protected R1 soak must never be disturbed by testing.",
-  s:["docker ps | grep qr-dining","Confirm qr-app-soak, qr-dining-postgres-1 and qr-dining-redis-1 are still Up with their original uptime"],
-  e:"All three still running; uptime not reset.",
+  s:["Record docker ps before testing","Do not issue stop/restart/down commands for the protected soak or any shared-VM service","Compare uptime again in REG-08"],
+  e:"Protected soak and unrelated VM applications keep continuous uptime.",
   imp:"Destroying soak evidence costs days and invalidates the R1 lineage."},
  {id:"ENV-06", t:"Tracing is exporting to SigNoz", sev:2,
   p:"Section 10 of this checklist depends on it.",
@@ -177,6 +178,26 @@ const SECTIONS = [
   s:["Compare one dashboard token with: select branch_id, identifier, qr_code_token from tables order by 1,2"],
   e:"They match exactly.",
   imp:"Guest tests fail with 'invalid QR' for entirely the wrong reason."},
+ {id:"ENV-08", t:"The deployed build matches the certification commit", sev:1,
+  p:"A test result is meaningful only when the backend image, frontend deployment and recorded build identify one immutable candidate.",
+  s:["Record the checklist Build / commit value","Compare it with PR head, /opt/qr-dining/repo HEAD and the backend image tag","Record the frontend deployment version or artifact SHA"],
+  e:"All surfaces identify the same pushed commit. If they do not, record the known provenance failure and continue only as a non-GO exploratory run.",
+  imp:"The team cannot know which code was actually certified."},
+ {id:"ENV-09", t:"Both liveness and readiness routes are correct", sev:1,
+  p:"Several historical documents referenced a nonexistent /healthz route.",
+  s:["curl -i https://qr-api-beta-1.mohith16.com/health","curl -i https://qr-api-beta-1.mohith16.com/readyz","Repeat on instance 2"],
+  e:"/health and /readyz return 200 on both instances. Do not use /healthz.",
+  imp:"A copied probe reports false outages or routes traffic to an unready instance."},
+ {id:"ENV-10", t:"Backends run in release mode", sev:2,
+  p:"In non-release mode a stray .env can override injected runtime configuration.",
+  s:["Inspect both beta container environments without printing secret values","Confirm GIN_MODE=release and WORKER_REGION=beta"],
+  e:"Both containers use release mode and the same beta worker region.",
+  imp:"A hidden local .env can point an instance at the wrong database or security settings."},
+ {id:"ENV-11", t:"Deployed binary vulnerability result is recorded", sev:1,
+  p:"The release decision must include the security state of the exact binary, even when remediation is deferred.",
+  s:["Copy the exact beta /app/qr-dining binary to a disposable local path","Run govulncheck -mode=binary against it","Record the embedded Go version and advisory IDs, then delete the disposable copy"],
+  e:"The result is attached to this run. The 2026-08-22 baseline is Go 1.26.5 with 9 reachable advisories; keep this item failed until a rescanned candidate clears them.",
+  imp:"A vulnerable binary can receive a GO verdict because only source tests were considered."},
 ]},
 
 {id:"guest", name:"1 · Guest — the only role that creates data", why:"Run first: every other surface consumes what this produces.", items:[
@@ -335,7 +356,7 @@ const SECTIONS = [
 {id:"kitchen", name:"2 · Kitchen — consumes guest orders", why:"Directional: kitchen owns confirmed→preparing→ready. Test before the waiter.", items:[
  {id:"KIT-01", t:"Kitchen login lands on the KDS", sev:1,
   p:"Role-based landing.",
-  s:["Log in with branch_id and PIN 4444"],
+  s:["At /staff/login enter the branch code, kitchen staff code and PIN from the testing dashboard"],
   e:"Lands on /staff/kitchen. No admin or payment affordances anywhere.",
   imp:"Kitchen staff wander into surfaces they should not touch."},
  {id:"KIT-02", t:"New order appears within one poll cycle", sev:1,
@@ -388,7 +409,7 @@ const SECTIONS = [
 {id:"waiter", name:"3 · Waiter — closes the loop", why:"Serves and settles; settlement produces the closed sessions later sections need.", items:[
  {id:"WTR-01", t:"Waiter login lands on the service floor", sev:1,
   p:"Role-based landing.",
-  s:["Log in with PIN 3333"],
+  s:["At /staff/login enter the branch code, waiter staff code and PIN from the testing dashboard"],
   e:"Lands on /staff/waiter with tables, ready-to-serve and settlement queues.",
   imp:"Staff cannot find their tools."},
  {id:"WTR-02", t:"Ready orders appear in the serve queue", sev:1,
@@ -494,11 +515,11 @@ const SECTIONS = [
   s:["Feature an item","Reload the guest session home"],
   e:"Appears in the popular-items carousel.",
   imp:"Merchandising control does not work."},
- {id:"ADM-07", t:"Image upload fails gracefully without R2", sev:3,
-  p:"R2 is unconfigured here — a clean 503 is the CORRECT behaviour.",
-  s:["Attempt a menu item image upload"],
-  e:"A clear message, not a crash or a silent failure. Mark N/A for the upload itself.",
-  imp:"Confusing failure during real onboarding when credentials are wrong."},
+ {id:"ADM-07", t:"Image upload and public R2 render work", sev:2,
+  p:"R2 is configured on beta and the complete staff-upload-to-guest-render path must be certified.",
+  s:["Create or choose a disposable menu item","Upload a small valid PNG from its edit view","Open the guest menu in a second browser/network and load the image","Record the public object path without credentials"],
+  e:"Upload succeeds, the public URL returns the correct image/content type, and the guest menu renders it without CSP or tenant-path errors.",
+  imp:"Restaurants cannot publish menu photography even though storage appears configured."},
  {id:"ADM-08", t:"Deleting an item that sits in an open cart", sev:2,
   p:"Referential edge case that real restaurants will hit.",
   s:["Guest adds item X to cart","Admin deletes item X","Guest attempts to order"],
@@ -931,6 +952,41 @@ const SECTIONS = [
   s:["Read branch and org audit logs as staff from each tenant"],
   e:"Strictly own-scope rows.",
   imp:"Audit becomes a cross-tenant data leak."},
+ {id:"TEN-09", t:"Foreign menu category cannot be renamed", sev:0,
+  p:"Item-scoped routes have no branch id in the path and previously bypassed tenant scope.",
+  s:["Create a disposable certification category in Copper Pot and record its original value","Authenticate as a Saffron owner or manager and PATCH that category id with a harmless test name","Re-read it as Copper Pot staff; if the denial fails, stop and restore it using the authorized Copper account"],
+  e:"403 and the foreign category is byte-for-byte unchanged.",
+  imp:"One tenant can rewrite another restaurant's menu."},
+ {id:"TEN-10", t:"Foreign item featured flag cannot be changed", sev:0,
+  p:"Featured is a branch-owned item mutation even though the URL contains only an item id.",
+  s:["Create a disposable Copper Pot item and record its original featured value","As Saffron staff, PATCH that item id's featured route","Re-read as Copper staff; if the denial fails, stop and restore through the authorized account"],
+  e:"403 and is_featured is unchanged.",
+  imp:"One tenant can alter another tenant's guest storefront."},
+ {id:"TEN-11", t:"Foreign item availability cannot be changed", sev:0,
+  p:"Availability changes can stop a restaurant selling a dish.",
+  s:["Use the disposable Copper Pot item and record availability","As Saffron staff, PATCH its availability route","Re-read as Copper staff; if the denial fails, stop and restore through the authorized account"],
+  e:"403 and is_available is unchanged.",
+  imp:"A cross-tenant actor can take another restaurant's products offline."},
+ {id:"TEN-12", t:"Foreign session events cannot be read", sev:1,
+  p:"Session event history exposes guest and operational activity.",
+  s:["As Saffron staff, GET /sessions/<Copper-session-id>/events"],
+  e:"403 or 404 with no event data.",
+  imp:"Operational history leaks across tenants."},
+ {id:"TEN-13", t:"Foreign item/category deletes fail closed", sev:1,
+  p:"A 500 or 409 can prove a foreign resource exists even when deletion does not complete.",
+  s:["Create disposable Copper item/category records with no dependencies","As Saffron staff, DELETE those foreign ids","Confirm both rows remain; clean them up only as authorized Copper staff after evidence is captured"],
+  e:"Both return 403 without existence-sensitive error detail; rows unchanged.",
+  imp:"Existence leaks and destructive cross-tenant reach remain possible."},
+ {id:"TEN-14", t:"Sibling-branch item mutation is denied", sev:0,
+  p:"Branch, not organization, is the staff mutation boundary.",
+  s:["Create a disposable SAFF-IND item and record availability","As SAFF-BND manager, change it by id","Re-read as SAFF-IND manager; if the denial fails, stop and restore through the authorized account"],
+  e:"403 and the sibling-branch item is unchanged.",
+  imp:"One branch can disrupt another branch in the same organization."},
+ {id:"TEN-15", t:"Foreign staff cannot be deactivated", sev:0,
+  p:"Staff-id routes previously allowed a foreign owner to deactivate another tenant's staff.",
+  s:["Create a disposable Copper waiter and verify login","As Saffron owner, PATCH that staff id's deactivate route","Verify the disposable Copper waiter still authenticates; if the denial fails, reactivate/reset it through the authorized Copper owner"],
+  e:"403 and the foreign staff remains active.",
+  imp:"One tenant can lock another restaurant's staff out."},
 ]},
 
 {id:"failure", name:"9 · Failure & recovery scenarios", why:"Destructive — run only after the happy paths pass.", items:[
@@ -946,32 +1002,32 @@ const SECTIONS = [
   imp:"A table is permanently stuck with no recovery path."},
  {id:"FAI-03", t:"Redis outage: HTTP survives, realtime pauses", sev:0,
   p:"Postgres is authoritative; Redis is disposable. Chaos-validated before — re-prove it on the RC.",
-  s:["docker stop manual-testing-redis","Browse the menu and read the bill","Try to add to cart and observe","Attempt a staff login"],
+  s:["ISOLATED LOCAL STACK ONLY — never stop beta Redis","Stop manual-testing-redis, browse/read, try a cart mutation and staff login","Mark N/A for a beta-only run"],
   e:"HTTP reads keep working; realtime pauses; sensitive limiters FAIL CLOSED so staff login is refused rather than left unprotected.",
   imp:"A Redis blip takes the whole restaurant offline — or worse, silently disables brute-force protection."},
  {id:"FAI-04", t:"Redis recovery is automatic", sev:1,
   p:"No human step should be required.",
-  s:["docker start manual-testing-redis","Wait","Add an item to the cart"],
+  s:["ISOLATED LOCAL STACK ONLY — start manual-testing-redis","Wait, then add an item to the cart","Mark N/A for a beta-only run"],
   e:"Realtime resumes by itself; redis_pubsub_reconnects_total increments; redis_pubsub_connected returns to 1.",
   imp:"Every blip needs a manual restart at 9pm on a Saturday."},
  {id:"FAI-05", t:"Postgres outage flips /readyz but not /health", sev:1,
   p:"Liveness versus readiness — the load balancer depends on the difference.",
-  s:["docker stop manual-testing-postgres","curl /health and /readyz","Restart it"],
+  s:["ISOLATED LOCAL STACK ONLY — never stop beta PostgreSQL","Stop manual-testing-postgres, curl /health and /readyz, then restart it","Mark N/A for a beta-only run"],
   e:"/health 200, /readyz 503; recovers automatically after restart.",
   imp:"The LB either keeps routing to a dead app or kills a healthy one."},
  {id:"FAI-06", t:"Backend restart mid-session recovers in about 12s", sev:1,
   p:"Deploys happen. Migrations run at boot and are idempotent.",
-  s:["With an active session, kill and relaunch app-1","Watch the guest"],
+  s:["ISOLATED LOCAL STACK ONLY unless a separate beta restart window is explicitly approved","With an active local session, restart app-1 and watch the guest","Mark N/A for a beta-only run"],
   e:"Reconnect and snapshot reconciliation restore exact state within about 15s.",
   imp:"Every deploy strands every live table."},
  {id:"FAI-07", t:"Cross-instance realtime works", sev:1,
   p:"Proves Redis fan-out across instances — the multi-pod property.",
-  s:["Guest A on :3000 (app-1) and guest B on :3001 (app-2), same session","Add an item on A"],
+  s:["Use the pinned API hosts for deterministic proof: create/mutate through qr-api-beta-1 and read through qr-api-beta-2","Repeat in the opposite direction","For UI feel, put the two devices on different networks and use the shared beta frontend"],
   e:"B sees it. Events cross instances.",
   imp:"Multi-instance deployment silently breaks the shared cart."},
  {id:"FAI-08", t:"Collector outage does not affect the app", sev:2,
   p:"Telemetry must never be load-bearing.",
-  s:["docker stop qr-dining-signoz-eval-signoz-otel-collector-1","Drive a full guest flow","Restart it"],
+  s:["ISOLATED LOCAL STACK ONLY — never stop the beta collector on the shared VM","Stop the local test collector, drive a guest flow, then restart it","Mark N/A for a beta-only run"],
   e:"Every request succeeds; only Warn logs from the otel error handler.",
   imp:"An observability outage becomes a product outage — the worst kind of irony."},
  {id:"FAI-09", t:"Session expiry frees the table", sev:1,
@@ -1007,7 +1063,7 @@ const SECTIONS = [
  {id:"FAI-15", t:"Rate limits degrade cleanly, not catastrophically", sev:2,
   p:"Six different per-key caps exist.",
   s:["Exceed each: assist 6/min, order 12/min, payment-init 6/min, host-transfer 6/min, ws-ticket 12/min, staff-auth 10/min"],
-  e:"Clear messages; the UI stays usable; no crash and no lockout of legitimate use.",
+  e:"Structured 429 with a clear message and Retry-After; the UI stays usable; no raw nginx 503 and no lockout of unrelated legitimate use.",
   imp:"Either abuse is unbounded, or normal guests get blocked."},
  {id:"FAI-16", t:"Two tabs as the same guest stay consistent", sev:2,
   p:"Common real behaviour.",
@@ -1059,6 +1115,11 @@ const SECTIONS = [
   s:["Have the host close their browser entirely","From another guest's device, attempt to pay","Use host transfer or staff intervention to recover"],
   e:"A documented recovery path exists and works.",
   imp:"A table physically cannot pay and staff must resort to psql — the worst possible pilot moment."},
+ {id:"FAI-26", t:"Execute and record the Playwright suite", sev:1,
+  p:"CI currently proves discovery, not that the browser/API suite passes against the candidate.",
+  s:["Use an isolated disposable database and raised test-only rate limits","Mint a real E2E_ADMIN_TOKEN through /platform/auth","Run the desktop project and record exact passed/failed/skipped counts","Do not point state-creating specs at beta"],
+  e:"A reproducible result separates product failures from stale fixtures/helpers. The result, command and candidate SHA are attached to the certification record.",
+  imp:"A listed-but-never-executed suite creates false release confidence."},
 ]},
 
 {id:"obs", name:"10 · Observability", why:"Needs a rich history to pivot through; also the fastest proof everything was recorded.", items:[
@@ -1074,7 +1135,7 @@ const SECTIONS = [
   imp:"Trace storage fills with noise and retention collapses."},
  {id:"OBS-03", t:"Access logs carry trace_id and span_id", sev:2,
   p:"The log-to-trace pivot.",
-  s:["grep trace_id /tmp/qrapp-mtest-1.log"],
+  s:["ssh appuser","docker logs qr_dining_app 2>&1 | grep trace_id | tail","Repeat for qr_dining_app_2"],
   e:"Present on request-scoped lines and on handler logs using the request logger.",
   imp:"Cannot get from a log line to a trace during an incident."},
  {id:"OBS-04", t:"Audit correlation_id resolves to a real trace", sev:2,
@@ -1089,29 +1150,39 @@ const SECTIONS = [
   imp:"Breaks existing support-search behaviour."},
  {id:"OBS-06", t:"Core business metrics move as expected", sev:2,
   p:"Prometheus remains the alerting authority.",
-  s:["curl :8090/metrics before and after a full flow","Diff active_sessions_total, orders_total, ws_connections_active and http_requests_total"],
+  s:["Use the SSH-only Prometheus UI or scrape both containers from the VM before and after a full flow","Diff active_sessions_total, orders_total, ws_connections_active and http_requests_total"],
   e:"All move in the expected direction by the expected amount.",
   imp:"Alerts fire on metrics that do not reflect reality."},
  {id:"OBS-07", t:"Rollout-gate metrics are visible and sane", sev:2,
   p:"These gate future flag flips: they must read zero before R2 and R3.",
-  s:["curl :8090/metrics and grep legacy_authz_bypass, legacy_identity_usage and policy_shadow_mismatch"],
+  s:["Query both beta instance metrics internally and grep legacy_authz_bypass, legacy_identity_usage and policy_shadow_mismatch"],
   e:"All three present. Record their values — legacy_identity_usage_total being non-zero is EXPECTED while R2 is off.",
   imp:"Flipping a rollout wave blind, with no evidence gate."},
  {id:"OBS-08", t:"Zero audit write failures across the whole run", sev:1,
   p:"The single most important operational counter.",
-  s:["At the end of the run: curl :8090/metrics | grep audit_write_failures_total"],
+  s:["At the end of the run, query both beta instance metrics for audit_write_failures_total"],
   e:"0.",
   imp:"Silent gaps in the forensic record."},
  {id:"OBS-09", t:"Zero worker panics across the whole run", sev:1,
   p:"Workers are panic-isolated, but a panic is still a defect.",
-  s:["curl :8090/metrics | grep background_worker_panics_total","Also grep both logs for 'panic'"],
+  s:["Query both beta instance metrics for background_worker_panics_total","Also inspect both container logs for panic"],
   e:"0.",
   imp:"A crashing worker means sessions are not reconciled or escalated."},
  {id:"OBS-10", t:"Both instances report independently", sev:3,
   p:"Multi-instance observability.",
-  s:["Compare :8090/metrics with :8095/metrics","Check both services in SigNoz"],
-  e:"Distinct WORKER_REGION labels and distinct service names; worker locks prevent duplicate work.",
+  s:["Compare internal metrics for qr_dining_app and qr_dining_app_2","Use pinned requests and container/resource attributes to distinguish them in logs/traces"],
+  e:"Both instances report independently, both use WORKER_REGION=beta, and worker coordination prevents duplicate work.",
   imp:"Cannot attribute an incident to an instance."},
+ {id:"OBS-11", t:"A real alert reaches a human", sev:0,
+  p:"A healthy Alertmanager that only posts to a local sink cannot wake an operator.",
+  s:["Inspect the effective Alertmanager receiver","Fire one safe test alert","Confirm receipt on the actual beta/on-call human channel"],
+  e:"A human receives the page with correct alert name, severity and labels, and the resolution notification follows.",
+  imp:"A production-impacting outage pages nobody."},
+ {id:"OBS-12", t:"No legacy authorization bypasses occurred", sev:2,
+  p:"A non-zero shadow-bypass counter means a future enforcement flip will break a flow that currently appears to work.",
+  s:["At the end of the run query both instances for legacy_authz_bypass_total","Correlate any increase with the exact request and role"],
+  e:"0 across the certification run, or every non-zero increment is a filed and owned finding.",
+  imp:"The next authorization rollout is being attempted blind."},
 ]},
 
 {id:"regress", name:"11 · Regression sweep (run LAST)", why:"You changed themes, flags, plans, menus and timeouts. Prove your own configuration did not break the product.", items:[
@@ -1160,11 +1231,26 @@ const SECTIONS = [
   s:["Export findings","Classify every failure by severity","State the verdict: GO, CONDITIONAL GO or NO-GO for the RC soak"],
   e:"An explicit, written, defensible verdict.",
   imp:"The decision gets made implicitly and nobody owns it."},
+ {id:"REG-10", t:"Order response matches the published API contract", sev:1,
+  p:"The frontend can work around response casing while generated clients still break.",
+  s:["POST /sessions/<id>/orders on a disposable session","Compare the 201 body keys with openapi.yaml"],
+  e:"The documented and actual keys match exactly; record any Order/OrderItems versus order/order_items drift.",
+  imp:"Generated API clients fail on the core ordering path."},
+ {id:"REG-11", t:"Cart response matches the published API contract", sev:1,
+  p:"Contract lint validates syntax, not response-body truth.",
+  s:["GET /sessions/<id>/cart with the guest credential","Compare the response envelope with openapi.yaml"],
+  e:"The documented and actual response shape match exactly; record any Cart/Items envelope drift.",
+  imp:"External clients deserialize the shared cart incorrectly."},
+ {id:"REG-12", t:"Every live API operation exists in OpenAPI", sev:1,
+  p:"Schema validation alone does not detect implemented routes missing from the document.",
+  s:["Diff the live Gin method/path list against openapi.yaml","Explicitly check POST /sessions/{id}/host plus PATCH and DELETE /tables/{id}"],
+  e:"No undocumented live operations and no documented operations missing from the router.",
+  imp:"Generated clients and certification coverage silently omit real behavior."},
 ]},
 ];
 
 /* ────────────────────────── rendering & state ────────────────────────── */
-const KEY = "qrd-cert-rc-v2";
+const KEY = "qrd-cert-beta-v3";
 let state = JSON.parse(localStorage.getItem(KEY) || "{}");
 const SEVL = ["SEV-0","SEV-1","SEV-2","SEV-3"];
 let total = 0;

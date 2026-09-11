@@ -71,10 +71,9 @@
     <a href="database-reference.html">Database Reference</a>
   </p>
   <div style="margin-top:10px">
-    <span class="pill ok">● app-1 :8090</span><span class="pill ok">● app-2 :8095</span>
-    <span class="pill ok">● frontend-a :3000</span><span class="pill ok">● frontend-b :3001</span>
-    <span class="pill">migration v38</span><span class="pill">Serene + ops redesign</span><span class="pill">gates: all off</span>
-    <span class="pill warn">⚠ soak untouched — never stop project qr-dining</span>
+    <span class="pill ok">● beta frontend · Cloudflare</span><span class="pill ok">● API instance 1</span>
+    <span class="pill ok">● API instance 2</span><span class="pill">migration v39</span>
+    <span class="pill">product gates: all off</span><span class="pill warn">⚠ no destructive VM actions</span>
   </div>
 </header>
 
@@ -84,50 +83,51 @@
   <p class="sub" style="margin-top:0">Use <b>separate browser windows</b> (or profiles) per role — guest and staff identities
   live in per-tab <code>sessionStorage</code>, so a stray shared tab can swap identities under you.
   Windows 1–2 use different profiles/incognito so the two guests are genuinely distinct devices.
-  Window 4 deliberately runs on <b>Frontend B</b> so the core service loop exercises <b>multi-instance realtime</b> all day.</p>
+  Use two physical devices/networks where possible. The public frontend does not pin a backend; deterministic
+  multi-instance proof uses the two pinned API hostnames listed below.</p>
 
   <div class="win">
     <h4><b>Window 1</b> — <span class="role">GUEST · HOST</span> (normal profile)</h4>
-    <div class="url">http://localhost:3000/table/8276380be6132edf382b0dbeb5dd25e3b871ec30d41041f5124a837202bab24b</div>
+    <div class="url"><a href="https://qr-beta.mohith16.com/table/ae8670b51c04907372fa8c621bea8c6644b3b9a6b0bbc73a1b5d1caa1e36e6f8">https://qr-beta.mohith16.com/table/ae8670b5…1e36e6f8</a></div>
     <div class="expect">Saffron House · Bandra <b>T3</b> (free table). Enter a name → you become <b>host</b>.
     Expect the Serene guest UI (Saffron tenant theme: dark-luxury), a host badge, menu reachable, cart shared. No login — the QR token is the entry.</div>
   </div>
   <div class="win">
     <h4><b>Window 2</b> — <span class="role">GUEST · PARTICIPANT</span> (incognito / second profile)</h4>
-    <div class="url">http://localhost:3000/table/8276380be6132edf382b0dbeb5dd25e3b871ec30d41041f5124a837202bab24b</div>
+    <div class="url"><a href="https://qr-beta.mohith16.com/table/ae8670b51c04907372fa8c621bea8c6644b3b9a6b0bbc73a1b5d1caa1e36e6f8">same Saffron Bandra T3 beta URL</a></div>
     <div class="expect">Open the <b>same</b> T3 token after Window 1 created the session → you <b>join</b> it (different name).
     Expect: 2 participants, only Window 1 is host, identical shared cart, live presence.</div>
   </div>
   <div class="win">
     <h4><b>Window 3</b> — <span class="role">WAITER</span> (branch 1 · Bandra)</h4>
-    <div class="url">http://localhost:3000/staff/login &nbsp;→&nbsp; branch_id <b>1</b> · PIN <b>3333</b></div>
+    <div class="url"><a href="https://qr-beta.mohith16.com/staff/login">https://qr-beta.mohith16.com/staff/login</a> &nbsp;→&nbsp; branch <b>SAFF-BND</b> · staff <b>SAFF-BND-WTR</b> · PIN from dashboard</div>
     <div class="expect">Waiter dashboard with three queues: assistance · ready-to-serve · pending payments.
     (Bandra's seeded pending payment was settled in an earlier pass — your Phase-A payment will appear here live;
     seeded pending payments still exist on Copper Pot br.4 and Urban Brew br.5.)</div>
   </div>
   <div class="win">
-    <h4><b>Window 4</b> — <span class="role">KITCHEN</span> (branch 1 · on <b>Frontend B</b>)</h4>
-    <div class="url">http://localhost:3001/staff/login &nbsp;→&nbsp; branch_id <b>1</b> · PIN <b>4444</b></div>
-    <div class="expect">KDS Kanban (pending/confirmed/preparing/ready). Orders placed by Window 1 (via app-1)
-    must appear here (via app-2) within ~1s — this IS the multi-instance test. Kitchen cannot mark “served”.</div>
+    <h4><b>Window 4</b> — <span class="role">KITCHEN</span> (branch 1 · separate browser profile)</h4>
+    <div class="url"><a href="https://qr-beta.mohith16.com/staff/login">https://qr-beta.mohith16.com/staff/login</a> &nbsp;→&nbsp; branch <b>SAFF-BND</b> · staff <b>SAFF-BND-KIT</b> · PIN from dashboard</div>
+    <div class="expect">KDS Kanban (pending/confirmed/preparing/ready). New orders should appear within one
+    10-second staff poll cycle. Kitchen cannot mark “served”. Use pinned API hosts separately for deterministic instance fan-out.</div>
   </div>
   <div class="win">
     <h4><b>Window 5</b> — <span class="role">BRANCH ADMIN</span> (owner, branch 1)</h4>
-    <div class="url">http://localhost:3000/staff/login &nbsp;→&nbsp; branch_id <b>1</b> · PIN <b>1111</b> (owner; use 2222 for pure-manager checks)</div>
+    <div class="url"><a href="https://qr-beta.mohith16.com/staff/login">https://qr-beta.mohith16.com/staff/login</a> &nbsp;→&nbsp; <b>SAFF-BND</b> · <b>SAFF-BND-OWN</b> (use <b>SAFF-BND-MGR</b> for manager checks) · PINs on dashboard</div>
     <div class="expect">Admin tabs: Sessions · Menu · Tables · Collateral · Staff · Stats · <b>Performance</b> · <b>Loyalty</b> · Plan · Promos · Appearance · Settings.
     Performance + Loyalty show <b>gated empty states</b> (expected — entitlements/flags default off). Owner additionally gets org governance over all 3 Saffron branches.</div>
   </div>
   <div class="win">
     <h4><b>Window 6</b> — <span class="role">PLATFORM ADMIN</span></h4>
-    <div class="url">http://localhost:3000/platform/login &nbsp;→&nbsp; admin@platform.local · Platform!admin1</div>
+    <div class="url"><a href="https://qr-beta.mohith16.com/platform/login">https://qr-beta.mohith16.com/platform/login</a> &nbsp;→&nbsp; use the published platform test account on the dashboard</div>
     <div class="expect">Control plane: Overview · Organizations · Plans · Entitlements · Analytics · Feature Flags · Themes · Collateral · Support.
     Staff tokens are rejected here (separate trust domain).</div>
   </div>
   <div class="win">
     <h4><b>Window 7</b> — <span class="role">ROTATING</span> (open when needed)</h4>
-    <div class="url">support@platform.local · Support!admin1 &nbsp;|&nbsp; billing@platform.local · Billing!admin1 &nbsp;|&nbsp; auditor@platform.local · Auditor!admin1</div>
+    <div class="url">Use the published support, billing and auditor test accounts on the dashboard in separate profiles.</div>
     <div class="expect">Phase D/E: platform sub-roles (RBAC separation), Copper Pot / Urban Brew staff
-    (branch_id 4/5, same PINs), and second-tenant guests for cross-tenant tests.</div>
+    (use <code>COPR-KOR-*</code>/<code>BREW-CYB-*</code> staff codes), and second-tenant guests for cross-tenant tests.</div>
   </div>
 </div>
 
@@ -136,15 +136,14 @@
 <div class="card">
   <table>
     <tr><th>Surface</th><th>URL</th><th>Notes</th></tr>
-    <tr><td class="k">Frontend A (primary)</td><td><a href="http://localhost:3000">http://localhost:3000</a></td><td>→ app-1 :8090</td></tr>
-    <tr><td class="k">Frontend B (multi-instance)</td><td><a href="http://localhost:3001">http://localhost:3001</a></td><td>→ app-2 :8095</td></tr>
-    <tr><td class="k">Guest entry</td><td class="mono">/table/&lt;qr_token&gt;</td><td>all tokens on the <a href="testing-dashboard.html">Dashboard</a></td></tr>
-    <tr><td class="k">Staff login</td><td><a href="http://localhost:3000/staff/login">/staff/login</a></td><td>branch_id + PIN</td></tr>
-    <tr><td class="k">Platform login</td><td><a href="http://localhost:3000/platform/login">/platform/login</a></td><td>email + password</td></tr>
-    <tr><td class="k">Backend health</td><td><a href="http://localhost:8090/readyz">:8090/readyz</a> · <a href="http://localhost:8095/readyz">:8095/readyz</a></td><td>{"status":"ready"}</td></tr>
-    <tr><td class="k">Metrics</td><td><a href="http://localhost:8090/metrics">:8090/metrics</a></td><td>Prometheus text</td></tr>
-    <tr><td class="k">Database</td><td class="mono">docker exec -e PGPASSWORD=mtest_pass manual-testing-postgres psql -U mtest -d qrdining_mtest</td><td>investigation only</td></tr>
-    <tr><td class="k">Backend logs</td><td class="mono">/tmp/qrapp-mtest-1.log · /tmp/qrapp-mtest-2.log</td><td>tail -f while testing</td></tr>
+    <tr><td class="k">Frontend</td><td><a href="https://qr-beta.mohith16.com">https://qr-beta.mohith16.com</a></td><td>Cloudflare-hosted beta</td></tr>
+    <tr><td class="k">Guest entry</td><td class="mono">https://qr-beta.mohith16.com/table/&lt;qr_token&gt;</td><td>all tokens on the <a href="testing-dashboard.html">Dashboard</a></td></tr>
+    <tr><td class="k">Staff login</td><td><a href="https://qr-beta.mohith16.com/staff/login">/staff/login</a></td><td>branch code + staff code + PIN</td></tr>
+    <tr><td class="k">Platform login</td><td><a href="https://qr-beta.mohith16.com/platform/login">/platform/login</a></td><td>email + password (+ MFA where enrolled)</td></tr>
+    <tr><td class="k">Balanced API</td><td><a href="https://qr-api-beta.mohith16.com">qr-api-beta.mohith16.com</a></td><td>client-IP split</td></tr>
+    <tr><td class="k">Pinned APIs</td><td><a href="https://qr-api-beta-1.mohith16.com/readyz">instance 1</a> · <a href="https://qr-api-beta-2.mohith16.com/readyz">instance 2</a></td><td>deterministic two-instance tests</td></tr>
+    <tr><td class="k">SigNoz</td><td class="mono">ssh -L 3301:127.0.0.1:3301 appuser → http://127.0.0.1:3301</td><td>known fresh-ingestion failure</td></tr>
+    <tr><td class="k">Database/logs</td><td class="mono">ssh appuser → qr_dining_postgres / qr_dining_app / qr_dining_app_2</td><td>read-only investigation; never print secrets</td></tr>
   </table>
 </div>
 
@@ -154,10 +153,10 @@
   <table>
     <tr><th>Who</th><th>Login</th><th>Where</th></tr>
     <tr><td class="k">Guest / participant</td><td>none — table QR token</td><td class="mono">/table/&lt;token&gt;</td></tr>
-    <tr><td class="k">Owner (Alpha/Beta/Gamma)</td><td>PIN <b>1111</b> @ branch 1 / 4 / 5</td><td class="mono">/staff/login</td></tr>
-    <tr><td class="k">Manager</td><td>PIN <b>2222</b> @ any branch (1–5)</td><td class="mono">/staff/login</td></tr>
-    <tr><td class="k">Waiter</td><td>PIN <b>3333</b> @ any branch</td><td class="mono">/staff/login</td></tr>
-    <tr><td class="k">Kitchen</td><td>PIN <b>4444</b> @ any branch</td><td class="mono">/staff/login</td></tr>
+    <tr><td class="k">Owner (primary branches)</td><td><code>&lt;BRANCH&gt;-OWN</code> + branch code + dashboard PIN</td><td class="mono">/staff/login</td></tr>
+    <tr><td class="k">Manager</td><td><code>&lt;BRANCH&gt;-MGR</code> + branch code + dashboard PIN</td><td class="mono">/staff/login</td></tr>
+    <tr><td class="k">Waiter</td><td><code>&lt;BRANCH&gt;-WTR</code> + branch code + dashboard PIN</td><td class="mono">/staff/login</td></tr>
+    <tr><td class="k">Kitchen</td><td><code>&lt;BRANCH&gt;-KIT</code> + branch code + dashboard PIN</td><td class="mono">/staff/login</td></tr>
     <tr><td class="k">Platform super admin</td><td class="mono">admin@platform.local · Platform!admin1</td><td class="mono">/platform/login</td></tr>
     <tr><td class="k">Support admin</td><td class="mono">support@platform.local · Support!admin1</td><td class="mono">/platform/login</td></tr>
     <tr><td class="k">Billing admin</td><td class="mono">billing@platform.local · Billing!admin1</td><td class="mono">/platform/login</td></tr>
@@ -171,9 +170,9 @@
 
 <div class="note">
   <b>Environment facts to know before you start.</b>
-  (1) <b>Don't run <code>--reset</code></b> unless you accept that all QR tokens in these documents regenerate.
+  (1) <b>Never reset the deployed beta during certification.</b>
   (2) The seeded "active" T1 sessions have long since drifted to <code>abandoned</code> (correct lifecycle) — create fresh sessions on free tables.
-  (3) Seeded <code>payment_pending</code> payments survive (by design) on Copper Pot br.4 T2 and Urban Brew br.5 T2; Bandra's was settled in a prior pass.
+  (3) Seeded <code>payment_pending</code> payments survive (by design) on Saffron Bandra T2, Copper Pot T2 and Urban Brew T2.
   (4) Customer opt-in ("Come back anytime") is gated by <code>settings_json.customer_memory_enabled</code>, which no seeded tenant has —
   expect <code>FEATURE_DISABLED</code> (known finding #6). Loyalty earn depends on this link, so the optional loyalty deep-dive needs it enabled first.
   (5) Staff-Performance and Loyalty are <b>gated off everywhere</b> — the correct result is a clean empty state + 403, not data.
@@ -182,8 +181,8 @@
 <!-- 4 ORDER -->
 <h2>4 · Recommended Certification Order</h2>
 <p class="sub">Phases are ordered so foundation bugs surface before they can poison later phases, and so state created early
-(orders, payments, customers, audit rows) becomes the test data for later phases. Total: <b>≈ 6–7.5 focused hours</b> —
-a full day with breaks, or split A–C / D–F across two half-days.</p>
+(orders, payments, customers, audit rows) becomes the test data for later phases. Budget <b>≈ 10–12 focused hours</b>
+for the 214 checks: two half/full days solo, or one long day with a second person handling the guest device.</p>
 
 <div class="phase">
   <h3>Phase A — Guest experience <span class="dur">75–90 min</span></h3>
@@ -205,16 +204,16 @@ a full day with breaks, or split A–C / D–F across two half-days.</p>
 <div class="phase">
   <h3>Phase B — Waiter + kitchen operations <span class="dur">60–75 min</span></h3>
   <div class="lab">Goals</div>
-  <ul><li>Window 4 (kitchen on Frontend B) advances Phase A's order pending→confirmed→preparing→ready; Window 3 (waiter on A) serves it and settles the payment — the loop crosses both backend instances.</li>
+  <ul><li>Window 4 advances Phase A's order pending→confirmed→preparing→ready; Window 3 serves it and settles the payment. Separately use the pinned API hosts to prove the state and WebSocket event cross both backend instances in each direction.</li>
   <li>Assistance: guest requests → waiter ack → resolve, latency observed.</li>
-  <li>Settle the seeded pending payments on Copper Pot (br.4) with its own waiter (PIN 3333 @ 4).</li>
+  <li>Settle the seeded pending payment on Copper Pot T2 with <code>COPR-KOR-WTR</code> and the waiter PIN on the dashboard.</li>
   <li>Role boundaries: kitchen cannot serve; waiter cannot advance cooking states.</li></ul>
   <div class="lab">Critical observations</div>
   <ul><li>Every transition lands on the guest tracker live, across instances, both directions.</li>
   <li>Settlement closes the session, frees the table, sets <code>settled_by_staff_id</code>; guest sees real completion only after staff settles (no fake success).</li>
   <li>The two seeded stalled payments will be emitting alert-only escalations in the logs — they must <b>never</b> auto-settle or auto-cancel.</li></ul>
   <div class="lab">Common failure signs</div>
-  <ul class="fail"><li>Order placed on app-1 never reaches the app-2 KDS (Redis fan-out broken) — this environment is the only place multi-instance is exercised.</li>
+  <ul class="fail"><li>A write through pinned instance 1 is not visible through instance 2, or the reverse direction fails (shared-state/Redis fan-out broken).</li>
   <li>Stale queues needing manual refresh · settlement succeeds but guest stays "awaiting confirmation" · table not freed after close.</li></ul>
 </div>
 
@@ -273,9 +272,9 @@ a full day with breaks, or split A–C / D–F across two half-days.</p>
 <div class="phase">
   <h3>Phase F — Failure recovery <span class="dur">60–75 min</span></h3>
   <div class="lab">Goals</div>
-  <ul><li>Reload mid-session, network toggle, and laptop-sleep style idle → snapshot reconciliation each time.</li>
-  <li>Kill one backend (<code>kill</code> the :8095 pid) mid-session: clients on B reconnect/fail over after restart; app-1 unaffected; restart and confirm recovery. <b>Only ever the mtest binaries.</b></li>
-  <li>Redis flush (<code>docker exec manual-testing-redis redis-cli FLUSHALL</code>): presence/tickets/staff sessions reset (staff re-login expected), business data intact, guests re-snapshot.</li>
+  <ul><li>On beta: reload mid-session, toggle the client network, and use laptop-sleep style idle → snapshot reconciliation each time.</li>
+  <li><b>Do not kill/restart a beta backend.</b> Backend-restart recovery is N/A for a beta-only run unless a separate operator window is explicitly approved; exercise it only on the isolated local stack.</li>
+  <li><b>Never flush or stop beta Redis/PostgreSQL.</b> Dependency-outage checks are isolated-local-only and should be marked N/A for this deployed-beta run.</li>
   <li>Lifecycle clocks: a quiet session → <code>awaiting_reactivation</code> (~1 min) → return within ~5 min recovers it; past the window → abandoned, table freed by the reconciler.</li>
   <li>Terminal sessions readable for 60 min, gone after (410-style).</li></ul>
   <div class="lab">Critical observations</div>
@@ -325,19 +324,19 @@ a full day with breaks, or split A–C / D–F across two half-days.</p>
     <tr><th>Capture</th><th>How</th></tr>
     <tr><td class="k">What + where</td><td>Window/role, URL, tenant/branch, timestamp, and the exact action (request payload if you forced one).</td></tr>
     <tr><td class="k">Network evidence</td><td>DevTools → Network: status code + response JSON (the stable <code>code</code> string matters).</td></tr>
-    <tr><td class="k">Backend logs</td><td class="mono">tail -200 /tmp/qrapp-mtest-1.log /tmp/qrapp-mtest-2.log</td></tr>
-    <tr><td class="k">Database state</td><td class="mono">docker exec -e PGPASSWORD=mtest_pass manual-testing-postgres psql -U mtest -d qrdining_mtest</td></tr>
+    <tr><td class="k">Backend logs</td><td class="mono">ssh appuser → docker logs --since 10m qr_dining_app / qr_dining_app_2 (run separately)</td></tr>
+    <tr><td class="k">Database state</td><td class="mono">ssh appuser → docker exec qr_dining_postgres psql -U qrdining -d qrdining</td></tr>
     <tr><td class="k">Checklist</td><td>Mark the row's Notes column; keep going unless the env is wedged.</td></tr>
   </table>
-  <p class="sub" style="margin-bottom:0">Restart only what's broken: backends → <code>./scripts/manual-testing-up.sh</code> (no --reset);
-  frontends → <code>npm run dev</code> in <code>frontend/</code> (:3000) and <code>/tmp/frontend-b</code> (:3001).
-  <b>Never</b> touch docker project <code>qr-dining</code> (the soak).</p>
+  <p class="sub" style="margin-bottom:0">If beta is wedged, stop testing, record the timestamp/request ID and
+  escalate it as an environment problem. Do not restart, reset or reconfigure beta, the shared proxy, SigNoz,
+  the protected soak or another VM application during the certification run.</p>
 </div>
 
 <footer>
-  QR Dining certification session guide · refreshed 2026-06-25 · build <code>feature/certification-fixes-ui-redesign</code>
-  (Serene guest redesign + ops/platform redesign + Phase-0 fixes; absorbs premium-qr-collateral, staff-analytics/loyalty, platform governance) · migration v38 · all strict-rollout + product gates default-off ·
-  soak (project <code>qr-dining</code>) untouched.
+  QR Dining deployed-beta certification session guide · refreshed 2026-08-22 · repository preflight
+  <code>feature/signoz-observability@9865a48</code> · beta backend <code>beta-b57f746</code> (known provenance mismatch) ·
+  migration v39 · product gates default-off · no destructive shared-VM actions.
 </footer>
 
 </div>

@@ -6,6 +6,12 @@
 **Schema:** v38 · **Routes:** 172 · **OpenAPI:** 2.2.0 / 171 operations
 **Gate:** the last human gate before freezing the RC, merging to `main`, tagging `v1.0.0-rc.1`, and starting the soak.
 
+> **Currency note (2026-08-22).** The *scope, limits and attention plan* below still stand — that is why this
+> document is kept. Its header facts have moved: the branch tip is now `9865a48` (not `ecfc3a6`) and the
+> schema is **v39** (not v38). For the current verdict and deployed-candidate provenance, read
+> [`manual-certification-preflight-2026-08-22.md`](manual-certification-preflight-2026-08-22.md) —
+> certification is presently **BLOCKED**.
+
 Companions: `docs/manual-testing/manual-testing-user-guide.html` (teaching manual) ·
 `docs/manual-testing/manual-testing-checklist.html` (197-item run sheet) ·
 `docs/manual-testing/testing-dashboard.html` (live environment + credentials).

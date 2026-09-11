@@ -1,12 +1,28 @@
 # QR-Dining — State of the Project
 
 **Engineering Handbook · Chief Architect Review**
-**Date:** 2026-07-18 · **Branch reviewed:** `feature/certification-fixes-ui-redesign` @ `9dd869a` · **Schema:** v38
+**Date:** 2026-07-18 · **Branch reviewed:** `feature/certification-fixes-ui-redesign` @ `9dd869a` · **Schema at review time:** v38
 
+> **Currency note (2026-08-22).** This handbook is kept for its **strategy, roadmap,
+> technical-debt ledger and product vision** — those remain the authoritative statement
+> of intent. Its point-in-time facts have moved on:
+>
+> | Claimed here | Current |
+> |---|---|
+> | Branch `feature/certification-fixes-ui-redesign` @ `9dd869a` | Trunk is `feature/signoz-observability` @ `9865a48`; the reviewed branch is now an ancestor |
+> | Schema v38 | **v39** |
+> | "There are no remotes configured" | `origin` exists; PR #1 is open against `main` |
+> | Integration suite absent from CI | CI **does** run the integration suite with `-race` |
+>
+> For anything operational, prefer the guides: architecture in
+> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), deployment in
+> [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), release state in
+> [docs/RELEASE.md](docs/RELEASE.md), current certification in
+> [release-certification/manual-certification-preflight-2026-08-22.md](release-certification/manual-certification-preflight-2026-08-22.md).
+>
 > **Correction of record (2026-07-29):** the original review mixed repository
 > history with current code and carried several fixed defects forward. The
-> load-bearing corrections are incorporated below. Deployment and release truth
-> lives in `DEPLOYMENT.md` and `production-environment-checklist.md`.
+> load-bearing corrections are incorporated below.
 
 ---
 
@@ -292,7 +308,7 @@ explicitly enabled in production; R2/R3/R7 remain deferred.
 
 ## Part 5 — Data Model
 
-38 migrations (000001–000038, all reversible, round-trip verified at v38), 58 tables.
+38 migrations at review time (000001–000038, all reversible, round-trip verified); **now 39** (000039 added since).
 
 ### Aggregates
 
@@ -324,7 +340,7 @@ explicitly enabled in production; R2/R3/R7 remain deferred.
 7. **Additive migrations only** — the standing rule since Phase 3; enum values are added via `ALTER TYPE ... ADD VALUE`, never removed.
 
 ### Migration maturity
-High. Numbered, reversible, embedded, auto-run at boot (idempotent — chaos-validated), sqlc drift-checked in CI, full round-trip verified at v38. The discipline here is one of the project's strongest assets.
+High. Numbered, reversible, embedded, auto-run at boot (idempotent — chaos-validated), sqlc drift-checked in CI, full round-trip verified (v38 at review time; CI re-verifies up/down/up on every run). The discipline here is one of the project's strongest assets.
 
 ---
 
@@ -425,7 +441,7 @@ speaks those protocols.
 ### Stale documents — corrections of record
 These remain in `docs/`/`docs/history/` unedited; **this section is the correction**:
 1. `docs/project-strategic-context-v1.md` §13 still lists the T-01 cross-org snapshot leak as open. **It was fixed 2026-05-29 (`6db078e`).**
-2. `final-production-readiness-assessment.md`, `final-rollout-gates-status.md`, `post-remediation-rollout-status.md` (05-25/26) list the R3 policy decisions as the last hard blocker. **Closed 2026-05-29** (`r3-policy-decisions-v1.md` — all three decisions ratified existing behavior).
+2. `final-production-readiness-assessment.md`, `final-rollout-gates-status.md`, `post-remediation-rollout-status.md` (05-25/26) list the R3 policy decisions as the last hard blocker. **Closed 2026-05-29** (`docs/adr/0002-r3-policy-decisions.md` — all three decisions ratified existing behavior).
 3. `final-pilot-readiness-report.md` (06-10) is superseded by `docs/history/final-release-readiness-report.md` (06-25).
 4. `docs/history/manual-testing-findings-v4.md` reads as 12 open findings; the promo timezone bug, F-8 token serialization, and F-1 reconnect lineage were already fixed before the reviewed commit.
 5. `docs/history/HANDOUT.md` describes the redesign as "next action C16"; the branch has since completed the entire redesign through schema v38.
@@ -602,10 +618,12 @@ bootstrap UI, and speculative 500/thousands infrastructure.
 
 ---
 
-## Appendix — Document Map (post-cleanup, 2026-07-18)
+## Appendix — Document map
 
-- **`docs/`** (living): `master-system-context-v1.md` (canonical map; §2.5 wave ledger), `project-strategic-context-v1.md` (strategy; §13 stale — see Part 8), `payment-escalation-lifecycle.md`, `production-alerting-baseline.md`, `alerting-production-setup.html`, `r2-production-setup.html`.
-- **`docs/manual-testing/`**: `testing-dashboard.html` (entry point — `scripts/manual-testing-up.sh` prints this path), guides, checklist, `database-reference.html`.
-- **`docs/history/`** (archived release trail, unedited): hardening/stabilization phase reports, all readiness/audit/gate reports, R1 soak docs, chaos + e2e analyses, manual-testing findings v1–v4, implementation plans, `plans/` (hardening phase plans 0–9), `HANDOUT.md` (superseded session log).
-- **Repo root** (tracked reference docs kept in place): `openapi.yaml` (v2.2.0), invariant docs (`session-lifecycle-state-machine.md`, `payment-finalization-invariants.md`, `realtime-reconciliation-invariants.md`), runbooks, checklists, `r3-policy-decisions-v1.md`, `restore-verification-report.md`, certification reports.
-- **Deleted** (ephemeral, regenerable): all root screenshots/renders, Playwright output dirs, standalone design mockups, redesign sample screens.
+Superseded by the documentation cleanup of 2026-08-22. The current index lives in
+[README.md](README.md#documentation), which is maintained; this appendix is not.
+
+In short: active guides are in `docs/`, contracts the code must satisfy are in
+`docs/reference/`, decisions are in `docs/adr/`, certification evidence is in
+`release-certification/`, and everything historical is in `docs/history/` behind
+its own [README](docs/history/README.md).

@@ -65,7 +65,7 @@
   <div class="kicker">QR Dining · Beta Certification Environment</div>
   <h1>Manual Testing <span>Dashboard</span></h1>
   <p class="sub">The operator landing page for end-to-end manual certification. This now points at the <b>internal beta on the Oracle VM</b> — real hostnames, real TLS, testable from any device — not the laptop stack. Three isolated tenants and two backend instances behind one nginx vhost; the protected R1 soak is untouched. Start here, then follow the guide and work the checklist.</p>
-  <div style="margin:14px 0;padding:11px 14px;border-left:3px solid var(--gold);background:#fff;border-radius:0 8px 8px 0;font-size:13px"><b>Beta, not production.</b> App <a href="https://qr-beta.mohith16.com">qr-beta.mohith16.com</a> · API <a href="https://qr-api-beta.mohith16.com/readyz">qr-api-beta.mohith16.com</a>. Staff login needs <b>branch code + staff code + PIN</b> (PIN alone is rejected). Read <code>release-certification/beta-certification-readiness-2026-08-04.md</code> first.</div>
+  <div style="margin:14px 0;padding:11px 14px;border-left:3px solid var(--gold);background:#fff;border-radius:0 8px 8px 0;font-size:13px"><b>Beta, not production.</b> App <a href="https://qr-beta.mohith16.com">qr-beta.mohith16.com</a> · API <a href="https://qr-api-beta.mohith16.com/readyz">qr-api-beta.mohith16.com</a>. Staff login needs <b>branch code + staff code + PIN</b> (PIN alone is rejected). Read the <a href="../../release-certification/manual-certification-preflight-2026-08-22.md">current preflight report</a>; this run begins with known blocking findings and cannot honestly end in GO until they are cleared.</div>
   <div>
     <span class="pill ok">● 2 backend instances · 1 frontend (Cloudflare Worker)</span>
     <span class="pill ok">● 3 tenants seeded</span>
@@ -73,18 +73,17 @@
     <span class="pill">migration v39</span>
     <span class="pill">UI redesign: serene (guest) + ops (staff/platform)</span>
     <span class="pill">audit: ON · staff-perf/loyalty: gated</span>
-    <span class="pill ok">● OTEL tracing ON → SigNoz :3301</span>
+    <span class="pill warn">⚠ SigNoz UI up · ingestion blocked as of 2026-08-22</span>
   </div>
 </header>
 
 <div class="note" style="border-left:3px solid #d9a441;background:#2a2410">
-  <b>Baseline state right now (verified 2026-08-04).</b>
-  Saffron Bandra (branch 1) has <b>all three tables occupied</b> by leftover <code>payment_pending</code> sessions
-  from earlier smoke runs — useful fixtures for the waiter settlement queue, but they block a fresh guest
-  create on that branch. <b>Free tables:</b> Saffron Indiranagar T1–T3 · Saffron Connaught Place T1–T3 ·
-  Copper Pot T1 &amp; T3 · Urban Brew T1 &amp; T3.
-  For a pristine baseline run <code>./scripts/manual-testing-up.sh --reset</code> — it wipes the isolated
-  volumes, re-seeds, and <b>regenerates every QR token below</b>.
+  <b>Baseline state verified 2026-08-22.</b>
+  Saffron Bandra T1 and T3 are <b>available</b>; T2 is <code>payment_pending</code>/<b>occupied</b>.
+  Copper Pot T2 and Urban Brew T2 are also occupied by the seeded pending-payment fixtures; their T1/T3
+  tables are available. All tables in Saffron Indiranagar and Connaught Place are available.
+  <b>Do not reset the beta database.</b> Re-query current state before choosing a table because manual testing
+  intentionally changes it.
 </div>
 
 <!-- DOCS -->
@@ -97,7 +96,7 @@
   </a>
   <a class="card doc" href="manual-testing-checklist.html">
     <h3>✅ Certification Checklist</h3>
-    <div class="meta">The run sheet · 197 items</div>
+    <div class="meta">The run sheet · 214 items</div>
     Organised by role. Every item carries purpose, steps, expected result, <b>actual result</b>, pass/fail/na, notes, severity and impact. Saves as you go; exports findings to Markdown.
   </a>
   <a class="card doc" href="manual-testing-session-guide.html">
@@ -108,7 +107,7 @@
   <a class="card doc" href="database-reference.html">
     <h3>🗄️ Database Reference</h3>
     <div class="meta">Live schema for investigation</div>
-    56 tables, 158 indexes, 100 FKs, 14 enums, the audit immutability trigger, and the session / order / payment / subscription / collateral / theme lifecycle flows.
+    Schema relationships, the audit immutability trigger, and the session / order / payment / subscription / collateral / theme lifecycle flows. The beta currently has 59 public tables at schema v39.
   </a>
 </div>
 
@@ -126,25 +125,24 @@
       <tr><td class="k">Guest entry</td><td><code>/table/&lt;qr_token&gt;</code></td><td>via QR table token</td></tr>
       <tr><td class="k">Staff login</td><td><a href="https://qr-beta.mohith16.com/staff/login">/staff/login</a></td><td>→ admin/waiter/kitchen</td></tr>
       <tr><td class="k">Platform login</td><td><a href="https://qr-beta.mohith16.com/platform/login">/platform/login</a></td><td>control plane</td></tr>
-      <tr><td class="k">Health</td><td><a href="https://qr-api-beta-1.mohith16.com/readyz">:8090/readyz</a> · <a href="https://qr-api-beta-2.mohith16.com/readyz">:8095/readyz</a></td><td>postgres+redis</td></tr>
-      <tr><td class="k">Metrics</td><td><a href="http://127.0.0.1:9090  (Prometheus; /metrics is not public)">:8090/metrics</a> · <a href="http://127.0.0.1:9090  (Prometheus; /metrics is not public)">:8095/metrics</a></td><td>Prometheus text</td></tr>
-      <tr><td class="k">Traces</td><td><a href="http://127.0.0.1:3301 (via SSH tunnel)">SigNoz :3301</a></td><td>collector :4317</td></tr>
+      <tr><td class="k">Health</td><td><a href="https://qr-api-beta-1.mohith16.com/readyz">instance 1 /readyz</a> · <a href="https://qr-api-beta-2.mohith16.com/readyz">instance 2 /readyz</a></td><td>postgres+redis</td></tr>
+      <tr><td class="k">Metrics</td><td><code>ssh -L 9090:127.0.0.1:9090 appuser</code> → <a href="http://127.0.0.1:9090">Prometheus</a></td><td><code>/metrics</code> is deliberately not public</td></tr>
+      <tr><td class="k">Traces</td><td><code>ssh -L 3301:127.0.0.1:3301 appuser</code> → <a href="http://127.0.0.1:3301">SigNoz :3301</a></td><td>currently failing fresh-ingestion preflight</td></tr>
     </table>
   </div>
   <div class="card">
-    <h3>Data Stores (isolated)</h3>
+    <h3>Beta Data Stores (VM-internal)</h3>
     <table>
       <tr><th>Store</th><th>DSN</th></tr>
       <tr><td class="k">Postgres</td><td class="mono">ssh appuser → docker exec -it qr_dining_postgres psql -U qrdining -d qrdining<br><span class="sub">No published port: the datastore sits on an internal docker network and is unreachable from the internet by design.</span></td></tr>
       <tr><td class="k">Redis</td><td class="mono">ssh appuser → docker exec -it qr_dining_redis redis-cli</td></tr>
-      <tr><td class="k">Compose</td><td class="mono">project <b>manual-testing</b></td></tr>
+      <tr><td class="k">Compose</td><td class="mono">/opt/qr-dining beta stack — inspect only during manual certification</td></tr>
     </table>
-    <div class="legend" style="margin-top:14px">Both backends share this DB + Redis and a single <code>GUEST_TOKEN_SECRET</code>, so guest tokens and realtime events cross instances. Distinct <code>WORKER_REGION</code> (mtest-1 / mtest-2).</div>
+    <div class="legend" style="margin-top:14px">Both backends share this DB + Redis and a single guest-token configuration, so guest tokens and realtime events cross instances. Both use <code>WORKER_REGION=beta</code>; Redis-backed locks coordinate workers.</div>
     <div style="margin-top:14px">
-      <b style="color:var(--ink)">Start the whole stack (one command)</b> — datastores + both backends (audit on) + both frontends:<br>
-      <code>./scripts/manual-testing-up.sh</code> &nbsp;<span class="legend">(add <code>--reset</code> only to wipe + reseed — regenerates all QR tokens below)</span><br>
-      <b style="color:var(--ink)">Stop</b>: <code>./scripts/manual-testing-down.sh</code> &nbsp;<span class="legend">(<code>--keep-data</code> keeps volumes)</span>
-      <div class="legend" style="margin-top:8px">Frontends are <code>next dev</code> (first page compiles in ~10–20s). Logs: <code>/tmp/qrapp-mtest-{1,2}.log</code>, <code>/tmp/frontend-{a,b}.log</code>.</div>
+      <b style="color:var(--ink)">Manual tester rule:</b> use the public beta URLs. Do not run compose
+      <code>down</code>, stop dependencies, reset data, reload nginx, or restart a beta container as part of a normal run.
+      Failure-injection checklist items are isolated-local-only unless a separate operator window is approved.
     </div>
   </div>
 </div>
@@ -152,8 +150,8 @@
 <div class="note danger" style="margin-top:16px">
   <b>SOAK is protected.</b> The R1 audit-v2 soak runs as compose project <code>qr-dining</code>
   (<code>qr-dining-postgres-1</code>, <code>qr-dining-redis-1</code>, <code>qr-app-soak</code>). This testing
-  stack shares <b>no</b> network, volume, port, or container with it. Never stop/restart/modify the
-  <code>qr-dining</code> project. Teardown only ever touches the <code>manual-testing</code> project.
+  Never stop/restart/modify the protected soak, the beta dependencies, the shared proxy, or another VM project.
+  Normal manual certification is performed through HTTPS and the application UIs/APIs only.
 </div>
 
 <!-- CREDENTIALS -->
@@ -184,8 +182,8 @@
 
 <!-- RESTAURANTS -->
 <h2>Restaurants, Branches &amp; QR Tokens</h2>
-<p class="legend" style="border-left:3px solid #d9a441;padding:6px 10px;background:#2a2410">⚠ QR tokens &amp; seeded session states are <b>regenerated on every <code>--reset</code> seed</b> (crypto-random tokens). The links below match the <b>current seed</b>. After any re-seed, refresh with: <code>ssh appuser → docker exec qr_dining_postgres psql -U qrdining -d qrdining -tAc "select branch_id, identifier, qr_code_token from tables order by 1,2;"</code></p>
-<p class="legend">Click a table to open the guest flow on the beta frontend. Each <code>branch_id</code> is what you pass to <code>/staff/auth</code>. Use the three tenants for cross-tenant isolation tests.</p>
+<p class="legend" style="border-left:3px solid #d9a441;padding:6px 10px;background:#2a2410">⚠ QR tokens are crypto-random and the links below match the current beta seed. <b>Do not reset beta during certification.</b> If a separately authorized operator ever re-seeds it, refresh this page from: <code>ssh appuser → docker exec qr_dining_postgres psql -U qrdining -d qrdining -tAc "select branch_id, identifier, qr_code_token from tables order by 1,2;"</code></p>
+<p class="legend">Click a table to open the guest flow. Branch IDs are useful for DB/API investigation, but staff authentication uses the displayed <b>branch code + staff code + PIN</b>. Use the three tenants for cross-tenant isolation tests.</p>
 
 <!-- Alpha -->
 <div class="card" style="margin-bottom:16px">
@@ -195,9 +193,9 @@
     <h4>Bandra — <code>SAFF-BND</code> · branch_id 1 <span style="color:var(--green)">(primary · has live data)</span></h4>
     <div class="bmeta">Linking Road, Bandra West, Mumbai</div>
     <table>
-      <tr><td class="k">T1</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/ff7347f248dbe21927eff99af331d640e7645444af96353037f53a0963b74cb5">ff7347f2…b74cb5</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending (settle it from the waiter board to free the table)</span></td></tr>
+      <tr><td class="k">T1</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/ff7347f248dbe21927eff99af331d640e7645444af96353037f53a0963b74cb5">ff7347f2…b74cb5</a> <span class="legend" style="color:#5bbf84">AVAILABLE at 2026-08-22 preflight</span></td></tr>
       <tr><td class="k">T2</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/6b492228f192aae495b9dbb503a09d5c7d62f52e44433b7059bb4ab2b7ba2aa2">6b492228…ba2aa2</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending + payment awaiting staff confirmation</span></td></tr>
-      <tr><td class="k">T3</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/ae8670b51c04907372fa8c621bea8c6644b3b9a6b0bbc73a1b5d1caa1e36e6f8">ae8670b5…36e6f8</a> <span class="legend" style="color:#e0a13c">OCCUPIED — payment_pending</span></td></tr>
+      <tr><td class="k">T3</td><td><a class="tok" href="https://qr-beta.mohith16.com/table/ae8670b51c04907372fa8c621bea8c6644b3b9a6b0bbc73a1b5d1caa1e36e6f8">ae8670b5…36e6f8</a> <span class="legend" style="color:#5bbf84">AVAILABLE at 2026-08-22 preflight · recommended first guest test</span></td></tr>
     </table>
   </div>
   <div class="branch">
@@ -251,36 +249,39 @@
 </div>
 
 <div class="note" style="margin-top:16px">
-  <b>About the live data.</b> Each primary branch was seeded with an active session (+confirmed order +pending assistance) on T1 and a <code>payment_pending</code> session (+payment awaiting staff confirmation) on T2 — so kitchen/waiter/guest dashboards are populated immediately. The <b>active</b> T1 sessions follow the normal lifecycle: with no live presence they drift to <code>awaiting_reactivation</code> within ~1 min and <code>abandoned</code> a few minutes later (this is correct, and itself testable). The <code>payment_pending</code> sessions are protected from abandonment and <b>persist indefinitely</b> — which is why Saffron Bandra's tables are still occupied weeks later (see the baseline banner at the top). That is correct behaviour, not a defect: a table awaiting settlement must never be auto-abandoned. Re-run <code>--reset</code> to refresh.
+  <b>About the live data.</b> Seeded active T1 sessions can naturally drift through
+  <code>awaiting_reactivation</code> to <code>abandoned</code> and release the table. Seeded T2
+  <code>payment_pending</code> sessions are protected from abandonment and persist until staff settlement.
+  That is correct behavior. Table-state labels are a timestamped convenience, not authority: re-check the
+  landing page or database immediately before a test. Never run a reset against beta.
 </div>
 
 <!-- OBSERVABILITY -->
 <h2>Observability</h2>
 <div class="grid g2">
   <div class="card">
-    <h3>SigNoz <span style="color:var(--dim);font-size:13px">— traces, project <code>qr-dining-signoz-eval</code></span></h3>
+    <h3>SigNoz <span style="color:var(--dim);font-size:13px">— beta deployment <code>qr-dining-signoz</code></span></h3>
     <table>
       <tr><th>What</th><th>Where</th></tr>
       <tr><td class="k">UI</td><td><a href="http://127.0.0.1:3301 (via SSH tunnel)">http://127.0.0.1:3301 (via SSH tunnel)</a></td></tr>
       <tr><td class="k">Collector</td><td><code>signoz-otel-collector:4317</code> (OTLP/gRPC, docker network only)</td></tr>
-      <tr><td class="k">Services</td><td><code>qr-dining-backend-mtest-1</code> · <code>qr-dining-backend-mtest-2</code></td></tr>
+      <tr><td class="k">Service</td><td><code>qr-dining-backend</code>; distinguish instances using container/resource attributes and pinned request host</td></tr>
       <tr><td class="k">Sampling</td><td><code>OTEL_TRACES_SAMPLE_RATIO=1.0</code> (everything)</td></tr>
     </table>
-    <div class="legend" style="margin-top:12px">Gin + pgx + Redis spans stitch under one trace. <code>/health</code>, <code>/readyz</code> and <code>/metrics</code> are deliberately excluded. WebSocket, worker and outbound-HTTP spans do <b>not</b> exist yet — that is a documented deferral, not a gap in the run.</div>
+    <div class="legend" style="margin-top:12px"><b>Known preflight failure:</b> fresh telemetry is currently rejected because ClickHouse reaches its memory limit. Keep observability checks marked failed until one of your own requests appears. Gin + pgx + Redis should stitch under one trace; <code>/health</code>, <code>/readyz</code> and <code>/metrics</code> are deliberately excluded.</div>
   </div>
   <div class="card">
     <h3>The three-way pivot <span style="color:var(--dim);font-size:13px">— audit → trace → logs</span></h3>
     <div class="legend">With no <code>X-Correlation-ID</code> header, <code>audit_log.correlation_id</code> <b>is</b> the trace id:</div>
-    <pre style="white-space:pre-wrap;font-size:12px;background:#120e0a;border:1px solid var(--line);border-radius:8px;padding:10px;overflow-x:auto">docker exec manual-testing-postgres psql -U mtest -d qrdining_mtest \
+    <pre style="white-space:pre-wrap;font-size:12px;background:#120e0a;border:1px solid var(--line);border-radius:8px;padding:10px;overflow-x:auto">ssh appuser
+docker exec qr_dining_postgres psql -U qrdining -d qrdining \
   -c "select action, actor_type, result, correlation_id
       from audit_log order by id desc limit 5;"
 
-# paste correlation_id into SigNoz, then:
-grep &lt;correlation_id&gt; /tmp/qrapp-mtest-1.log</pre>
-    <div class="legend" style="margin-top:10px"><b>Restarting with tracing on</b> — the up-script does not set the OTel vars:<br>
-      <code>pkill -f '^/tmp/qrapp-mtest$'</code> &nbsp;then&nbsp; <code>/tmp/start-mtest-otel.sh</code><br>
-      <span style="color:#e0a13c">Note the regex anchors — a bare <code>pkill -f qrapp-mtest</code> also matches (and kills) your own shell.</span>
-    </div>
+# paste correlation_id into SigNoz, then search both beta logs:
+docker logs qr_dining_app 2&gt;&amp;1 | grep &lt;correlation_id&gt;
+docker logs qr_dining_app_2 2&gt;&amp;1 | grep &lt;correlation_id&gt;</pre>
+    <div class="legend" style="margin-top:10px">Do not restart or reconfigure beta tracing during the manual run. A missing fresh trace is a failed check, not permission to repair SigNoz in-session.</div>
   </div>
 </div>
 
@@ -291,10 +292,10 @@ grep &lt;correlation_id&gt; /tmp/qrapp-mtest-1.log</pre>
     <tr><th>Role</th><th>Trust domain</th><th>Enters via</th><th>Can do</th></tr>
     <tr><td class="k">Guest / Host</td><td>guest (HMAC token)</td><td><code>/table/&lt;token&gt;</code></td><td>join session, shared cart; host places orders &amp; initiates payment</td></tr>
     <tr><td class="k">Participant</td><td>guest</td><td>join existing session</td><td>add/remove cart items, presence, reconnect</td></tr>
-    <tr><td class="k">Waiter</td><td>staff</td><td><code>/staff/login</code> pin 3333</td><td>serve ready orders, ack/resolve assistance, settle payments</td></tr>
-    <tr><td class="k">Kitchen</td><td>staff</td><td>pin 4444</td><td>advance orders pending→confirmed→preparing→ready</td></tr>
-    <tr><td class="k">Manager</td><td>staff</td><td>pin 2222</td><td>menu, staff, tables, promos, analytics, customers</td></tr>
-    <tr><td class="k">Owner / Org owner</td><td>staff + org member</td><td>pin 1111 (primary branch)</td><td>everything above + branch governance, org analytics, audit</td></tr>
+    <tr><td class="k">Waiter</td><td>staff</td><td><code>/staff/login</code> · branch + staff code + PIN</td><td>serve ready orders, ack/resolve assistance, settle payments</td></tr>
+    <tr><td class="k">Kitchen</td><td>staff</td><td>branch + staff code + PIN</td><td>advance orders pending→confirmed→preparing→ready</td></tr>
+    <tr><td class="k">Manager</td><td>staff</td><td>branch + staff code + PIN</td><td>menu, tables, promos, analytics, customers; limited staff PIN reset</td></tr>
+    <tr><td class="k">Owner / Org owner</td><td>staff + org member</td><td>branch + staff code + PIN (primary branch)</td><td>everything above + staff lifecycle, branch governance, org analytics, audit</td></tr>
     <tr><td class="k">Platform super_admin</td><td>platform</td><td><code>/platform/login</code></td><td>orgs, plans, entitlements, subscriptions, billing, flags, themes, collateral, support</td></tr>
     <tr><td class="k">Support admin</td><td>platform</td><td>support@platform.local</td><td>read-only support console (sessions/orders/payments/audit); no billing</td></tr>
     <tr><td class="k">Billing admin</td><td>platform</td><td>billing@platform.local</td><td>subscriptions, billing profiles, invoices; excluded from support console</td></tr>
@@ -306,11 +307,11 @@ grep &lt;correlation_id&gt; /tmp/qrapp-mtest-1.log</pre>
 <h2>Recommended Testing Order</h2>
 <div class="card">
   <ol class="order">
-    <li><b>Guest happy path</b> (Frontend A) — scan a Saffron House table → create session → menu → shared cart → host places order → live order tracking.</li>
+    <li><b>Guest happy path</b> — open the recommended available Saffron Bandra T3 link on a phone → create session → menu → shared cart → host places order → live order tracking.</li>
     <li><b>Kitchen + waiter loop</b> — advance the order through the KDS, then serve it from the waiter ready queue.</li>
     <li><b>Payment settlement</b> — host initiates cash/UPI → waiter settles → guest sees completion → session closes.</li>
     <li><b>Reconnect &amp; realtime</b> — reload mid-session; idle into <code>awaiting_reactivation</code> and recover; toggle menu availability live.</li>
-    <li><b>Multi-instance fan-out</b> (two browsers) — guest on A (:3000/app-1), staff on B (:3001/app-2); confirm events cross instances both ways.</li>
+    <li><b>Multi-instance fan-out</b> — use two devices/networks for the real UI and the pinned instance-1/instance-2 API hosts for deterministic writes/reads and WebSocket fan-out in both directions.</li>
     <li><b>Manager / owner admin</b> — menu, staff, tables, promos, customers, analytics, audit.</li>
     <li><b>Platform + support + billing</b> — org/branch/plan/entitlement/subscription/billing/flags/themes/collateral; support console read-only; sub-role separation; MFA enroll.</li>
     <li><b>Cross-tenant isolation</b> — confirm Saffron tokens/branches/analytics never expose Copper Pot or Urban Brew data (incl. snapshot scoping).</li>
@@ -323,13 +324,9 @@ grep &lt;correlation_id&gt; /tmp/qrapp-mtest-1.log</pre>
 <!-- WHAT'S NEW -->
 <h2>Redesign + Phase 0 — What to Verify</h2>
 <div class="note" style="margin-bottom:16px">
-  <b>Heads-up on the older docs.</b> The <a href="manual-testing-user-guide.html">User Guide</a>,
-  <a href="manual-testing-session-guide.html">Session Guide</a>, <a href="how-to-use.html">how-to-use</a>
-  and <a href="manual-testing-checklist.html">Checklist</a> were written <b>before</b> the UI redesign, so
-  some screen labels/flows and a few PINs are out of date (e.g. <i>"View cart" → "View Order"</i>,
-  <i>"Confirm your order" → "Place order"</i>, <i>"Itemized bill" → "Total due"</i>; staff PINs are
-  <b>1111/2222/3333/4444</b> as on this page). <b>This dashboard + the list below are authoritative</b> for
-  the current build.
+  <b>Beta documentation rule.</b> This dashboard and the <a href="manual-testing-checklist.html">interactive
+  checklist</a> are the authoritative entry points for this run. <a href="how-to-use.html">how-to-use</a>
+  remains a local-development tutorial and must not be used for beta URLs or destructive commands.
 </div>
 <div class="grid g3">
   <div class="card">
@@ -360,14 +357,15 @@ grep &lt;correlation_id&gt; /tmp/qrapp-mtest-1.log</pre>
       <li>Near-black + electric-purple chrome; sidebar + toolbar.</li>
       <li>Analytics → <b>Staff Performance</b> tab (org→branch picker).</li>
       <li>Themes → <b>actionable custom-token UX</b> (preset swatches + "Open entitlements"); custom tokens gated by <code>custom.theme</code>.</li>
-      <li>Cross-instance: guest on <b>Frontend A</b> (:3000/app-1) + staff on <b>Frontend B</b> (:3001/app-2) → realtime crosses both ways.</li>
+      <li>Cross-instance: use the pinned beta API hosts to force A→B and B→A; use two real devices/networks for the human realtime check.</li>
     </ul>
   </div>
 </div>
 
 <footer>
-  QR Dining manual testing certification environment · branch <code>feature/certification-fixes-ui-redesign</code> (Phase 0 fixes + foundation + guest serene + ops/platform redesign, integrated) · migration v38 · audit-v2 ON · strict-rollout flags default-off.
-  Generated for pre-deployment human certification. The soak (project <code>qr-dining</code>) is never touched by this stack.
+  QR Dining deployed-beta manual certification · repository checkout <code>feature/signoz-observability</code>
+  at preflight SHA <code>9865a48</code>; beta backend image <code>beta-b57f746</code> (known provenance mismatch) ·
+  migration v39 · audit-v2 ON · product gates default-off. Updated 2026-08-22. Do not touch the protected soak.
 </footer>
 
 </div>
