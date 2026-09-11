@@ -18,7 +18,6 @@ import (
 	"github.com/google/uuid"
 )
 
-<<<<<<< HEAD
 func TestInitiatePaymentRequiresStaffConfirmationForEveryMethod(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -69,7 +68,9 @@ func TestInitiatePaymentRequiresStaffConfirmationForEveryMethod(t *testing.T) {
 				t.Fatalf("payment status: got %s, want requires_staff_confirmation", payment.Status)
 			}
 		})
-=======
+	}
+}
+
 func TestInitiatePayment_AbsentParticipantCannotBecomeHost(t *testing.T) {
 	pool := testutil.OpenTestDB(t)
 	f := testutil.SeedFixtures(t, pool)
@@ -119,7 +120,6 @@ func TestInitiatePayment_AbsentParticipantCannotBecomeHost(t *testing.T) {
 	}
 	if paymentCount != 0 {
 		t.Fatalf("payment count: got %d, want 0", paymentCount)
->>>>>>> fix/presence-host-authority
 	}
 }
 

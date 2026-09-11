@@ -1,99 +1,148 @@
-# Master System Engineering Context — qr-dining
+# Master System Engineering Context — qr-dining (v1)
 
-> **Purpose.** The deep code-level map: where things live, what owns what, and which file to open when you need to change X. It is the layer below [ARCHITECTURE.md](ARCHITECTURE.md), which explains the shape of the system without enumerating it.
+> **Purpose.** This is the master engineering context document for the `qr-dining`
+> system. It exists so that future Claude sessions, future developers, and future
+> implementation phases can understand the *entire current state* of the system without
+> re-deriving it from scratch. It is deep engineering documentation, not a README and not
+> product/marketing material.
 >
-> **Compiled 2026-08-22** against `feature/signoz-observability` @ `9865a48`. Package inventories, migration names, worker names and route groups were read from the tree rather than summarized from memory. Where a claim is inference rather than direct reading, it says so.
+> **Status of this document.** Compiled **2026-05-28**. Architectural and rollout claims
+> were verified directly against source (`server.go`, `config.go`, `websocket/message.go`,
+> the migration files, the WS client, and the R1/rollout status docs). Where a specific
+> value matters (config defaults, enum members, route strings, worker intervals) it was
+> read from the owning file rather than summarized. A handful of fine-grained method-level
+> claims (exact repository/handler method inventories) are derived from dependency wiring
+> in `server.go` plus exploration synthesis; treat those as "very likely" rather than
+> "byte-verified," and confirm against the file before relying on them for a change.
 >
-> This file replaces the 2026-05-28 edition, which predated the organization model reaching its current shape, the certification fixes, the redesign, and OpenTelemetry.
+> **Update 2026-05-29.** Remediation + R3 finalization landed since the 2026-05-28 compile:
+> all four Category-1 e2e bugs are now fixed — T-01, X-03, O-05 in prior commits
+> (`6db078e`, `8b5c386`) and **PT-03** this session (`45c93d5`: MFA-unconfigured now returns
+> 503 `MFA_NOT_CONFIGURED`, not 500). The R3 policy-decisions writing blocker is **CLOSED**
+> (`r3-policy-decisions-v1.md`, commits `8e193e6`/`075bbf8`). The R1 soak was interrupted by
+> a ~34h app outage and **restarted with the 72h clock reset to 2026-05-28T19:29:03Z**
+> (CP-4 in `r1-live-rollout-status.md`). §§2.5, 2.6, 9.3, 11, 15 updated accordingly.
+>
+> **Update 2026-05-29 (Platform Governance layer + Control-Plane UI + Theme adoption).**
+> A new **SaaS platform control-plane** layer was built on branch
+> `platform-governance-entitlements` (~24 atomic commits, **not merged to `main`**). It is
+> **additive and rollout-safe**: 3 new migrations (000029 entitlements, 000030 feature flags,
+> 000031 tenant theme), new platform services/handlers/routes, an operator frontend, and a
+> theme-adoption integration on the guest UI. **No change** to the 9 strict-rollout flags,
+> session/payment lifecycle, websocket, guest/staff auth, `internal/authz`, or workers; the R1
+> soak is untouched. Entitlements and feature flags are **resolve-only/shadow** (computed +
+> metered, not yet enforced on operational paths); org/branch suspend/activate flip a status
+> column that nothing reads yet. **Migration count is now 31 (000001–000031).** New
+> section **§16** documents this layer; §§3.4, 4, 5, 6, 11 note it inline. This work is
+> branch-local — when reading `main`, the platform layer is just the pre-existing
+> auth/org/branch/audit primitives (§3.4 item 3).
+>
+> **Update 2026-05-30 (Support Console — read-only operator observability).**
+> A first **Support Console** was added to the platform layer (same branch,
+> `platform-governance-entitlements`, 8 atomic commits). It lets platform operators diagnose a
+> tenant — search → inspect session/order/payment/audit + tenant health — **without touching the
+> DB**. **Observability, not control:** strictly additive read-only GETs + UI, **no mutations**,
+> **no migration**, no flag/lifecycle/payment/websocket/auth/`authz` change; R1 soak untouched.
+> Backend: a read-only `services.SupportService` assembling **sanitized** session/order/payment
+> aggregates from existing repo reads (omits `session_token`/`device_fingerprint`; never uses the
+> guest-token snapshot, never mutates), new `/platform/{sessions,orders,payments}/:id`, search
+> extended to tables+participants, `session_id` audit filter. **Dual audit** on reads (internal
+> `platform_audit_log` always; tenant-visible `audit_log` RiskCritical on session+payment detail).
+> RBAC: `support_admin`/`read_only_auditor` (super bypass); `billing_admin` excluded. Documented
+> in **§16.11**; migration count unchanged (still 31).
+>
+> **Update 2026-05-30 (Pilot-readiness remediation — the 3 dress-rehearsal findings closed).**
+> The Pilot Dress Rehearsal (`pilot-dress-rehearsal-report.md`) gave a qualified GO and surfaced
+> three issues; all are now **fixed and revalidated** on branch `pilot-readiness-remediation`
+> (off `platform-governance-entitlements`, **3 atomic commits, unmerged**) — minimal change surface,
+> R1 soak untouched. **F-8 (P0):** new `handlers.guestSafeSession()` clears the dormant
+> `session_token` from **every** guest session response (snapshot + Create/Get/Join/Reactivate),
+> permanent and **independent of the R6 flag** — the guest snapshot no longer leaks the credential
+> (§4.3, §7.3). **F-6 (P1):** the guest `ORDER_{CONFIRMED,PREPARING,READY,SERVED,CANCELLED}`
+> handlers now unwrap `(payload.order ?? payload)` to match the backend's `{order:{…}}` envelope
+> (`order.go:517`), so the live order tracker advances without a refresh (§5.7, §7.4). **F-1 (P1):**
+> `connection.ts openSocket()` now routes a failed ws-ticket through `scheduleReconnect()→reconnect()`
+> (snapshot reactivates an `awaiting_reactivation` session server-side, then retries) instead of
+> dead-ending on "Connection lost" (§5.7). No websocket/payment/session/auth/`authz`/migration change.
+> Validated on the isolated `pilot-validation` stack (`:8090`/`:8091`); snapshot security matrix
+> (no/valid/invalid/cross-session/cross-tenant; R6 off **and** on), live order tracker, idle-reload
+> reactivation, and cross-instance propagation all pass. **Verdict: ready for Pilot Restaurant #1.**
+>
+> **Update 2026-05-30 (Premium QR Collateral — theme-aware print collateral).**
+> A **Premium QR Collateral** system was added on branch **`premium-qr-collateral`** (off
+> `pilot-readiness-remediation`, **9 atomic commits, unmerged**). It enhances the existing QR
+> package generation into **theme-aware hospitality print collateral** — five premium print formats
+> (`standing_card`, `table_tent`, `sticker`, `square_card`, `bulk_sheet`) that render differently per
+> theme, plus optional content (welcome/subtitle/footer/tagline/WiFi/socials/branch/logo). **Additive
+> + branch-local; does NOT touch payments, session, websocket, auth, realtime, analytics, or the R1
+> soak.** Architectural rule honored: **no second branding system** — collateral *consumes*
+> `Theme (preset+tokens) + Branch metadata + Collateral config`; the theme stays the source of truth
+> and collateral owns only the *physical* concern (layout/text/logo/WiFi/exports). One new additive
+> migration **000033_branch_collateral** (branch-scoped JSONB config, mirroring `tenant_themes`;
+> 000032 was the separately-added subscription-billing schema) → **migration count now 33**. New
+> read/write endpoints on **both** the platform (`/platform/branches/:id/{collateral,tables}`) and
+> staff (`/branches/:id/collateral`) trust domains writing **one shared `branch_collateral` row**; a
+> platform "Collateral" studio page; a staff-admin "Collateral" tab; client-side exports (themed
+> Print→PDF, plus a QR PNG/SVG + standalone `print.html` ZIP via the existing `jszip`/`qrcode.react`,
+> **no new deps**). New section **§16.12** documents it. Validated on the isolated stack (new app port
+> `:8095`, isolated PG/Redis — never the soak); screenshots in `screenshots/collateral/`.
+>
+> **Update 2026-06-04 (R1 soak CLOSED — PASS WITH OBSERVATIONS).** A forensic closure audit
+> of the R1 soak was completed after the host was shut down unexpectedly mid-soak (report:
+> `r1-soak-closure-report.md`). Determination: **PASS WITH OBSERVATIONS.** The certified
+> post-CP-4 run (`qr-app-chaos`, **2026-05-28T19:29:03Z → 2026-06-02T23:27:22Z**) ran
+> **~124h continuously** (RestartCount 0, OOMKilled false), with **0 panics / 0 errors / 0
+> `audit_write_failures`**, ending in a **graceful** shutdown — the 72h target was met with
+> ~52h margin. Postgres shut down clean and restarted with **no recovery** (no corruption);
+> Redis showed no eviction/OOM. The container's current `Exited (127)` is a **failed
+> post-reboot restart** (the `/tmp/qrapp` binary was wiped when `/tmp` cleared on boot — the
+> CP-4 deployment-fragility risk recurring), **not** a soak crash. Observations/UNKNOWNs: the
+> final ~75h were **idle** (no traffic/health probes after 2026-05-30T19:52Z, though workers
+> ticked every minute); **sustained-load/WebSocket longevity** and the **audit storage curve
+> at real volume** remain unverified; relocate the binary off `/tmp`, add an app-down alert,
+> and purge the ~20–28 stale `payment_pending` test sessions before any *production* soak.
+> **Do not auto-chain R2.** §§2.5, 2.6 updated accordingly.
+>
+> **Update 2026-06-05 (Manual-testing certification pass — three guest-flow fixes/features committed).**
+> A human manual-testing pass on the isolated 3-tenant stack (Saffron House / Copper Pot Kitchen /
+> Urban Brew Café; `manual-testing-findings-v4.md`) surfaced a set of frontend↔backend contract gaps.
+> Three were addressed and **committed to branch `premium-qr-collateral`** as four atomic commits
+> (the first being the seed rework); all are additive, guest-scoped, and do not touch payments,
+> websocket transport, auth, rollout flags, or the soak:
+> 1. **Occupied-table check-in fix (`c84834b`).** `GetActiveSessionForTable` only matched
+>    `status='active'`, but the one-active-per-table unique index also blocks `payment_pending` and
+>    `awaiting_reactivation`; a QR scan of such a table resolved no joinable session, fell through to
+>    create, and hit `SESSION_ALREADY_ACTIVE` ("something went wrong"). The lookup now matches the
+>    same non-terminal statuses (newest first), and `JoinSession` resumes an `awaiting_reactivation`
+>    session (reactivate + `SESSION_REACTIVATED`) and permits joining a `payment_pending` one;
+>    terminal sessions are still rejected. Affected **every idled table**, so this is a real
+>    operational fix (§4.10, §5.2). sqlc query `GetActiveSessionForTable` widened.
+> 2. **Guest host transfer (`97d0b89`).** New `POST /sessions/:id/host` lets the current host hand
+>    the role to another active participant; service `TransferHost` reuses the existing `reassignHost`
+>    (persist + `HOST_CHANGED` broadcast), host-only, refused while `payment_pending`
+>    (`HOST_TRANSFER_LOCKED`). Frontend adds a "Make host" control; the existing `HOST_CHANGED`
+>    handler already applies it. Previously host reassignment was **automatic only** (presence-based);
+>    this adds the manual path (§4.10, §5.9).
+> 3. **Promo per-guest limit + phone gate (`9852ff5`).** The `uses_per_phone` cap already existed but
+>    was unenforceable (validate passed no phone, the admin form hardcoded 1). Now: the form exposes
+>    "Uses per guest" (explicit 0 = unlimited; omitted still defaults to 1); `/promos/validate`
+>    accepts `order_total` + `phone_e164` (so the discount/min-order are correct and the per-phone cap
+>    is checked at apply time); a per-phone-limited promo with no phone returns `PROMO_PHONE_REQUIRED`;
+>    the guest cart reveals a phone field and carries the number into placement so the redemption
+>    records against it (§4.9, §5.10).
+> **Still open** from the same findings pass (not yet addressed): promo entry should move to the bill
+> (finding #5), the promo daily time-window is compared against the DB's UTC `LOCALTIME` instead of
+> the branch timezone (finding #10 — windowed promos silently fail), the customer "Come back anytime"
+> opt-in is feature-gated off (#6), the staff admin needs a tenant context / branch-derived theme
+> (#8, #12), the manager staff-add UI over-permits vs the owner-only backend (#7), and several UX
+> items (modifier single-select #1, menu image side #2, recurring expiry banner #3, landing tiles #4,
+> promo form date/time clarity #9).
+>
+> **This document is intentionally uncommitted.** It documents a snapshot of an
+> in-progress rollout; do not treat it as a contract.
 
 ---
 
-<<<<<<< HEAD
-## 1. Orientation
-
-| | |
-|---|---|
-| Module | `github.com/Mohith1612/qr-dining` |
-| Go | 1.26 |
-| Schema | v39 — 39 migrations, embedded via `go:embed`, applied at boot |
-| HTTP surface | ~177 route registrations, all in `internal/server/server.go` |
-| API contract | `openapi.yaml`, v2.2.0, 171 operations |
-| Metrics | 43 collectors in `internal/observability/metrics.go` |
-| Alert rules | 27 in `deploy/observability/prometheus-alerts.yml` |
-| e2e specs | 106 under `e2e/` |
-| Trunk | `feature/signoz-observability`, 205 commits ahead of `main` |
-
-Read [ARCHITECTURE.md](ARCHITECTURE.md) first if you have not. This document assumes you already know that sessions are the unit of state, Postgres is the source of truth, and Redis is disposable.
-
-## 2. Repository map
-
-```
-backend/
-  cmd/server/            entry point and dependency wiring
-  cmd/migrate/           standalone migration CLI (development)
-  cmd/bootstrap-admin/   one-shot first super_admin
-  internal/              see §3
-  migrations/            000001 … 000039, up + down
-  sql/queries/           sqlc source — edit here, never in internal/db/sqlc/
-  scripts/               seed, backup, restore, nightly-backup, loadtest
-  docker/Dockerfile      multi-stage, linux/arm64, non-root, healthcheck
-frontend/                Next.js App Router — see §7
-marketing/               Astro static site, separate deploy
-e2e/                     Playwright, 106 specs
-deploy/                  vm/ observability/ signoz/ backup/ nginx/
-scripts/                 chaos harness, manual-testing stack scripts
-docs/                    active documentation
-release-certification/   certification evidence
-```
-
-## 3. Backend packages (`backend/internal/`)
-
-| Package | Owns |
-|---|---|
-| `config` | Env loading and validation. Release-mode hard failures live here |
-| `server` | **The route table.** Every route, its middleware, its rate-limit budget |
-| `handlers` | HTTP layer: DTOs, validation, error mapping. One file per surface |
-| `services` | Business logic and transaction boundaries. One file per domain |
-| `repository` | sqlc wrapper; maps `pgx.ErrNoRows` to domain errors; `WithTx` |
-| `db` | `pool.go`, `migrations.go`, and generated `sqlc/` |
-| `domain` | `errors.go` (typed errors) and `statemachine.go` (transition tables) |
-| `auth` | Guest token issuance/validation, staff and platform session handling |
-| `authz` | Central policy engine — **evaluates in shadow, does not enforce** |
-| `audit` | Append-only audit writer and redaction |
-| `events` | Event construction and publication |
-| `websocket` | Hub, Client, rooms, ticket auth, slow-consumer eviction |
-| `redis` | Pub/sub, presence, rate limiter, lockout store, cache |
-| `worker` | Six background loops |
-| `observability` | Prometheus collectors and OTel setup |
-| `storage` | R2/S3 presigned upload abstraction |
-| `crypto` | HMAC guest tokens, AES-GCM secret sealing, TOTP |
-| `middleware` | 13 middlewares — see §5 |
-| `testutil` | Integration-test fixtures and harness |
-
-### Services
-
-`session` `participant` `cart` `order` `payment` `assistance` `menu` `promo` `staff` `customer` `loyalty` `theme` `collateral` `operational_ids` — the core product.
-
-`platform` `platform_mfa` `platform_analytics` `support` `subscription` `billing` `entitlement` `flag` `feature_gate` `enforcement_observability` `analytics` `staff_analytics` — the platform and governance layer.
-
-`feature_gate.go` is the one to understand before touching gated capability: a feature is available only when **entitlement AND platform flag** both allow it.
-
-### Handlers
-
-Guest-facing: `session` `snapshot` `cart` `order` `payment` `assistance` `menu` `promo` `tables` `customer` `guest_auth` `tenant` `ws`.
-
-Staff-facing: `staff` `branches` `menu_admin` `upload` `organization` `subscription` `loyalty` `staff_analytics` `analytics`.
-
-Platform-facing: `platform` `platform_billing` `platform_collateral` `platform_entitlements` `platform_flags` `platform_lifecycle` `platform_observability` `platform_support` `platform_theme` `platform_analytics`.
-
-Infrastructure: `health` `errors` `helpers` `audit_log` `event_log` `authz` `legacy_metrics`.
-
-## 4. Route groups (`internal/server/server.go`)
-
-Read this file top to bottom once; it is the authoritative map of the HTTP surface and it carries the reasoning for each rate-limit budget in comments.
-
-| Group | Auth | Notes |
-=======
 ## 1. Executive Overview
 
 **What the product is.** `qr-dining` is a **session-centric, realtime, collaborative
@@ -911,141 +960,331 @@ finalization invariants, realtime reconciliation, and the frontend↔backend con
 ## 13. File-Level Navigation Guide ("modify X → look at Y")
 
 | If you need to change… | Backend | Frontend |
->>>>>>> fix/presence-host-authority
 |---|---|---|
-| Infrastructure | none | `/health`, `/readyz`, `/metrics`. No rate limit |
-| Public API (`api`) | guest token where applicable | Sessions, cart, orders, assistance, payments, promo validation, customer opt-in |
-| `branchPublicAPI` | none | `/branches/:id/menu` and friends; tenant-guarded when `BASE_DOMAIN` is set |
-| Snapshot | guest token | `/sessions/:id/snapshot` — the reconnect reconciliation endpoint |
-| `authGroup` | none | `/staff/auth` at a strict 10 RPM. **Fails closed** |
-| `platformAPI` | platform token | `/platform/*`. Staff tokens are rejected outright |
-| `staffAPI` | staff token | Staff-protected routes |
-| `branchStaffAPI` | staff token + branch guard | Branch-scoped operational views |
-| `orgAPI` | staff token | `/orgs/:org_id`, feature-flagged in handler |
-| WebSocket | ticket | `/ws` upgrade |
+| **Session lifecycle / states** | `internal/services/session.go`, `migrations/000023/000024/000026`, spec `session-lifecycle-state-machine.md` | `store/session.ts`, `providers/SessionProvider.tsx`, `lib/ws/connection.ts` |
+| **Payments / settlement / bill** | `internal/services/payment.go`, `internal/handlers/payment.go`, `internal/handlers/billing.go`, `migrations/000021` | `app/(guest)/session/[id]/payment/page.tsx`, `app/(staff)/staff/(dashboard)/waiter/page.tsx`, `lib/api/payments.ts`, `components/shared/BillBreakdown.tsx` |
+| **Webhooks** | `internal/handlers/payment.go` (`Webhook`), `internal/services/payment.go`, payment-webhook-events table | — |
+| **Waiter flow** | `internal/handlers/{order,payment,assistance}.go` (`*ForBranch`, `Settle`, `Acknowledge/Resolve`) | `app/(staff)/staff/(dashboard)/waiter/page.tsx` |
+| **Kitchen rendering / order status** | `internal/handlers/order.go` (`UpdateStatus`, `ListActiveForBranch`), `internal/domain/statemachine*.go` | `app/(staff)/staff/(dashboard)/kitchen/page.tsx`, `store/orders.ts`, `hooks/useOrders.ts` |
+| **WebSocket events (add/change)** | `internal/websocket/message.go`, `internal/events/*`, the publishing service | `types/ws.ts`, `hooks/useWebSocket.ts`, `lib/ws/connection.ts` |
+| **Shared cart** | `internal/services/cart.go`, `internal/repository/cart.go`, `migrations/000027` | `store/cart.ts`, `hooks/useCart.ts`, `lib/api/cart.ts`, `app/(guest)/session/[id]/cart/page.tsx` |
+| **Host permissions / reassignment** | `internal/services/session.go` (`AuthorizeHostAction`, host baseline), `orderSvc/paymentSvc.SetHostAuthority` in `server.go` | `hooks/useSession.ts`, `store/session.ts` (`applyHostChanged`) |
+| **Reconnect / snapshot** | `internal/handlers/snapshot.go`, `internal/services/session.go` (`GetSnapshot`) | `lib/ws/connection.ts`, `lib/ws/reconciliation.ts` |
+| **Menu availability** | `internal/handlers/menu_admin.go` (`ToggleAvailability`), `internal/services/menu.go` | `store/menu.ts` (`setItemAvailability`), `hooks/useFilteredMenu.ts` |
+| **Admin: staff / tables / menu / promos** | `internal/handlers/{staff,table,menu_admin,promo}.go` | `app/(staff)/staff/(dashboard)/admin/page.tsx`, `components/admin/*`, `lib/api/{staff,tables,promos}.ts` |
+| **Auth (guest/staff/platform)** | `internal/auth/guest.go`, `internal/middleware/{staff_auth,platform_auth}.go`, `internal/services/{staff,platform}.go` | `store/staff.ts`, `app/(staff)/staff/login/page.tsx`, `lib/api/client.ts` |
+| **Authorization policy (RBAC)** | `internal/authz/*` | — |
+| **Rollout flags** | `internal/config/config.go` + the gate site for each flag | (none; behavior is server-side) |
+| **Routes (add an endpoint)** | `internal/server/server.go` | `lib/api/*` |
+| **Workers / lifecycle jobs** | `internal/worker/worker.go`, `cmd/server/main.go` (startup), `internal/repository/worker.go` | — |
+| **Migrations / schema** | `backend/migrations/`, run via `internal/db/migrations.go` or `cmd/migrate` | — |
+| **Metrics / alerts** | `internal/observability/metrics.go`, `deploy/observability/prometheus-alerts.yml` | `store/ws.ts` (status), `components/shared/RealtimeIndicator.tsx` |
+| **Tenant resolution** | `internal/middleware/tenant.go`, `internal/handlers/tenant.go` | `providers/TenantProvider.tsx`, `middleware.ts` |
 
-Notable design points recorded in that file:
+---
 
-- **Host-controlled ordering.** Only the session host may submit orders or close the session.
-- **Promos apply at payment initiation**, not at order placement.
-- **Client WS PINGs are the presence heartbeat.** There is no separate presence endpoint.
-- **Payments and webhooks fail closed** on rate-limit backend outage.
-- **Loyalty earn rides payment completion** but is nil-safe and error-isolated — a loyalty failure must never fail a payment.
+## 14. Current Deployment + Operational State
 
-## 5. Middleware
+### 14.1 Local / Docker
+`docker-compose.yml`: `postgres:17-alpine` + `redis:7-alpine` (appendonly, 256mb LRU) +
+`app` (built from `backend/docker/Dockerfile`, multi-stage, **linux/arm64**, non-root,
+`/health` healthcheck). Networks: internal `backend` + external `proxy` (for nginx).
+Migrations auto-run at app startup.
 
-Order: `requestid → logger → metrics → recover → security headers → max body size → CORS → tenant → rate limit → (auth + branch guard)`.
+### 14.2 Reverse proxy
+`deploy/nginx/qr-dining.conf` (authored in Phase D): WS-aware (`Upgrade`/`Connection`,
+`proxy_http_version 1.1`, `proxy_buffering off`, `proxy_read_timeout 3600s` > the app's
+~54s ping); `limit_req` on the HTTP API but **not** on `/ws`; `/metrics` restricted to
+private CIDRs. Cloudflare idle WS timeout (~100s) is covered by the app ping — do not lower
+`proxy_read_timeout` below the ping interval.
 
-| Middleware | Note |
-|---|---|
-| `tenant.go` | Resolves org/branch context; failures counted by `tenant_resolution_failures_total` |
-| `branch_guard.go` | Verifies branch ownership on branch-scoped routes |
-| `staff_auth.go` / `platform_auth.go` | Separate trust domains; each rejects the other's tokens |
-| `ratelimit.go` | `RateLimitSensitive` fails **closed**; the general limiter fails open with a metric |
-| `security_headers.go` | API-shaped CSP (`default-src 'none'`); HSTS gated on config |
+### 14.3 Startup & commands (`Makefile`)
+`make build|run|test`, `make migrate-up|migrate-down`, `make sqlc-generate`,
+`make docker-up|docker-down|docker-logs`, `make seed`. Frontend: standard Next.js
+(`npm run dev` / `build`) with `NEXT_PUBLIC_API_URL` + `NEXT_PUBLIC_WS_URL` (defaults
+`http://localhost:8080` / `ws://localhost:8080`) and `NEXT_PUBLIC_TENANT_SLUG` for local
+tenancy.
 
-## 6. Data model and migrations
+### 14.4 Seed & env assumptions
+`scripts/seed.go` inserts a test restaurant, branches, tables (with QR tokens), menu, and
+staff (owner/manager/waiter/kitchen). Required env: `DATABASE_URL`, `REDIS_URL`,
+`GUEST_TOKEN_SECRET` (dev default warns in release), `MFA_ENCRYPTION_KEY` (if any platform
+user requires MFA), `CORS_ALLOWED_ORIGINS` (frontend origin). Optional Cloudflare R2 image
+storage (`R2_*`).
 
-39 migrations, additive-only. The arc is legible from their names:
+### 14.5 Backup / restore
+`backend/scripts/{backup,restore,backup_r2}.sh` (pg_dump custom format, single-transaction
+restore, R2 upload, retention pruning). Runbook: `docs/backup-restore.md`.
 
-- **000001–000015** — the product: schema, event log, webhooks, staff, subscriptions, menu, modifiers, customers, order sequences, billing, promos.
-- **000016–000022** — the hardening phases: identity, organization model, platform trust domain, **audit log v2**, realtime/session hardening, payment/order correctness, operational UX.
-- **000023–000028** — lifecycle: session states, lifecycle invariants, platform MFA, reactivation, shared cart, participant phone.
-- **000029–000035** — the SaaS layer: entitlements, feature flags, theme config, subscription billing, collateral, staff analytics, loyalty.
-- **000036–000039** — certification fixes and the redesign: promo redemption on payment, single-select modifiers, the serene theme preset, promo phone normalization.
+### 14.6 Soak / DB safety (IMPORTANT)
+- The **R1 soak runs on the local staging stack** (`qr-dining-postgres-1` /
+  `qr-dining-redis-1`, app container historically `qr-app-chaos`) with
+  `AUDIT_LOG_V2_ENABLED=true`. **Do not touch the soak DB** — do not reset it, run
+  destructive migrations against it, mutate `audit_log`, or flip the flag. Restarts must
+  preserve `AUDIT_LOG_V2_ENABLED=true`.
+- For any testing, use a **separate throwaway database** (`TEST_DATABASE_URL`) — integration
+  tests run embedded migrations against an empty DB by design.
+- "Optional soak hygiene" (resolving the ~20 stale `payment_pending` test sessions) is
+  soak-safe because it touches neither `audit_log` nor the flag — but treat it as optional,
+  not required.
 
-Invariants that migrations protect, and that you should not casually change: one non-terminal session per table (partial unique index); append-only `audit_log` (trigger); immutable bill snapshots; price and modifier snapshots on order items; ledger-only loyalty balances.
+---
 
-## 7. Frontend map (`frontend/`)
+## 15. Final Engineering Assessment
 
-| Path | Owns |
-|---|---|
-| `app/(guest)/` | QR landing, join, menu, cart, order tracker, bill, payment |
-| `app/(staff)/` | Login, admin, kitchen display, waiter view |
-| `app/(platform)/` | Platform login, onboarding, support console, billing, flags, analytics |
-| `app/pricing/` | Public pricing page |
-| `middleware.ts` | Tenant resolution at the edge |
-| `hooks/`, `lib/ws/` | WebSocket client, reconnect/backoff, snapshot reconciliation |
-| `store/` | Client state |
-| `providers/` | Context providers including product analytics |
-| `styles/`, `config/` | Theme tokens; `serene` is the default preset |
-| `scripts/check-prod-env.mjs` | The prebuild guard that rejects localhost/http production builds |
+**How mature is it?** Substantially mature. The hard architecture is settled and proven:
+clean layering, strict state machines, idempotency, host-authoritative ordering, an
+immutable audit trail, reversible feature-flag rollout, and Postgres-authoritative recovery.
+The realtime layer is correct and self-healing via snapshot reconciliation. R1 is live and
+healthy in soak.
 
-## 8. Realtime internals
+**What feels stable.** Session/order/payment/assistance state machines; the shared-cart and
+host-control model; reconnect/reconciliation; the rollout machinery (every flag reversible,
+fully instrumented with page-backed alerts); the DB schema and its financial-snapshot
+discipline; backup/restore and reverse-proxy topology.
 
-- Channel: `org:{org_id}:branch:{branch_id}:session:{session_id}:events`
-- Presence: `org:{org_id}:branch:{branch_id}:session:{session_id}:presence`
-- Tenant scoping is **in the key**, so fan-out cannot cross tenants by mistake.
-- `session_events` carries a durable sequence; clients detect gaps and reconcile.
-- No replay. Reconnect is snapshot-based — [reference/reconnect-guide.md](reference/reconnect-guide.md).
-- Staff dashboards poll (~10s) rather than hold WebSockets. Deliberate.
+**What still feels risky.**
+1. The **R1 storage curve** — the one quiet long-tail unknown; must be re-derived at volume.
+2. R1 has only been exercised on **single-instance local staging**, and the soak proved
+   fragile in practice (a `/tmp` cleanup wiped the binary → ~34h silent outage → clock
+   reset, CP-4); the multi-pod production soak with an app-down alert is still ahead.
+3. **R3 is now unblocked** (policy decisions written) but still needs its 48h shadow soak
+   before the paired strict flip.
+   *(Resolved since 2026-05-28: the cross-org snapshot leak T-01 and the X-03/O-05/PT-03
+   500-status bugs — see §9.3 and §11.)*
 
-Contract: [reference/realtime-reconciliation-invariants.md](reference/realtime-reconciliation-invariants.md).
+**Likely needed before pilot.** Finish the R1 production soak (confirm the storage
+projection) and harden its deployment so an outage can't silently reset it; run the R3
+shadow soak and flip the paired flags; backfill `branches.organization_id` and run the R2
+shadow/soak; decide and (if needed) close the order-audit coverage gap. (T-01, the
+500-status bugs, and the R3 policy-decision writing task are now done.)
 
-## 9. Workers
+**Likely needed after pilot.** Drive the remaining waves (R4–R7) with their operational
+prerequisites (staff data/training, per-IP cap sizing, legacy-credential decay windows,
+settlement UI on all devices); add the audit hash-chain; revisit Hub sharding only if scale
+demands it.
 
-`RunStaleSessionCleaner` · `RunSessionExpiryWarner` · `RunPresenceExpiry` · `RunReactivationPipeline` · `RunPaymentPendingEscalation` · `RunSessionTableReconciler`
+---
 
-All Redis-`NX`-lock guarded and panic-isolated. Health signals: `background_worker_runs_total`, `background_worker_panics_total`.
+## 16. Platform Governance Layer (branch `platform-governance-entitlements`)
 
-`RunPaymentPendingEscalation` is **alert-only** and must stay that way — a machine never decides money.
+> **Scope note.** Everything in this section lives **only on branch
+> `platform-governance-entitlements`** (not merged to `main` as of 2026-05-29). It is the
+> SaaS *control plane* — tenant governance, operational intelligence, and branding — built
+> as a **separate trust domain** on top of the existing Platform auth primitives (§3.4 item 3).
+> All of it is **additive**: additive migrations (000029–000031), additive routes/services,
+> and **resolve-only/shadow** semantics — nothing here enforces on, or alters, the operational
+> guest/staff domains, the 9 strict-rollout flags, or the R1 soak.
 
-## 10. Rollout flags
+### 16.1 Bounded context & auth
+All platform governance APIs sit under the existing `/platform/*` group
+(`middleware.PlatformAuth`; staff/guest tokens rejected) and reuse the platform RBAC helpers
+in `internal/handlers/platform.go`: `requirePlatformRole`/`requireAnyPlatformRole`
+(super_admin bypasses; roles `super_admin` > `support_admin` > `billing_admin` >
+`read_only_auditor`) and `logPlatformAudit` (writes `platform_audit_log` with
+`platform.<resource>.<verb>` actions). Reads allow support/billing/auditor; mutations are
+super_admin (billing for plan-assign/update).
 
-Nine environment flags stage enforcement. Current posture and change procedure: [OPERATIONS.md §4](OPERATIONS.md#4-rollout-flags-the-enforcement-ladder).
+### 16.2 Entitlement system (C) — migration 000029, **resolve-only/shadow**
+Tables: `entitlements` (capability/limit catalog, seeded), `plan_entitlements`,
+`organization_plan_assignments`, `organization_entitlement_overrides`.
+`internal/services/entitlement.go` `EntitlementService.ResolveForOrganization` precedence:
+**org override > org plan assignment → that plan's `plan_entitlements` > restaurant-subscription
+bridge (`features_json`) > free default**. `HasCapability`/`Limit` emit the shadow metric
+`entitlement_evaluations_total{capability,result}`; **no route consumes the boolean to block
+anything yet.** Repo: `internal/repository/entitlement.go`. APIs: catalog + plan CRUD
+(`/platform/plans*`, `/platform/entitlements`), org resolved-entitlements + plan-assign +
+per-key override (`/platform/organizations/:org_id/{entitlements,plan,entitlements/:key}`).
+Capability keys include `analytics.basic/advanced`, `custom.theme`, `multi_branch`,
+`advanced.audit`, `support.priority`, `api.access`; limits `limit.branches/staff/tables`
+(`-1` = unlimited).
 
-Shadow-mode observability is what gates them: `legacy_authz_bypass_total`, `legacy_identity_usage_total`, `policy_shadow_mismatch_total`, `tenant_resolution_failures_total`. A wave flips when its gate metric has read zero for the required window.
+### 16.3 Org/branch lifecycle (B)
+`internal/handlers/platform_lifecycle.go` + repo `UpdateOrganizationStatus`/`UpdateBranchStatus`:
+`POST /platform/organizations/:org_id/{suspend,activate}` and
+`POST /platform/branches/:branch_id/{suspend,activate}` flip the existing
+`active|suspended|archived` status column (+ audit). **No operational path reads these
+statuses yet** — inert until a future enforcement phase.
 
-## 11. Testing infrastructure
+### 16.4 Feature-flag targeting (D) — migration 000030, **resolve-only**
+A NEW product-flag system **completely separate** from the 9 env `config.FeatureFlags`
+(those remain global bootstrap booleans). Tables: `platform_feature_flags` (catalog) +
+`platform_flag_global_overrides` / `platform_flag_organization_overrides` /
+`platform_flag_branch_overrides`. `internal/services/flag.go` precedence **branch > org >
+global > catalog default** (pure `resolveFlag`; metric `feature_flag_resolutions_total{scope}`).
+APIs: catalog create/update + set/clear overrides at each scope + resolved reads
+(`/platform/flags*`, `/platform/{organizations,branches}/:id/flags*`) and a public, Redis-cached
+`GET /branches/:id/feature-flags`. Boolean-only (no % rollout/cohorts). No gate consumes flags yet.
 
-- Unit tests alongside the code; integration tests behind `//go:build integration`, sharing one DB and one Redis — hence the mandatory `-p 1`.
-- `internal/testutil/` holds fixtures and the harness. Integration tests run migrations on startup, so they can target any empty database — always a throwaway one.
-- 106 Playwright specs in `e2e/`, organized by area. **Not executed in CI.**
-- Chaos harness in `scripts/chaos/`.
+### 16.5 Platform analytics (E) — no migration, on-demand
+`internal/services/platform_analytics.go` + `handlers/platform_analytics.go` +
+`sql/queries/platform_analytics.sql`: cross-tenant, **on-demand Postgres aggregation**
+(Redis-cached 5 min, UTC bucketing, optional `?organization_id=` filter, `period=daily|weekly|monthly`).
+`GET /platform/analytics/{usage,revenue,health}` — Usage (sessions/orders/payments/participant-joins
+per day, active branches, active diners), Revenue (GMV + per-day/branch/org from completed payments),
+Health (authz denials from `audit_log`, webhook failures from `payment_webhook_events`).
+**Intentionally Postgres-only:** QR scans, websocket reconnects, worker failures, and audit-write
+failures are **not** here — they remain Prometheus counters on `/metrics` + alert rules.
 
-Full picture, including what CI does and does not cover: [TESTING.md](TESTING.md).
+### 16.6 Theme/branding (G) — migration 000031, **adopted on the guest UI**
+Tables: `theme_presets` (4 seeded: `dark-luxury`, `modern-minimal`, `warm-cafe`, `vibrant`) +
+`tenant_themes` (restaurant-scoped `{preset, tokens_json}`). `internal/services/theme.go`:
+allowlisted **hex-only** design-token keys (14, mapping 1:1 to the `--<key>` CSS vars in
+`frontend/styles/themes.css`), **custom tokens gated by the org's `custom.theme` entitlement**,
+no arbitrary CSS. Platform APIs `GET /platform/theme/presets`,
+`GET|PUT /platform/organizations/:org_id/theme`; public `GET /branches/:id/theme`.
+**Legacy bridge (back-compat):** when no `tenant_themes` row exists, `GetThemeForRestaurant`
+falls back to the restaurant's legacy `settings_json.theme` (validated against `theme_presets`),
+else `dark-luxury` — so legacy-only restaurants never lose theming. `GET /tenants/by-slug/:slug`
+now returns an **additive** `theme:{preset,tokens}` field (ThemeService injected into
+`TenantHandler`); `settings` unchanged.
 
-## 12. "I need to change X — where do I look?"
+### 16.7 Platform Control-Plane UI (frontend)
+A new route group `frontend/app/(platform)/platform/` — its **own trust domain**, separate
+from guest/staff — with `login/` (password + MFA second step) and a guarded `(dashboard)/`
+shell (sidebar: Overview, Organizations, Plans, Entitlements, Analytics, Feature Flags, Themes).
+New: `store/platform.ts` (Zustand + sessionStorage key `platform-auth`), `lib/api/platform.ts`,
+`lib/platform-rbac.ts` (`hasPlatformRole`, super_admin bypass), `components/platform/*`. The
+shared `lib/api/client.ts` gained an additive `platformToken` option + a `put` verb. Reuses
+`components/ui/*`, recharts, sonner, lucide — no new deps. `middleware/cors.go` Allow-Methods
+gained **PUT** (needed for the override endpoints; additive).
 
-| Change | Start here |
-|---|---|
-| Add or modify a route | `internal/server/server.go`, then `handlers/`, then `openapi.yaml` |
-| Change business behaviour | `internal/services/<domain>.go` |
-| Change a SQL query | `sql/queries/`, then `make sqlc-generate`. Never edit `internal/db/sqlc/` |
-| Change the schema | New migration in `backend/migrations/`. **Additive only** |
-| Change session states | `domain/statemachine.go` + [reference/session-lifecycle-state-machine.md](reference/session-lifecycle-state-machine.md) |
-| Change payment behaviour | `services/payment.go` + [reference/payment-finalization-invariants.md](reference/payment-finalization-invariants.md) |
-| Change realtime behaviour | `internal/websocket/`, `internal/events/`, `internal/redis/pubsub.go` + [reference/realtime-reconciliation-invariants.md](reference/realtime-reconciliation-invariants.md) |
-| Add a metric | `internal/observability/metrics.go`, then an alert rule if it should page |
-| Add an alert | `deploy/observability/prometheus-alerts.yml`, `promtool check rules` |
-| Gate a new capability | `services/feature_gate.go` — entitlement AND flag |
-| Change auth | `internal/auth/`, `internal/middleware/*_auth.go` + [SECURITY.md](SECURITY.md) |
-| Change rate limits | `internal/server/server.go` (budgets) and `middleware/ratelimit.go` (behaviour) |
-| Change a guest screen | `frontend/app/(guest)/` |
-| Change themes | `frontend/styles/`, `frontend/config/`, `services/theme.go` |
-| Deploy or operate | [DEPLOYMENT.md](DEPLOYMENT.md) · [OPERATIONS.md](OPERATIONS.md) · [RUNBOOKS.md](RUNBOOKS.md) |
+### 16.8 Theme adoption on the live guest frontend
+The structured theme is now the **authoritative source of guest branding**, replacing the
+legacy `settings_json.theme` string. `frontend/lib/theme/applyTheme.ts` applies the preset
+(`data-theme`) + allowlisted hex token vars **directly on `<html>` (no localStorage write →
+no cross-tenant leakage)**; `lib/api/theme.ts` calls the public branch endpoint. Resolution:
+once per tenant context at boot (`TenantProvider` carries `theme`, applied by `Providers`
+`TenantThemeSync`) and once per branch context (QR-resolve + `SessionProvider`, guarded per
+`branch_id`). Fallback chain: structured `tenant_themes` → legacy `settings.theme` → default.
 
-## 13. Known gaps
+### 16.9 Known platform-layer gaps / follow-ups
+- Entitlements + feature flags are **resolve-only**; no enforcement gate wired in yet.
+- Org/branch suspend/activate is inert (no operational consumer of the status).
+- No backend **DELETE** for an org entitlement override (only PUT upsert).
+- Plan creation is limited to the 3 fixed `plan_tier` enum values (`free|standard|premium`).
+- MFA **enroll/recovery-code** management UI not built (login MFA *verify* step is).
+- Staff admin `AppearanceTab` still **writes** legacy `settings_json.theme` (2 presets) — the
+  read path is now bridged/consistent, but unifying the staff write path is deferred.
+- Whole layer is **branch-local and unmerged**; if/when merged, decide enforcement rollout
+  (likely behind new flags, mirroring the staged R-wave discipline).
 
-These are known, deliberate, and tracked — not discoveries.
+### 16.10 Verification posture
+Backend: unit + integration tests against a **throwaway** `TEST_DATABASE_URL` (entitlement
+resolution, flag precedence, analytics correctness + org filter, theme legacy bridge, lifecycle
+round-trips). Frontend: `tsc`/lint/`next build` clean + Playwright smoke (auth guard, org
+suspend/activate, flag precedence, theme entitlement gate, theme preset/custom/fallback) with
+screenshots in `screenshots/{platform,theme}/`. All live verification used isolated throwaway
+Postgres/Redis (distinct names/ports) with the app run from `/tmp` to avoid the soak-pointing
+`backend/.env`; **soak containers were never touched.**
 
-| Gap | Status |
-|---|---|
-| RC never soaked | **SEV-0.** [RELEASE.md](RELEASE.md#5-open-before-v10) |
-| Central authz enforcement (R3) | Shadow. Gated on 48h zero mismatches |
-| Tenancy organizations (R2) | Off. Needs org backfill + soak |
-| Staff settlement required (R7) | Off. Needs webhook exact-replay proof in CI |
-| Governance and billing | Built, audited, **enforcing nothing** by design |
-| Playwright in CI | Discovery only |
-| Money as float | Convert to integer paise before scale |
-| `session_sequences` hot-spot | ~5% 5xx at concurrency ~150; clean at 50 |
-| Audit hash-chain columns | Present, NULL |
-| Multi-instance WS soak | Not done |
-| Dual `restaurants`/`organizations` | Legacy kept until R2/R3 are metric-proven |
+### 16.11 Support Console — read-only operator observability (no migration)
+A first operator **Support Console** for diagnosing a tenant without DB access. **Observability,
+not control:** additive read-only GETs + UI only — **no mutations, no migration**, nothing that
+settles/closes/cancels/edits, no `authz`/lifecycle/payment/websocket/flag change.
 
-## 14. Where else to look
+- **Read service** `internal/services/support.go` (`SupportService`): assembles per-entity
+  aggregates from existing repo reads only — `GetSessionDetail` (session + table + host +
+  participants + orders(+items) + payments + assistance + event_log **lifecycle timeline**),
+  `GetOrderDetail`, `GetPaymentDetail` (+ bill snapshot + **webhook history**). Returns
+  **sanitized DTOs**: money stringified; the guest credential `sessions.session_token` and
+  `session_participants.device_fingerprint` are deliberately **omitted** (a JSON-leak unit guard
+  asserts this). It never calls the guest-token snapshot (§4.10) and never mutates.
+- **APIs** `internal/handlers/platform_support.go` on the `/platform` group:
+  `GET /platform/sessions/:id`, `/orders/:id`, `/payments/:id`. Reuses the existing
+  `SearchSupport` (`/platform/support/search`) — now extended in `repository/support_search.go`
+  with `searchTables` + `searchParticipants` (8 categories total). New read
+  `ListWebhookEventsByPayment`; `/platform/audit` gained an optional `session_id` filter.
+- **RBAC:** reads gated to `support_admin` | `read_only_auditor` (super_admin bypass) via
+  `requireAnyPlatformRole`; **`billing_admin` is excluded** from support (keeps analytics-only);
+  the audit explorer requires `read_only_auditor`. (Verified: billing_admin → 403 on support
+  reads, 200 on analytics.)
+- **Dual audit (preserves the transparency invariant):** every support read writes an internal
+  `platform_audit_log` row (`platform.support.{search,session.read,order.read,payment.read}`);
+  session-detail and payment-detail **additionally** emit a tenant-visible `audit_log` row
+  (`ActionPlatformSupportAccess`, `RiskCritical`, `ActorTypePlatformUser`) so orgs see when
+  platform viewed their data. (Tenant-visible rows persist only when `AUDIT_LOG_V2_ENABLED=true`.)
+- **Frontend** `app/(platform)/platform/(dashboard)/support/`: search + categorized results +
+  per-tenant **Health** panel (reuses analytics usage/health), `sessions/[id]`, `orders/[id]`,
+  `payments/[id]`, and an `audit` explorer; "Support" nav entry. **Zero mutation affordances**
+  (DOM-verified). Reuses the platform shell/ui/api-client; no new deps.
+- **Verified:** backend integration test (aggregate shapes, webhook list, table/participant
+  search, credential-leak guard) + live Playwright smoke (search → session/payment detail →
+  audit explorer showing the dual-audit rows → RBAC 403 for billing_admin → no-mutation DOM
+  scan), screenshots in `screenshots/support/`. Throwaway infra only; soak untouched.
+- **Gaps/deferred:** customer cross-session history; requiring an active support-session *grant*
+  for reads (future hardening — this phase is RBAC + dual-audit); order state-transition history
+  beyond the event_log timeline; CSV/bulk export (intentionally omitted).
 
-- Strategy, roadmap, technical-debt ledger, product vision — [../STATE-OF-THE-PROJECT.md](../STATE-OF-THE-PROJECT.md)
-- Decisions and their reasoning — [adr/](adr/)
-- How the system got here — [history/README.md](history/README.md)
-- Current certification state — [../release-certification/](../release-certification/)
+### 16.12 Premium QR Collateral (branch `premium-qr-collateral`, migration 000033)
+
+> **Scope note.** Lives on its **own branch `premium-qr-collateral`** (off
+> `pilot-readiness-remediation`, unmerged). It **enhances** the existing QR package generation into
+> theme-aware hospitality collateral. **Additive + branch-local**: one new migration, additive
+> routes/services/UI, **no change** to payments, session, websocket, auth, `authz`, realtime,
+> analytics, the 9 strict-rollout flags, or the R1 soak.
+
+**Architectural principle — no second branding system.** The renderer composes
+`Theme (preset+tokens) + Branch metadata + Collateral config`. The **theme stays the source of
+truth** for colour/typography (§16.6); collateral owns only the *physical* concern: chosen print
+format, content text, logo placement, WiFi, socials, and exports. This keeps the two concerns
+separate and reuses the existing theme system wholesale.
+
+**Config model (structured, validated — no arbitrary HTML/CSS, no drag-and-drop).** A branch-scoped
+`CollateralConfig` (format + 4 toggles `showLogo/showBranch/showWifi/showFooter` + 9 text fields
+welcome/subtitle/footer/branchDisplay/tagline/wifi name+password/instagram/website). Stored as JSONB
+in **migration 000033 `branch_collateral`** (`branch_id` PK → `branches`, `config_json`,
+`updated_by_platform_user_id` nullable for staff writes) — mirrors `tenant_themes`. The number 000032
+was taken by the separately-added subscription-billing schema.
+
+- **Service** `internal/services/collateral.go` (`CollateralService`): the single validation/storage
+  authority shared by both trust domains — strict JSON decode (`DisallowUnknownFields` → unknown keys
+  rejected), format allowlist (`standing_card|table_tent|sticker|square_card|bulk_sheet`), per-field
+  length caps, trim-normalize, sensible defaults when no row exists. Pure validators are unit-tested
+  (`collateral_test.go`, 7 tests). Repo `internal/repository/collateral.go` (get + upsert).
+- **APIs.** Platform (`internal/handlers/platform_collateral.go`): `GET|PUT
+  /platform/branches/:branch_id/collateral` (read roles for GET; super_admin for PUT; platform-audited)
+  + `GET /platform/branches/:branch_id/tables` (new read-only table list for generation). Staff
+  (`internal/handlers/branches.go`): `GET|PUT /branches/:id/collateral` (owner/manager, branch-guarded).
+  **Both write the same `branch_collateral` row** — one store, two trust domains (not the legacy
+  two-write-path problem). `logo_url` + `restaurant_name` are now surfaced (additive) on the platform
+  `GetBranch` and staff `GetBranch` responses so renderers can show the logo. Routes in `server.go`.
+- **Frontend (shared, both surfaces).** `frontend/components/collateral/`: five format renderers
+  (`formats/*`), `CollateralThemeScope` (applies `data-theme` + inline custom-token vars to a
+  **subtree** so a preview can show a theme different from the operator's own console theme — reuses
+  the `[data-theme="X"]` attribute selectors in `styles/themes.css`), `FormatRenderer` (dispatch),
+  `CollateralConfigForm` (format-aware: hides blocks a format doesn't support), `CollateralStudio`
+  (**controlled** component — parent owns config so it resets per branch), `CollateralPrintContainer`
+  (in-document `@media print` pages, same technique as `components/admin/PrintTemplate.tsx`).
+  `lib/collateral/` holds the format registry, the export (`jszip`) and `print.html` builder.
+- **Surfaces.** Platform: `app/(platform)/platform/(dashboard)/collateral/page.tsx` (org→branch
+  picker; loads theme via `getOrganizationTheme`, branding via `getBranchDetail`, tables via
+  `listBranchTables`, config via `getBranchCollateral`) + a "Collateral" nav entry in `PlatformNav`.
+  Staff: a new "Collateral" tab in `app/(staff)/staff/(dashboard)/admin/page.tsx` (loads theme via
+  `themeApi.resolveForBranch`, tables via `tablesApi.list`, config via the staff collateral API). The
+  existing single-card `PrintTemplate` (Tables tab) is left untouched.
+- **Exports (no PDF infra, no new deps).** Print View → themed in-document pages → browser
+  Save-as-PDF; Asset ZIP (`collateral-{branch}.zip`) = per-table QR **PNG** (`QRCodeCanvas`) + **SVG**
+  (`XMLSerializer` on `QRCodeSVG`) + a standalone **`print.html`** with concrete (resolved-from-theme)
+  colours for print vendors + `config.json`.
+- **Verified** on the isolated stack: backend rebuilt to a **fresh port `:8095`** against the isolated
+  `pilot-validation` Postgres/Redis (a pre-existing `:8090` pilot-app was left untouched). Migration
+  applied; API CRUD + validation (bad format / unknown key / oversized → 400; no-token → 401) +
+  cross-branch isolation (403) + **shared store across trust domains**; all 5 formats × 3 themes (incl.
+  the custom modern-minimal); ZIP + print.html validated; **regression** (existing Tables QR cards /
+  Print / Regen QR) intact. `go build/vet`, 7 unit tests, `tsc`, `next build` clean. Screenshots in
+  `screenshots/collateral/`.
+- **Notable fix.** The `table_tent` initially folded **upside-down** (table numbers met at the fold,
+  brands at the outer edges → both faces inverted when folded). Corrected so the **heads meet at the
+  ridge** (top panel rotated 180°, bottom normal) → both faces read upright once folded.
+- **Gaps/deferred:** full styled-card raster PNG/SVG (would need an `html-to-image` dep — declined;
+  styled output is via Print→PDF); per-table custom labels ("Window Seat") need a table-level field
+  (v1 uses `identifier`); the exported `print.html` renders a simplified flat card grid, not the true
+  two-panel tent geometry; multi-language; saved collateral "profiles". Branch-local + unmerged.
+
+---
+
+*End of master-system-context-v1.md. This document is intentionally uncommitted and reflects
+the system state as of 2026-05-30. The platform-governance layer (incl. the Support Console) is
+branch-local on `platform-governance-entitlements`; the Premium QR Collateral system (§16.12) is
+branch-local on `premium-qr-collateral`.*
