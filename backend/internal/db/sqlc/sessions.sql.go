@@ -271,10 +271,18 @@ const listActiveSessionsForReactivationScan = `-- name: ListActiveSessionsForRea
 SELECT s.id, s.branch_id, s.table_id, b.organization_id
 FROM sessions s
 JOIN branches b ON b.id = s.branch_id
+JOIN session_participants sp ON sp.session_id = s.id
 WHERE s.status = 'active'
   AND s.created_at < $1::timestamptz
+GROUP BY s.id, s.branch_id, s.table_id, b.organization_id
+HAVING MAX(sp.last_seen_at) < $2::timestamptz
 ORDER BY s.created_at ASC
 `
+
+type ListActiveSessionsForReactivationScanParams struct {
+	CreatedBefore time.Time `json:"created_before"`
+	IdleBefore    time.Time `json:"idle_before"`
+}
 
 type ListActiveSessionsForReactivationScanRow struct {
 	ID             uuid.UUID `json:"id"`
@@ -283,11 +291,11 @@ type ListActiveSessionsForReactivationScanRow struct {
 	OrganizationID int64     `json:"organization_id"`
 }
 
-// Returns active sessions older than the grace floor — candidates for the
-// awaiting_reactivation transition. The worker still has to verify Redis
-// presence absence before transitioning.
-func (q *Queries) ListActiveSessionsForReactivationScan(ctx context.Context, dollar_1 time.Time) ([]ListActiveSessionsForReactivationScanRow, error) {
-	rows, err := q.db.Query(ctx, listActiveSessionsForReactivationScan, dollar_1)
+// Returns active sessions older than the creation grace whose most recent
+// durable participant heartbeat is older than the idle grace. The worker still
+// has to verify Redis presence absence before transitioning.
+func (q *Queries) ListActiveSessionsForReactivationScan(ctx context.Context, arg ListActiveSessionsForReactivationScanParams) ([]ListActiveSessionsForReactivationScanRow, error) {
+	rows, err := q.db.Query(ctx, listActiveSessionsForReactivationScan, arg.CreatedBefore, arg.IdleBefore)
 	if err != nil {
 		return nil, err
 	}

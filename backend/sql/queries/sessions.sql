@@ -87,14 +87,17 @@ WHERE s.status = 'awaiting_reactivation'
 ORDER BY s.awaiting_reactivation_at ASC;
 
 -- name: ListActiveSessionsForReactivationScan :many
--- Returns active sessions older than the grace floor — candidates for the
--- awaiting_reactivation transition. The worker still has to verify Redis
--- presence absence before transitioning.
+-- Returns active sessions older than the creation grace whose most recent
+-- durable participant heartbeat is older than the idle grace. The worker still
+-- has to verify Redis presence absence before transitioning.
 SELECT s.id, s.branch_id, s.table_id, b.organization_id
 FROM sessions s
 JOIN branches b ON b.id = s.branch_id
+JOIN session_participants sp ON sp.session_id = s.id
 WHERE s.status = 'active'
-  AND s.created_at < $1::timestamptz
+  AND s.created_at < sqlc.arg(created_before)::timestamptz
+GROUP BY s.id, s.branch_id, s.table_id, b.organization_id
+HAVING MAX(sp.last_seen_at) < sqlc.arg(idle_before)::timestamptz
 ORDER BY s.created_at ASC;
 
 -- name: HasNonTerminalPaymentForSession :one

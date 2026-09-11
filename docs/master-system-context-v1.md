@@ -514,9 +514,9 @@ Six goroutines, each Redis-locked (distributed, multi-pod safe) and panic-guarde
 |--------|----------------|---------|
 | `RunStaleSessionCleaner` | `STALE_SESSION_INTERVAL` (5m) | abandon sessions past branch timeout |
 | `RunSessionExpiryWarner` | **hardcoded 5m** | emit `SESSION_EXPIRING_SOON` |
-| `RunPresenceExpiry` | `PRESENCE_EXPIRY_INTERVAL` (60s) | purge stale Redis presence |
+| `RunPresenceExpiry` | `PRESENCE_EXPIRY_INTERVAL` (60s) | reserved participant-left notification hook; field age determines presence |
 | `RunSessionTableReconciler` | `SESSION_RECONCILE_INTERVAL` (5m) | reconcile session↔table occupancy |
-| `RunReactivationPipeline` | `PRESENCE_EXPIRY_INTERVAL` (60s); `presenceGrace`=60s, `reactivationWindow`=5m | active→awaiting_reactivation→abandoned |
+| `RunReactivationPipeline` | `PRESENCE_EXPIRY_INTERVAL` (60s); creation grace=60s, idle grace=5m, reactivation window=5m | active→awaiting_reactivation→abandoned |
 | `RunPaymentPendingEscalation` | `PAYMENT_PENDING_ESCALATION_INTERVAL` (1m); warn 5m / critical 15m | **alert-only** stalled-payment escalation |
 
 The escalation worker **never mutates state** (see §12). The reactivation pipeline
@@ -799,8 +799,10 @@ than allowed to block the Hub.
 - **Reactivation:** a quiet session moves to `awaiting_reactivation`; a returning guest's
   snapshot/reconnect within `SESSION_REACTIVATION_WINDOW` (default 5m) reactivates it.
 - **Inactivity handling:** `RunReactivationPipeline` moves active→awaiting_reactivation
-  after `SESSION_PRESENCE_GRACE` (60s) without presence, then →abandoned after the
-  reactivation window; `RunStaleSessionCleaner` abandons sessions past the branch timeout;
+  only after the 60s `SESSION_PRESENCE_GRACE` from creation, the newest durable
+  participant heartbeat is older than `SESSION_IDLE_GRACE` (5m), and live Redis
+  presence is empty; it then moves →abandoned after the reactivation window.
+  `RunStaleSessionCleaner` abandons sessions past the branch timeout;
   abandoned→expired on terminal timeout.
 - **Table lifecycle:** occupied on session create, freed on close; `RunSessionTableReconciler`
   repairs drift (fixing the old "abandoned session strands an occupied table" bug).

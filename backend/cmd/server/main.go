@@ -71,6 +71,7 @@ func main() {
 	// 8. Initialize Redis helpers.
 	pubsub := redisPkg.NewPubSub(redisClient, logger, metrics)
 	presence := redisPkg.NewPresence(redisClient)
+	presence.SetHostAbsenceGrace(cfg.Presence.HostAbsenceGrace)
 
 	// 9. Initialize event publisher.
 	publisher := events.NewPublisher(pubsub, logger)
@@ -94,6 +95,7 @@ func main() {
 	// 14. Start background workers.
 	wq := &workerQuerier{repos: repos}
 	w := worker.New(db, wq, redisClient, publisher, presence, metrics, auditWriter, cfg.Worker.Region, logger)
+	w.SetSessionIdleGrace(cfg.Worker.SessionIdleGrace)
 	go w.RunStaleSessionCleaner(ctx, cfg.Worker.StaleSessionInterval)
 	go w.RunSessionExpiryWarner(ctx, 5*time.Minute)
 	go w.RunPresenceExpiry(ctx, cfg.Worker.PresenceExpiryInterval)

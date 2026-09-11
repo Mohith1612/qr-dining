@@ -149,6 +149,10 @@ go run ./cmd/migrate down 1
 | `CORS_ALLOWED_ORIGINS` | _(none)_ | no | Comma-separated allowed origins |
 | `STALE_SESSION_INTERVAL` | `5m` | no | How often the stale session cleaner runs |
 | `PRESENCE_EXPIRY_INTERVAL` | `60s` | no | How often the presence expiry worker runs |
+| `HOST_ABSENCE_GRACE` | `3m` | no | Host heartbeat age required before automatic transfer |
+| `SESSION_PRESENCE_GRACE` | `60s` | no | Creation grace before a session can be considered for pausing |
+| `SESSION_IDLE_GRACE` | `5m` | no | Durable participant-idle age required before pausing |
+| `SESSION_REACTIVATION_WINDOW` | `5m` | no | Time a paused session remains eligible for reactivation |
 | `DB_MAX_CONNS` | `20` | no | pgxpool maximum connections |
 | `DB_MIN_CONNS` | `2` | no | pgxpool minimum connections |
 | `DB_MAX_CONN_LIFETIME` | `1h` | no | Maximum age of a DB connection |

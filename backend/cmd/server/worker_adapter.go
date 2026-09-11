@@ -62,8 +62,8 @@ func (w *workerQuerier) LogEvent(ctx context.Context, sessionID uuid.UUID, branc
 	w.repos.LogEvent(ctx, sessionID, branchID, eventType, actorType, actorID, payload)
 }
 
-func (w *workerQuerier) ListReactivationCandidates(ctx context.Context, olderThan time.Time) ([]worker.ReactivationCandidate, error) {
-	rows, err := w.repos.ListReactivationCandidates(ctx, olderThan)
+func (w *workerQuerier) ListReactivationCandidates(ctx context.Context, createdBefore, idleBefore time.Time) ([]worker.ReactivationCandidate, error) {
+	rows, err := w.repos.ListReactivationCandidates(ctx, createdBefore, idleBefore)
 	if err != nil {
 		return nil, err
 	}
