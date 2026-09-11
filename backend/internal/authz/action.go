@@ -17,6 +17,8 @@ const (
 	ActionAssistanceAck           Action = "assistance.ack"
 	ActionAssistanceResolve       Action = "assistance.resolve"
 	ActionPaymentSettleStaff      Action = "payment.settle.staff"
+	ActionPaymentCancelStaff      Action = "payment.cancel.staff"
+	ActionSessionForceClose       Action = "session.force_close"
 	ActionPromoCreate             Action = "promo.create"
 	ActionPromoDeactivate         Action = "promo.deactivate"
 	ActionAuditReadBranch         Action = "audit.read.branch"

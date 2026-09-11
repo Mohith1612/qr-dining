@@ -27,7 +27,7 @@ func TestIssueWSTicketRejectsSessionMismatch(t *testing.T) {
 		t.Fatalf("Issue guest token: %v", err)
 	}
 
-	handler := NewSessionHandler(nil, nil, nil, tokenSvc, nil, config.FeatureFlags{}, nil)
+	handler := NewSessionHandler(nil, nil, nil, tokenSvc, nil, config.FeatureFlags{}, nil, nil)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
 	ctx.Params = gin.Params{{Key: "id", Value: uuid.NewString()}}

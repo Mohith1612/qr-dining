@@ -313,6 +313,105 @@ func (h *PaymentHandler) Settle(c *gin.Context) {
 	})
 }
 
+type cancelPaymentRequest struct {
+	Reason string `json:"reason"`
+}
+
+// Cancel withdraws a payment request that never reached a terminal status,
+// releasing the session's payment_pending freeze so the table can order again.
+// Waiters, managers and owners may do this — the same roles that may settle.
+//
+// Money-adjacent, so the acting staff member and a free-text reason are both
+// recorded. Cancelling an already-cancelled payment conflicts (409) rather than
+// silently repeating: see PaymentService.CancelPaymentByStaff.
+func (h *PaymentHandler) Cancel(c *gin.Context) {
+	paymentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid payment id")
+		return
+	}
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	var req cancelPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		respondValidationError(c, "reason is required")
+		return
+	}
+	if len(reason) > maxRecoveryReasonLen {
+		respondValidationError(c, "reason is too long")
+		return
+	}
+
+	payment, err := h.svc.GetPayment(c.Request.Context(), paymentID)
+	if err != nil {
+		if errors.Is(err, domain.ErrPaymentNotFound) {
+			respondError(c, http.StatusNotFound, CodePaymentNotFound, err.Error())
+		} else {
+			respondInternalError(c)
+		}
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	// The branch comes from the payment row, never from the request.
+	orgID, ok := restaurantIDForBranch(c, h.repos, payment.BranchID)
+	if !ok {
+		return
+	}
+	resource := authz.PaymentResource(payment.ID, payment.BranchID, payment.SessionID, orgID)
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionPaymentCancelStaff, resource) {
+		return
+	}
+	if !requireActorBranch(c, staffSession, payment.BranchID) {
+		return
+	}
+	if !staffRoleIn(staffSession.Role, sqlc.StaffRoleOwner, sqlc.StaffRoleManager, sqlc.StaffRoleWaiter) {
+		respondError(c, http.StatusForbidden, CodeForbidden, "only waiters, managers and owners can cancel a payment")
+		return
+	}
+
+	updated, err := h.svc.CancelPaymentByStaff(c.Request.Context(), paymentID, staffSession.StaffID, staffSession.BranchID, reason)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrPaymentNotFound):
+			respondError(c, http.StatusNotFound, CodePaymentNotFound, err.Error())
+		case errors.Is(err, domain.ErrInvalidPaymentTransition):
+			respondError(c, http.StatusConflict, CodeInvalidPaymentTransition, err.Error())
+		default:
+			respondInternalError(c)
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, updated)
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		OrganizationID: orgID,
+		BranchID:       payment.BranchID,
+		SessionID:      payment.SessionID,
+		ResourceType:   audit.ResourcePayment,
+		ResourceID:     audit.IDStr(payment.ID),
+		Action:         audit.ActionPaymentCancel,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        strconv.FormatInt(staffSession.StaffID, 10),
+		Result:         audit.ResultSuccess,
+		RiskLevel:      audit.RiskHigh,
+		Metadata: map[string]any{
+			"reason":          reason,
+			"previous_status": string(payment.Status),
+		},
+	})
+}
+
 // ListPendingForBranch returns payments awaiting staff action for a branch so a
 // waiter can see which cash/card collections still need confirming. Read-only.
 func (h *PaymentHandler) ListPendingForBranch(c *gin.Context) {

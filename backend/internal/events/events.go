@@ -149,6 +149,10 @@ func (p *Publisher) PaymentCompleted(ctx context.Context, sessionID uuid.UUID, p
 	p.publish(ctx, ws.EventPaymentCompleted, sessionID, payload)
 }
 
+func (p *Publisher) PaymentCancelled(ctx context.Context, sessionID uuid.UUID, payload any) {
+	p.publish(ctx, ws.EventPaymentCancelled, sessionID, payload)
+}
+
 func (p *Publisher) PaymentSettlementStalled(ctx context.Context, sessionID uuid.UUID, payload any) {
 	p.publish(ctx, ws.EventPaymentSettlementStalled, sessionID, payload)
 }

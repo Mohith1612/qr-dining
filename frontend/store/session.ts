@@ -7,6 +7,9 @@ interface SessionState {
   participants: Participant[]
   isHost: boolean
   completedPayment: Payment | null
+  // Set when staff withdraw a payment request. Screens showing "awaiting
+  // confirmation" watch this to drop back out of the waiting state.
+  cancelledPayment: Payment | null
   sessionExpiringAt: Date | null
   isReactivating: boolean
 
@@ -19,6 +22,7 @@ interface SessionState {
   applyReactivated: (session: Session) => void
   setIsReactivating: (val: boolean) => void
   setCompletedPayment: (payment: Payment) => void
+  applyPaymentCancelled: (payment: Payment, sessionStatus?: Session["status"]) => void
   setSessionExpiringAt: (at: Date | null) => void
   clear: () => void
 }
@@ -29,6 +33,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   participants: [],
   isHost: false,
   completedPayment: null,
+  cancelledPayment: null,
   sessionExpiringAt: null,
   isReactivating: false,
 
@@ -88,6 +93,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ completedPayment: payment })
   },
 
+  // The server has already released the payment_pending freeze when no other
+  // payment is outstanding; mirror the status it reports so the cart unlocks.
+  applyPaymentCancelled(payment, sessionStatus) {
+    set((s) => ({
+      cancelledPayment: payment,
+      session: s.session && sessionStatus ? { ...s.session, status: sessionStatus } : s.session,
+    }))
+  },
+
   setSessionExpiringAt(at) {
     set({ sessionExpiringAt: at })
   },
@@ -101,6 +115,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   clear() {
-    set({ session: null, participant: null, participants: [], isHost: false, completedPayment: null, sessionExpiringAt: null, isReactivating: false })
+    set({ session: null, participant: null, participants: [], isHost: false, completedPayment: null, cancelledPayment: null, sessionExpiringAt: null, isReactivating: false })
   },
 }))

@@ -1160,6 +1160,77 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /sessions/{id}/force-close:
+    post:
+      summary: Staff force-close a session
+      description: |
+        Ends any session on the staff member's own branch — for a table that left
+        without paying, or where something happened the app never recorded.
+        Sessions otherwise end only by host action or the age-based stale cleaner.
+
+        Does everything the host close does (close, release the table, revoke every
+        participant and rotate their credential versions, clear presence, publish
+        `SESSION_CLOSED`) and additionally cancels any payment still in flight, so
+        nothing is stranded on a terminal session. Roles: manager, owner.
+        Branch-scoped off the session.
+      tags: [Sessions]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                  description: Why the session is being ended. Recorded in the audit log.
+      responses:
+        "200":
+          description: Session closed and the table released
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session:
+                    $ref: "#/components/schemas/Session"
+                  cancelled_payment_ids:
+                    type: array
+                    items:
+                      type: integer
+                      format: int64
+                    description: Non-terminal payments cancelled alongside the session.
+                  stranded_payment_ids:
+                    type: array
+                    items:
+                      type: integer
+                      format: int64
+                    description: >-
+                      Non-terminal payments the domain transition table refuses to move to
+                      `cancelled`. Reported, never force-written.
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Session is already terminal
+
   /sessions/{id}/ws-ticket:
     post:
       summary: Issue an ephemeral WebSocket ticket
@@ -1841,6 +1912,56 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "409":
           description: Payment is not awaiting staff confirmation or the bill snapshot is stale
+
+  /payments/{id}/cancel:
+    patch:
+      summary: Staff-cancel a payment request
+      description: |
+        Withdraws a payment request that never reached a terminal status, releasing
+        the session's `payment_pending` freeze so the table can order again. Valid
+        from `requested`, `provider_pending` and `requires_staff_confirmation` — the
+        statuses the domain transition table permits moving to `cancelled`.
+        Roles: waiter, manager, owner. Branch-scoped off the payment.
+        Publishes `PAYMENT_CANCELLED` to the session.
+      tags: [Payments]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                  description: Why the request is being withdrawn. Recorded in the audit log.
+      responses:
+        "200":
+          description: Payment cancelled; the session is released when no other payment is outstanding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Payment is in a status the transition table does not allow cancelling (already terminal)
 
   /sessions/{id}/bill:
     get:
