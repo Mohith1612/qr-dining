@@ -466,10 +466,14 @@ func (w *Worker) reconcileSessionTables(ctx context.Context) {
 			Int64("table_id", action.TableID).
 			Msg("session table reconciliation applied")
 		if action.SessionID != uuid.Nil {
-			w.publisher.SessionClosed(ctx, action.SessionID, map[string]string{"reason": action.Action})
-			w.presence.DeleteScoped(ctx, action.OrganizationID, action.BranchID, action.SessionID)
+			if action.Action == "duplicate_abandoned" {
+				w.publisher.SessionClosed(ctx, action.SessionID, map[string]string{"reason": action.Action})
+				w.presence.DeleteScoped(ctx, action.OrganizationID, action.BranchID, action.SessionID)
+			}
 			w.queries.LogEvent(ctx, action.SessionID, action.BranchID, "SESSION_RECONCILED", "system", 0, map[string]any{"reason": action.Action})
-			w.recordSystemSessionAudit(ctx, audit.ActionSessionAbandon, result, map[string]any{"reason": action.Action})
+			if action.Action == "duplicate_abandoned" {
+				w.recordSystemSessionAudit(ctx, audit.ActionSessionAbandon, result, map[string]any{"reason": action.Action})
+			}
 		} else {
 			w.queries.LogEvent(ctx, uuid.Nil, action.BranchID, "TABLE_RECONCILED", "system", 0, map[string]any{"reason": action.Action, "table_id": action.TableID})
 			w.recordSystemSessionAudit(ctx, audit.ActionSessionClose, result, map[string]any{"reason": action.Action})

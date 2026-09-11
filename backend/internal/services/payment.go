@@ -601,16 +601,13 @@ func normalizePaymentMethodStatus(method sqlc.PaymentMethod, staffRequired bool)
 	case sqlc.PaymentMethodCard:
 		method = sqlc.PaymentMethodCardManual
 	case sqlc.PaymentMethodDigital:
-		return method, sqlc.PaymentStatusProviderPending
+		return method, sqlc.PaymentStatusRequiresStaffConfirmation
 	}
 	switch method {
 	case sqlc.PaymentMethodCash, sqlc.PaymentMethodCardManual:
 		return method, sqlc.PaymentStatusRequiresStaffConfirmation
 	case sqlc.PaymentMethodUpi:
-		if staffRequired {
-			return method, sqlc.PaymentStatusRequiresStaffConfirmation
-		}
-		return method, sqlc.PaymentStatusProviderPending
+		return method, sqlc.PaymentStatusRequiresStaffConfirmation
 	default:
 		return method, sqlc.PaymentStatusProviderPending
 	}

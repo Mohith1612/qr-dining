@@ -15,6 +15,59 @@ import (
 	"github.com/google/uuid"
 )
 
+func TestInitiatePaymentRequiresStaffConfirmationForEveryMethod(t *testing.T) {
+	tests := []struct {
+		name   string
+		method sqlc.PaymentMethod
+	}{
+		{name: "cash", method: sqlc.PaymentMethodCash},
+		{name: "card", method: sqlc.PaymentMethodCard},
+		{name: "card_manual", method: sqlc.PaymentMethodCardManual},
+		{name: "upi", method: sqlc.PaymentMethodUpi},
+		{name: "digital", method: sqlc.PaymentMethodDigital},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool := testutil.OpenTestDB(t)
+			f := testutil.SeedFixtures(t, pool)
+			repos := testutil.NewTestRepos(pool)
+			pub := events.NewNoopPublisher()
+			sessionSvc := newTestSessionService(repos, pub)
+			paymentSvc := newTestPaymentService(repos, pub, sessionSvc)
+			t.Cleanup(func() {
+				testutil.TruncateTables(t, pool, "sessions", "session_participants", "payments", "bill_snapshots", "idempotency_keys")
+			})
+
+			ctx := context.Background()
+			sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
+			if err != nil {
+				t.Fatalf("CreateSession: %v", err)
+			}
+
+			payment, err := paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
+				SessionID:      sess.Session.ID,
+				BranchID:       f.BranchID,
+				Method:         tt.method,
+				IdempotencyKey: uuid.NewString(),
+				ActorType:      "participant",
+				ActorID:        sess.Participant.ID,
+				Bill: services.BillSnapshotInput{
+					Total:          50.00,
+					Currency:       "INR",
+					CreatedByActor: "guest:0",
+				},
+			})
+			if err != nil {
+				t.Fatalf("InitiatePayment: %v", err)
+			}
+			if payment.Status != sqlc.PaymentStatusRequiresStaffConfirmation {
+				t.Fatalf("payment status: got %s, want requires_staff_confirmation", payment.Status)
+			}
+		})
+	}
+}
+
 func TestWebhookReplay_Idempotent(t *testing.T) {
 	pool := testutil.OpenTestDB(t)
 	f := testutil.SeedFixtures(t, pool)
