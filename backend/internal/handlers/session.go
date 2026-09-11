@@ -4,9 +4,11 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/authz"
 	"github.com/Mohith1612/qr-dining/internal/config"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
@@ -26,11 +28,12 @@ type SessionHandler struct {
 	guestTokens *auth.GuestTokenService
 	tickets     *redisPkg.WSTicketStore
 	flags       config.FeatureFlags
+	authz       *authz.Authorizer
 	audit       *audit.Writer
 }
 
-func NewSessionHandler(svc *services.SessionService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, tickets *redisPkg.WSTicketStore, flags config.FeatureFlags, auditWriter *audit.Writer) *SessionHandler {
-	return &SessionHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, tickets: tickets, flags: flags, audit: auditWriter}
+func NewSessionHandler(svc *services.SessionService, repos *repository.Repos, metrics *observability.Metrics, guestTokens *auth.GuestTokenService, tickets *redisPkg.WSTicketStore, flags config.FeatureFlags, authorizer *authz.Authorizer, auditWriter *audit.Writer) *SessionHandler {
+	return &SessionHandler{svc: svc, repos: repos, metrics: metrics, guestTokens: guestTokens, tickets: tickets, flags: flags, authz: authorizer, audit: auditWriter}
 }
 
 type createSessionRequest struct {
@@ -133,6 +136,104 @@ func (h *SessionHandler) Close(c *gin.Context) {
 		RiskLevel:    audit.RiskLow,
 	})
 	c.Status(http.StatusNoContent)
+}
+
+// maxRecoveryReasonLen bounds the free-text reason on the staff recovery routes.
+// The reason is stored in the audit trail, so it is capped but not parsed.
+const maxRecoveryReasonLen = 500
+
+type forceCloseSessionRequest struct {
+	Reason string `json:"reason"`
+}
+
+// ForceClose ends any session on the staff member's own branch — for a table
+// that left without paying, or where something happened the app never recorded.
+// Managers and owners only: this can discard an unpaid bill, so it is a narrower
+// permission than cancelling a payment.
+//
+// It does everything the host close does (close, release the table, revoke
+// participants and rotate their credential versions, clear presence, publish
+// SESSION_CLOSED) via the same shared implementation, and additionally disposes
+// of any payment still in flight. The host check on the guest close path is
+// untouched.
+func (h *SessionHandler) ForceClose(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondValidationError(c, "invalid session id")
+		return
+	}
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	var req forceCloseSessionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		respondValidationError(c, "reason is required")
+		return
+	}
+	if len(reason) > maxRecoveryReasonLen {
+		respondValidationError(c, "reason is too long")
+		return
+	}
+
+	sess, err := h.svc.GetSession(c.Request.Context(), id)
+	if err != nil {
+		sessionError(c, err)
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	// The branch comes from the session row, never from the request.
+	orgID, ok := restaurantIDForBranch(c, h.repos, sess.BranchID)
+	if !ok {
+		return
+	}
+	resource := authz.SessionResource(id, sess.BranchID, orgID)
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionSessionForceClose, resource) {
+		return
+	}
+	if !requireActorBranch(c, staffSession, sess.BranchID) {
+		return
+	}
+	if !staffRoleIn(staffSession.Role, sqlc.StaffRoleOwner, sqlc.StaffRoleManager) {
+		respondError(c, http.StatusForbidden, CodeForbidden, "only managers and owners can force-close a session")
+		return
+	}
+
+	result, err := h.svc.ForceCloseByStaff(c.Request.Context(), id, staffSession.StaffID, staffSession.BranchID, reason)
+	if err != nil {
+		sessionError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		OrganizationID: orgID,
+		BranchID:       sess.BranchID,
+		SessionID:      id,
+		TableID:        sess.TableID,
+		ResourceType:   audit.ResourceSession,
+		ResourceID:     id.String(),
+		Action:         audit.ActionSessionForceClose,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        strconv.FormatInt(staffSession.StaffID, 10),
+		Result:         audit.ResultSuccess,
+		RiskLevel:      audit.RiskHigh,
+		Metadata: map[string]any{
+			"reason":                reason,
+			"previous_status":       string(sess.Status),
+			"cancelled_payment_ids": result.CancelledPaymentIDs,
+			"stranded_payment_ids":  result.StrandedPaymentIDs,
+		},
+	})
 }
 
 type joinSessionRequest struct {

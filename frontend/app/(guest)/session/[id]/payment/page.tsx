@@ -53,6 +53,7 @@ export default function PaymentPage() {
   const { session, participant, participants, isHost } = useSession()
   const hostName = participants.find((p) => p.is_host)?.display_name
   const completedPayment = useSessionStore((s) => s.completedPayment)
+  const cancelledPayment = useSessionStore((s) => s.cancelledPayment)
   const [bill, setBill] = useState<BillData | null>(null)
   const [billLoading, setBillLoading] = useState(true)
   const [billError, setBillError] = useState<string | null>(null)
@@ -81,6 +82,14 @@ export default function PaymentPage() {
   // "completed" (e.g. an instantly-settled flow) or a PAYMENT_COMPLETED event
   // arrived over the websocket and was stored on the session.
   const isComplete = submitted?.status === "completed" || completedPayment !== null
+
+  // Staff withdrew the request (PAYMENT_CANCELLED). Drop back to the method
+  // picker instead of leaving the guest stranded on "Awaiting confirmation".
+  useEffect(() => {
+    if (!cancelledPayment || isComplete) return
+    setSubmitted(null)
+    setShowOptIn(false)
+  }, [cancelledPayment, isComplete])
 
   // Fetch bill on mount and when orders change (new order placed triggers WS → store update).
   const fetchBill = useCallback(async (attempt = 0) => {

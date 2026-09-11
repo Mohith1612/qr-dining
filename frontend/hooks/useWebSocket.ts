@@ -12,7 +12,7 @@ import { useWsStore } from "@/store/ws"
 import { cartApi } from "@/lib/api/cart"
 import { toast } from "sonner"
 import type { WSEventHandlerMap } from "@/types/ws"
-import type { Participant, Order, AssistanceRequest, Payment, SessionSnapshot } from "@/types/api"
+import type { Participant, Order, AssistanceRequest, Payment, Session, SessionSnapshot } from "@/types/api"
 import { track } from "@/lib/product-analytics/events"
 import { registerGuestSessionProps, unregisterGuestSessionProps } from "@/lib/product-analytics/identity"
 
@@ -50,6 +50,16 @@ export function useWebSocket(sessionId: string) {
           })
         }
         useSessionStore.getState().setCompletedPayment(payment)
+      },
+
+      // Staff withdrew the payment request — the bill is unpaid again and the
+      // cart is unfrozen. Without this the guest sits on "Awaiting confirmation"
+      // forever, because nothing else ever contradicts the initiate response.
+      PAYMENT_CANCELLED: (payload) => {
+        const p = payload as { payment?: Payment; session_status?: Session["status"] } | null
+        if (!p?.payment) return
+        useSessionStore.getState().applyPaymentCancelled(p.payment, p.session_status)
+        toast.info("Your server cancelled the payment request. You can keep ordering or try paying again.")
       },
 
       // An admin toggled a menu item. Reconcile the menu in realtime; if a

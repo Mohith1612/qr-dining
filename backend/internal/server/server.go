@@ -145,7 +145,7 @@ func New(
 
 	// ── Handlers ─────────────────────────────────────────────────────────────
 	health := handlers.NewHealthHandler(db, redis)
-	sessionH := handlers.NewSessionHandler(sessionSvc, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags, auditWriter)
+	sessionH := handlers.NewSessionHandler(sessionSvc, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags, authorizer, auditWriter)
 	cartH := handlers.NewCartHandler(cartSvc, repos, metrics, guestTokens, cfg.FeatureFlags)
 	orderH := handlers.NewOrderHandler(orderSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
@@ -377,6 +377,12 @@ func New(
 	staffAPI.POST("/staff/logout", staffH.Logout)
 	staffAPI.PATCH("/orders/:id/status", orderH.UpdateStatus)
 	staffAPI.PATCH("/payments/:id/settle", paymentH.Settle)
+	// Recovery routes. A non-terminal payment freezes its session and a session
+	// otherwise ends only by host action or the stale cleaner, so without these
+	// a table can wedge with no staff-side way out. Both take a reason and are
+	// branch-scoped off the resource, never off client input.
+	staffAPI.PATCH("/payments/:id/cancel", paymentH.Cancel)
+	staffAPI.POST("/sessions/:id/force-close", sessionH.ForceClose)
 	staffAPI.PATCH("/assist/:id/ack", assistanceH.Acknowledge)
 	staffAPI.PATCH("/assist/:id/resolve", assistanceH.Resolve)
 

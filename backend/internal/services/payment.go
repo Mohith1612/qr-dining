@@ -531,6 +531,73 @@ func (s *PaymentService) SettlePaymentByStaff(ctx context.Context, paymentID, st
 	return updated, nil
 }
 
+// PaymentCancelledEvent is the PAYMENT_CANCELLED broadcast payload. The session
+// status travels with the payment because cancelling the last non-terminal
+// payment releases the payment_pending freeze — a connected guest learns from
+// one message that the cart is writable again.
+//
+// The staff-authored cancellation reason is deliberately absent: it is recorded
+// in the audit trail, not broadcast to the table.
+type PaymentCancelledEvent struct {
+	Payment       sqlc.Payment `json:"payment"`
+	SessionStatus string       `json:"session_status"`
+}
+
+// CancelPaymentByStaff withdraws a payment request that never reached a terminal
+// status, releasing the session's payment_pending freeze so the table can order
+// again. This is the operator-driven recovery the escalation worker alerts
+// towards; the worker itself stays alert-only.
+//
+// Which statuses are cancellable is the domain transition table's decision, not a
+// second hand-maintained list here: requested, provider_pending and
+// requires_staff_confirmation may move to cancelled, while completed, failed,
+// refunded and cancelled may not. Cancelling an already-cancelled payment
+// therefore conflicts rather than silently succeeding — every cancel carries its
+// own reason and audit entry, so a second success would claim a cancellation
+// that never happened.
+func (s *PaymentService) CancelPaymentByStaff(ctx context.Context, paymentID, staffID, branchID int64, reason string) (sqlc.Payment, error) {
+	payment, err := s.repos.GetPaymentByID(ctx, paymentID)
+	if err != nil {
+		return sqlc.Payment{}, err
+	}
+	// Branch is derived from the payment row, never from the caller.
+	if payment.BranchID != branchID {
+		return sqlc.Payment{}, domain.ErrPaymentNotFound
+	}
+	if err := domain.ValidatePaymentTransition(
+		domain.PaymentStatus(payment.Status),
+		domain.PaymentStatusCancelled,
+	); err != nil {
+		return sqlc.Payment{}, err
+	}
+
+	updated, err := s.repos.UpdatePaymentStatusExpected(ctx, paymentID, payment.Status, sqlc.PaymentStatusCancelled)
+	if err != nil {
+		return sqlc.Payment{}, err
+	}
+
+	// Unfreeze through the single existing release implementation, which only
+	// returns the session to active when no other non-terminal payment remains.
+	if err := s.maybeReleasePaymentPending(ctx, payment.SessionID); err != nil {
+		s.logger.Warn().Err(err).Str("session_id", payment.SessionID.String()).Msg("release payment_pending after staff cancel failed")
+	}
+
+	sessionStatus := ""
+	if sess, err := s.repos.GetSessionByID(ctx, payment.SessionID); err == nil {
+		sessionStatus = string(sess.Status)
+	}
+	s.publisher.PaymentCancelled(ctx, payment.SessionID, PaymentCancelledEvent{
+		Payment:       updated,
+		SessionStatus: sessionStatus,
+	})
+	s.repos.LogEvent(ctx, payment.SessionID, payment.BranchID, "PAYMENT_CANCELLED", "staff", staffID, map[string]any{
+		"payment_id":      updated.ID,
+		"previous_status": string(payment.Status),
+		"reason":          reason,
+	})
+	return updated, nil
+}
+
 func (s *PaymentService) GetPayment(ctx context.Context, id int64) (sqlc.Payment, error) {
 	return s.repos.GetPaymentByID(ctx, id)
 }

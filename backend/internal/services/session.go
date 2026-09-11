@@ -185,8 +185,33 @@ func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, request
 		}
 	}
 
+	actorID := int64(0)
+	if requesterID != nil {
+		actorID = *requesterID
+	}
+	// Already-closed is idempotent success on this path, as it always has been.
+	_, err = s.closeSessionRecord(ctx, sess, sessionCloseActor{Type: "participant", ID: actorID})
+	return err
+}
+
+// sessionCloseActor identifies who closed a session, for the event_log entry.
+type sessionCloseActor struct {
+	Type string
+	ID   int64
+}
+
+// closeSessionRecord performs the work every close path shares: close the row,
+// release the table, revoke participants and rotate their credential versions
+// atomically with the close, then clear presence and broadcast SESSION_CLOSED.
+//
+// It deliberately carries no authorization of its own — each caller gates it
+// (the guest path on the host check in CloseSession, the staff path on role and
+// branch in ForceCloseByStaff). Reports false when the session was already
+// terminal and nothing changed.
+func (s *SessionService) closeSessionRecord(ctx context.Context, sess sqlc.Session, actor sessionCloseActor) (bool, error) {
+	id := sess.ID
 	closed := false
-	err = s.repos.WithTx(ctx, func(tx *repository.Repos) error {
+	err := s.repos.WithTx(ctx, func(tx *repository.Repos) error {
 		if _, err := tx.CloseSessionIfActive(ctx, id); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil // already closed — idempotent
@@ -209,10 +234,10 @@ func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, request
 		return nil
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !closed {
-		return nil
+		return false, nil
 	}
 
 	if s.metrics != nil && s.metrics.SessionDuration != nil {
@@ -226,13 +251,9 @@ func (s *SessionService) CloseSession(ctx context.Context, id uuid.UUID, request
 		}
 	}
 
-	actorID := int64(0)
-	if requesterID != nil {
-		actorID = *requesterID
-	}
 	s.publisher.SessionClosed(ctx, id, map[string]any{"session_id": id})
-	s.repos.LogEvent(ctx, id, sess.BranchID, "SESSION_CLOSED", "participant", actorID, map[string]any{"session_id": id})
-	return nil
+	s.repos.LogEvent(ctx, id, sess.BranchID, "SESSION_CLOSED", actor.Type, actor.ID, map[string]any{"session_id": id})
+	return true, nil
 }
 
 // AuthorizeHostAction reports whether actingParticipantID may perform a

@@ -235,7 +235,9 @@ func (w *Worker) RunReactivationPipeline(ctx context.Context, interval, presence
 // RunPaymentPendingEscalation surfaces sessions stuck in payment_pending past
 // the warn/critical thresholds. It is ALERT-ONLY: it never mutates payment or
 // session state (auto-settle/auto-cancel would violate settlement invariants).
-// Recovery stays operator-driven — staff settle or cancel via the normal flows.
+// Recovery stays operator-driven: staff settle via PATCH /payments/:id/settle
+// or cancel via PATCH /payments/:id/cancel, and can force-close the session
+// with POST /sessions/:id/force-close.
 func (w *Worker) RunPaymentPendingEscalation(ctx context.Context, interval, warnAfter, criticalAfter time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

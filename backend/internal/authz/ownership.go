@@ -30,6 +30,17 @@ func MenuModifierResource(id int64, branchID int64, organizationID int64) Resour
 	return Resource{Type: ResourceTypeMenuModifier, ID: int64String(id), Scope: Scope{OrganizationID: organizationID, BranchID: branchID}}
 }
 
+// PaymentResource scopes a payment by the branch that owns it. Callers must
+// derive branchID from the payment row, never from client input.
+func PaymentResource(id int64, branchID int64, sessionID uuid.UUID, organizationID int64) Resource {
+	return Resource{Type: ResourceTypePayment, ID: int64String(id), Scope: Scope{OrganizationID: organizationID, BranchID: branchID, SessionID: sessionID}}
+}
+
+// SessionResource scopes a session by the branch that owns it.
+func SessionResource(id uuid.UUID, branchID int64, organizationID int64) Resource {
+	return Resource{Type: ResourceTypeSession, ID: id.String(), Scope: Scope{OrganizationID: organizationID, BranchID: branchID, SessionID: id}}
+}
+
 func PromoResource(id int64, branchID int64, organizationID int64) Resource {
 	return Resource{Type: ResourceTypePromo, ID: int64String(id), Scope: Scope{OrganizationID: organizationID, BranchID: branchID}}
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/authz"
+	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/repository"
@@ -113,6 +114,21 @@ func requireAuthorized(c *gin.Context, repos *repository.Repos, authorizer *auth
 // allows the request.
 //
 // Returns false when the request was rejected — callers should bail.
+// staffRoleIn reports whether the actor holds one of the allowed roles. Routes
+// that must refuse a role today call this instead of relying on
+// requireAuthorized alone: role-policy denials there are still gated behind
+// AUTHZ_CENTRAL_POLICY_ENFORCE (shadow-allowed while it is off), which is the
+// right trade for legacy routes with traffic to learn from and the wrong one for
+// a new route that has none. Tenant scope denials are already unconditional.
+func staffRoleIn(role sqlc.StaffRole, allowed ...sqlc.StaffRole) bool {
+	for _, a := range allowed {
+		if role == a {
+			return true
+		}
+	}
+	return false
+}
+
 func requireActorBranch(c *gin.Context, sess services.StaffSession, resourceBranchID int64) bool {
 	if sess.BranchID == 0 || sess.BranchID != resourceBranchID {
 		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")

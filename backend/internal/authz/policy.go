@@ -92,6 +92,8 @@ func requiresSameBranch(action Action) bool {
 		ActionPromoCreate,
 		ActionPromoDeactivate,
 		ActionPaymentSettleStaff,
+		ActionPaymentCancelStaff,
+		ActionSessionForceClose,
 		ActionStaffCreate,
 		ActionStaffUpdateRole,
 		ActionStaffDeactivate,
@@ -139,9 +141,17 @@ func roleAllowed(role sqlc.StaffRole, action Action) bool {
 		return role != ""
 	case ActionAuditReadBranch:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
-	case ActionPaymentSettleStaff:
-		// Waiters physically collect cash/card and confirm settlement.
+	case ActionPaymentSettleStaff, ActionPaymentCancelStaff:
+		// Waiters physically collect cash/card and confirm settlement. Cancelling
+		// a payment request is the same job in reverse — it withdraws the request
+		// and unfreezes the cart, leaving the bill unpaid and re-payable — so it
+		// carries no authority a waiter does not already have to settle.
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager || role == sqlc.StaffRoleWaiter
+	case ActionSessionForceClose:
+		// Narrower than payment cancellation: a force close can discard an unpaid
+		// bill and revoke every guest credential, so it sits with the other
+		// owner/manager writes rather than with waiter service actions.
+		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
 	case ActionBranchUpdateSettings, ActionOrganizationRead, ActionOrganizationUpdate:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
 	default:

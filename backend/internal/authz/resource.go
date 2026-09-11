@@ -12,6 +12,7 @@ const (
 	ResourceTypeOrder        ResourceType = "order"
 	ResourceTypeAssistance   ResourceType = "assistance"
 	ResourceTypePayment      ResourceType = "payment"
+	ResourceTypeSession      ResourceType = "session"
 	ResourceTypePromo        ResourceType = "promo"
 	ResourceTypeAudit        ResourceType = "audit"
 	ResourceTypeCustomer     ResourceType = "customer"
