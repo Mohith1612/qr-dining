@@ -230,6 +230,11 @@ type Querier interface {
 	ListAuditLogForBranch(ctx context.Context, arg ListAuditLogForBranchParams) ([]AuditLog, error)
 	ListAuditLogForOrganization(ctx context.Context, arg ListAuditLogForOrganizationParams) ([]AuditLog, error)
 	ListAuditLogPlatform(ctx context.Context, arg ListAuditLogPlatformParams) ([]AuditLog, error)
+	// Read-only A1 detector. The latest completed payment selects the authoritative
+	// snapshot, while every completed payment in the session contributes to what
+	// was collected. Snapshot source_order_ids preserve the bill-time order set, so
+	// a later cancellation cannot rewrite an immutable settled bill.
+	ListBillingReconciliationDiscrepancies(ctx context.Context, arg ListBillingReconciliationDiscrepanciesParams) ([]ListBillingReconciliationDiscrepanciesRow, error)
 	ListBranchFlagOverrides(ctx context.Context, branchID int64) ([]PlatformFlagBranchOverride, error)
 	ListBranchesForOrganization(ctx context.Context, organizationID int64) ([]Branch, error)
 	ListCartItems(ctx context.Context, cartID int64) ([]ListCartItemsRow, error)

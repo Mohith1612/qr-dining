@@ -114,6 +114,7 @@ type WorkerConfig struct {
 	PaymentPendingEscalationInterval time.Duration
 	PaymentPendingWarnAfter          time.Duration
 	PaymentPendingCriticalAfter      time.Duration
+	BillingReconciliationInterval    time.Duration
 }
 
 type FeatureFlags struct {
@@ -247,6 +248,7 @@ func Load() (*Config, error) {
 	cfg.Worker.PaymentPendingEscalationInterval = parseDuration("PAYMENT_PENDING_ESCALATION_INTERVAL", time.Minute)
 	cfg.Worker.PaymentPendingWarnAfter = parseDuration("PAYMENT_PENDING_WARN_AFTER", 5*time.Minute)
 	cfg.Worker.PaymentPendingCriticalAfter = parseDuration("PAYMENT_PENDING_CRITICAL_AFTER", 15*time.Minute)
+	cfg.Worker.BillingReconciliationInterval = parseDuration("BILLING_RECONCILIATION_INTERVAL", 5*time.Minute)
 
 	// Rollout flags. Phase 0 only parses these flags; later phases decide where
 	// each flag gates strict enforcement.

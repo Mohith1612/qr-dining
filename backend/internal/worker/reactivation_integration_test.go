@@ -186,6 +186,10 @@ func (q *reactivationTestQuerier) ListPaymentPendingStalled(context.Context, tim
 	return nil, nil
 }
 
+func (q *reactivationTestQuerier) ListBillingReconciliationDiscrepancies(context.Context, time.Time, time.Time) ([]worker.BillingReconciliationDiscrepancy, error) {
+	return nil, nil
+}
+
 func openWorkerTestRedis(t *testing.T) *goredis.Client {
 	t.Helper()
 	url := os.Getenv("TEST_REDIS_URL")

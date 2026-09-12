@@ -50,6 +50,9 @@ type Metrics struct {
 	SessionDuration          prometheus.Histogram
 	IdempotencyReplaysTotal  *prometheus.CounterVec
 	LegacyIdentityUsageTotal *prometheus.CounterVec
+	// BillingReconciliationDiscrepancies is the number of discrepancies in the
+	// worker's latest successful settled-session scan, partitioned by comparison.
+	BillingReconciliationDiscrepancies *prometheus.GaugeVec
 
 	// Background workers
 	WorkerRunsTotal   *prometheus.CounterVec
@@ -256,6 +259,11 @@ func NewMetrics() *Metrics {
 			Help: "Total uses of legacy client-supplied identity mechanisms by mechanism and endpoint class.",
 		}, []string{"mechanism", "endpoint_class"}),
 
+		BillingReconciliationDiscrepancies: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "billing_reconciliation_discrepancies",
+			Help: "Number of billing discrepancies in the latest successful settled-session scan by comparison.",
+		}, []string{"comparison"}),
+
 		WorkerRunsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "background_worker_runs_total",
 			Help: "Total background worker executions by worker name and status.",
@@ -359,6 +367,7 @@ func NewMetrics() *Metrics {
 		m.SessionDuration,
 		m.IdempotencyReplaysTotal,
 		m.LegacyIdentityUsageTotal,
+		m.BillingReconciliationDiscrepancies,
 		m.WorkerRunsTotal,
 		m.WorkerPanicsTotal,
 		m.AuditWriteFailuresTotal,

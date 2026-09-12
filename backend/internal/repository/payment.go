@@ -24,6 +24,53 @@ type StalledPaymentPending struct {
 	InitiatedAt    time.Time
 }
 
+// BillingReconciliationDiscrepancy is one exact-money mismatch found while
+// reconciling a settled session. Amounts remain decimal strings so no binary
+// floating-point conversion can weaken a NUMERIC(12,2) comparison.
+type BillingReconciliationDiscrepancy struct {
+	SessionID      uuid.UUID
+	OrganizationID int64
+	BranchID       int64
+	TableID        int64
+	BillSnapshotID int64
+	Comparison     string
+	ExpectedAmount string
+	ActualAmount   string
+	Difference     string
+	Currency       string
+	AlreadyAudited bool
+}
+
+// ListBillingReconciliationDiscrepancies is read-only. It observes completed
+// payment amounts without changing any financial or session state.
+func (r *Repos) ListBillingReconciliationDiscrepancies(ctx context.Context, windowStart, windowEnd time.Time) ([]BillingReconciliationDiscrepancy, error) {
+	rows, err := r.q.ListBillingReconciliationDiscrepancies(ctx, sqlc.ListBillingReconciliationDiscrepanciesParams{
+		WindowStart: windowStart,
+		WindowEnd:   windowEnd,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	findings := make([]BillingReconciliationDiscrepancy, 0, len(rows))
+	for _, row := range rows {
+		findings = append(findings, BillingReconciliationDiscrepancy{
+			SessionID:      row.SessionID,
+			OrganizationID: row.OrganizationID,
+			BranchID:       row.BranchID,
+			TableID:        row.TableID,
+			BillSnapshotID: row.BillSnapshotID.Int64,
+			Comparison:     row.Comparison,
+			ExpectedAmount: row.ExpectedAmount,
+			ActualAmount:   row.ActualAmount,
+			Difference:     row.Difference,
+			Currency:       row.Currency,
+			AlreadyAudited: row.AlreadyAudited,
+		})
+	}
+	return findings, nil
+}
+
 // ListPaymentPendingStalled returns payment_pending sessions whose oldest
 // non-terminal payment was initiated before olderThan. Read-only; used by the
 // alert-only escalation worker. Bounded to avoid a runaway sweep.

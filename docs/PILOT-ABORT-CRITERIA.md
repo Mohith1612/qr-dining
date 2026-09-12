@@ -52,7 +52,7 @@ Three outcomes, and it matters which one you are choosing:
 |---|---|
 | **Threshold** | **One** confirmed instance → FALLBACK for the rest of the service, root-cause within 24h. **A second independent instance**, or a first instance not root-caused within 24h → **ABORT**. |
 | **Decision window** | Immediate for the fallback. 24h for the abort decision. |
-| **Signal** | **None. A human tells you.** See §5. |
+| **Signal** | `billing_reconciliation_discrepancies{comparison}` (page at >0) plus one `billing.reconciliation.discrepancy` audit row naming the session and exact amounts. |
 
 *Why this threshold.* The pilot is cash/UPI-manual: staff read the total off the screen and
 collect money in the room. A wrong total is immediate, real financial harm to a guest or to the
@@ -63,6 +63,14 @@ coincidence, and a system that gets money wrong is the one thing a restaurant wi
 
 *Definition of "confirmed":* the `bill_snapshots` row for that session disagrees with the order
 lines, or with what the guest was asked to pay. Confirm from the snapshot, not from memory.
+
+The reconciliation worker runs every five minutes over sessions closed in the preceding 24 hours,
+after a one-minute quiet period. It compares exact `NUMERIC(12,2)` amounts: snapshot versus the
+snapshot's bill-time order lines, and all completed collections versus the authoritative snapshot.
+Cancelled payments and staff force-closes are excluded. The second-instance and 24-hour root-cause
+conditions remain manual because neither independence nor investigation status exists as a metric.
+This signal observes what staff marked completed in the app; it cannot detect a different amount of
+cash/UPI actually handed over if the app record itself says the expected amount.
 
 ### A2 — Any cross-tenant data exposure
 
@@ -314,6 +322,7 @@ window costs one morning; a mid-service migration failure costs a service and po
 
 | Criterion | Signal | Alert | Severity |
 |---|---|---|---|
+| A1 guest charged incorrectly | `billing_reconciliation_discrepancies{comparison}` | `BillingReconciliationDiscrepancy` | page immediately at one finding; second-instance / 24h root-cause decision remains manual |
 | A2 cross-tenant (blocked attempts) | `authz_denied_total{reason=~"branch_mismatch\|org_mismatch"}` | `CrossTenantScopeDenial` | page, `increase() > 0` |
 | A4 backup stale | `qr_dining_backup_last_success_timestamp_seconds` | `BackupStaleEarlyWarning` (26h), `BackupTooOld` (36h) | ticket / page |
 | A4 backup failed | `qr_dining_backup_last_run_status` | `BackupFailed` | page — **but see gaps** |
@@ -328,11 +337,10 @@ builds the signal. They are listed so that the detection plan is explicit rather
 
 | # | Criterion | Why no signal | How it is actually detected | To fix |
 |---|---|---|---|---|
-| 1 | **A1 — guest charged incorrectly** | No metric expresses bill correctness. `payment_pending_escalations_total` measures stalls, not amounts. Nothing compares a bill total to its order lines. | **A human.** A guest disputes the bill, or staff notice. This is the highest-consequence criterion in this document and it is entirely unmonitored. | A periodic check that every `bill_snapshots` row satisfies `total = subtotal - discount + tax + service_charge + tip`, exported as a gauge. Needs code. |
-| 2 | **A3 — one table cannot order or pay** | 43 app metrics, none per-table. `active_sessions_total` is a count. 5xx on `/sessions/:id/orders` catches a systemic break, never one wedged table. | **Staff tell you**, by phone. The 15-minute window in A3 starts when they call, not when it broke. | A per-branch gauge of sessions with no state transition in N minutes. Needs code. |
-| 3 | **A2 — *successful* cross-tenant read** | `authz_denied_total` counts what policy **blocked**. A read the policy wrongly **allows** emits nothing. The 2026-08-04 bypass was exactly this shape. | Audit-log review after the fact, or a report. Not in real time. | Nothing cheap. Accept and compensate with A2's zero-tolerance threshold. |
-| 4 | **A6 — dirty migration** | `schema_migrations.dirty` is a table column, not a metric. `AppTargetDown` fires but names no cause. | Read the app logs after the app fails to start, or run `migrate version`. | Export `schema_migrations.dirty` as a gauge at startup, or a node_exporter textfile check. Needs code or a cron. |
-| 5 | **A7 — immutability trigger absent** | No metric. Nothing notices `trg_audit_log_immutable` missing — including after the §5 step-7 procedure re-creates it *or fails to*. | The manual check in §7. | A daily check that `UPDATE audit_log` still fails, exported as a gauge. Scriptable without code. |
+| 1 | **A3 — one table cannot order or pay** | App metrics are aggregate, none per-table. `active_sessions_total` is a count. 5xx on `/sessions/:id/orders` catches a systemic break, never one wedged table. | **Staff tell you**, by phone. The 15-minute window in A3 starts when they call, not when it broke. | A per-branch gauge of sessions with no state transition in N minutes. Needs code. |
+| 2 | **A2 — *successful* cross-tenant read** | `authz_denied_total` counts what policy **blocked**. A read the policy wrongly **allows** emits nothing. The 2026-08-04 bypass was exactly this shape. | Audit-log review after the fact, or a report. Not in real time. | Nothing cheap. Accept and compensate with A2's zero-tolerance threshold. |
+| 3 | **A6 — dirty migration** | `schema_migrations.dirty` is a table column, not a metric. `AppTargetDown` fires because the app will not start; nothing names the cause. | Read the app logs after the app fails to start, or run `migrate version`. | Export `schema_migrations.dirty` as a gauge at startup, or a node_exporter textfile check. Needs code or a cron. |
+| 4 | **A7 — immutability trigger absent** | No metric. Nothing notices `trg_audit_log_immutable` missing — including after the §5 step-7 procedure re-creates it *or fails to*. | The manual check in §7. | A daily check that `UPDATE audit_log` still fails, exported as a gauge. Scriptable without code. |
 
 ### Gaps in the signals that *do* exist
 

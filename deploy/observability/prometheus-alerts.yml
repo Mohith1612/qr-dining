@@ -289,16 +289,29 @@ groups:
   #
   # These exist so a documented abort criterion has an observable signal. They
   # are deliberately tighter than the general-purpose rules above: an abort
-  # criterion is not a trend, it is a single event that ends the pilot, so these
-  # fire at increase() > 0 rather than at a rate threshold.
+  # criterion is not a trend: event counters fire at increase() > 0 and the A1
+  # state gauge fires whenever its latest successful scan is non-zero.
   #
-  # Criteria A1 (guest charged incorrectly) and A3 (one table cannot order or
-  # pay) have NO rule here because no metric can express them — see the
-  # "Criteria with no telemetry" table in PILOT-ABORT-CRITERIA.md. Do not add an
-  # aspirational rule for them; the detector is a human and that is written down.
+  # Criterion A3 (one table cannot order or pay) still has no rule because no
+  # metric can express it — see the "Criteria with no telemetry" table in
+  # PILOT-ABORT-CRITERIA.md. Do not add an aspirational rule for it.
   # ---------------------------------------------------------------------------
   - name: qr-dining-pilot-abort
     rules:
+      # Abort criterion A1. The gauge is populated by the read-only settled-session
+      # reconciliation worker. One discrepancy is A1's immediate FALLBACK threshold.
+      # The second-independent-instance / not-root-caused-within-24h ABORT decision
+      # cannot be represented by this aggregate: use the per-session immutable audit
+      # rows to adjudicate those conditions.
+      - alert: BillingReconciliationDiscrepancy
+        expr: sum(billing_reconciliation_discrepancies) > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Billing discrepancy detected — pilot abort criterion A1"
+          description: "A settled session disagrees on snapshot_vs_orders or collected_vs_snapshot. One confirmed instance requires immediate fallback for the service. Find the table and exact amounts in billing.reconciliation.discrepancy audit rows. Independence and the 24h root-cause deadline require manual incident tracking; see docs/PILOT-ABORT-CRITERIA.md A1."
+
       # Abort criterion A2. Tenant scope denials are enforced unconditionally,
       # independent of AUTHZ_CENTRAL_POLICY_ENFORCE (handlers/authz.go:59), so a
       # branch_mismatch/org_mismatch denial is a real blocked cross-tenant access

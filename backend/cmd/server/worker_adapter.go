@@ -123,3 +123,7 @@ func (w *workerQuerier) ListPaymentPendingStalled(ctx context.Context, olderThan
 	}
 	return out, nil
 }
+
+func (w *workerQuerier) ListBillingReconciliationDiscrepancies(ctx context.Context, windowStart, windowEnd time.Time) ([]worker.BillingReconciliationDiscrepancy, error) {
+	return w.repos.ListBillingReconciliationDiscrepancies(ctx, windowStart, windowEnd)
+}

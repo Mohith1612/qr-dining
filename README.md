@@ -107,6 +107,7 @@ Full setup, commands and conventions: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
 | `SESSION_PRESENCE_GRACE` | `60s` | no | Creation grace before a session can be considered for pausing |
 | `SESSION_IDLE_GRACE` | `5m` | no | Durable participant-idle age required before pausing |
 | `SESSION_REACTIVATION_WINDOW` | `5m` | no | Time a paused session remains eligible for reactivation |
+| `BILLING_RECONCILIATION_INTERVAL` | `5m` | no | How often settled sessions are checked for billing discrepancies |
 | `DB_MAX_CONNS` | `20` | no | pgxpool maximum connections |
 | `DB_MIN_CONNS` | `2` | no | pgxpool minimum connections |
 | `DB_MAX_CONN_LIFETIME` | `1h` | no | Maximum age of a DB connection |

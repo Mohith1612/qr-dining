@@ -106,6 +106,8 @@ const (
 	ActionPlatformSupportAccess    = "platform.support_session.create"
 )
 
+const ActionBillingReconciliationDiscrepancy = "billing.reconciliation.discrepancy"
+
 // AuditEvent carries all fields for a single audit record.
 // ResourceType and Action are required. All other fields are optional but recommended.
 type AuditEvent struct {

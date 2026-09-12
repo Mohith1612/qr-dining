@@ -61,6 +61,10 @@ type StalledPaymentPending struct {
 	InitiatedAt    time.Time
 }
 
+// BillingReconciliationDiscrepancy is the public one-pass result returned to
+// operational callers and integration tests.
+type BillingReconciliationDiscrepancy = repository.BillingReconciliationDiscrepancy
+
 // Querier abstracts the DB queries the worker needs.
 // Implemented by *sqlc.Queries after code generation; interface allows compilation before that.
 type Querier interface {
@@ -76,6 +80,7 @@ type Querier interface {
 	ListAwaitingReactivationExpired(ctx context.Context, olderThan time.Time) ([]AwaitingReactivationExpired, error)
 	HasNonTerminalPayment(ctx context.Context, sessionID uuid.UUID) (bool, error)
 	ListPaymentPendingStalled(ctx context.Context, olderThan time.Time) ([]StalledPaymentPending, error)
+	ListBillingReconciliationDiscrepancies(ctx context.Context, windowStart, windowEnd time.Time) ([]BillingReconciliationDiscrepancy, error)
 }
 
 // Worker runs lightweight background maintenance goroutines.
@@ -122,6 +127,54 @@ func New(
 		logger:           logger.With().Str("component", "worker").Logger(),
 		sessionIdleGrace: 5 * time.Minute,
 	}
+}
+
+// ReconcileBilling performs one read-only reconciliation pass over settled
+// sessions in [windowStart, windowEnd). It never corrects, cancels, settles, or
+// otherwise mutates payments, bills, orders, promos, loyalty, or sessions.
+// Audit rows and metrics are observations only; money remains operator-owned.
+func (w *Worker) ReconcileBilling(ctx context.Context, windowStart, windowEnd time.Time) ([]BillingReconciliationDiscrepancy, error) {
+	findings, err := w.queries.ListBillingReconciliationDiscrepancies(ctx, windowStart, windowEnd)
+	if err != nil {
+		return nil, err
+	}
+	counts := map[string]int{
+		"snapshot_vs_orders":    0,
+		"collected_vs_snapshot": 0,
+	}
+	for _, finding := range findings {
+		counts[finding.Comparison]++
+		if w.audit != nil && !finding.AlreadyAudited {
+			w.audit.RecordRequired(ctx, audit.AuditEvent{
+				OrganizationID: finding.OrganizationID,
+				BranchID:       finding.BranchID,
+				SessionID:      finding.SessionID,
+				TableID:        finding.TableID,
+				ResourceType:   audit.ResourceSession,
+				ResourceID:     finding.SessionID.String(),
+				Action:         audit.ActionBillingReconciliationDiscrepancy,
+				Result:         audit.ResultFailure,
+				ActorType:      audit.ActorTypeSystem,
+				ActorID:        "system",
+				Source:         audit.SourceSystem,
+				RiskLevel:      audit.RiskCritical,
+				Metadata: map[string]any{
+					"bill_snapshot_id": finding.BillSnapshotID,
+					"comparison":       finding.Comparison,
+					"expected_amount":  finding.ExpectedAmount,
+					"actual_amount":    finding.ActualAmount,
+					"difference":       finding.Difference,
+					"currency":         finding.Currency,
+				},
+			})
+		}
+	}
+	if w.metrics != nil && w.metrics.BillingReconciliationDiscrepancies != nil {
+		for comparison, count := range counts {
+			w.metrics.BillingReconciliationDiscrepancies.WithLabelValues(comparison).Set(float64(count))
+		}
+	}
+	return findings, nil
 }
 
 // SetSessionIdleGrace overrides the five-minute default. It must be called at
@@ -252,6 +305,47 @@ func (w *Worker) RunPaymentPendingEscalation(ctx context.Context, interval, warn
 					tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 					defer cancel()
 					w.escalatePaymentPending(tickCtx, warnAfter, criticalAfter)
+				})
+			})
+		}
+	}
+}
+
+const (
+	billingReconciliationLookback    = 24 * time.Hour
+	billingReconciliationQuietPeriod = time.Minute
+)
+
+// RunBillingReconciliation observes recently settled sessions for A1 billing
+// discrepancies. It is strictly read-only with respect to money: it must never
+// correct, cancel, settle, refund, or adjust financial/session state. Its only
+// writes are reporting signals (Prometheus and immutable audit records).
+func (w *Worker) RunBillingReconciliation(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.runWithLock(ctx, "billing_reconciliation", 50*time.Second, func() {
+				w.safeRun("billing_reconciliation", func() {
+					// Keep execution below the lock TTL. runWithLock's bare DEL is
+					// unfenced, so this worker must not intentionally outlive its lock.
+					tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					defer cancel()
+					windowEnd := time.Now().UTC().Add(-billingReconciliationQuietPeriod)
+					findings, err := w.ReconcileBilling(tickCtx, windowEnd.Add(-billingReconciliationLookback), windowEnd)
+					if err != nil {
+						w.logger.Error().Err(err).Msg("reconcile settled-session billing")
+						w.metrics.WorkerRunsTotal.WithLabelValues("billing_reconciliation", "error").Inc()
+						return
+					}
+					if len(findings) > 0 {
+						w.logger.Error().Int("discrepancies", len(findings)).Msg("billing reconciliation discrepancies found")
+					}
+					w.metrics.WorkerRunsTotal.WithLabelValues("billing_reconciliation", "ok").Inc()
 				})
 			})
 		}

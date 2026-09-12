@@ -508,7 +508,7 @@ publish `SESSION_CLOSED`), host reassignment (`ensureHostBaseline` / presence ch
 read window after 60 min).
 
 ### 4.11 Workers — `internal/worker/worker.go`
-Six goroutines, each Redis-locked (distributed, multi-pod safe) and panic-guarded
+Seven goroutines, each Redis-locked (distributed, multi-pod safe) and panic-guarded
 (`safeRun`). Verified names + startup wiring (`main.go` lines 90–95):
 | Worker | Tick (default) | Purpose |
 |--------|----------------|---------|
@@ -518,8 +518,9 @@ Six goroutines, each Redis-locked (distributed, multi-pod safe) and panic-guarde
 | `RunSessionTableReconciler` | `SESSION_RECONCILE_INTERVAL` (5m) | reconcile session↔table occupancy |
 | `RunReactivationPipeline` | `PRESENCE_EXPIRY_INTERVAL` (60s); creation grace=60s, idle grace=5m, reactivation window=5m | active→awaiting_reactivation→abandoned |
 | `RunPaymentPendingEscalation` | `PAYMENT_PENDING_ESCALATION_INTERVAL` (1m); warn 5m / critical 15m | **alert-only** stalled-payment escalation |
+| `RunBillingReconciliation` | `BILLING_RECONCILIATION_INTERVAL` (5m); 24h lookback with 1m quiet period | read-only A1 snapshot/order and completed-collection reconciliation |
 
-The escalation worker **never mutates state** (see §12). The reactivation pipeline
+The escalation and billing-reconciliation workers **never mutate money/session state** (see §12). The reactivation pipeline
 **refuses to abandon sessions with a non-terminal payment**.
 
 ### 4.12 Migrations — `internal/db/migrations.go`, `cmd/migrate/`, `backend/migrations/`
