@@ -24,10 +24,25 @@ export const paymentsApi = {
     api.get<BillData>(`/sessions/${sessionId}/bill`, { guestToken }),
 
   // Payments awaiting staff confirmation for a branch (waiter settlement queue).
-  listPendingForBranch: (branchId: number, staffToken: string) =>
-    api.get<PendingPayment[]>(`/branches/${branchId}/payments`, { staffToken }),
+  // The backend only accepts the two non-terminal statuses it can serve here:
+  // requires_staff_confirmation (default) and provider_pending.
+  listPendingForBranch: (
+    branchId: number,
+    staffToken: string,
+    status?: "requires_staff_confirmation" | "provider_pending"
+  ) =>
+    api.get<PendingPayment[]>(
+      `/branches/${branchId}/payments${status ? `?status=${status}` : ""}`,
+      { staffToken }
+    ),
 
   // Waiter/manager/owner confirms a cash/card collection: requires_staff_confirmation -> completed.
   settle: (paymentId: number, staffToken: string) =>
     api.patch<Payment>(`/payments/${paymentId}/settle`, {}, { staffToken }),
+
+  // Waiter/manager/owner withdraws a bill request the guest no longer wants.
+  // The payment moves to cancelled and the session unfreezes back to active, so
+  // the table can order again. `reason` is required and goes to the audit log.
+  cancel: (paymentId: number, reason: string, staffToken: string) =>
+    api.patch<Payment>(`/payments/${paymentId}/cancel`, { reason }, { staffToken }),
 }

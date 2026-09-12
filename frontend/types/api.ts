@@ -24,6 +24,15 @@ export interface Session {
   closed_at: string | null
 }
 
+// ForceCloseResult is the response from POST /sessions/:id/force-close
+// (services.ForceCloseResult). Stranded payments are non-terminal ones the
+// domain transition table refuses to cancel — reported, never force-written.
+export interface ForceCloseResult {
+  session: Session
+  cancelled_payment_ids: number[] | null
+  stranded_payment_ids?: number[] | null
+}
+
 export interface Participant {
   id: number
   session_id: string

@@ -30,6 +30,8 @@ export interface EventPropsMap {
   order_cancelled: { order_id: string; from_status: OrderStatus }
   order_served: { order_id: string }
   payment_settled: { session_id: string; method: PaymentMethod; amount: number }
+  payment_cancelled_by_staff: { session_id: string; payment_id: number; role: StaffRole }
+  session_force_closed: { session_id: string; cancelled_payment_count: number; role: StaffRole }
   assistance_acknowledged: { request_id: number; assistance_type: AssistanceType; seconds_to_ack?: number }
   admin_tab_viewed: { tab: string }
   upsell_gate_viewed: { feature: "staff_performance" | "loyalty" }
