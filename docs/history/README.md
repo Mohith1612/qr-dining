@@ -33,7 +33,7 @@ Current documentation index: [../../README.md](../../README.md).
 
 ## Testing and validation
 
-`playwright-behavioral-matrix.md` (the spec the 106 e2e tests were written from) · `e2e-failure-analysis.md` · `non-blocking-e2e-cleanup-plan.md` · `e2e-impact.md` · `chaos-test-results.md` · `pilot-load-validation-report.md` · `restore-verification-report.md` · `manual-testing-findings-v1.md` … `v4` · `manual-testing-preparation-report.md` · `pilot-dress-rehearsal-report.md`
+`playwright-behavioral-matrix.md` (the spec the 106 e2e tests were written from) · `e2e-failure-analysis.md` · `non-blocking-e2e-cleanup-plan.md` · `e2e-impact.md` · `chaos-test-results.md` · `pilot-load-validation-report.md` · `restore-verification-report.md` (schema 33) · `restore-verification-report-2026-09-12.md` (schema 40 — current; restore-and-replay failure, backup-path findings) · `manual-testing-findings-v1.md` … `v4` · `manual-testing-preparation-report.md` · `pilot-dress-rehearsal-report.md`
 
 ## Feature and capability records
 

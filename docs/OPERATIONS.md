@@ -2,7 +2,7 @@
 
 Day-2 operation of a running QR Dining deployment.
 
-Companions: [DEPLOYMENT.md](DEPLOYMENT.md) (bring-up) · [RUNBOOKS.md](RUNBOOKS.md) (incidents) · [RECOVERY.md](RECOVERY.md) (backup/restore) · [SECURITY.md](SECURITY.md).
+Companions: [DEPLOYMENT.md](DEPLOYMENT.md) (bring-up) · [RUNBOOKS.md](RUNBOOKS.md) (incidents) · [RECOVERY.md](RECOVERY.md) (backup/restore) · [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md) (when to stop the pilot) · [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -32,7 +32,23 @@ curl -fsS https://api.<domain>/readyz
 docker compose logs app | grep -i migrat
 ```
 
-Rollback is the same procedure with the previous `IMAGE_TAG`. Schema is **additive-only** by project rule, so rolling the binary back across a migration is safe by design — that property is the whole reason for the rule.
+Rollback is the same procedure with the previous `IMAGE_TAG`.
+
+> **Binary rollback is the only rollback.** Additive-only is a *project rule for new migrations*,
+> not a property the existing schema has. Rolling the **schema** back is unsafe across migrations
+> 16–24 and at 36, 38 and 39, and migration 22 cannot even be re-applied to a populated
+> `audit_log` — it aborts and leaves `schema_migrations` dirty, which stops the app from starting.
+> Verified 2026-09-12; details and the last-resort recovery in
+> [RUNBOOKS.md §8](RUNBOOKS.md#8-migration-rollback).
+>
+> Rolling the *binary* back across a migration is safe only when the release you are leaving added
+> no migration, or added a strictly additive one the old binary ignores. **Know which before you
+> need it**, not during an incident.
+
+**During the pilot: no deploys during service hours.** Deploy before opening, with a verified
+backup taken first, and run one synthetic guest journey before the doors open. Every recovery path
+below a binary rollback costs ≥1 hour with one developer, which is not a mid-service option
+([PILOT-ABORT-CRITERIA.md §5](PILOT-ABORT-CRITERIA.md)).
 
 Deploying an unmerged branch (what the beta runs) is [DEPLOYMENT.md §3b](DEPLOYMENT.md#3b-deploying-an-unmerged-branch-build-on-the-vm).
 
@@ -43,7 +59,7 @@ Deploying an unmerged branch (what the beta runs) is [DEPLOYMENT.md §3b](DEPLOY
 | File | Role |
 |---|---|
 | `deploy/observability/prometheus.yml` | scrapes app `/metrics`, the `/readyz` blackbox probe and node-exporter; loads rules; forwards to Alertmanager |
-| `deploy/observability/prometheus-alerts.yml` | **27 alert rules**, `promtool`-clean |
+| `deploy/observability/prometheus-alerts.yml` | **31 alert rules**, `promtool`-clean (27 baseline + 4 backing the pilot abort criteria) |
 | `deploy/observability/alertmanager.yml` | routing + receivers |
 | `deploy/observability/blackbox.yml` | `/readyz` HTTP probe module |
 | `deploy/observability/grafana-dashboard.json` | importable dashboard (Grafana is not deployed) |
@@ -53,7 +69,9 @@ The app emits **43 metric collectors** covering HTTP, WebSocket, workers, escala
 
 ### Severities
 
-`severity=page` (11 rules — must wake a human) versus `ticket` (16 — next business day). An inhibit rule mutes `ticket` alerts while the same alertname is already paging.
+`severity=page` (14 rules — must wake a human) versus `ticket` (17 — next business day). An inhibit rule mutes `ticket` alerts while the same alertname is already paging.
+
+The `qr-dining-pilot-abort` group exists so that each criterion in [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md) has an observable signal: `CrossTenantScopeDenial`, `AppUnavailableAbortThreshold`, `AuditWriteFailureAny`, `BackupStaleEarlyWarning`. Two criteria — a guest charged incorrectly, and a single table unable to order or pay — **have no possible signal today** and are human-detected; that is stated there rather than papered over with an aspirational rule.
 
 ### The four that must always work
 
@@ -105,11 +123,12 @@ R4–R6 were activated together before traffic because there is no legacy client
 
 - Nightly 02:30. Verify cadence with `systemctl list-timers qr-dining-backup*`; last run with `journalctl -u qr-dining-backup -n 30`. The rootless containerized path (what the beta runs) uses an `appuser` crontab instead — see [../deploy/backup/README.md](../deploy/backup/README.md).
 - Prometheus: `qr_dining_backup_last_run_status` (0 = ok) and `qr_dining_backup_last_success_timestamp_seconds`. Alerts fire on failure or >36h staleness — **but only if** `NODE_EXPORTER_TEXTFILE_DIR` points at the `qr-dining_backup_textfile` volume mountpoint. If that wiring is missing the alerts are silently useless.
+- **`qr_dining_backup_last_run_status` can report success while the backup is broken.** `nightly-backup.sh` exits at its `DATABASE_URL` guard *before* the `ERR` trap is installed, so a missing or unreadable env file leaves the metric showing the last good run; `BackupFailed` never fires and only `BackupTooOld` catches it, 36h later. The same blind spot covers "cron never fired at all" — plausible on the rootless path, where a user crontab does not survive a VM rebuild. **Read `qr_dining_backup_last_success_timestamp_seconds` directly each morning rather than trusting the absence of a page.** Finding R-3, [history/restore-verification-report-2026-09-12.md](history/restore-verification-report-2026-09-12.md).
 - Run a restore drill within week 1 of go-live and quarterly after. Procedures: [RECOVERY.md](RECOVERY.md).
 
 ## 6. Routine cadence
 
-**Daily (week 1, ~10 min).** Prometheus targets UP; no firing alerts; backup metric fresh; `df -h` and `docker system df`; skim app logs for audit and worker errors.
+**Daily (week 1, ~10 min).** Prometheus targets UP; no firing alerts; **read** `qr_dining_backup_last_success_timestamp_seconds` (do not infer freshness from the absence of an alert — see §5); `SELECT version, dirty FROM schema_migrations` reads the expected version with `dirty = false`; an `UPDATE` against `audit_log` still fails; `df -h` and `docker system df`; skim app logs for audit and worker errors.
 
 **Weekly.** Review payment-escalation events — every `PAYMENT_SETTLEMENT_STALLED` is a human follow-up. Check the Postgres volume growth curve (`audit_log` dominates). `docker image prune`. Spot-check one session lifecycle in the support console.
 
@@ -163,5 +182,6 @@ Never edit `/opt/proxy` config except to add or update the `qr-dining.conf` vhos
 - **Billing is manual and outside the system.** The billing subsystem is shadow — do not charge anyone through it.
 - **Payment escalation is alert-only.** A human settles or cancels.
 - **No time-windowed promos** until the promo timezone behaviour is confirmed against the branch-local clock.
-- **Additive migrations only.** The `audit_log` schema and trigger, the session transition table, bill snapshots and the loyalty ledger are never touched casually.
+- **Additive migrations only** — for *new* migrations. The existing schema is **not** rollback-safe (16–24, 36, 38, 39), so never plan around a schema rollback: [RUNBOOKS.md §8](RUNBOOKS.md#8-migration-rollback). The `audit_log` schema and trigger, the session transition table, bill snapshots and the loyalty ledger are never touched casually.
+- **No deploys during service hours** while the pilot is running.
 - **Never mutate `audit_log`.** It is trigger-protected; an attempt should fail, and that failure is a verification step, not a bug.

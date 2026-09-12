@@ -2,6 +2,13 @@
 
 **Date:** 2026-06-09
 **Phase:** Final Pilot Hardening — Phase E
+
+> **Superseded for currency by [restore-verification-report-2026-09-12.md](restore-verification-report-2026-09-12.md)**
+> (schema 40). This report remains valid as the Phase E certification at schema 33. Two things it
+> said have since been tested and should not be carried forward from here: the restore *duration*
+> it deferred is now measured, and restoring a dump into a database that then migrates forward
+> across migration 22 **fails** — that path was never exercised here.
+
 **Result:** ✅ **PASS — restore is real, byte-faithful, and schema-complete.**
 
 This is a real restore, not a simulation: a live dump was produced by the Phase D

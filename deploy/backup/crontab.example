@@ -2,7 +2,19 @@
 # Install with:  sudo crontab -e   (or drop in /etc/cron.d/qr-dining-backup)
 #
 # Loads DATABASE_URL + provider creds from /etc/qr-dining/backup.env, runs at 02:30,
-# and appends output to a log. A non-zero exit (missed backup) leaves a marker file
-# that the BackupFailed alert watches — see docs/OPERATIONS.md §3.
+# and appends output to a log.
+#
+# ALERTING, precisely: BackupFailed watches the Prometheus textfile metric
+# qr_dining_backup_last_run_status, which nightly-backup.sh writes itself via its
+# ERR trap. NOTHING watches the marker file below — it is a breadcrumb for a human
+# reading the host, not a monitored signal. (An earlier version of this comment
+# claimed otherwise.)
+#
+# Blind spot worth knowing: if the env file is missing or unreadable, the script
+# exits at its DATABASE_URL guard BEFORE the ERR trap is installed, so the status
+# metric keeps reporting the last good run and BackupFailed never fires. Only
+# BackupTooOld catches that, 36h later. Same if cron never fires at all. See
+# docs/OPERATIONS.md §5 and docs/history/restore-verification-report-2026-09-12.md
+# (finding R-3).
 
 30 2 * * * root set -a; . /etc/qr-dining/backup.env; set +a; /opt/qr-dining/backend/scripts/nightly-backup.sh >> /var/log/qr-dining-backup.log 2>&1 || touch /var/run/qr-dining-backup.failed

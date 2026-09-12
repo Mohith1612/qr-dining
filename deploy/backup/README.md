@@ -111,15 +111,18 @@ live one to "check" a backup.
 > unit does, and it has no `Restart=`/journal integration. For a beta that is a fair price for not
 > needing root. If this host ever gains passwordless sudo, prefer the systemd form above.
 
-Run once on demand to validate:
+Run once on demand to validate (note the **`/opt`** path — the whole point of this section is
+that `/etc` is not writable here):
 ```bash
-set -a; . /etc/qr-dining/backup.env; set +a
+set -a; . /opt/qr-dining/backup.env; set +a
 backend/scripts/nightly-backup.sh
 ```
 
 ## Restore procedure
 
-See `restore-verification-report.md` for a verified end-to-end run. Summary:
+Verified end-to-end runs: `../../docs/history/restore-verification-report-2026-09-12.md`
+(schema 40, current) and `../../docs/history/restore-verification-report.md` (schema 33, the
+original Phase E certification). Summary:
 
 ```bash
 # 1. Find the backup key in the manifest:
@@ -141,8 +144,23 @@ DATABASE_URL=postgres://user:pass@host:5432/restore_target ./backend/scripts/res
 `restore.sh` uses `pg_restore --clean --if-exists --single-transaction`, so a
 failed restore rolls back atomically.
 
+> **The target server must already have the dump's role.** `restore.sh` does not pass
+> `--no-owner`, so `ALTER ... OWNER TO <role>` aborts the whole restore if the role is missing —
+> and because it is single-transaction, **nothing is restored at all**. This bites on the
+> rebuilt-host path: create the app role before restoring, or run `pg_restore` by hand with
+> `--no-owner --no-privileges`. Finding R-1,
+> `../../docs/history/restore-verification-report-2026-09-12.md`.
+
+> **A restore is only safe into the schema version the dump was taken at.** Do not restore an
+> older dump and let the app migrate it forward — migration 22 cannot be re-applied to a
+> populated `audit_log` and wedges the app. See `../../docs/PILOT-ABORT-CRITERIA.md` §0.
+
 ## RPO / RTO (pilot)
 
 - **RPO:** ≤ 24h (nightly). For a single-restaurant pilot a day's worst-case loss
   is acceptable; tighten to hourly WAL archiving post-pilot if needed.
-- **RTO:** minutes — download + `pg_restore` of a single small DB.
+- **RTO:** minutes. Measured 2026-09-12 at ~90 days of single-site pilot volume (297 MB DB,
+  500K `audit_log` rows): `pg_dump` ~3 s, `pg_restore` 8–13 s, sha256 0.1 s on an amd64 dev host.
+  Budget **5 minutes** for the mechanical path on the Ampere VM including download and the app's
+  ~12 s restart. Incident wall-clock is dominated by decision and verification time, not by
+  `pg_restore`.

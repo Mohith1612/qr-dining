@@ -8,6 +8,14 @@ Type=oneshot
 # Environment with DATABASE_URL + provider creds. Keep this file root-only (chmod 600).
 EnvironmentFile=/etc/qr-dining/backup.env
 ExecStart=/opt/qr-dining/backend/scripts/nightly-backup.sh
-# A non-zero exit (missed backup) is surfaced to the journal and node_exporter's
-# systemd collector, which the BackupFailed alert watches (see docs/OPERATIONS.md §3).
+# A non-zero exit is surfaced to the journal (journalctl -u qr-dining-backup).
+#
+# It is NOT surfaced via node_exporter's systemd collector: node_exporter runs with
+# --collector.textfile.directory only, and no systemd collector is enabled anywhere
+# in deploy/observability/. BackupFailed watches the textfile metric
+# qr_dining_backup_last_run_status that the script writes itself. (An earlier
+# version of this comment claimed the systemd collector was the path.)
+#
+# That metric is not written when the script exits at its DATABASE_URL guard, which
+# runs before the ERR trap is installed — see docs/OPERATIONS.md §5, finding R-3.
 Nice=10

@@ -2,7 +2,7 @@
 
 Diagnose-first playbooks for a running deployment. Every metric name below was verified to exist in `backend/internal/observability/metrics.go`.
 
-Companions: [OPERATIONS.md](OPERATIONS.md) (day-2) · [RECOVERY.md](RECOVERY.md) (data loss) · [SECURITY.md](SECURITY.md).
+Companions: [OPERATIONS.md](OPERATIONS.md) (day-2) · [RECOVERY.md](RECOVERY.md) (data loss) · [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md) (when to stop) · [SECURITY.md](SECURITY.md).
 
 > **Topology reality check.** This is a **single-host Docker Compose** deployment: one app container, one Postgres, one Redis, behind a shared nginx. There are no pods, no replicas, no shards and no failover target. "Restart the container" is the only containment lever for a given service. Any runbook that tells you to drain a pod or fail over to a replica is describing a system that does not exist.
 
@@ -17,6 +17,8 @@ Companions: [OPERATIONS.md](OPERATIONS.md) (day-2) · [RECOVERY.md](RECOVERY.md)
 Each runbook: detection → triage → containment → recovery → verification.
 
 **Diagnose through the read-only Support Console (`/platform/support`) first.** Never open a psql shell against production unless a runbook here explicitly says to.
+
+**During the pilot, every runbook here has a time limit.** These playbooks assume you can keep working the problem. In a live service you cannot: [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md) §3 caps in-service debugging at 30 minutes and tells you when to put the restaurant on paper instead. Read that clock first, then come back here.
 
 ## 1. Auth outage (staff or guest)
 
@@ -121,9 +123,87 @@ Each runbook: detection → triage → containment → recovery → verification
 
 ## 8. Migration rollback
 
-Schema is **additive-only**, which is exactly what makes rolling the *binary* back across a migration safe. Prefer that ([OPERATIONS.md §2](OPERATIONS.md#2-deploying-a-new-version)) over rolling the *schema* back.
+> **There is no schema rollback. Do not attempt one.** Roll the *binary* back
+> ([OPERATIONS.md §2](OPERATIONS.md#2-deploying-a-new-version)); never the *schema*.
 
-Only roll a migration back if it is genuinely broken and additive-safety does not apply. `down` migrations are exercised in CI (`up → down -all → up`), so they work mechanically — but a `down` that drops a column drops the data in it. Take a backup first, always.
+**Why CI's green migration job does not mean what it looks like.** CI runs `up → down -all → up`
+against an **empty** database. That proves the DDL parses. It proves nothing about a migration
+meeting data, and three of the worst defects below pass CI and always will.
+
+**Established by a full audit of every up and down migration, and verified empirically on
+2026-09-12** ([../docs/history/restore-verification-report-2026-09-12.md](history/restore-verification-report-2026-09-12.md) Part 2):
+
+| Migration | What its `down` actually does |
+|---|---|
+| **16–24** | Unsafe as a band. |
+| **21** | Drops `bill_snapshots` and `idempotency_keys` plus eight `payments` columns including `bill_snapshot_id` and `settled_at` — **money data** — then fails re-adding a unique constraint that migration 21 itself made unsatisfiable. |
+| **22** | Destroys every receipt number, visit number and audit reference. |
+| **20** | Leaves `sessions` with **no** one-session-per-table index at all (below 20, only the non-unique `idx_sessions_table_id` from `000001:148` remains). Two parties can then order into one table's bill. |
+| **36** | **Deletes every payment-time promo redemption** (`DELETE FROM promo_redemptions WHERE order_id IS NULL`). Verified: the guest keeps the discount — it is in the immutable bill snapshot — but the record enforcing `uses_per_phone` is gone, and rolling forward does not restore it. |
+| **38, 39** | Unsafe. 39's down is a documented no-op: the original values are unrecoverable by design. |
+
+**And the one that wedges the system:**
+
+**Migration 22's `up` cannot be re-applied to a populated `audit_log`.** `000022:109` runs
+`UPDATE audit_log` against the `BEFORE UPDATE ... RAISE EXCEPTION` immutability trigger from
+`000019:82`. It passes on an empty table and aborts with a single row present:
+
+```
+ERROR: audit_log rows are immutable: UPDATE is not permitted (SQLSTATE P0001)
+```
+
+golang-migrate then leaves `schema_migrations` at **`22, dirty=true`**, and:
+
+- the app will not start — `RunMigrations` calls the same `m.Up()`, which returns
+  `Dirty database version 22. Fix and force version.`
+- `cmd/migrate` has no `force` subcommand, so there is no in-tree tool to unwedge it;
+- clearing `dirty` by hand is not enough — the next `up` hits the trigger and re-wedges.
+
+Migration 40's `up` has the same wedge shape for a different reason: `000040:19` raises if any
+session has more than one non-terminal payment, which a pre-40 dump can legitimately contain.
+
+### Last resort: unwedging a dirty migration at 22
+
+**This drops the audit tamper-evidence guarantee for the duration. It is the procedure of last
+resort, it is [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md) A6, and its 60-minute clock is
+already running because the app is down.** Take a backup first. Record in the incident report the
+exact window during which the trigger was absent.
+
+```sql
+-- 1. Confirm the wedge.
+SELECT version, dirty FROM schema_migrations;      -- expect: 22, true
+
+-- 2. Step the recorded version back to the last clean one.
+UPDATE schema_migrations SET version = 21, dirty = false;
+
+-- 3. Remove the trigger that migration 22 collides with. audit_log is now WRITABLE.
+DROP TRIGGER trg_audit_log_immutable ON audit_log;
+```
+```bash
+# 4. Replay forward.
+docker compose up -d app        # or: DATABASE_URL=… migrate up
+```
+```sql
+-- 5. Re-create the trigger IMMEDIATELY. Do not open the restaurant before this.
+CREATE TRIGGER trg_audit_log_immutable
+    BEFORE UPDATE OR DELETE ON audit_log
+    FOR EACH ROW EXECUTE FUNCTION audit_log_immutable();
+
+-- 6. Prove it bites again. This MUST fail:
+UPDATE audit_log SET action = 'x' WHERE id = (SELECT min(id) FROM audit_log);
+```
+
+Verified end to end on 2026-09-12; steps 2–4 reach version 40 clean, and step 6 errors as
+required.
+
+**Also know:** 22's backfill regenerates `session_number` / `visit_number` / `payment_reference`
+with `ROW_NUMBER()`. On an unchanged row population it reproduces the same values exactly. If any
+row has been added or removed since, it **reassigns** them — one purged session in a six-session
+partition reassigned four of the five remaining visit numbers under test. Receipts already given
+to guests, and support tickets quoting a session number, then point at a different visit.
+
+**Prevention, which is far cheaper than any of the above:** no deploys during service hours, and
+a verified backup before every deploy ([PILOT-ABORT-CRITERIA.md §5](PILOT-ABORT-CRITERIA.md)).
 
 ## 9. Stale sessions / stranded tables
 
@@ -174,6 +254,8 @@ If the platform control plane itself is unavailable and a Sev1 requires action:
 ## 14. Disaster recovery
 
 Data loss, volume loss, or whole-host loss: [RECOVERY.md](RECOVERY.md). Bad deploy is **not** a restore case — roll the image tag.
+
+A restore is safe **only into the schema version the dump was taken at** (§8). And if containment is not working, the question stops being "how do I fix this" and becomes "should this pilot still be running": [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md).
 
 ## 15. Cold restart drill (quarterly)
 

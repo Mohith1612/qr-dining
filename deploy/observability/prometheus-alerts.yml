@@ -283,3 +283,74 @@ groups:
         annotations:
           summary: "No successful backup in >36h"
           description: "No successful qr-dining backup has completed in over 36 hours (or the backup metric is missing). The nightly timer/cron may be broken — verify the schedule and storage credentials."
+
+  # ---------------------------------------------------------------------------
+  # Pilot abort criteria (docs/PILOT-ABORT-CRITERIA.md).
+  #
+  # These exist so a documented abort criterion has an observable signal. They
+  # are deliberately tighter than the general-purpose rules above: an abort
+  # criterion is not a trend, it is a single event that ends the pilot, so these
+  # fire at increase() > 0 rather than at a rate threshold.
+  #
+  # Criteria A1 (guest charged incorrectly) and A3 (one table cannot order or
+  # pay) have NO rule here because no metric can express them — see the
+  # "Criteria with no telemetry" table in PILOT-ABORT-CRITERIA.md. Do not add an
+  # aspirational rule for them; the detector is a human and that is written down.
+  # ---------------------------------------------------------------------------
+  - name: qr-dining-pilot-abort
+    rules:
+      # Abort criterion A2. Tenant scope denials are enforced unconditionally,
+      # independent of AUTHZ_CENTRAL_POLICY_ENFORCE (handlers/authz.go:59), so a
+      # branch_mismatch/org_mismatch denial is a real blocked cross-tenant access
+      # attempt, not a shadow observation. In a single-site pilot the legitimate
+      # rate is exactly zero: one event is a page, not a trend.
+      #
+      # Blind spot, stated so nobody mistakes silence for safety: this counts
+      # attempts the policy BLOCKED. A cross-tenant read the policy wrongly
+      # ALLOWS emits nothing at all.
+      - alert: CrossTenantScopeDenial
+        expr: sum(increase(authz_denied_total{reason=~"branch_mismatch|org_mismatch"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Cross-tenant access attempt denied — pilot abort criterion A2"
+          description: "authz_denied_total recorded a branch_mismatch or org_mismatch denial. In a single-site pilot the expected rate is zero. Treat as a potential cross-tenant exposure: identify the actor and resource from the AUTHZ_DENIED audit rows before deciding. See docs/PILOT-ABORT-CRITERIA.md A2."
+
+      # Abort criterion A5 support. AppTargetDown/ReadyzProbeFailing page at 1m;
+      # this one measures the criterion's actual threshold (10 consecutive
+      # minutes unavailable) so the decision clock is visible rather than
+      # reconstructed from when the first page arrived.
+      - alert: AppUnavailableAbortThreshold
+        expr: up{job="qr-dining"} == 0 or probe_success{job="qr-dining-readyz"} == 0
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "App unavailable for 10 minutes — pilot abort criterion A5 threshold reached"
+          description: "The app has been down or unready for 10 continuous minutes. Per docs/PILOT-ABORT-CRITERIA.md A5 this is the point at which the service falls back to paper for the night. A third occurrence across the pilot aborts it."
+
+      # Abort criterion A7. AuditWriteFailures already pages on a sustained rate;
+      # this fires on the first failure, because the audit trail is the only
+      # tamper-evident record of who touched money and a single gap in it is not
+      # recoverable after the fact.
+      - alert: AuditWriteFailureAny
+        expr: sum(increase(audit_write_failures_total[5m])) > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Audit log write failed — pilot abort criterion A7"
+          description: "At least one audit write failed. R1 (AUDIT_LOG_V2_ENABLED) is the never-disable guarantee; a gap in audit_log cannot be backfilled. See docs/PILOT-ABORT-CRITERIA.md A7."
+
+      # Abort criterion A4 support. BackupTooOld fires at 36h, which is the
+      # RECOVERY.md RPO alarm. This fires at 26h so the on-call has a working day
+      # to fix the backup before the 48h abort clock in A4 starts.
+      - alert: BackupStaleEarlyWarning
+        expr: absent(qr_dining_backup_last_success_timestamp_seconds) or (time() - qr_dining_backup_last_success_timestamp_seconds) > 93600
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "No successful backup in >26h"
+          description: "Early warning ahead of BackupTooOld (36h). Note that qr_dining_backup_last_run_status cannot be trusted on its own: nightly-backup.sh exits before installing its ERR trap when DATABASE_URL is unset, so a missing env file leaves the status metric reporting the last good run (finding R-3, docs/history/restore-verification-report-2026-09-12.md)."
