@@ -43,7 +43,7 @@ func (w *workerQuerier) ListSessionsExpiringSoon(ctx context.Context) ([]worker.
 	for _, r := range rows {
 		result = append(result, worker.ExpiringSoonSession{
 			ID:                    r.ID,
-			CreatedAt:             r.CreatedAt,
+			LastActivityAt:        r.LastActivityAt,
 			SessionTimeoutMinutes: r.SessionTimeoutMinutes,
 		})
 	}

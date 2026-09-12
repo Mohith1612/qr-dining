@@ -235,7 +235,8 @@ type Querier interface {
 	ListCartItems(ctx context.Context, cartID int64) ([]ListCartItemsRow, error)
 	ListEntitlementCatalog(ctx context.Context) ([]Entitlement, error)
 	// Queries used by background worker routines.
-	// Finds sessions that have exceeded their branch-configured timeout.
+	// Finds sessions whose latest durable participant activity has exceeded their
+	// branch-configured timeout. Sessions without participants fall back to age.
 	ListExpiredSessions(ctx context.Context) ([]ListExpiredSessionsRow, error)
 	ListFeatureFlags(ctx context.Context) ([]PlatformFeatureFlag, error)
 	ListFeaturedMenuItems(ctx context.Context, branchID int64) ([]MenuItem, error)
