@@ -168,8 +168,11 @@ func (r *Repos) GetPaymentByProviderRef(ctx context.Context, provider, providerR
 	return pay, err
 }
 
-func (r *Repos) SumCompletedPaymentsForSession(ctx context.Context, sessionID uuid.UUID) (pgtype.Numeric, error) {
-	return r.q.SumCompletedPaymentsForSession(ctx, sessionID)
+func (r *Repos) SumCompletedPaymentsForBillSnapshot(ctx context.Context, sessionID uuid.UUID, billSnapshotID int64) (pgtype.Numeric, error) {
+	return r.q.SumCompletedPaymentsForBillSnapshot(ctx, sqlc.SumCompletedPaymentsForBillSnapshotParams{
+		SessionID:      sessionID,
+		BillSnapshotID: pgtype.Int8{Int64: billSnapshotID, Valid: true},
+	})
 }
 
 func (r *Repos) MarkWebhookProcessed(ctx context.Context, id, paymentID int64, errMsg string) error {

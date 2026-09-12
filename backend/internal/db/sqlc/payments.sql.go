@@ -611,15 +611,21 @@ func (q *Queries) SettlePaymentByStaff(ctx context.Context, arg SettlePaymentByS
 	return i, err
 }
 
-const sumCompletedPaymentsForSession = `-- name: SumCompletedPaymentsForSession :one
+const sumCompletedPaymentsForBillSnapshot = `-- name: SumCompletedPaymentsForBillSnapshot :one
 SELECT COALESCE(SUM(amount), 0)::numeric
 FROM payments
 WHERE session_id = $1
+	AND bill_snapshot_id = $2
   AND status = 'completed'
 `
 
-func (q *Queries) SumCompletedPaymentsForSession(ctx context.Context, sessionID uuid.UUID) (pgtype.Numeric, error) {
-	row := q.db.QueryRow(ctx, sumCompletedPaymentsForSession, sessionID)
+type SumCompletedPaymentsForBillSnapshotParams struct {
+	SessionID      uuid.UUID   `json:"session_id"`
+	BillSnapshotID pgtype.Int8 `json:"bill_snapshot_id"`
+}
+
+func (q *Queries) SumCompletedPaymentsForBillSnapshot(ctx context.Context, arg SumCompletedPaymentsForBillSnapshotParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, sumCompletedPaymentsForBillSnapshot, arg.SessionID, arg.BillSnapshotID)
 	var column_1 pgtype.Numeric
 	err := row.Scan(&column_1)
 	return column_1, err

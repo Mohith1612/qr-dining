@@ -381,3 +381,147 @@ func TestInitiatePayment_IdempotencyConflictAndReplay(t *testing.T) {
 		t.Fatalf("changed payment replay error: got %v, want idempotency conflict", err)
 	}
 }
+
+func TestInitiatePayment_HostRetryReturnsExistingPayment(t *testing.T) {
+	pool := testutil.OpenTestDB(t)
+	f := testutil.SeedFixtures(t, pool)
+	repos := testutil.NewTestRepos(pool)
+	pub := events.NewNoopPublisher()
+	sessionSvc := newTestSessionService(repos, pub)
+	paymentSvc := newTestPaymentService(repos, pub, sessionSvc)
+	t.Cleanup(func() {
+		testutil.TruncateTables(t, pool, "sessions", "session_participants", "payments", "bill_snapshots", "idempotency_keys")
+	})
+
+	ctx := context.Background()
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	request := func(key string) (sqlc.Payment, error) {
+		return paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
+			SessionID:      sess.Session.ID,
+			BranchID:       f.BranchID,
+			Method:         sqlc.PaymentMethodCash,
+			IdempotencyKey: key,
+			ActorType:      "participant",
+			ActorID:        sess.Participant.ID,
+			Bill: services.BillSnapshotInput{
+				Subtotal:       300,
+				Total:          300,
+				Currency:       "INR",
+				CreatedByActor: "guest",
+			},
+		})
+	}
+
+	first, err := request(uuid.NewString())
+	if err != nil {
+		t.Fatalf("first InitiatePayment: %v", err)
+	}
+	second, err := request(uuid.NewString())
+	if err != nil {
+		t.Fatalf("retry InitiatePayment: %v", err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("retry returned payment %d, want existing payment %d", second.ID, first.ID)
+	}
+
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM payments WHERE session_id = $1`, sess.Session.ID).Scan(&count); err != nil {
+		t.Fatalf("count payments: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("payment rows: got %d, want 1", count)
+	}
+}
+
+func TestInitiatePayment_ConcurrentHostRetriesReturnExistingPayment(t *testing.T) {
+	pool := testutil.OpenTestDB(t)
+	f := testutil.SeedFixtures(t, pool)
+	repos := testutil.NewTestRepos(pool)
+	pub := events.NewNoopPublisher()
+	sessionSvc := newTestSessionService(repos, pub)
+	paymentSvc := newTestPaymentService(repos, pub, sessionSvc)
+	t.Cleanup(func() {
+		testutil.TruncateTables(t, pool, "sessions", "session_participants", "payments", "bill_snapshots", "idempotency_keys")
+	})
+
+	ctx := context.Background()
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	blocker, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin blocker transaction: %v", err)
+	}
+	defer blocker.Rollback(ctx) //nolint:errcheck
+	if _, err := blocker.Exec(ctx, `SELECT id FROM sessions WHERE id = $1 FOR UPDATE`, sess.Session.ID); err != nil {
+		t.Fatalf("lock session: %v", err)
+	}
+
+	type result struct {
+		payment sqlc.Payment
+		err     error
+	}
+	results := make(chan result, 2)
+	start := make(chan struct{})
+	for range 2 {
+		go func(key string) {
+			<-start
+			payment, err := paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
+				SessionID:      sess.Session.ID,
+				BranchID:       f.BranchID,
+				Method:         sqlc.PaymentMethodCash,
+				IdempotencyKey: key,
+				ActorType:      "participant",
+				ActorID:        sess.Participant.ID,
+				Bill: services.BillSnapshotInput{
+					Subtotal:       300,
+					Total:          300,
+					Currency:       "INR",
+					CreatedByActor: "guest",
+				},
+			})
+			results <- result{payment: payment, err: err}
+		}(uuid.NewString())
+	}
+	close(start)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var keyCount int
+		if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM idempotency_keys WHERE scope_id = $1`, sess.Session.ID.String()).Scan(&keyCount); err != nil {
+			t.Fatalf("count payment idempotency keys: %v", err)
+		}
+		if keyCount == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("payment initiations did not reach the transaction barrier")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := blocker.Commit(ctx); err != nil {
+		t.Fatalf("release session lock: %v", err)
+	}
+
+	first, second := <-results, <-results
+	if first.err != nil {
+		t.Errorf("first concurrent initiation: %v", first.err)
+	}
+	if second.err != nil {
+		t.Errorf("second concurrent initiation: %v", second.err)
+	}
+	if first.err == nil && second.err == nil && first.payment.ID != second.payment.ID {
+		t.Errorf("concurrent retries returned different payments: %d and %d", first.payment.ID, second.payment.ID)
+	}
+	var paymentCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM payments WHERE session_id = $1`, sess.Session.ID).Scan(&paymentCount); err != nil {
+		t.Fatalf("count payments: %v", err)
+	}
+	if paymentCount != 1 {
+		t.Fatalf("payment rows: got %d, want 1", paymentCount)
+	}
+}

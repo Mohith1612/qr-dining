@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -139,16 +140,16 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		}
 	}
 
-	// Settlement bound: a payment may not exceed the (discounted) bill total.
-	// There is no tip field in this flow, so any overage is an overpayment.
-	// epsilon absorbs float rounding in the computed total.
-	if req.Amount > billInput.Total+0.01 {
+	// Partial payment is not supported: the guest must acknowledge the full,
+	// authoritative discounted bill total. The tolerance only absorbs JSON
+	// floating-point representation below half a currency cent.
+	if math.Abs(req.Amount-billInput.Total) > 0.005 {
 		respondError(c, http.StatusUnprocessableEntity, CodePaymentAmountInvalid,
-			"payment amount exceeds the bill total")
+			"payment amount must equal the full bill total")
 		return
 	}
 
-	payment, err := h.svc.InitiatePayment(c.Request.Context(), services.InitiatePaymentRequest{
+	result, err := h.svc.InitiatePaymentWithResult(c.Request.Context(), services.InitiatePaymentRequest{
 		SessionID:               sessionID,
 		BranchID:                sess.BranchID,
 		OrderID:                 req.OrderID,
@@ -182,7 +183,15 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		}
 		return
 	}
-	c.JSON(http.StatusCreated, payment)
+	status := http.StatusOK
+	if result.Created {
+		status = http.StatusCreated
+	}
+	payment := result.Payment
+	c.JSON(status, payment)
+	if !result.Created {
+		return
+	}
 	h.audit.Record(c.Request.Context(), audit.AuditEvent{
 		SessionID:      sessionID,
 		ResourceType:   audit.ResourcePayment,

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_payments_one_non_terminal_per_session;

@@ -19,6 +19,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
 )
@@ -109,6 +110,22 @@ type BillSnapshotInput struct {
 }
 
 func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymentRequest) (sqlc.Payment, error) {
+	result, err := s.InitiatePaymentWithResult(ctx, req)
+	return result.Payment, err
+}
+
+type InitiatePaymentResult struct {
+	Payment sqlc.Payment
+	Created bool
+}
+
+func (s *PaymentService) InitiatePaymentWithResult(ctx context.Context, req InitiatePaymentRequest) (InitiatePaymentResult, error) {
+	created := false
+	payment, err := s.initiatePayment(ctx, req, &created)
+	return InitiatePaymentResult{Payment: payment, Created: created}, err
+}
+
+func (s *PaymentService) initiatePayment(ctx context.Context, req InitiatePaymentRequest, createdResult *bool) (sqlc.Payment, error) {
 	actorType := req.ActorType
 	if actorType == "" {
 		actorType = "guest"
@@ -162,6 +179,16 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 			return s.repos.GetPaymentByID(ctx, paymentID)
 		}
 	}
+	if existing, ok, err := reusableNonTerminalPaymentForSession(ctx, s.repos, req.SessionID); err != nil {
+		return sqlc.Payment{}, err
+	} else if ok {
+		if req.IdempotencyKey != "" {
+			if err := s.repos.CompleteIdempotencyKey(ctx, idemScope, "payment", strconv.FormatInt(existing.ID, 10)); err != nil {
+				return sqlc.Payment{}, fmt.Errorf("complete payment idempotency key: %w", err)
+			}
+		}
+		return existing, nil
+	}
 
 	var amount pgtype.Numeric
 	if err := amount.Scan(fmt.Sprintf("%.2f", req.Bill.Total)); err != nil {
@@ -191,12 +218,13 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 
 	var payment sqlc.Payment
 	var appliedPromoID int64
+	created := false
+	defer func() { *createdResult = created }()
 	err := s.repos.WithTx(ctx, func(tx *repository.Repos) error {
 		// Move the session into payment_pending inside this transaction so cart
-		// and order mutations are frozen for the duration of the payment. The
-		// transition is a no-op if the session is already in payment_pending
-		// because a concurrent participant created the snapshot first; any
-		// other state (closed/abandoned/expired) blocks the initiation.
+		// and order mutations are frozen for the duration of the payment. A
+		// payment_pending session reuses its existing payment; any terminal
+		// session state blocks initiation.
 		sess, err := tx.GetSessionByID(ctx, req.SessionID)
 		if err != nil {
 			return err
@@ -213,7 +241,19 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 				return fmt.Errorf("transition session to payment_pending: %w", err)
 			}
 		case sqlc.SessionStatusPaymentPending:
-			// merge into existing snapshot path
+			existing, ok, err := nonTerminalPaymentForSession(ctx, tx, req.SessionID)
+			if err != nil {
+				return err
+			}
+			if ok {
+				payment = existing
+				if req.IdempotencyKey != "" {
+					if err := tx.CompleteIdempotencyKey(ctx, idemScope, "payment", strconv.FormatInt(payment.ID, 10)); err != nil {
+						return fmt.Errorf("complete payment idempotency key: %w", err)
+					}
+				}
+				return nil
+			}
 		default:
 			return domain.ErrSessionNotActive
 		}
@@ -251,6 +291,7 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 		if err != nil {
 			return err
 		}
+		created = true
 		// Record the promo redemption against this payment, inside the tx so it
 		// rolls back with the snapshot/payment/transition on any failure. The
 		// FOR UPDATE lock in ValidatePromo serializes concurrent redemptions of
@@ -287,10 +328,20 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 		}
 		return nil
 	})
-	if err != nil && req.IdempotencyKey != "" {
-		_ = s.repos.FailIdempotencyKey(ctx, idemScope)
+	if err != nil {
+		if isOneNonTerminalPaymentViolation(err) || errors.Is(err, domain.ErrSessionNotActive) {
+			if existing, ok, lookupErr := nonTerminalPaymentForPaymentPendingSession(ctx, s.repos, req.SessionID); lookupErr == nil && ok {
+				if req.IdempotencyKey != "" {
+					_ = s.repos.CompleteIdempotencyKey(ctx, idemScope, "payment", strconv.FormatInt(existing.ID, 10))
+				}
+				return existing, nil
+			}
+		}
+		if req.IdempotencyKey != "" {
+			_ = s.repos.FailIdempotencyKey(ctx, idemScope)
+		}
 	}
-	if err == nil {
+	if err == nil && created {
 		s.publisher.PaymentInitiated(ctx, req.SessionID, payment)
 		if appliedPromoID != 0 && req.PromoCode != nil {
 			s.publisher.PromoApplied(ctx, req.SessionID, map[string]any{
@@ -306,6 +357,48 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req InitiatePaymen
 		}
 	}
 	return payment, err
+}
+
+func nonTerminalPaymentForSession(ctx context.Context, repos *repository.Repos, sessionID uuid.UUID) (sqlc.Payment, bool, error) {
+	payments, err := repos.ListPaymentsForSession(ctx, sessionID)
+	if err != nil {
+		return sqlc.Payment{}, false, err
+	}
+	for _, payment := range payments {
+		if !isTerminalPaymentStatus(payment.Status) {
+			return payment, true, nil
+		}
+	}
+	return sqlc.Payment{}, false, nil
+}
+
+func reusableNonTerminalPaymentForSession(ctx context.Context, repos *repository.Repos, sessionID uuid.UUID) (sqlc.Payment, bool, error) {
+	sess, err := repos.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return sqlc.Payment{}, false, err
+	}
+	if sess.Status != sqlc.SessionStatusActive && sess.Status != sqlc.SessionStatusPaymentPending {
+		return sqlc.Payment{}, false, nil
+	}
+	return nonTerminalPaymentForSession(ctx, repos, sessionID)
+}
+
+func nonTerminalPaymentForPaymentPendingSession(ctx context.Context, repos *repository.Repos, sessionID uuid.UUID) (sqlc.Payment, bool, error) {
+	sess, err := repos.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return sqlc.Payment{}, false, err
+	}
+	if sess.Status != sqlc.SessionStatusPaymentPending {
+		return sqlc.Payment{}, false, nil
+	}
+	return nonTerminalPaymentForSession(ctx, repos, sessionID)
+}
+
+func isOneNonTerminalPaymentViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) &&
+		pgErr.Code == "23505" &&
+		pgErr.ConstraintName == "idx_payments_one_non_terminal_per_session"
 }
 
 func derefStr(s *string) string {
@@ -741,7 +834,7 @@ func (s *PaymentService) maybeCloseSettledSession(ctx context.Context, sessionID
 	if err != nil {
 		return err
 	}
-	totalPaid, err := s.repos.SumCompletedPaymentsForSession(ctx, sessionID)
+	totalPaid, err := s.repos.SumCompletedPaymentsForBillSnapshot(ctx, sessionID, latestCompleted.BillSnapshotID.Int64)
 	if err != nil {
 		return err
 	}

@@ -97,10 +97,11 @@ RETURNING *;
 -- name: GetBillSnapshotByID :one
 SELECT * FROM bill_snapshots WHERE id = $1;
 
--- name: SumCompletedPaymentsForSession :one
+-- name: SumCompletedPaymentsForBillSnapshot :one
 SELECT COALESCE(SUM(amount), 0)::numeric
 FROM payments
 WHERE session_id = $1
+	AND bill_snapshot_id = $2
   AND status = 'completed';
 
 -- name: MarkWebhookProcessed :exec
