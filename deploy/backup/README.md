@@ -144,12 +144,14 @@ DATABASE_URL=postgres://user:pass@host:5432/restore_target ./backend/scripts/res
 `restore.sh` uses `pg_restore --clean --if-exists --single-transaction`, so a
 failed restore rolls back atomically.
 
-> **The target server must already have the dump's role.** `restore.sh` does not pass
-> `--no-owner`, so `ALTER ... OWNER TO <role>` aborts the whole restore if the role is missing —
-> and because it is single-transaction, **nothing is restored at all**. This bites on the
-> rebuilt-host path: create the app role before restoring, or run `pg_restore` by hand with
-> `--no-owner --no-privileges`. Finding R-1,
-> `../../docs/history/restore-verification-report-2026-09-12.md`.
+> **Ownership.** `restore.sh` passes `--no-owner --no-privileges` by default, so it works on a
+> rebuilt host that does not yet have the app role; restored objects are owned by the connecting
+> role. Pass `--preserve-owner` to keep the dump's original ownership and grants, which requires
+> those roles to already exist on the target. Before 2026-09-12 the preserving behaviour was the
+> only one available, and a restore onto a fresh host failed entirely (finding R-1 —
+> `../../docs/history/restore-verification-report-2026-09-12.md`).
+>
+> Add `--yes` (or `FORCE=1`) for any non-interactive restore — a drill, cron, or CI.
 
 > **A restore is only safe into the schema version the dump was taken at.** Do not restore an
 > older dump and let the app migrate it forward — migration 22 cannot be re-applied to a

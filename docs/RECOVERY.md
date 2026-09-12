@@ -14,7 +14,7 @@ Certification evidence: [history/restore-verification-report-2026-09-12.md](hist
 
 ## 1. What exists
 
-- **Nightly dump** (02:30, systemd timer → `backend/scripts/nightly-backup.sh`): `pg_dump --format=custom --compress=9` → sha256 → upload to R2 → append-only `manifest.jsonl` → retention prune (14 days) → Prometheus textfile metrics. Any failure exits non-zero. Most failures also set `qr_dining_backup_last_run_status 1` — **but not all**: the `DATABASE_URL` guard is an explicit `exit 1` placed before the `ERR` trap is installed, so a missing or unreadable env file leaves the status metric reporting the last good run and `BackupFailed` never fires (finding R-3, verified 2026-09-12). Only `BackupTooOld` catches that, 36h later.
+- **Nightly dump** (02:30, systemd timer → `backend/scripts/nightly-backup.sh`): `pg_dump --format=custom --compress=9` → sha256 → upload to R2 → append-only `manifest.jsonl` → retention prune (14 days) → Prometheus textfile metrics. Any failure exits non-zero **and** sets `qr_dining_backup_last_run_status 1`, including a missing/unreadable env file — the script reports through an `EXIT` trap installed before any validation, so every exit path is covered. (Until 2026-09-12 the guard ran first and exited silently, leaving the metric on the last good run; finding R-3, fixed and regression-tested in `backend/scripts/tests/backup-restore-test.sh`.)
 - **Bucket layout** (`R2_BUCKET`, currently the temporary `qr-dining-backups`):
   - `backups/YYYY/MM/backup_YYYYMMDD_HHMMSS.dump` (UTC-named, one per run)
   - `backups/manifest.jsonl` — one JSON line per backup: `{timestamp,key,bytes,sha256,provider,retention_days}`. **The manifest is the index of record**: pick restore candidates from it and always verify sha256 after download.
@@ -39,24 +39,26 @@ sha256sum restore-candidate.dump    # MUST equal the manifest line's sha256 — 
 
 ## 3. Restore procedures (verified pattern)
 
-`backend/scripts/restore.sh <dump>` — **destructive**: `pg_restore --clean --if-exists --single-transaction` into `DATABASE_URL`, then row-count validation. Single-transaction = all-or-nothing.
+`backend/scripts/restore.sh [--yes] [--preserve-owner] <dump>` — **destructive**: `pg_restore --clean --if-exists --single-transaction --no-owner --no-privileges` into `DATABASE_URL`, then row-count and migration-state validation. Single-transaction = all-or-nothing.
+
+- `--yes` (or `FORCE=1`) skips the confirmation prompt — required for drills, cron and CI, which have no terminal. Without it and without a terminal the script now says so and exits, instead of aborting silently.
+- `--no-owner --no-privileges` is the **default** so a restore works on a rebuilt host that does not yet have the app role. Pass `--preserve-owner` only when restoring onto a server that already has the original roles and you need the exact grants back.
+- Both behaviours are regression-tested: `backend/scripts/tests/backup-restore-test.sh`.
 
 ### 3a. Drill / side-restore (non-destructive — also the quarterly drill)
 
 Runs everything inside containers; needs no host pg tools. This exact procedure passed against the real R2 bucket on 2026-07-18 (§5):
 
-> **Create the dump's role on the drill server first, or the restore fails completely.**
-> `restore.sh` does not pass `--no-owner`, so `ALTER ... OWNER TO qrdining` aborts the restore if
-> that role does not exist — and `--single-transaction` means **nothing** is restored, not part of
-> it. The `CREATE ROLE` below is what makes this drill work against a production dump; it was
-> missing until 2026-09-12 (finding R-1). Substitute the production role name.
+> The drill server deliberately uses a different role (`bv`) from the production dump's owner.
+> That works because `restore.sh` passes `--no-owner --no-privileges` by default — restored objects
+> are owned by the connecting role. Until 2026-09-12 it did not, and this drill could not have
+> restored a production dump at all: `ALTER ... OWNER TO qrdining` aborted, and
+> `--single-transaction` meant nothing was restored (finding R-1).
 
 ```bash
 docker network create qr-restore-drill
 docker run -d --name qr-drill-db --network qr-restore-drill \
   -e POSTGRES_USER=bv -e POSTGRES_PASSWORD=drill -e POSTGRES_DB=bvdb postgres:17-alpine
-# The dump's owner role must exist on the target before pg_restore runs:
-sleep 5 && docker exec qr-drill-db psql -U bv -d bvdb -c "CREATE ROLE qrdining LOGIN PASSWORD 'drill';"
 docker run --rm --network qr-restore-drill \
   --env-file /etc/qr-dining/backup.env \
   -e DATABASE_URL=postgres://bv:drill@qr-drill-db:5432/bvdb \
@@ -67,7 +69,7 @@ docker run --rm --network qr-restore-drill \
     KEY=$(aws s3 cp s3://$R2_BUCKET/backups/manifest.jsonl - --endpoint-url $R2_ENDPOINT --region auto | tail -1 | sed -n "s/.*\"key\":\"\([^\"]*\)\".*/\1/p")
     aws s3 cp s3://$R2_BUCKET/$KEY /work/candidate.dump --endpoint-url $R2_ENDPOINT --region auto
     sha256sum /work/candidate.dump     # compare to manifest before proceeding
-    echo yes | bash /scripts/restore.sh /work/candidate.dump'
+    bash /scripts/restore.sh --yes /work/candidate.dump'
 # inspect, then: docker rm -f qr-drill-db && docker network rm qr-restore-drill
 ```
 
@@ -129,6 +131,12 @@ These local dumps carry **no manifest and no checksum**, so they are not restore
 | 2026-06-09 | Full round trip, `local` provider (Phase E cert) | PASS — 56/56 tables row-identical, trigger + checksum fidelity ([history/restore-verification-report.md](history/restore-verification-report.md)) |
 | 2026-07-18 | **Full round trip against the real R2 bucket** (temporary `qr-dining-backups`, account `16465dc4…`): containerized pg_dump 17 → upload → manifest append → fresh download → sha256 vs manifest (`fc5a2ecd…` ✓) → `restore.sh` into a second postgres:17 → content checksum source vs restored (`a2926ca4…` = `a2926ca4…` ✓) → retention pass, textfile metrics `status 0` + success timestamp | **PASS** — closes the "never tested against real R2" SEV-1. Found+fixed en route: BusyBox-incompatible `date` in the retention step (now epoch-based, portable) |
 | 2026-09-12 | **Re-run at schema 40** (Track F), `local` provider, source = manual-testing DB with real transactional data: `nightly-backup.sh` → sha256 vs manifest ✓ → `restore.sh` into a fresh DB → 59/59 tables row-identical, 168 indexes / 214 constraints / 36 sequences / 14 enums / 1 trigger identical, 10/10 money tables content-checksum identical, all 36 sequence `last_value`s preserved, immutability trigger verified to enforce. Retention pruning and `--single-transaction` atomicity exercised, not assumed. Restore timed at 297 MB / 500K audit rows. | **PASS** on the backup→restore loop. **FAIL** on restore-and-replay: migration 22 cannot be re-applied to a populated `audit_log` and wedges the app (`dirty=true`). Found: R-1 `restore.sh` lacks `--no-owner` (a rebuilt host cannot be restored to); R-2 host `backup.sh` broken by pg_dump 16 vs server 17; R-3 backup failure metric not written when `DATABASE_URL` is unset. [history/restore-verification-report-2026-09-12.md](history/restore-verification-report-2026-09-12.md) |
+
+**Automated regression tests** for this path live in `backend/scripts/tests/backup-restore-test.sh`
+(requires docker + go, spins up its own throwaway servers, touches nothing else). It covers the
+rebuilt-host restore, the backup failure metric, the migration-22 wedge and its recovery, and the
+non-interactive restore. Run it after any change to these scripts, and as a smoke test before a
+quarterly drill.
 
 Re-run the §3a drill: within week 1 of go-live (at real data volume — record the duration to update RTO), after any bucket rename, and quarterly.
 

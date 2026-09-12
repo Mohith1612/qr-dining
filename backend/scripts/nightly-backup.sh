@@ -24,20 +24,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/storage.sh
 source "$SCRIPT_DIR/lib/storage.sh"
 
-if [ -z "${DATABASE_URL:-}" ]; then
-  echo "ERROR: DATABASE_URL is not set" >&2
-  exit 1
-fi
-
-BACKUP_PREFIX="${BACKUP_PREFIX:-backups}"
-RETENTION_DAYS="${RETENTION_DAYS:-14}"
-BACKUP_WORKDIR="${BACKUP_WORKDIR:-./backups}"
-mkdir -p "$BACKUP_WORKDIR"
-
+# --- Failure reporting -------------------------------------------------------
 # Emit Prometheus metrics for the node_exporter textfile collector so the
 # BackupFailed / BackupTooOld alerts have a signal. No-op if the dir is unset.
-# Status and last-success are separate files so a failure (trap) does not erase
-# the last successful timestamp.
+# Status and last-success are separate files so a failure does not erase the
+# last successful timestamp.
+#
+# These, and the trap that uses them, are installed BEFORE any validation so
+# that a config error reports itself. Previously the DATABASE_URL guard ran
+# first and exited without writing anything, which left the status metric
+# reporting the last good run: BackupFailed stayed silent and only BackupTooOld
+# noticed, 36h later.
+#
+# The trap is on EXIT rather than ERR because bash does NOT run an ERR trap for
+# an explicit `exit 1` (verified, not assumed). An ERR trap therefore cannot
+# cover a guard clause no matter where the guard is placed. EXIT covers every
+# path — guards, command failures, and any guard added here in future.
 write_status_metric() { # $1=status(0|1)
   [ -n "${NODE_EXPORTER_TEXTFILE_DIR:-}" ] || return 0
   local f="$NODE_EXPORTER_TEXTFILE_DIR/qr_dining_backup_status.prom"
@@ -56,7 +58,36 @@ write_success_metric() {
     echo "qr_dining_backup_last_success_timestamp_seconds $(date +%s)"
   } > "$f.tmp" && mv "$f.tmp" "$f"
 }
-trap 'write_status_metric 1' ERR
+
+BACKUP_COMPLETED=0
+on_exit() {
+  local rc=$?
+  if [ "$BACKUP_COMPLETED" = "1" ] && [ "$rc" -eq 0 ]; then
+    write_status_metric 0
+    write_success_metric
+  else
+    # Failure: status only. The success timestamp keeps pointing at the last
+    # real success so BackupTooOld measures actual staleness.
+    write_status_metric 1
+  fi
+  exit "$rc"
+}
+trap on_exit EXIT
+# A killed backup (systemd stop, Ctrl-C) is a failed backup; route both through
+# on_exit with a non-zero status rather than dying untracked.
+trap 'exit 130' INT
+trap 'exit 143' TERM
+# -----------------------------------------------------------------------------
+
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "ERROR: DATABASE_URL is not set" >&2
+  exit 1
+fi
+
+BACKUP_PREFIX="${BACKUP_PREFIX:-backups}"
+RETENTION_DAYS="${RETENTION_DAYS:-14}"
+BACKUP_WORKDIR="${BACKUP_WORKDIR:-./backups}"
+mkdir -p "$BACKUP_WORKDIR"
 
 storage_init
 
@@ -113,6 +144,7 @@ done < <(storage_list "$BACKUP_PREFIX/")
 find "$BACKUP_WORKDIR" -name 'backup_*.dump' -mtime +"$RETENTION_DAYS" -print -delete 2>/dev/null | sed 's/^/      pruned local: /' || true
 echo "      remote pruned: $PRUNED"
 
-write_status_metric 0
-write_success_metric
+# Success metrics are written by on_exit, so there is exactly one place that
+# decides what this run reported.
+BACKUP_COMPLETED=1
 echo "OK: backup complete -> $REMOTE_KEY ($BYTES bytes)"
