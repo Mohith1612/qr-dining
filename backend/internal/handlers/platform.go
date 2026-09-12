@@ -38,6 +38,23 @@ type PlatformHandler struct {
 	staffPerf   *services.StaffAnalyticsService
 	featureGate *services.FeatureGate
 	audit       *audit.Writer
+	// tenantStatus is the guest-entry lifecycle cache. The lifecycle endpoints
+	// flush it so a suspend takes hold — and an activate lifts — immediately
+	// rather than after the cache TTL.
+	tenantStatus *services.TenantStatusGate
+}
+
+// SetTenantStatusGate wires the guest-entry lifecycle cache so organization and
+// branch suspend/activate can invalidate it. Called at startup.
+func (h *PlatformHandler) SetTenantStatusGate(gate *services.TenantStatusGate) {
+	h.tenantStatus = gate
+}
+
+// invalidateTenantStatus flushes the guest-entry lifecycle cache. nil-safe.
+func (h *PlatformHandler) invalidateTenantStatus(c *gin.Context) {
+	if h.tenantStatus != nil {
+		h.tenantStatus.Invalidate(c.Request.Context())
+	}
 }
 
 func NewPlatformHandler(repos *repository.Repos, svc *services.PlatformService, ent *services.EntitlementService, flag *services.FlagService, analytics *services.PlatformAnalyticsService, theme *services.ThemeService, support *services.SupportService, billing *services.BillingService, obs *services.EnforcementObservabilityService, collateral *services.CollateralService, staffPerf *services.StaffAnalyticsService, featureGate *services.FeatureGate, auditWriter *audit.Writer) *PlatformHandler {
@@ -531,8 +548,15 @@ func (h *PlatformHandler) CreateBranch(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		// Provisioning writes a branch, its tables and an initial owner in one
+		// transaction, so a unique violation can come from any of the three. The
+		// repository translates the table and staff collisions into domain
+		// errors, so match those too — matching only the raw pg error would send
+		// a duplicate staff code or table identifier to a 500.
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" ||
+			errors.Is(err, domain.ErrDuplicateStaffCode) ||
+			errors.Is(err, domain.ErrDuplicateTableIdentifier) {
 			respondError(c, http.StatusConflict, "BRANCH_CONFLICT", "That branch code or an initial owner staff code is already in use. Choose a different one.")
 			return
 		}

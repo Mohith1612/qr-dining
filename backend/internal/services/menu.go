@@ -15,13 +15,21 @@ import (
 )
 
 type MenuService struct {
-	repos     *repository.Repos
-	cache     *redisPkg.Cache
-	publisher *events.Publisher
+	repos        *repository.Repos
+	cache        *redisPkg.Cache
+	publisher    *events.Publisher
+	tenantStatus *TenantStatusGate
 }
 
 func NewMenuService(repos *repository.Repos, cache *redisPkg.Cache, publisher *events.Publisher) *MenuService {
 	return &MenuService{repos: repos, cache: cache, publisher: publisher}
+}
+
+// SetTenantStatusGate wires the organization/branch lifecycle gate consulted by
+// QR resolution — the first request a guest ever makes. It must be called at
+// startup before the service begins handling requests.
+func (s *MenuService) SetTenantStatusGate(gate *TenantStatusGate) {
+	s.tenantStatus = gate
 }
 
 type MenuModifier struct {
@@ -88,10 +96,19 @@ type TableQRResponse struct {
 }
 
 // GetTableWithActiveSession resolves a QR token and includes the active session ID if the table is occupied.
+//
+// This is the very first call a scanning guest makes, so it is where a suspended
+// tenant is surfaced: refusing here means the guest reads one clear message
+// instead of walking into the menu and failing at session create.
 func (s *MenuService) GetTableWithActiveSession(ctx context.Context, token string) (TableQRResponse, error) {
 	table, err := s.repos.GetTableByQRToken(ctx, token)
 	if err != nil {
 		return TableQRResponse{}, err
+	}
+	if s.tenantStatus != nil {
+		if err := s.tenantStatus.EnsureBranchAdmitsGuests(ctx, table.BranchID); err != nil {
+			return TableQRResponse{}, err
+		}
 	}
 	resp := TableQRResponse{
 		ID:          table.ID,
