@@ -365,19 +365,25 @@ func (q *Queries) ListSessionsAwaitingReactivationExpired(ctx context.Context, d
 }
 
 const listSessionsExpiringSoon = `-- name: ListSessionsExpiringSoon :many
-SELECT s.id, s.branch_id, s.created_at, b.session_timeout_minutes
+SELECT s.id,
+       s.branch_id,
+       COALESCE(MAX(sp.last_seen_at), s.created_at) AS last_activity_at,
+       b.session_timeout_minutes
 FROM sessions s
 JOIN branches b ON b.id = s.branch_id
+LEFT JOIN session_participants sp ON sp.session_id = s.id
 WHERE s.status = 'active'
   AND s.warned_at IS NULL
-  AND s.created_at + (b.session_timeout_minutes || ' minutes')::interval
-      BETWEEN NOW() AND NOW() + INTERVAL '15 minutes'
+GROUP BY s.id, s.branch_id, s.created_at, b.session_timeout_minutes
+HAVING COALESCE(MAX(sp.last_seen_at), s.created_at)
+         + (b.session_timeout_minutes || ' minutes')::interval
+       BETWEEN NOW() AND NOW() + INTERVAL '15 minutes'
 `
 
 type ListSessionsExpiringSoonRow struct {
 	ID                    uuid.UUID `json:"id"`
 	BranchID              int64     `json:"branch_id"`
-	CreatedAt             time.Time `json:"created_at"`
+	LastActivityAt        time.Time `json:"last_activity_at"`
 	SessionTimeoutMinutes int16     `json:"session_timeout_minutes"`
 }
 
@@ -393,7 +399,7 @@ func (q *Queries) ListSessionsExpiringSoon(ctx context.Context) ([]ListSessionsE
 		if err := rows.Scan(
 			&i.ID,
 			&i.BranchID,
-			&i.CreatedAt,
+			&i.LastActivityAt,
 			&i.SessionTimeoutMinutes,
 		); err != nil {
 			return nil, err

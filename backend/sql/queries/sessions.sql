@@ -108,13 +108,19 @@ SELECT EXISTS (
 ) AS has_pending;
 
 -- name: ListSessionsExpiringSoon :many
-SELECT s.id, s.branch_id, s.created_at, b.session_timeout_minutes
+SELECT s.id,
+       s.branch_id,
+       COALESCE(MAX(sp.last_seen_at), s.created_at) AS last_activity_at,
+       b.session_timeout_minutes
 FROM sessions s
 JOIN branches b ON b.id = s.branch_id
+LEFT JOIN session_participants sp ON sp.session_id = s.id
 WHERE s.status = 'active'
   AND s.warned_at IS NULL
-  AND s.created_at + (b.session_timeout_minutes || ' minutes')::interval
-      BETWEEN NOW() AND NOW() + INTERVAL '15 minutes';
+GROUP BY s.id, s.branch_id, s.created_at, b.session_timeout_minutes
+HAVING COALESCE(MAX(sp.last_seen_at), s.created_at)
+         + (b.session_timeout_minutes || ' minutes')::interval
+       BETWEEN NOW() AND NOW() + INTERVAL '15 minutes';
 
 -- name: MarkSessionWarned :exec
 UPDATE sessions SET warned_at = NOW() WHERE id = $1 AND warned_at IS NULL;

@@ -28,7 +28,7 @@ type ExpiredSession struct {
 // ExpiringSoonSession is the projection used by the expiry warner.
 type ExpiringSoonSession struct {
 	ID                    uuid.UUID
-	CreatedAt             time.Time
+	LastActivityAt        time.Time
 	SessionTimeoutMinutes int16
 }
 
@@ -516,7 +516,7 @@ func (w *Worker) warnExpiringSessions(ctx context.Context) {
 	}
 	for i := range sessions {
 		s := &sessions[i]
-		expiresAt := s.CreatedAt.Add(time.Duration(s.SessionTimeoutMinutes) * time.Minute)
+		expiresAt := s.LastActivityAt.Add(time.Duration(s.SessionTimeoutMinutes) * time.Minute)
 		payload := expiryPayload{ExpiresAt: expiresAt.UTC().Format(time.RFC3339)}
 		w.publisher.SessionExpiringSoon(ctx, s.ID, payload)
 		if err := w.queries.MarkSessionWarned(ctx, s.ID); err != nil {
