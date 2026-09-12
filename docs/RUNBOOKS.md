@@ -156,8 +156,11 @@ golang-migrate then leaves `schema_migrations` at **`22, dirty=true`**, and:
 
 - the app will not start — `RunMigrations` calls the same `m.Up()`, which returns
   `Dirty database version 22. Fix and force version.`
-- `cmd/migrate` has no `force` subcommand, so there is no in-tree tool to unwedge it;
-- clearing `dirty` by hand is not enough — the next `up` hits the trigger and re-wedges.
+- clearing `dirty` alone is not enough — the next `up` hits the trigger and re-wedges.
+
+`cmd/migrate` gained `version` and `force` on 2026-09-12 for exactly this; before that there was
+no in-tree tool and recovery meant hand-written SQL against `schema_migrations` during an
+incident.
 
 Migration 40's `up` has the same wedge shape for a different reason: `000040:19` raises if any
 session has more than one non-terminal payment, which a pre-40 dump can legitimately contain.
@@ -169,19 +172,23 @@ resort, it is [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md) A6, and its 60-
 already running because the app is down.** Take a backup first. Record in the incident report the
 exact window during which the trigger was absent.
 
+```bash
+# 1. Confirm the wedge. No psql needed.
+migrate version                 # expect: current: version=22 dirty=true
+
+# 2. Clear the dirty flag and step the recorded version back to the last clean one.
+#    force rewrites only what schema_migrations says — it runs no SQL — so pass the
+#    lowest version you know the schema actually matches.
+migrate force 21
+```
 ```sql
--- 1. Confirm the wedge.
-SELECT version, dirty FROM schema_migrations;      -- expect: 22, true
-
--- 2. Step the recorded version back to the last clean one.
-UPDATE schema_migrations SET version = 21, dirty = false;
-
 -- 3. Remove the trigger that migration 22 collides with. audit_log is now WRITABLE.
+--    Note the exact time; this window goes in the incident report.
 DROP TRIGGER trg_audit_log_immutable ON audit_log;
 ```
 ```bash
 # 4. Replay forward.
-docker compose up -d app        # or: DATABASE_URL=… migrate up
+migrate up                      # or: docker compose up -d app
 ```
 ```sql
 -- 5. Re-create the trigger IMMEDIATELY. Do not open the restaurant before this.
@@ -193,8 +200,12 @@ CREATE TRIGGER trg_audit_log_immutable
 UPDATE audit_log SET action = 'x' WHERE id = (SELECT min(id) FROM audit_log);
 ```
 
-Verified end to end on 2026-09-12; steps 2–4 reach version 40 clean, and step 6 errors as
-required.
+`migrate` is `backend/cmd/migrate` with `DATABASE_URL` set; in production run it from a container
+on `qr-dining_internal`, or use `docker compose up -d app` for step 4 and let the app migrate.
+
+The whole sequence — including that skipping step 3 re-wedges at 22 — is exercised by
+`backend/scripts/tests/backup-restore-test.sh`, so this procedure is tested rather than
+remembered.
 
 **Also know:** 22's backfill regenerates `session_number` / `visit_number` / `payment_reference`
 with `ROW_NUMBER()`. On an unchanged row population it reproduces the same values exactly. If any

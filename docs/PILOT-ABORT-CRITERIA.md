@@ -144,11 +144,12 @@ actual reliability, and it is not good enough to put in front of paying guests.
 | **Signal** | **No direct signal.** `AppTargetDown` fires because the app will not start; nothing names the cause. See §5. |
 
 *Why this is its own criterion.* A dirty migration is not a normal outage. The app refuses to
-start, `cmd/migrate` has no `force` subcommand, and — if the wedge is at 22 — the documented
-recovery requires **dropping the `audit_log` immutability trigger by hand on a live database**
-(§4, step 6). That trades the tamper-evidence guarantee for uptime. Sixty minutes is roughly what
-that procedure takes when performed carefully by someone who has read it before; it is not
-something to attempt twice.
+start, and — if the wedge is at 22 — recovery requires **dropping the `audit_log` immutability
+trigger by hand on a live database** ([RUNBOOKS.md §8](RUNBOOKS.md#8-migration-rollback)). That
+trades the tamper-evidence guarantee for uptime. `migrate force <version>` and `migrate version`
+exist for this (added 2026-09-12) and the procedure is regression-tested, but it is still a
+procedure you should perform at most once. Sixty minutes is roughly what it takes when done
+carefully by someone who has read it before.
 
 *Prevention beats recovery here:* see §7, "No deploys during service hours."
 
@@ -295,7 +296,7 @@ Try in order. Stop at the first one that works.
 | 4 | **Freeze writes** — `docker compose stop app` | You need the database to stop changing while you think | Instant | Yes, but the restaurant is on paper from this second. Guests see 502s. |
 | 5 | **Hotfix forward** | Nothing above applies | **≥1 hour** — one developer, arm64 build, no CI-gated path to a running container in minutes | Not a during-service option. During service the answer is paper. |
 | 6 | **Restore the database** ([RECOVERY.md §3b](RECOVERY.md#3b-production-restore-destructive--real-incident-only)) | Data corruption or bad mutation only | ~5 min mechanical; loses ≤24h | Only **into the same schema version the dump was taken at**. A dump older than the running binary's schema **cannot be replayed forward** — see §0. |
-| 7 | **Unwedge a dirty migration** | A6 only | ~60 min | **Last resort.** Requires dropping `trg_audit_log_immutable`, replaying, and re-creating it. Procedure and its consequences: [RUNBOOKS.md §8](RUNBOOKS.md#8-migration-rollback). While the trigger is off, `audit_log` is writable and the tamper-evidence guarantee does not hold. Record that window in the incident report. |
+| 7 | **Unwedge a dirty migration** — `migrate version`, `migrate force <v>`, then [RUNBOOKS.md §8](RUNBOOKS.md#8-migration-rollback) | A6 only | ~60 min | **Last resort.** Requires dropping `trg_audit_log_immutable`, replaying, and re-creating it. While the trigger is off, `audit_log` is writable and the tamper-evidence guarantee does not hold. Record that window in the incident report. |
 | 8 | **Stop the pilot** | §1 says so | — | §4. |
 
 ### The rule that removes most of this
@@ -330,18 +331,17 @@ builds the signal. They are listed so that the detection plan is explicit rather
 | 1 | **A1 — guest charged incorrectly** | No metric expresses bill correctness. `payment_pending_escalations_total` measures stalls, not amounts. Nothing compares a bill total to its order lines. | **A human.** A guest disputes the bill, or staff notice. This is the highest-consequence criterion in this document and it is entirely unmonitored. | A periodic check that every `bill_snapshots` row satisfies `total = subtotal - discount + tax + service_charge + tip`, exported as a gauge. Needs code. |
 | 2 | **A3 — one table cannot order or pay** | 43 app metrics, none per-table. `active_sessions_total` is a count. 5xx on `/sessions/:id/orders` catches a systemic break, never one wedged table. | **Staff tell you**, by phone. The 15-minute window in A3 starts when they call, not when it broke. | A per-branch gauge of sessions with no state transition in N minutes. Needs code. |
 | 3 | **A2 — *successful* cross-tenant read** | `authz_denied_total` counts what policy **blocked**. A read the policy wrongly **allows** emits nothing. The 2026-08-04 bypass was exactly this shape. | Audit-log review after the fact, or a report. Not in real time. | Nothing cheap. Accept and compensate with A2's zero-tolerance threshold. |
-| 4 | **A6 — dirty migration** | `schema_migrations.dirty` is a table column, not a metric. `AppTargetDown` fires but names no cause. | Read the app logs after the app fails to start. | Export `schema_migrations.dirty` as a gauge at startup, or a node_exporter textfile check. Needs code or a cron. |
+| 4 | **A6 — dirty migration** | `schema_migrations.dirty` is a table column, not a metric. `AppTargetDown` fires but names no cause. | Read the app logs after the app fails to start, or run `migrate version`. | Export `schema_migrations.dirty` as a gauge at startup, or a node_exporter textfile check. Needs code or a cron. |
 | 5 | **A7 — immutability trigger absent** | No metric. Nothing notices `trg_audit_log_immutable` missing — including after the §5 step-7 procedure re-creates it *or fails to*. | The manual check in §7. | A daily check that `UPDATE audit_log` still fails, exported as a gauge. Scriptable without code. |
 
 ### Gaps in the signals that *do* exist
 
-- **`BackupFailed` can report success while the backup is broken.** `nightly-backup.sh` exits
-  before installing its `ERR` trap when `DATABASE_URL` is unset, so a missing or unreadable env
-  file leaves the status metric showing the last good run. Only `BackupTooOld` catches it — 36
-  hours later. Same 36-hour blind spot if cron never fires, which `deploy/backup/README.md`
-  flags as plausible since the rootless path uses a user crontab that does not survive a VM
-  rebuild. Finding R-3,
-  [history/restore-verification-report-2026-09-12.md](history/restore-verification-report-2026-09-12.md).
+- **`BackupFailed` now covers config errors too** — `nightly-backup.sh` reports through an `EXIT`
+  trap installed before any validation, so a missing env file pages rather than sitting silent
+  (finding R-3, fixed 2026-09-12). **A job that never runs at all still writes nothing**, which
+  `deploy/backup/README.md` flags as plausible since the rootless path uses a user crontab that
+  does not survive a VM rebuild. That gap is covered only by `BackupStaleEarlyWarning` (26h) and
+  `BackupTooOld` (36h) — so read the success timestamp directly, per §7.
 - **Backup metrics only reach Prometheus if `NODE_EXPORTER_TEXTFILE_DIR` points at the
   `qr-dining_backup_textfile` volume mountpoint.** If that wiring is missing, all four backup
   alerts are silently dead ([OPERATIONS.md §5](OPERATIONS.md#5-backups-monitoring-side)).
@@ -363,6 +363,8 @@ Nothing in this document works if these are not true. Check them, do not assume 
       `qr_dining_backup_last_success_timestamp_seconds` confirmed visible in Prometheus.
 - [ ] One restore drill at real data volume, timed
       ([RECOVERY.md §3a](RECOVERY.md#3a-drill--side-restore-non-destructive--also-the-quarterly-drill)).
+- [ ] `backend/scripts/tests/backup-restore-test.sh` passes on the deployment host — it is the
+      cheapest proof that the backup and restore path still behaves as this document assumes.
 - [ ] **The rollback target tag is known**, and whether it spans a migration is known.
 - [ ] The restaurant manager knows they can call FALLBACK unilaterally, and how.
 - [ ] The kitchen has a paper ticket process and has used it once in a dry run.

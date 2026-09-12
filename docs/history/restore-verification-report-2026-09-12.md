@@ -318,17 +318,23 @@ already works around it.
 of the same file also told the operator to source `/etc/qr-dining/backup.env` in a procedure
 whose whole point is that `/etc` is unavailable; corrected to `/opt/qr-dining/backup.env`.
 
-### Needs code (not changed here — scripts/docs/config only)
+### Needs code (out of scope for this report — since fixed, see the remediation note at the top)
 
-1. **`restore.sh`: add `--no-owner --no-privileges`** (or an opt-out flag). This is R-1 and it is
-   the single highest-value fix in the backup path.
-2. **`nightly-backup.sh`: move the `DATABASE_URL` guard after the metric helpers and write
+1. ~~**`restore.sh`: add `--no-owner --no-privileges`** (or an opt-out flag). This is R-1 and it is
+   the single highest-value fix in the backup path.~~ **Done** — now the default, with
+   `--preserve-owner` to opt out.
+2. ~~**`nightly-backup.sh`: move the `DATABASE_URL` guard after the metric helpers and write
    `write_status_metric 1` before exiting** (R-3), so an unreadable env file pages in minutes
-   rather than in 36 hours.
-3. **`cmd/migrate`: add a `force <version>` subcommand.** Recovering the dirty state in Part 2
-   currently requires hand-written SQL against `schema_migrations` during an incident.
-4. **`restore.sh`: accept `--yes`/`FORCE=1`** so a non-interactive restore states its intent
-   instead of failing at a `read` (R-5).
+   rather than in 36 hours.~~ **Done**, though not the way this item proposed: moving the guard is
+   not sufficient, because bash does **not** run an `ERR` trap for an explicit `exit` (verified).
+   The script now reports through an `EXIT` trap installed before any validation, which covers
+   every exit path rather than the one guard that was known to be broken.
+3. ~~**`cmd/migrate`: add a `force <version>` subcommand.** Recovering the dirty state in Part 2
+   currently requires hand-written SQL against `schema_migrations` during an incident.~~ **Done**,
+   plus `version` so confirming the wedge no longer needs psql either.
+4. ~~**`restore.sh`: accept `--yes`/`FORCE=1`** so a non-interactive restore states its intent
+   instead of failing at a `read` (R-5).~~ **Done** — and the no-stdin case now prints why it
+   stopped instead of exiting silently.
 
 ## Part 2 — migration 22, empirically
 
