@@ -46,6 +46,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     })
   },
 
+  // The snapshot is authoritative, so it must settle isReactivating too. This is
+  // the function that actually runs on the automatic reactivation path: the
+  // client showing the paused overlay is by definition the one without a
+  // socket, so the SESSION_REACTIVATED event cannot reach it — the snapshot
+  // reconcile is what does. Without this, a fixed overlay counting down to 0:00
+  // sat over a live, connected session (F-08).
   setFromSnapshot(session, participants) {
     const self = get().participant
     const updated = self ? participants.find((p) => p.id === self.id) ?? self : self
@@ -54,6 +60,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       participants,
       participant: updated,
       isHost: updated?.is_host ?? false,
+      isReactivating: session.status === "awaiting_reactivation",
     })
   },
 

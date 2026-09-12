@@ -8,11 +8,6 @@ interface PlaceOrderItem {
   note?: string
 }
 
-interface BackendPlaceOrderResponse {
-  Order: Order
-  OrderItems: OrderItem[]
-}
-
 interface PlaceOrderResponse {
   order: Order
   order_items: OrderItem[]
@@ -26,10 +21,10 @@ export const ordersApi = {
     idempotencyKey: string,
     items: PlaceOrderItem[]
   ) =>
-    api.post<BackendPlaceOrderResponse>(`/sessions/${sessionId}/orders`, {
+    api.post<PlaceOrderResponse>(`/sessions/${sessionId}/orders`, {
       idempotency_key: idempotencyKey,
       items,
-    }, { guestToken }).then(r => ({ order: r.Order, order_items: r.OrderItems }) as PlaceOrderResponse),
+    }, { guestToken }),
 
   list: (sessionId: string) =>
     api.get<Order[]>(`/sessions/${sessionId}/orders`),

@@ -1,6 +1,9 @@
 import { env } from "@/config/env"
 import type { APIError } from "@/types/api"
 
+/** APIError.reason values the backend may send. See handlers/errors.go. */
+export const REASON_CREDENTIAL_REVOKED = "credential_revoked"
+
 export class ApiError extends Error {
   constructor(
     public readonly code: string,
@@ -8,11 +11,27 @@ export class ApiError extends Error {
     public readonly status: number,
     // Seconds from the Retry-After header, when the server sent one (e.g. on a
     // 423 lockout). Undefined otherwise.
-    public readonly retryAfter?: number
+    public readonly retryAfter?: number,
+    // Optional discriminator for cases where `code` is too coarse to act on.
+    // Every guest-credential failure is 401 UNAUTHORIZED; only some are
+    // terminal, and `reason` is how the client tells them apart.
+    public readonly reason?: string
   ) {
     super(message)
     this.name = "ApiError"
   }
+}
+
+/**
+ * True when a rejected request can never succeed by retrying the same stored
+ * credential: it was revoked, or its version was rotated (which is what closing
+ * a session does to every participant). Callers must stop reconnecting and move
+ * to a terminal state instead of looping.
+ */
+export function isRevokedCredentialError(err: unknown): boolean {
+  return err instanceof ApiError
+    && err.status === 401
+    && err.reason === REASON_CREDENTIAL_REVOKED
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -77,7 +96,13 @@ async function request<T>(
     } catch {}
     const retryHeader = res.headers.get("Retry-After")
     const retryAfter = retryHeader ? Number(retryHeader) : undefined
-    throw new ApiError(errBody.code, errBody.message, res.status, Number.isFinite(retryAfter) ? retryAfter : undefined)
+    throw new ApiError(
+      errBody.code,
+      errBody.message,
+      res.status,
+      Number.isFinite(retryAfter) ? retryAfter : undefined,
+      errBody.reason
+    )
   }
 
   if (res.status === 204) {

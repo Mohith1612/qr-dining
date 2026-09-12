@@ -79,6 +79,16 @@ var (
 	ErrCategoryNotEmpty = errors.New("category has items and cannot be deleted")
 )
 
+// Staff
+var (
+	// ErrDuplicateStaffCode is the translated form of the
+	// idx_staff_branch_staff_code_unique violation. staff_code is the human
+	// identifier a staff member types at login, so a collision is a normal
+	// data-entry conflict the manager must resolve — not a server fault.
+	ErrDuplicateStaffCode = errors.New("staff code already exists for this branch")
+	ErrInvalidStaffRole   = errors.New("invalid staff role")
+)
+
 // Auth
 var (
 	ErrUnauthorized     = errors.New("unauthorized")
@@ -93,6 +103,13 @@ var (
 var (
 	ErrTenantNotFound = errors.New("tenant not found")
 	ErrTenantMismatch = errors.New("resource does not belong to the request tenant")
+	// ErrOrganizationSuspended / ErrBranchSuspended are returned when a guest
+	// tries to ENTER a tenant whose lifecycle status is not "active" (suspended
+	// or archived) — create a session, join one, or resolve a table QR. They are
+	// never raised against a session already in progress: suspension is a
+	// billing and compliance action, not an emergency stop.
+	ErrOrganizationSuspended = errors.New("this restaurant is not currently accepting new guests")
+	ErrBranchSuspended       = errors.New("this location is not currently accepting new guests")
 )
 
 // Subscriptions / Plans

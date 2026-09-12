@@ -89,6 +89,15 @@ func (p *Publisher) SessionCreated(ctx context.Context, sessionID uuid.UUID, pay
 	p.publish(ctx, ws.EventSessionCreated, sessionID, payload)
 }
 
+// SessionReactivated announces an awaiting_reactivation → active transition.
+// Note the client that most needs this is, by definition, the one that lost its
+// socket, so the event cannot be the only fix — the snapshot reconcile clears
+// the same flag for the disconnected client. This event serves the OTHER devices
+// at the table, which are live and would otherwise keep showing the paused state.
+func (p *Publisher) SessionReactivated(ctx context.Context, sessionID uuid.UUID, payload any) {
+	p.publish(ctx, ws.EventSessionReactivated, sessionID, payload)
+}
+
 func (p *Publisher) ParticipantJoined(ctx context.Context, sessionID uuid.UUID, payload any) {
 	p.publish(ctx, ws.EventParticipantJoined, sessionID, payload)
 }

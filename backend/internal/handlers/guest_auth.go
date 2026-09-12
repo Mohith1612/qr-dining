@@ -87,14 +87,28 @@ func guestParticipantID(
 	}
 
 	participant, err := repos.GetSessionParticipantByID(c.Request.Context(), claims.ParticipantID)
-	if err != nil || participant.SessionID != sessionID || participant.CredentialVersion != claims.CredentialVersion {
+	if err != nil || participant.SessionID != sessionID {
+		// The token names a participant that isn't a member of this session.
 		recordGuestTokenFailure("stale_credential")
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential is no longer valid")
 		return 0, false
 	}
+	if participant.CredentialVersion != claims.CredentialVersion {
+		// The credential was rotated out from under this token. Closing a
+		// session rotates every participant's version, so this — not a 410 — is
+		// what a returning guest's stored token hits after the table is closed.
+		// Flagged terminal so the client shows the ended screen instead of
+		// looping on reconnect (L-09 / F-22). The code stays UNAUTHORIZED: it is
+		// part of the published contract.
+		recordGuestTokenFailure("stale_credential")
+		respondErrorWithReason(c, http.StatusUnauthorized, CodeUnauthorized, ReasonCredentialRevoked,
+			"guest credential is no longer valid")
+		return 0, false
+	}
 	if participant.RevokedAt.Valid {
 		recordGuestTokenFailure("revoked")
-		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential has been revoked")
+		respondErrorWithReason(c, http.StatusUnauthorized, CodeUnauthorized, ReasonCredentialRevoked,
+			"guest credential has been revoked")
 		return 0, false
 	}
 

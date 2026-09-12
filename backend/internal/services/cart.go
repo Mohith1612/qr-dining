@@ -36,9 +36,13 @@ type AddItemRequest struct {
 	Note          string
 }
 
+// CartResponse is returned verbatim by GET /sessions/{id}/cart, so its tags are
+// the wire contract. Without them Go exported the field names as `Cart`/`Items`,
+// which contradicted every other response in the API — the same accidental
+// leakage as PlaceOrderResult (F-24, F-26). snake_case, like the rest.
 type CartResponse struct {
-	Cart  sqlc.Cart
-	Items []sqlc.ListCartItemsRow
+	Cart  sqlc.Cart               `json:"cart"`
+	Items []sqlc.ListCartItemsRow `json:"items"`
 }
 
 func (s *CartService) GetCart(ctx context.Context, sessionID uuid.UUID, participantID int64) (CartResponse, error) {
