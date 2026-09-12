@@ -67,8 +67,28 @@ export function recoverGuestCreds(sessionId: string): GuestCreds | null {
   return null
 }
 
-/** Forget the persisted rejoin copy (e.g. once the session has ended). */
+/**
+ * Forget every stored credential for a session: this tab's sessionStorage AND
+ * the localStorage rejoin copy. Call it on each of the three terminal paths —
+ * session close, a revoked-credential 401, and a terminal session — so a bearer
+ * token valid for 12 hours does not outlive the meal on a shared or borrowed
+ * device. Before this was wired up the function had no callers at all, and the
+ * hardening checklist's claim that the frontend clears auth state on those
+ * paths was simply untrue.
+ *
+ * sessionStorage is only cleared when it still belongs to this session, so a
+ * guest who has already moved on to a new table is not logged out of it.
+ */
 export function clearGuestCreds(sessionId: string) {
+  try {
+    if (sessionStorage.getItem("session_id") === sessionId) {
+      sessionStorage.removeItem("session_id")
+      sessionStorage.removeItem("participant_id")
+      sessionStorage.removeItem("guest_access_token")
+    }
+  } catch {
+    /* storage unavailable — nothing to clear */
+  }
   try {
     localStorage.removeItem(LS_PREFIX + sessionId)
   } catch {

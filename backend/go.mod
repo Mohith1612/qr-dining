@@ -2,6 +2,8 @@ module github.com/Mohith1612/qr-dining
 
 go 1.26.0
 
+toolchain go1.26.8
+
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.16

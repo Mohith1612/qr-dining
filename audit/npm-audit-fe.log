@@ -1,0 +1,146 @@
+# npm audit report
+
+@babel/core  <=7.29.0
+@babel/core: Arbitrary File Read via sourceMappingURL Comment - https://github.com/advisories/GHSA-4x5r-pxfx-6jf8
+fix available via `npm audit fix`
+node_modules/@babel/core
+
+@hono/node-server  <1.19.15
+Severity: moderate
+Node.js Adapter for Hono: Path traversal in `serve-static` on Windows via encoded backslash (`%5C`) - https://github.com/advisories/GHSA-frvp-7c67-39w9
+fix available via `npm audit fix`
+node_modules/@hono/node-server
+
+baseline-browser-mapping  >=2.0.0 <2.11.0
+Severity: moderate
+baseline-browser-mapping process termination on invalid input causes denial of service - https://github.com/advisories/GHSA-w5vr-8v7q-w6rv
+fix available via `npm audit fix`
+node_modules/baseline-browser-mapping
+
+body-parser  2.0.0 - 2.2.2
+body-parser vulnerable to denial of service when invalid limit value silently disables size enforcement - https://github.com/advisories/GHSA-v422-hmwv-36x6
+fix available via `npm audit fix`
+node_modules/body-parser
+
+brace-expansion  3.0.0 - 5.0.8
+Severity: high
+brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups - https://github.com/advisories/GHSA-3jxr-9vmj-r5cp
+brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash - https://github.com/advisories/GHSA-mh99-v99m-4gvg
+brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation - https://github.com/advisories/GHSA-rgw5-rvv9-x895
+fix available via `npm audit fix`
+node_modules/@ts-morph/common/node_modules/brace-expansion
+
+browserslist  <=4.28.6
+Severity: high
+Browserslist: Unbounded memory growth (no cache eviction) via distinct query results, leading to eventual OOM - https://github.com/advisories/GHSA-c83g-rgw3-j3cx
+Browserslist: Uncaught crash / prototype write via untrusted browserslist-stats.json custom stats (normalizeStats) - https://github.com/advisories/GHSA-73wf-gq98-2v4g
+fix available via `npm audit fix`
+node_modules/browserslist
+
+fast-uri  3.0.0 - 3.1.5
+Severity: high
+fast-uri vulnerable to host confusion via literal backslash authority delimiter - https://github.com/advisories/GHSA-v2hh-gcrm-f6hx
+fast-uri vulnerable to host confusion via backslash authority introducer - https://github.com/advisories/GHSA-7p8r-x3mc-p8w7
+fast-uri vulnerable to server-side request forgery via malformed IPv6 normalization - https://github.com/advisories/GHSA-f65p-4m7j-42xc
+fast-uri vulnerable to server-side request forgery via repeated hostname percent-decoding - https://github.com/advisories/GHSA-fph4-wmhf-6fwf
+fast-uri vulnerable to host confusion via percent-encoded scheme normalization - https://github.com/advisories/GHSA-jqff-g426-hqxp
+fast-uri vulnerable to host confusion via failed IDN canonicalization - https://github.com/advisories/GHSA-4c8g-83qw-93j6
+fix available via `npm audit fix`
+node_modules/fast-uri
+
+hono  <=4.13.4
+Severity: high
+Hono: IP Restriction bypasses static deny rules for non-canonical IPv6  - https://github.com/advisories/GHSA-xrhx-7g5j-rcj5
+Hono: Cookie helper does not sanitize sameSite and priority, allowing Set-Cookie injection - https://github.com/advisories/GHSA-3hrh-pfw6-9m5x
+Hono: JWT middleware accepts any Authorization scheme, not only Bearer - https://github.com/advisories/GHSA-f577-qrjj-4474
+Hono: app.mount() strips mount prefix using undecoded path, causing incorrect routing for percent-encoded paths - https://github.com/advisories/GHSA-2gcr-mfcq-wcc3
+hono: Body Limit Middleware can be bypassed on AWS Lambda by understating `Content-Length` - https://github.com/advisories/GHSA-rv63-4mwf-qqc2
+hono: Lambda@Edge adapter keeps only the last value of a repeated request header, dropping the rest - https://github.com/advisories/GHSA-wgpf-jwqj-8h8p
+hono: CORS Middleware reflects any Origin with credentials when `origin` defaults to the wildcard - https://github.com/advisories/GHSA-88fw-hqm2-52qc
+hono: Path traversal in `serve-static` on Windows via encoded backslash (`%5C`) - https://github.com/advisories/GHSA-wwfh-h76j-fc44
+hono: AWS Lambda adapter merges multiple `Set-Cookie` headers into one value, dropping cookies on ALB single-header and Lattice - https://github.com/advisories/GHSA-j6c9-x7qj-28xf
+Hono: API Gateway v1 adapter can drop a distinct repeated request header value during de-duplication - https://github.com/advisories/GHSA-xgm2-5f3f-mvvc
+hono/jsx does not isolate context per request, leading to cross-request data disclosure - https://github.com/advisories/GHSA-hvrm-45r6-mjfj
+Hono: Server-Side XSS via JSX Escaping Bypass in cx() Utility - https://github.com/advisories/GHSA-w62v-xxxg-mg59
+Hono: ReDoS in CORS middleware via Access-Control-Request-Headers - https://github.com/advisories/GHSA-8j4g-w8fx-2239
+Hono: `memo()` retains SSR output across requests, leading to cross-user data disclosure - https://github.com/advisories/GHSA-f23p-vx2j-j53r
+Hono: Proxy Helper does not remove response headers listed in the `Connection` header - https://github.com/advisories/GHSA-79qm-7rj5-m7r9
+Hono: Algorithmic Complexity DoS in Language Middleware - https://github.com/advisories/GHSA-54fx-42gc-7vw4
+Hono: Incomplete fix for CVE-2026-39408: `toSSG()` still writes files outside the output directory - https://github.com/advisories/GHSA-gqvv-2mrq-wpjv
+Hono: Unbounded dot-notation nesting in `parseBody()` can cause memory exhaustion - https://github.com/advisories/GHSA-g6gw-c38x-mqfc
+Hono: Query parser reads parameters after the URL fragment, causing cache-key and proxy interpretation differentials - https://github.com/advisories/GHSA-crvj-82cr-hjcx
+fix available via `npm audit fix`
+node_modules/hono
+
+ip-address  <=10.3.0
+Severity: high
+ip-address: Address4 decodes leading-zero octets as decimal while resolvers decode them as octal, allowing SSRF and trust-boundary bypass - https://github.com/advisories/GHSA-mwp4-54f8-5fhr
+ip-address: a CIDR suffix on the parsed address suppresses special-use classification and can bypass SSRF and trust-boundary checks - https://github.com/advisories/GHSA-4xrf-jv44-h6hh
+ip-address: misclassification of IPv4-mapped/NAT64 IPv6 addresses can bypass SSRF and trust-boundary checks - https://github.com/advisories/GHSA-22jq-vg5j-6vgg
+fix available via `npm audit fix`
+node_modules/ip-address
+
+js-yaml  4.0.0 - 4.3.1
+Severity: high
+JS-YAML: Quadratic-complexity DoS in merge key handling via repeated aliases - https://github.com/advisories/GHSA-h67p-54hq-rp68
+js-yaml: YAML merge-key chains can force quadratic CPU consumption - https://github.com/advisories/GHSA-52cp-r559-cp3m
+JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported - https://github.com/advisories/GHSA-5p4m-2wfm-xmqj
+js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources - https://github.com/advisories/GHSA-2883-xcg3-v3hh
+fix available via `npm audit fix`
+node_modules/js-yaml
+
+nanoid  <=3.3.17
+Severity: high
+nanoid: non-secure generators can loop indefinitely with negative size - https://github.com/advisories/GHSA-28wg-ghj8-5hjv
+nanoid: custom generators can loop indefinitely when size is zero - https://github.com/advisories/GHSA-2v37-7h3g-55p8
+fix available via `npm audit fix`
+node_modules/nanoid
+
+next  9.3.4-canary.0 - 16.3.0-preview.10
+Severity: critical
+Next.js: Unauthenticated Remote Code Execution on windows-hosted servers - https://github.com/advisories/GHSA-p293-qw3h-jr36
+Next.js: Unauthenticated Remote Code Execution in Image Optimization API when AVIF files are used - https://github.com/advisories/GHSA-2xp9-vwfh-vxw4
+Depends on vulnerable versions of postcss
+Depends on vulnerable versions of sharp
+fix available via `npm audit fix --force`
+Will install next@15.5.25, which is outside the stated dependency range
+node_modules/next
+
+postcss  <=8.5.22
+Severity: high
+PostCSS has XSS via Unescaped </style> in its CSS Stringify Output - https://github.com/advisories/GHSA-qx2v-qp2m-jg93
+PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments - https://github.com/advisories/GHSA-6g55-p6wh-862q
+PostCSS: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset - https://github.com/advisories/GHSA-fxqj-rqcc-2cmp
+PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure - https://github.com/advisories/GHSA-r28c-9q8g-f849
+fix available via `npm audit fix --force`
+Will install next@15.5.25, which is outside the stated dependency range
+node_modules/next/node_modules/postcss
+node_modules/postcss
+
+postcss-selector-parser  7.1.0 - 7.1.2
+postcss-selector-parser allows denial of service through uncontrolled AST recursion - https://github.com/advisories/GHSA-w9m9-85wc-3x92
+fix available via `npm audit fix`
+node_modules/postcss-selector-parser
+
+qs  2.2.5 - 6.15.3
+Severity: moderate
+qs array-limit bypass via bracket-key comma parsing - https://github.com/advisories/GHSA-x5fp-wj9c-mxmx
+qs: Denial of Service via Attacker Controlled isBuffer - https://github.com/advisories/GHSA-4mjr-xmp4-gh2g
+fix available via `npm audit fix`
+node_modules/qs
+
+sharp  <=0.35.4-rc.0
+Severity: high
+sharp inherited vulnerabilities in libvips: CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591 - https://github.com/advisories/GHSA-f88m-g3jw-g9cj
+sharp: Vulnerabilities in libheif: GHSA-g89c-p67h-r497 and GHSA-2jg2-4ch7-h545 - https://github.com/advisories/GHSA-rgj7-g3m4-5g8c
+fix available via `npm audit fix --force`
+Will install next@15.5.25, which is outside the stated dependency range
+node_modules/sharp
+
+16 vulnerabilities (3 low, 3 moderate, 9 high, 1 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues, run:
+  npm audit fix --force

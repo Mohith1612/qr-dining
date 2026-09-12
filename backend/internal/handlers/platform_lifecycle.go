@@ -15,9 +15,15 @@ import (
 )
 
 // Organization & branch lifecycle (platform-governed). These flip the existing
-// status columns (active|suspended|archived) and emit a platform audit row. No
-// operational path reads these statuses yet — the flip is inert until a future
-// enforcement phase, preserving rollout/soak safety.
+// status columns (active|suspended|archived) and emit a platform audit row.
+//
+// A non-active status is enforced at the three guest ENTRY points — QR resolve,
+// session create, session join (services.TenantStatusGate) — and at staff login
+// (services/staff.go createSession). It is deliberately NOT enforced against a
+// session already in progress: suspension is a billing and compliance action,
+// so a party mid-meal orders, pays and leaves normally.
+//
+// Each flip invalidates the entry gate's cache so it takes effect at once.
 
 // SuspendOrganization sets an organization's status to suspended.
 // POST /platform/organizations/:org_id/suspend — super_admin.
@@ -49,6 +55,7 @@ func (h *PlatformHandler) setOrganizationStatus(c *gin.Context, status, action s
 		respondInternalError(c)
 		return
 	}
+	h.invalidateTenantStatus(c)
 	h.logPlatformAudit(c, session.PlatformUserID, action, "organization", strconv.FormatInt(org.ID, 10), org.ID, 0, 0, gin.H{"status": status})
 	c.JSON(http.StatusOK, organizationResponse(org))
 }
@@ -83,6 +90,7 @@ func (h *PlatformHandler) setBranchStatus(c *gin.Context, status, action string)
 		respondInternalError(c)
 		return
 	}
+	h.invalidateTenantStatus(c)
 	h.logPlatformAudit(c, session.PlatformUserID, action, "branch", strconv.FormatInt(branch.ID, 10), branch.OrganizationID, branch.ID, 0, gin.H{"status": status})
 	c.JSON(http.StatusOK, platformBranchResponse(branch))
 }

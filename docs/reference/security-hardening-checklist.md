@@ -123,8 +123,25 @@ Rate limiters MUST fail closed (deny) when the rate-limit backend (Redis) is una
 
 - [ ] Move staff token off localStorage. Use `HttpOnly; Secure; SameSite=Lax` cookie scoped to `/staff` path. **OWNER + DATE REQUIRED.**
 - [ ] Guest token may remain in `sessionStorage` (tab-scoped, cleared on close), but never `localStorage`. **CONFIRM.**
+  **Deviation, open.** `lib/guest-session.ts` mirrors the guest bearer to
+  `localStorage` under `guest_creds:<session-uuid>`. It is the rejoin slot that
+  lets a guest reopen a `/session/<id>` link in a fresh tab and resume their own
+  participant identity instead of being bounced to the landing page and joining
+  as a duplicate (F-1). The exposure is now bounded — the entry is cleared on
+  session close, on a revoked-credential 401 and on a terminal session, so it no
+  longer survives the meal by up to the token's 12h TTL — but it is still a
+  `localStorage` bearer and this line still says never. **This item is unchecked
+  and marked CONFIRM: it is an undecided question, not a settled rule, and needs
+  an owner to either accept the deviation or fund the alternative (a short-lived
+  server-side rejoin handle keyed by the session id).**
 - [ ] No long-lived auth state in IndexedDB.
-- [ ] Frontend explicitly clears auth state on logout, on `revoked_credential` 401, and on session terminal 410.
+- [x] Frontend explicitly clears auth state on logout, on `revoked_credential` 401, and on session terminal 410.
+  Implemented via `clearGuestCreds` (clears both `sessionStorage` and the
+  `localStorage` mirror), called from the single terminal path in
+  `providers/SessionProvider.tsx`. Terminal covers: snapshot reports a terminal
+  status, 410 `SESSION_ENDED`, a 401 carrying `reason: "credential_revoked"`,
+  and a `SESSION_CLOSED` event. Until 2026-09-12 this line was simply untrue —
+  `clearGuestCreds` had no callers at all.
 
 ## 8. CSRF Posture
 

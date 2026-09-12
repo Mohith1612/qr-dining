@@ -1,0 +1,357 @@
+[gosec] 2026/09/10 22:35:26 Including rules: default
+[gosec] 2026/09/10 22:35:26 Excluding rules: default
+[gosec] 2026/09/10 22:35:26 Including analyzers: default
+[gosec] 2026/09/10 22:35:26 Excluding analyzers: default
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/repository
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/handlers
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/redis
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/services
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/testutil
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/cmd/server
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/auth
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/audit
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/middleware
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/cmd/bootstrap-admin
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/events
+[gosec] 2026/09/10 22:35:26 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/observability
+[gosec] 2026/09/10 22:35:27 Checking package: auth
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/auth/guest.go
+[gosec] 2026/09/10 22:35:27 Import directory: /home/mohith/Development/projects/qr-dining/backend/migrations
+[gosec] 2026/09/10 22:35:27 Checking package: migrations
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/migrations/embed.go
+[gosec] 2026/09/10 22:35:27 Import directory: /home/mohith/Development/projects/qr-dining/backend/scripts/loadtest
+[gosec] 2026/09/10 22:35:27 Checking package: audit
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/audit/event.go
+[gosec] 2026/09/10 22:35:27 Checking package: observability
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/observability/doc.go
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/observability/logger.go
+[gosec] 2026/09/10 22:35:27 Checking package: events
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/observability/metrics.go
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/events/doc.go
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/events/events.go
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/audit/middleware.go
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/audit/redaction.go
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/audit/writer.go
+[gosec] 2026/09/10 22:35:27 Import directory: /home/mohith/Development/projects/qr-dining/backend/scripts
+[gosec] 2026/09/10 22:35:27 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/authz
+[gosec] 2026/09/10 22:35:27 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/config
+[gosec] 2026/09/10 22:35:27 Checking package: testutil
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/testutil/db.go
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/testutil/fixtures.go
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/testutil/repos.go
+[gosec] 2026/09/10 22:35:27 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/crypto
+[gosec] 2026/09/10 22:35:27 Checking package: main
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/cmd/bootstrap-admin/main.go
+[gosec] 2026/09/10 22:35:27 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/db
+[gosec] 2026/09/10 22:35:27 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/observability/tracing.go
+[gosec] 2026/09/10 22:35:28 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/storage
+[gosec] 2026/09/10 22:35:28 Checking package: redis
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/redis/cache.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/redis/client.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/redis/doc.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/redis/lockout.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/redis/presence.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/redis/pubsub.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/redis/ratelimit.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/redis/ws_ticket.go
+[gosec] 2026/09/10 22:35:28 Checking package: main
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/scripts/loadtest/main.go
+[gosec] 2026/09/10 22:35:28 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc
+[gosec] 2026/09/10 22:35:28 Checking package: crypto
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/crypto/aesgcm.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/crypto/token.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/crypto/totp.go
+[gosec] 2026/09/10 22:35:28 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/domain
+[gosec] 2026/09/10 22:35:28 Checking package: config
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/config/config.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/config/doc.go
+[gosec] 2026/09/10 22:35:28 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/server
+[gosec] 2026/09/10 22:35:28 Checking package: authz
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/authz/action.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/authz/actor.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/authz/ownership.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/authz/policy.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/authz/resource.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/authz/scope.go
+[gosec] 2026/09/10 22:35:28 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/websocket
+[gosec] 2026/09/10 22:35:28 Checking package: middleware
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/branch_guard.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/cors.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/doc.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/logger.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/maxbodysize.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/metrics.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/platform_auth.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/ratelimit.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/recover.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/requestid.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/security_headers.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/staff_auth.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/middleware/tenant.go
+[gosec] 2026/09/10 22:35:28 Import directory: /home/mohith/Development/projects/qr-dining/backend/internal/worker
+[gosec] 2026/09/10 22:35:28 Import directory: /home/mohith/Development/projects/qr-dining/backend/cmd/migrate
+[gosec] 2026/09/10 22:35:28 Checking package: repository
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/analytics.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/assistance.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/audit_log.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/billing.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/cart.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/collateral.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/customer.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/doc.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/enforcement_observability.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/entitlement.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/event_log.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/flag.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/idempotency.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/loyalty.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/menu.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/order.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/organization.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/participant.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/payment.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/platform.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/platform_analytics.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/platform_mfa.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/promo.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/repos.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/restaurant.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/session.go
+[gosec] 2026/09/10 22:35:28 Checking package: main
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/cmd/server/main.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/staff.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/cmd/server/worker_adapter.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/staff_analytics.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/subscription.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/support_search.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/table.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/theme.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/repository/worker.go
+[gosec] 2026/09/10 22:35:28 Checking package: domain
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/domain/doc.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/domain/errors.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/domain/statemachine.go
+[gosec] 2026/09/10 22:35:28 Checking package: storage
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/storage/r2.go
+[gosec] 2026/09/10 22:35:28 Checking package: db
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/db/doc.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/db/migrations.go
+[gosec] 2026/09/10 22:35:28 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/db/pool.go
+[gosec] 2026/09/10 22:35:29 Checking package: main
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/cmd/migrate/main.go
+[gosec] 2026/09/10 22:35:29 Checking package: services
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/analytics.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/assistance.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/billing.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/cart.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/collateral.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/customer.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/doc.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/enforcement_observability.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/entitlement.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/feature_gate.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/flag.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/loyalty.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/menu.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/operational_ids.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/order.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/participant.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/payment.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/platform.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/platform_analytics.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/platform_mfa.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/promo.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/session.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/staff.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/staff_analytics.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/subscription.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/support.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/services/theme.go
+[gosec] 2026/09/10 22:35:29 Checking package: websocket
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/websocket/client.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/websocket/doc.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/websocket/hub.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/websocket/message.go
+[gosec] 2026/09/10 22:35:29 Checking package: handlers
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/analytics.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/assistance.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/audit_log.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/authz.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/billing.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/branches.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/cart.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/customer.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/doc.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/errors.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/event_log.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/guest_auth.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/health.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/helpers.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/legacy_metrics.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/loyalty.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/menu.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/menu_admin.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/order.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/organization.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/payment.go
+[gosec] 2026/09/10 22:35:29 Checking package: worker
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/worker/doc.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/worker/worker.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/platform.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/platform_analytics.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/platform_billing.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/platform_collateral.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/platform_entitlements.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/platform_flags.go
+[gosec] 2026/09/10 22:35:29 Checking package: sqlc
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/analytics.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/assistance.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/audit_log.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/billing.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/carts.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/collateral.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/customers.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/db.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/doc.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/enforcement_observability.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/entitlements.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/event_log.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/flags.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/idempotency.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/loyalty.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/menu.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/models.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/orders.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/organizations.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/participants.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/payments.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/platform.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/platform_analytics.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/platform_mfa.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/promos.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/querier.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/restaurants.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/sessions.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/staff.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/staff_analytics.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/subscriptions.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/theme.sql.go
+[gosec] 2026/09/10 22:35:29 Ignoring generated file: /home/mohith/Development/projects/qr-dining/backend/internal/db/sqlc/workers.sql.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/platform_lifecycle.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/platform_observability.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/platform_support.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/platform_theme.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/promo.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/session.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/snapshot.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/staff.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/staff_analytics.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/subscription.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/tables.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/tenant.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/upload.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/handlers/ws.go
+[gosec] 2026/09/10 22:35:29 Checking package: server
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/server/doc.go
+[gosec] 2026/09/10 22:35:29 Checking file: /home/mohith/Development/projects/qr-dining/backend/internal/server/server.go
+Results:
+
+
+[[97;41m/home/mohith/Development/projects/qr-dining/backend/internal/crypto/totp.go:79[0m] - G115 (CWE-190): integer overflow conversion int64 -> uint64 (Confidence: MEDIUM, Severity: HIGH)
+    78: 	var buf [8]byte
+  > 79: 	binary.BigEndian.PutUint64(buf[:], uint64(counter))
+    80: 	mac := hmac.New(sha1.New, key)
+
+Autofix: 
+
+[[97;41m/home/mohith/Development/projects/qr-dining/backend/internal/config/config.go:186[0m] - G115 (CWE-190): integer overflow conversion int -> int32 (Confidence: MEDIUM, Severity: HIGH)
+    185: 	}
+  > 186: 	cfg.DB.MinConns = int32(minConns)
+    187: 
+
+Autofix: 
+
+[[97;41m/home/mohith/Development/projects/qr-dining/backend/internal/config/config.go:180[0m] - G115 (CWE-190): integer overflow conversion int -> int32 (Confidence: MEDIUM, Severity: HIGH)
+    179: 	}
+  > 180: 	cfg.DB.MaxConns = int32(maxConns)
+    181: 
+
+Autofix: 
+
+[[97;41m/home/mohith/Development/projects/qr-dining/backend/scripts/loadtest/main.go:130[0m] - G404 (CWE-338): Use of weak random number generator (math/rand or math/rand/v2 instead of crypto/rand) (Confidence: MEDIUM, Severity: HIGH)
+    129: 			defer wg.Done()
+  > 130: 			rng := rand.New(rand.NewSource(int64(seed) + time.Now().UnixNano()))
+    131: 			for ctx.Err() == nil {
+
+Autofix: 
+
+[[97;41m/home/mohith/Development/projects/qr-dining/backend/internal/services/staff.go:30[0m] - G101 (CWE-798): Potential hardcoded credentials (Confidence: LOW, Severity: HIGH)
+    29: 	staffTokenPrefix = "staff:token:"
+  > 30: 	staffTokenSetFmt = "staff:tokens:%d" // set of active token keys per staff ID
+    31: )
+
+Autofix: 
+
+[[97;41m/home/mohith/Development/projects/qr-dining/backend/internal/handlers/errors.go:26[0m] - G101 (CWE-798): Potential hardcoded credentials (Confidence: LOW, Severity: HIGH)
+    25: 	CodePaymentAmountInvalid     = "PAYMENT_AMOUNT_INVALID"
+  > 26: 	CodeCredentialRevoked        = "CREDENTIAL_REVOKED"
+    27: 	CodeRateLimiterUnavailable   = "RATE_LIMITER_UNAVAILABLE"
+
+Autofix: 
+
+[[97;41m/home/mohith/Development/projects/qr-dining/backend/internal/config/config.go:123[0m] - G101 (CWE-798): Potential hardcoded credentials (Confidence: LOW, Severity: HIGH)
+    122: 	// Release mode refuses to start while this value is in use.
+  > 123: 	devGuestTokenSecret = "dev-only-guest-token-secret"
+    124: 	// minGuestTokenSecretLen is the minimum acceptable HMAC secret length in release mode.
+
+Autofix: 
+
+[[97;41m/home/mohith/Development/projects/qr-dining/backend/internal/audit/event.go:84[0m] - G101 (CWE-798): Potential hardcoded credentials (Confidence: LOW, Severity: HIGH)
+    83: 	ActionSessionAbandon           = "session.abandon"
+  > 84: 	ActionQRTokenRotate            = "qr_token.rotate"
+    85: 	ActionTableUpdate              = "table.update"
+
+Autofix: 
+
+[[30;43m/home/mohith/Development/projects/qr-dining/backend/internal/crypto/totp.go:6[0m] - G505 (CWE-327): Blocklisted import crypto/sha1: weak cryptographic primitive (Confidence: HIGH, Severity: MEDIUM)
+    5: 	"crypto/rand"
+  > 6: 	"crypto/sha1"
+    7: 	"encoding/base32"
+
+Autofix: 
+
+[[37;40m/home/mohith/Development/projects/qr-dining/backend/internal/websocket/client.go:172[0m] - G104 (CWE-703): Errors unhandled (Confidence: HIGH, Severity: LOW)
+    171: 		ticker.Stop()
+  > 172: 		c.conn.Close()
+    173: 	}()
+
+Autofix: 
+
+[[37;40m/home/mohith/Development/projects/qr-dining/backend/internal/websocket/client.go:95[0m] - G104 (CWE-703): Errors unhandled (Confidence: HIGH, Severity: LOW)
+    94: 		c.hub.unregister <- c
+  > 95: 		c.conn.Close()
+    96: 	}()
+
+Autofix: 
+
+[[37;40m/home/mohith/Development/projects/qr-dining/backend/internal/redis/pubsub.go:59[0m] - G104 (CWE-703): Errors unhandled (Confidence: HIGH, Severity: LOW)
+    58: 	defer func() {
+  > 59: 		sub.Close()
+    60: 		ps.metrics.RedisPubSubConnected.Set(0)
+
+Autofix: 
+
+[[37;40m/home/mohith/Development/projects/qr-dining/backend/cmd/server/main.go:28[0m] - G104 (CWE-703): Errors unhandled (Confidence: HIGH, Severity: LOW)
+    27: 		// zerolog not yet initialized — use plain stderr.
+  > 28: 		os.Stderr.WriteString("fatal: load config: " + err.Error() + "\n")
+    29: 		os.Exit(1)
+
+Autofix: 
+
+[1;36mSummary:[0m
+  Gosec  : dev
+  Files  : 169
+  Lines  : 27657
+  Nosec  : 0
+  Issues : [1;31m13[0m
+

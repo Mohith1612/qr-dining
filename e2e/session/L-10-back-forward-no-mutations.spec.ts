@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test"
 import { seedOrg, createSession, fetchSnapshot } from "../helpers/api"
 
 test.describe("L-10: Browser back/forward without spurious mutations", () => {
-  test("navigating back and forward does not create duplicate orders", async ({ page }) => {
+  // VACUOUS(sig-5): never creates or counts an order; passes when navigation duplicates order mutations.
+  test.fixme("navigating back and forward does not create duplicate orders", async ({ page }) => {
     const { table, menu } = await seedOrg("l10")
     const created = await createSession(table.id, "NavUser")
     const sessionId = created.session.id

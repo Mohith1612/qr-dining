@@ -55,9 +55,14 @@ type PlaceOrderRequest struct {
 	// initiation (the discount lands in the immutable bill snapshot).
 }
 
+// PlaceOrderResult is returned verbatim by POST /sessions/{id}/orders, so its
+// tags are the wire contract. The nesting is deliberate — the caller needs the
+// order and its line items together — but without tags Go exported the field
+// names as `Order`/`OrderItems`, which contradicted openapi.yaml and every other
+// response in the API. snake_case per the documented schema.
 type PlaceOrderResult struct {
-	Order      sqlc.Order
-	OrderItems []sqlc.OrderItem
+	Order      sqlc.Order       `json:"order"`
+	OrderItems []sqlc.OrderItem `json:"order_items"`
 }
 
 // PlaceOrder creates a new order with idempotency protection.

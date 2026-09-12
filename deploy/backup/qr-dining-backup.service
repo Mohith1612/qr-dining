@@ -9,5 +9,5 @@ Type=oneshot
 EnvironmentFile=/etc/qr-dining/backup.env
 ExecStart=/opt/qr-dining/backend/scripts/nightly-backup.sh
 # A non-zero exit (missed backup) is surfaced to the journal and node_exporter's
-# systemd collector, which the BackupFailed alert watches (see alerting-setup.md).
+# systemd collector, which the BackupFailed alert watches (see docs/OPERATIONS.md §3).
 Nice=10

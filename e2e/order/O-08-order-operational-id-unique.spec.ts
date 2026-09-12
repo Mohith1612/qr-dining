@@ -4,7 +4,8 @@ import { seedOrg, createSession } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("O-08: Order operational ID is unique per session", () => {
-  test("two orders in the same session have distinct operational IDs", async () => {
+  // VACUOUS(sig-2): uniqueness is asserted only when optional fallback fields exist; passes when both are absent.
+  test.fixme("two orders in the same session have distinct operational IDs", async () => {
     const { table, menu } = await seedOrg("o08")
     const created = await createSession(table.id, "OpIDGuest")
     const sessionId = created.session.id

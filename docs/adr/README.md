@@ -6,6 +6,7 @@ One file per significant, hard-to-reverse decision: the context, the choice, and
 |---|---|---|---|
 | [0001](0001-signoz-adoption.md) | Adopt self-hosted SigNoz (Community Edition) for distributed tracing alongside the existing Prometheus stack | 2026-08-03 | Accepted — implemented, gated on `OTEL_ENABLED` |
 | [0002](0002-r3-policy-decisions.md) | Ratify the three central-authz policy semantics that gate rollout wave R3 | 2026-05-29 | Accepted — all three ratified existing behaviour; R3 remains in shadow |
+| [0003](0003-tenant-suspension-enforcement.md) | Enforce organization/branch suspension at guest entry only, leaving live sessions to finish | 2026-09-12 | Accepted — implemented, unflagged; one gap open (staff login lockout) |
 
 ## Notes on the current records
 

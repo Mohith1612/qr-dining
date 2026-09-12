@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test"
 import { seedOrg, createSession, forceCloseSession, fetchAudit } from "../helpers/api"
 
 test.describe("A-01: Session lifecycle events appear in audit log", () => {
-  test("session creation and close are audit-logged", async () => {
+  // VACUOUS(sig-1): audit fetch failures become an empty array; passes if the audit endpoint errors.
+  test.fixme("session creation and close are audit-logged", async () => {
     const { table } = await seedOrg("a01")
     const created = await createSession(table.id, "AuditGuest")
     const sessionId = created.session.id

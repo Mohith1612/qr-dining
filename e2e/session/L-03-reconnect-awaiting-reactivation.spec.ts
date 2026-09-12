@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession, fetchSnapshot } from "../helpers/api"
 
 test.describe("L-03: Reconnect during awaiting_reactivation", () => {
-  test("ws-ticket issuance succeeds on active session", async () => {
+  // VACUOUS(sig-6): fixture creates only an active session; never tests reconnect during awaiting_reactivation.
+  test.fixme("ws-ticket issuance succeeds on active session", async () => {
     const { table } = await seedOrg("l03")
     const created = await createSession(table.id, "ReconnUser")
     const sessionId = created.session.id
@@ -25,7 +26,8 @@ test.describe("L-03: Reconnect during awaiting_reactivation", () => {
     expect(expires_in).toBeGreaterThan(0)
   })
 
-  test("snapshot returns correct session data with missed_events field", async () => {
+  // VACUOUS(sig-6): fixture creates only an active session; never reaches the awaiting_reactivation state in the suite title.
+  test.fixme("snapshot returns correct session data with missed_events field", async () => {
     const { table } = await seedOrg("l03b")
     const created = await createSession(table.id, "SnapUser")
     const sessionId = created.session.id

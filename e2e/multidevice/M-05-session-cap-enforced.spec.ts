@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession } from "../helpers/api"
 
 test.describe("M-05: Session participant cap enforced", () => {
-  test("joining beyond the participant cap returns 409 or 422", async () => {
+  // VACUOUS(sig-2): the no-cap path asserts only that a boolean is boolean; passes when every join succeeds.
+  test.fixme("joining beyond the participant cap returns 409 or 422", async () => {
     const { table } = await seedOrg("m05")
     const host = await createSession(table.id, "Host")
     const sessionId = host.session.id

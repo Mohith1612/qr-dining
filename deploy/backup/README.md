@@ -25,7 +25,7 @@ pg_dump (custom format, --compress=9)
 ```
 
 The script exits non-zero on any failure so the scheduler/alerting detects a
-missed backup (see `alerting-setup.md`, `BackupFailed`).
+missed backup (see `docs/OPERATIONS.md` §3, `BackupFailed`).
 
 ## Bucket layout
 

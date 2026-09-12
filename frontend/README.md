@@ -1,36 +1,24 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# frontend
 
-## Getting Started
+The QR Dining web app: Next.js (App Router) + TypeScript, deployed as an OpenNext Cloudflare Worker.
 
-First, run the development server:
+Three route groups under `app/` — `(guest)`, `(staff)`, `(platform)` — plus a public `pricing` page and a tenant-resolving `middleware.ts`.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev          # http://localhost:3000
+npm run lint
+npm run typecheck
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Point it at a backend with `NEXT_PUBLIC_API_BASE`. It must equal the API origin **exactly**, or the CSP blocks API and WebSocket calls.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+A `prebuild` guard refuses production builds that target localhost or plain HTTP. Set `ALLOW_LOCALHOST_BUILD=true` for a local production build — this is what CI does.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Do not run `build:cf` or `deploy:cf` while `next dev` is serving this checkout: the production build rewrites `.next/` underneath the dev server and corrupts it.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Setup, commands and conventions: [../docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)
+- Cloudflare deployment: [../docs/DEPLOYMENT.md §7](../docs/DEPLOYMENT.md#7-frontend-cloudflare)
+- Product analytics: [docs/product-analytics.md](docs/product-analytics.md)
+- Realtime client contract: [../docs/reference/reconnect-guide.md](../docs/reference/reconnect-guide.md) and [../docs/reference/websocket-events.md](../docs/reference/websocket-events.md)

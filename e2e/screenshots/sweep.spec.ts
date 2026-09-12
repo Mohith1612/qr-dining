@@ -17,6 +17,7 @@ function viewportLabel(width: number): string {
 }
 
 test.describe("Screenshot sweep — all viewports and roles", () => {
+  // ARTIFACT: produces screenshots; no assertion can fail on a broken UI. Not coverage.
   test("guest flow: QR landing → session → menu → cart → payment", async ({ page, viewport }) => {
     const vp = viewportLabel(viewport?.width ?? 1280)
     const dir = screenshotDir(vp, "guest")
@@ -46,6 +47,7 @@ test.describe("Screenshot sweep — all viewports and roles", () => {
     await page.screenshot({ path: path.join(dir, "05-payment.png"), fullPage: true })
   })
 
+  // ARTIFACT: produces screenshots; no assertion can fail on a broken UI. Not coverage.
   test("staff flow: login → dashboard", async ({ page, viewport }) => {
     const vp = viewportLabel(viewport?.width ?? 1280)
     const dir = screenshotDir(vp, "staff")
@@ -56,35 +58,38 @@ test.describe("Screenshot sweep — all viewports and roles", () => {
 
     const { branch, staff } = await seedOrg(`sweep-staff-${vp}-${Date.now()}`)
 
-    await page.fill("input[name='branchCode'], input[placeholder*='ranch']", branch.code).catch(() => {})
-    await page.fill("input[name='staffCode'], input[placeholder*='taff']", staff.staffCode).catch(() => {})
-    await page.fill("input[name='pin'], input[type='password']", staff.pin).catch(() => {})
+    await page.getByPlaceholder("main-restaurant").fill(branch.code)
+    await page.getByPlaceholder("your-staff-code").fill(staff.staffCode)
+    await page.getByLabel("PIN").fill(staff.pin)
     await page.screenshot({ path: path.join(dir, "02-staff-login-filled.png"), fullPage: true })
   })
 
+  // ARTIFACT: produces screenshots; no assertion can fail on a broken UI. Not coverage.
   test("session ended screen", async ({ page, viewport }) => {
     const vp = viewportLabel(viewport?.width ?? 1280)
     const dir = screenshotDir(vp, "guest")
 
-    const { table } = await seedOrg(`sweep-closed-${vp}-${Date.now()}`)
+    const { table, owner } = await seedOrg(`sweep-closed-${vp}-${Date.now()}`)
     const created = await createSession(table.id, "ClosedGuest")
     const sessionId = created.session.id
 
     // Force close via API
-    await fetch(`${API_URL}/platform/sessions/${sessionId}/force-close`, {
+    const closeRes = await fetch(`${API_URL}/sessions/${sessionId}/force-close`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.E2E_ADMIN_TOKEN ?? "e2e-admin-secret"}`,
+        "Authorization": `Bearer ${owner.token}`,
       },
       body: JSON.stringify({ reason: "screenshot_sweep" }),
     })
+    expect(closeRes.status).toBe(200)
 
     await page.goto(`${BASE_URL}/session/${sessionId}`)
     await page.waitForTimeout(1500)
     await page.screenshot({ path: path.join(dir, "06-session-ended.png"), fullPage: true })
   })
 
+  // ARTIFACT: produces screenshots; no assertion can fail on a broken UI. Not coverage.
   test("payment pending screen", async ({ page, viewport }) => {
     const vp = viewportLabel(viewport?.width ?? 1280)
     const dir = screenshotDir(vp, "guest")
@@ -114,6 +119,7 @@ test.describe("Screenshot sweep — all viewports and roles", () => {
     await page.screenshot({ path: path.join(dir, "07-payment-pending.png"), fullPage: true })
   })
 
+  // ARTIFACT: produces screenshots; no assertion can fail on a broken UI. Not coverage.
   test("platform admin login page", async ({ page, viewport }) => {
     const vp = viewportLabel(viewport?.width ?? 1280)
     const dir = screenshotDir(vp, "platform-admin")

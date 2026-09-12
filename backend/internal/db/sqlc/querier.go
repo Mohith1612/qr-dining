@@ -315,7 +315,7 @@ type Querier interface {
 	SetParticipantHostFlags(ctx context.Context, arg SetParticipantHostFlagsParams) error
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
 	SettlePaymentByStaff(ctx context.Context, arg SettlePaymentByStaffParams) (Payment, error)
-	SumCompletedPaymentsForSession(ctx context.Context, sessionID uuid.UUID) (pgtype.Numeric, error)
+	SumCompletedPaymentsForBillSnapshot(ctx context.Context, arg SumCompletedPaymentsForBillSnapshotParams) (pgtype.Numeric, error)
 	TouchPlatformMFAUse(ctx context.Context, platformUserID int64) error
 	TouchPlatformSession(ctx context.Context, id uuid.UUID) error
 	TouchStaffSession(ctx context.Context, id uuid.UUID) error

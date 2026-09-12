@@ -3,9 +3,11 @@ import { API_URL } from "../playwright.config"
 import { placeWebhook } from "../helpers/api"
 import crypto from "crypto"
 
-test.describe("P-03: Webhook replay idempotency", () => {
-  test("sending same signed webhook 3 times processes once", async () => {
-    const secret = process.env.WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
+// UNIMPLEMENTED/OUT OF SCOPE (P5): there is no merchant provider settlement integration.
+test.describe.skip("P-03: Webhook replay idempotency", () => {
+  // VACUOUS(sig-3): accepts success and multiple failure statuses; passes when no webhook is processed.
+  test.fixme("sending same signed webhook 3 times processes once", async () => {
+    const secret = process.env.PAYMENT_WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
     const externalEventId = crypto.randomUUID()
     const event = {
       id: externalEventId,

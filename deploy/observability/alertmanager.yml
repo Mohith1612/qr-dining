@@ -28,7 +28,7 @@ receivers:
   - name: default
     webhook_configs:
       # >>> THE go-live line. Replace with the real notification endpoint. <<<
-      # (Local verification runs point this at a throwaway sink — alerting-setup.md.)
+      # (Local verification runs point this at a throwaway sink — docs/OPERATIONS.md §3.)
       - url: &notify_url "http://CHANGEME-notify-endpoint:5001/alerts"
         send_resolved: true
 

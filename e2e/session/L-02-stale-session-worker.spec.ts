@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test"
 import { seedOrg, createSession, fetchSnapshot, fetchSessionDB } from "../helpers/api"
 
 test.describe("L-02: Stale session worker abandons and releases table", () => {
-  test("session with no activity eventually reaches terminal state", async () => {
+  // VACUOUS(sig-6): fixture never ages the session or runs the stale worker; passes when cleanup never occurs.
+  test.fixme("session with no activity eventually reaches terminal state", async () => {
     const { table } = await seedOrg("l02")
     const created = await createSession(table.id, "StaleUser")
     const sessionId = created.session.id

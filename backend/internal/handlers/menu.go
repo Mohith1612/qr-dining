@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
+	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 )
@@ -40,7 +42,17 @@ func (h *MenuHandler) GetTableByQR(c *gin.Context) {
 
 	resp, err := h.svc.GetTableWithActiveSession(c.Request.Context(), token)
 	if err != nil {
-		respondError(c, http.StatusNotFound, CodeSessionNotFound, "table not found")
+		// A suspended tenant must not read as "table not found": the guest is at
+		// a real table and needs to know the restaurant isn't serving, not that
+		// their QR code is broken.
+		switch {
+		case errors.Is(err, domain.ErrOrganizationSuspended):
+			respondError(c, http.StatusForbidden, CodeOrganizationSuspended, err.Error())
+		case errors.Is(err, domain.ErrBranchSuspended):
+			respondError(c, http.StatusForbidden, CodeBranchSuspended, err.Error())
+		default:
+			respondError(c, http.StatusNotFound, CodeSessionNotFound, "table not found")
+		}
 		return
 	}
 	c.JSON(http.StatusOK, resp)

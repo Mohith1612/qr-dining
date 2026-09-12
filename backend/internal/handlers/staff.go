@@ -179,8 +179,26 @@ func (h *StaffHandler) CreateStaff(c *gin.Context) {
 	}
 
 	role := sqlc.StaffRole(req.Role)
+	if !staffRoleIn(role, sqlc.StaffRoleOwner, sqlc.StaffRoleManager, sqlc.StaffRoleWaiter, sqlc.StaffRoleKitchen) {
+		// An unrecognised role used to reach the staff_role enum and come back
+		// as a Postgres cast failure, which this handler reported as a 500.
+		respondValidationError(c, "role must be one of: owner, manager, waiter, kitchen")
+		return
+	}
 	staff, err := h.svc.CreateStaff(c.Request.Context(), branchID, role, req.Name, req.StaffCode, req.PIN)
 	if err != nil {
+		// A staff_code collision is the manager choosing a code that is already
+		// taken on this branch — a conflict with existing state, not a server
+		// fault. 409 (not 422) for the same reason DUPLICATE_TABLE_IDENTIFIER is
+		// 409: the payload is perfectly processable, it just loses a race with a
+		// row that already exists, and retrying with a different code succeeds.
+		// Reporting 500 here told the manager to call support and told alerting
+		// the service was down.
+		if errors.Is(err, domain.ErrDuplicateStaffCode) {
+			respondError(c, http.StatusConflict, CodeDuplicateStaffCode,
+				"that staff code is already in use at this branch")
+			return
+		}
 		respondInternalError(c)
 		return
 	}

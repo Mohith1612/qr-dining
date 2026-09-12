@@ -363,14 +363,23 @@ func (h *SessionHandler) IssueWSTicket(c *gin.Context) {
 		sessionError(c, err)
 		return
 	}
-	if sess.Status != sqlc.SessionStatusActive {
+	// payment_pending holds a socket too — see sessionServesRealtime. A guest
+	// watching their bill settle is exactly who needs live updates.
+	if !sessionServesRealtime(sess.Status) {
 		sessionError(c, domain.ErrSessionClosed)
 		return
 	}
 
 	participant, err := h.repos.GetSessionParticipantByID(c.Request.Context(), claims.ParticipantID)
-	if err != nil || participant.SessionID != id || participant.CredentialVersion != claims.CredentialVersion {
+	if err != nil || participant.SessionID != id {
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential is no longer valid")
+		return
+	}
+	if participant.CredentialVersion != claims.CredentialVersion {
+		// Terminal: the credential was rotated (a session close does this). Tell
+		// the client so it stops retrying the ticket endpoint (F-22 / F-07).
+		respondErrorWithReason(c, http.StatusUnauthorized, CodeUnauthorized, ReasonCredentialRevoked,
+			"guest credential is no longer valid")
 		return
 	}
 
@@ -426,6 +435,10 @@ func sessionError(c *gin.Context, err error) {
 		respondError(c, http.StatusConflict, CodeSessionClosed, err.Error())
 	case errors.Is(err, domain.ErrSessionAlreadyActive):
 		respondError(c, http.StatusConflict, CodeSessionAlreadyActive, err.Error())
+	case errors.Is(err, domain.ErrOrganizationSuspended):
+		respondError(c, http.StatusForbidden, CodeOrganizationSuspended, err.Error())
+	case errors.Is(err, domain.ErrBranchSuspended):
+		respondError(c, http.StatusForbidden, CodeBranchSuspended, err.Error())
 	case errors.Is(err, domain.ErrNotSessionHost):
 		respondError(c, http.StatusForbidden, CodeNotSessionHost, err.Error())
 	case errors.Is(err, domain.ErrHostTransferDuringPayment):

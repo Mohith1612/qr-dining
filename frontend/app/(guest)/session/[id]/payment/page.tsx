@@ -58,6 +58,7 @@ export default function PaymentPage() {
   const [billLoading, setBillLoading] = useState(true)
   const [billError, setBillError] = useState<string | null>(null)
   const [loading, setLoading] = useState<PaymentMethod | null>(null)
+  const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState(() => generateIdempotencyKey())
   // The payment we initiated, with its server-assigned status. Cash/card come
   // back as requires_staff_confirmation — NOT completed — so the UI must show
   // "awaiting confirmation" until a PAYMENT_COMPLETED event confirms it.
@@ -89,7 +90,12 @@ export default function PaymentPage() {
     if (!cancelledPayment || isComplete) return
     setSubmitted(null)
     setShowOptIn(false)
+    setPaymentIdempotencyKey(generateIdempotencyKey())
   }, [cancelledPayment, isComplete])
+
+  useEffect(() => {
+    setPaymentIdempotencyKey(generateIdempotencyKey())
+  }, [session?.id])
 
   // Fetch bill on mount and when orders change (new order placed triggers WS → store update).
   const fetchBill = useCallback(async (attempt = 0) => {
@@ -185,10 +191,8 @@ export default function PaymentPage() {
     const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
     setLoading(method)
     try {
-      // Fresh idempotency key per attempt, so editing the promo and retrying
-      // is never blocked by the previous attempt's key.
       const promo = appliedPromo ? { code: appliedPromoCode, phoneE164: appliedPromoPhone } : undefined
-      const payment = await paymentsApi.initiate(session.id, total, method, generateIdempotencyKey(), undefined, guestToken, promo)
+      const payment = await paymentsApi.initiate(session.id, total, method, paymentIdempotencyKey, undefined, guestToken, promo)
       setPaidTotal(total)
       setSubmitted({ method, status: payment.status })
       track("payment_initiated", { method, amount: total })
@@ -198,6 +202,10 @@ export default function PaymentPage() {
           : "Request sent — your server will confirm."
       )
     } catch (err) {
+      // A visible failure ends this client attempt. A lost success is still
+      // safe to retry with a new key because the server returns the session's
+      // existing non-terminal payment.
+      setPaymentIdempotencyKey(generateIdempotencyKey())
       if (err instanceof ApiError) {
         const promoMsgs: Record<string, string> = {
           PROMO_NOT_FOUND:    "Your promo code is no longer valid.",

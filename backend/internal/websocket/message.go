@@ -39,7 +39,15 @@ const (
 	EventPaymentSettlementStalled EventType = "PAYMENT_SETTLEMENT_STALLED"
 	EventSessionClosed            EventType = "SESSION_CLOSED"
 	EventSessionExpiringSoon      EventType = "SESSION_EXPIRING_SOON"
-	EventPromoApplied             EventType = "PROMO_APPLIED"
+	// EventSessionReactivated tells live guests an idled session moved from
+	// awaiting_reactivation back to active, so they can drop the "table paused"
+	// overlay. This used to be published as SESSION_CREATED, which no client
+	// handler could act on and which collided with the genuine create event's
+	// payload shape — leaving the reactivation banner up over a live session
+	// (F-08). The payload is deliberately minimal: never the session row, which
+	// carries the guest credential (session_token).
+	EventSessionReactivated EventType = "SESSION_REACTIVATED"
+	EventPromoApplied       EventType = "PROMO_APPLIED"
 	// EventHostChanged tells live participants the session host was reassigned
 	// (the previous host left/was lost). Payload is the new host participant so
 	// clients can update the host badge and re-evaluate host-only affordances.

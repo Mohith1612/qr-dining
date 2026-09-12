@@ -24,11 +24,7 @@ test.describe("R-03: WS ticket rate limiting", () => {
     )
 
     const statuses = attempts.map((r) => r.status)
-    const rateLimited = statuses.some((s) => s === 429)
-    const allSuccess = statuses.every((s) => s === 200)
-
-    // Either rate limiting is active (some 429s) or limit is higher (all 200s)
-    // The test passes either way — we're verifying the system doesn't crash under load
-    expect(statuses.every((s) => [200, 429].includes(s))).toBe(true)
+    expect(statuses.filter((status) => status === 201)).toHaveLength(12)
+    expect(statuses.filter((status) => status === 429)).toHaveLength(3)
   })
 })

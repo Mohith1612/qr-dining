@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("X-08: Payment idempotency prevents replay attack", () => {
-  test("same idempotency key returns same payment, not double-charge", async () => {
+  // VACUOUS(sig-3): accepts success and conflict on replay; passes when the replay is rejected instead of deduplicated.
+  test.fixme("same idempotency key returns same payment, not double-charge", async () => {
     const { table, menu } = await seedOrg("x08")
     const created = await createSession(table.id, "PayUser")
     const sessionId = created.session.id

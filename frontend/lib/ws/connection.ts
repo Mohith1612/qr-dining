@@ -2,6 +2,7 @@
 
 import { env } from "@/config/env"
 import { sessionsApi } from "@/lib/api/sessions"
+import { isRevokedCredentialError } from "@/lib/api/client"
 import { reconcileSnapshot } from "./reconciliation"
 import { useWsStore } from "@/store/ws"
 import { useSessionStore } from "@/store/session"
@@ -11,6 +12,11 @@ const BACKOFF_STEPS_MS = [1000, 2000, 4000, 8000, 16000, 30000]
 const MAX_ATTEMPTS = 10
 const PING_INTERVAL_MS = 30_000
 const TERMINAL_STATUSES: string[] = ["closed", "abandoned", "expired"]
+
+// Statuses the server will issue a WebSocket ticket for (handlers.sessionServesRealtime).
+// payment_pending belongs here: it is when PAYMENT_COMPLETED / PAYMENT_CANCELLED
+// and the remaining ORDER_* transitions arrive.
+const SOCKET_ELIGIBLE_STATUSES: string[] = ["active", "payment_pending"]
 
 export class WSConnection {
   private ws: WebSocket | null = null
@@ -47,7 +53,14 @@ export class WSConnection {
     try {
       const res = await sessionsApi.wsTicket(this.sessionId, guestToken, this.lastSequence)
       ticket = res.ticket
-    } catch {
+    } catch (err) {
+      // A revoked credential never becomes valid again — closing the session
+      // rotates it. Retrying would burn all MAX_ATTEMPTS and land on "failed"
+      // when the truth is simply that the session is over.
+      if (isRevokedCredentialError(err)) {
+        this.endSession()
+        return
+      }
       // ws-ticket fails (409) when the session has idled into
       // awaiting_reactivation. Don't dead-end on "Connection lost": route through
       // the existing reconnect() path, whose snapshot call reactivates the session
@@ -123,13 +136,7 @@ export class WSConnection {
 
       if (TERMINAL_STATUSES.includes(status)) {
         // Session is in a terminal state — stop and surface to UI
-        useWsStore.getState().setStatus("disconnected")
-        this.handlers["SESSION_CLOSED"]?.(null, {
-          event: "SESSION_CLOSED",
-          session_id: this.sessionId,
-          payload: null,
-          timestamp: new Date().toISOString(),
-        })
+        this.endSession()
         return
       }
 
@@ -140,7 +147,16 @@ export class WSConnection {
         return
       }
 
-      // Session is active. When the snapshot is authoritative there is a gap
+      if (!SOCKET_ELIGIBLE_STATUSES.includes(status)) {
+        // Not terminal, not resumable, and not a status the server will hand a
+        // ticket for. Reconnecting cannot change that, so stop instead of
+        // grinding through MAX_ATTEMPTS and reporting a connection failure the
+        // guest can do nothing about. The Retry button remains available.
+        useWsStore.getState().setStatus("failed")
+        return
+      }
+
+      // Session is active (or settling). When the snapshot is authoritative there is a gap
       // (or no incremental basis), so missed events can't be applied
       // contiguously — take the snapshot as the whole truth and skip replay.
       // Otherwise replay the missed events, then reconcile.
@@ -170,6 +186,24 @@ export class WSConnection {
     this.stopPing()
     this.ws?.close()
     useWsStore.getState().setStatus("disconnected")
+  }
+
+  /**
+   * Stop reconnecting for good and tell the UI the session is over. Both callers
+   * are unrecoverable — a terminal session status, and a revoked credential —
+   * so neither may fall back into the retry loop.
+   */
+  private endSession(): void {
+    this.stopped = true
+    this.stopPing()
+    this.ws?.close()
+    useWsStore.getState().setStatus("disconnected")
+    this.handlers["SESSION_CLOSED"]?.(null, {
+      event: "SESSION_CLOSED",
+      session_id: this.sessionId,
+      payload: null,
+      timestamp: new Date().toISOString(),
+    })
   }
 
   private handleEnvelope(envelope: WSEnvelope): void {

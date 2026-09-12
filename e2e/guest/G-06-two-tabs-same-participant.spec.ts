@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession } from "../helpers/api"
 
 test.describe("G-06: Two tabs same participant — cart sync", () => {
-  test("cart update in one tab reflects in snapshot for other tab", async ({ browser }) => {
+  // VACUOUS(sig-7): claims two-tab behavior but performs only HTTP requests; passes when browser tab sync is broken.
+  test.fixme("cart update in one tab reflects in snapshot for other tab", async ({ browser }) => {
     const { table, menu } = await seedOrg("g06")
     const created = await createSession(table.id, "TabUser")
     const sessionId = created.session.id
@@ -25,9 +26,16 @@ test.describe("G-06: Two tabs same participant — cart sync", () => {
       headers: { "Authorization": `Bearer ${guestToken}` },
     })
     expect(cartRes.status).toBe(200)
-    const cart = await cartRes.json()
-    const items = cart.Items ?? cart.items ?? []
+    // snake_case per the CartResponse tags (F-26). Read `items` directly: the
+    // old `cart.Items ?? cart.items ?? []` chain would fall through to an empty
+    // array if both names were wrong, turning the length check into a silent
+    // pass rather than a failure.
+    const cart = await cartRes.json() as {
+      items: Array<{ menu_item_id: number }>
+    }
+    const items = cart.items
+    expect(Array.isArray(items)).toBe(true)
     expect(items.length).toBeGreaterThanOrEqual(1)
-    expect(items.some((i: { menu_item_id: number }) => i.menu_item_id === menu.itemId)).toBe(true)
+    expect(items.some((i) => i.menu_item_id === menu.itemId)).toBe(true)
   })
 })

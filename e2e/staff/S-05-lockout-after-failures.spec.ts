@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg } from "../helpers/api"
 
 test.describe("S-05: Staff lockout after repeated PIN failures", () => {
-  test("5 consecutive wrong PINs trigger a lockout response", async () => {
+  // VACUOUS(sig-3): accepts successful authentication after the failures; passes when lockout never activates.
+  test.fixme("5 consecutive wrong PINs trigger a lockout response", async () => {
     const { branch, staff } = await seedOrg("s05")
 
     const tryBadPin = () =>

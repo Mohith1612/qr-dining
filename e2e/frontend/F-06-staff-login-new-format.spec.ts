@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg } from "../helpers/api"
 
 test.describe("F-06: Staff login form uses new branch_code + staff_code + PIN format", () => {
-  test("new auth format accepted by backend", async () => {
+  // VACUOUS(sig-7): claims the login form uses the new fields but calls the backend directly; passes with a stale form.
+  test.fixme("new auth format accepted by backend", async () => {
     const { branch, staff } = await seedOrg("f06")
 
     const res = await fetch(`${API_URL}/staff/auth`, {
@@ -20,7 +21,8 @@ test.describe("F-06: Staff login form uses new branch_code + staff_code + PIN fo
     expect(data.token).toBeTruthy()
   })
 
-  test("old branch_id + pin format does not return a token", async () => {
+  // VACUOUS(sig-7): claims form-format enforcement but calls the backend directly; passes with a stale form.
+  test.fixme("old branch_id + pin format does not return a token", async () => {
     const { branch, staff } = await seedOrg("f06b")
 
     const res = await fetch(`${API_URL}/staff/auth`, {

@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession } from "../helpers/api"
 
 test.describe("M-07: WS ticket is per-connection — not shareable across devices", () => {
-  test("two concurrent ticket requests both succeed with distinct tickets", async () => {
+  // VACUOUS(sig-7): claims cross-device ticket behavior but performs no browser connection; passes when sharing succeeds.
+  test.fixme("two concurrent ticket requests both succeed with distinct tickets", async () => {
     const { table } = await seedOrg("m07")
     const created = await createSession(table.id, "TicketUser")
     const sessionId = created.session.id

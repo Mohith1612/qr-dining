@@ -1,13 +1,16 @@
 import { defineConfig, devices } from "@playwright/test"
 
-const API_URL = process.env.API_URL ?? "http://localhost:8080"
+const API_URL = process.env.API_URL ?? "http://localhost:8090"
 const APP_URL = process.env.APP_URL ?? "http://localhost:3000"
 
 export default defineConfig({
   testDir: ".",
+  globalSetup: require.resolve("./global-setup"),
   fullyParallel: true,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 4 : undefined,
+  // The shipped manual stack is one backend and one database. Phase 1 verified
+  // two workers; callers can still override this explicitly on the CLI.
+  workers: 2,
   reporter: [["list"], ["html", { outputFolder: "artifacts/report", open: "never" }]],
   outputDir: "artifacts/results",
   timeout: 30_000,

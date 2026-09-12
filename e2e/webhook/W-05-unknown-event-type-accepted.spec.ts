@@ -2,9 +2,11 @@ import { test, expect } from "@playwright/test"
 import { API_URL } from "../playwright.config"
 import { placeWebhook } from "../helpers/api"
 
-test.describe("W-05: Unknown webhook event type accepted gracefully", () => {
-  test("unrecognised event type returns 200 without error (no-op)", async () => {
-    const secret = process.env.WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
+// UNIMPLEMENTED/OUT OF SCOPE (P5): payment method is a staff signal, not provider settlement.
+test.describe.skip("W-05: Unknown webhook event type accepted gracefully", () => {
+  // VACUOUS(sig-3): accepts success and rejection for an event claimed accepted; passes when unknown events are rejected.
+  test.fixme("unrecognised event type returns 200 without error (no-op)", async () => {
+    const secret = process.env.PAYMENT_WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
 
     const res = await placeWebhook("stripe", {
       event: "payment.future_unknown_event",

@@ -1048,6 +1048,12 @@ paths:
           description: Session closed
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          description: Missing, invalid, stale, or revoked guest credential
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
         "403":
           description: Requester is not the session host
           content:
@@ -1059,15 +1065,6 @@ paths:
                 message: only the session host can close the session
         "404":
           $ref: "#/components/responses/NotFound"
-        "409":
-          description: Session already closed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/APIError"
-              example:
-                code: SESSION_CLOSED
-                message: session is already closed
 
   /sessions/{id}/join:
     post:
@@ -1740,10 +1737,17 @@ paths:
       summary: Initiate a payment
       description: |
         **Host-gated** — only the session host may initiate. Freezes the cart (`payment_pending`)
-        and captures an immutable bill snapshot. Provider methods go `provider_pending` (resolved by
-        webhook); cash/manual go `requires_staff_confirmation` (resolved by staff settle). No fake
-        success — the guest waits for a real `PAYMENT_COMPLETED`. Rate limited: sensitive 30/min per
-        IP + 6/min per session.
+        and captures an immutable bill snapshot. Every accepted method — `cash`, `card`,
+        `card_manual`, `digital`, `upi` — is created `requires_staff_confirmation` and resolved by a
+        staff settle. `provider_pending` is NOT reachable from this endpoint; it remains a valid
+        payment status for provider-created payments resolved by webhook. No fake success — the
+        guest waits for a real `PAYMENT_COMPLETED`. Rate limited: sensitive 30/min per IP + 6/min
+        per session.
+
+        Initiation is idempotent at two levels, and both answer **200** rather than 201: replaying
+        the same `idempotency_key`, and initiating while the session already holds a non-terminal
+        payment (that payment is returned as-is). Clients must treat 200 and 201 alike and read the
+        payment from the body — only 201 means a new payment row was created.
       tags: [Payments]
       security:
         - GuestBearer: []
@@ -1790,8 +1794,18 @@ paths:
                   type: [string, "null"]
                   description: Guest phone in E.164 form. Required only when the promo enforces a per-guest limit (else `PROMO_PHONE_REQUIRED`).
       responses:
+        "200":
+          description: |
+            Existing payment returned, nothing created. Either the `idempotency_key` was already
+            used for this session and actor (the original payment is replayed), or the session
+            already had a non-terminal payment, which is returned instead of opening a second one.
+            The body is the same `Payment` schema as 201.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
         "201":
-          description: Payment initiated
+          description: Payment initiated (a new payment was created)
           content:
             application/json:
               schema:
@@ -1820,23 +1834,31 @@ paths:
                 message: session not found
         "409":
           description: |
-            Cart already frozen / payment in progress, or promo conflict
-            (`PROMO_EXHAUSTED`, `PROMO_ALREADY_USED`).
+            An already-frozen cart / payment in progress no longer produces 409 — that case now
+            returns 200 with the existing payment. The remaining 409 paths are:
+            `IDEMPOTENCY_CONFLICT` (key reused with a different request body — note the hash
+            covers the promo code, so changing the code on retry must use a fresh key),
+            `IDEMPOTENCY_IN_PROGRESS` (a concurrent request holds the key),
+            `SESSION_CLOSED` (the session is in a state that can no longer take a payment), and
+            promo conflicts (`PROMO_EXHAUSTED`, `PROMO_ALREADY_USED`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIError"
         "422":
           description: |
-            Promo present but not applicable: `PROMO_PHONE_REQUIRED` (phone needed for a
-            per-guest-limited promo) or `MIN_ORDER_NOT_MET` (bill below the promo minimum).
+            `PAYMENT_AMOUNT_INVALID` — `amount` does not equal the authoritative bill total
+            (partial payment is not supported; the tolerance absorbs only sub-half-cent JSON
+            float representation). Or a promo present but not applicable:
+            `PROMO_PHONE_REQUIRED` (phone needed for a per-guest-limited promo) or
+            `MIN_ORDER_NOT_MET` (bill below the promo minimum).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIError"
               example:
-                code: PROMO_PHONE_REQUIRED
-                message: Add your phone number to use this offer.
+                code: PAYMENT_AMOUNT_INVALID
+                message: payment amount must equal the full bill total
 
   /webhooks/payments/{provider}:
     post:

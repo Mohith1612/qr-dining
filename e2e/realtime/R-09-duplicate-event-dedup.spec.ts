@@ -40,8 +40,12 @@ test.describe("R-09: Duplicate event deduplication via idempotency", () => {
     expect(res2.status).toBe(201)
     const order2 = await res2.json()
 
-    // Should return same order
-    expect(order1.Order?.id ?? order1.id).toBe(order2.Order?.id ?? order2.id)
+    // Should return same order. Read `order.id` directly rather than through a
+    // fallback chain: `a?.X ?? a.Y` quietly compares undefined to undefined when
+    // both field names are wrong, which is how this assertion survived the
+    // PlaceOrderResult casing change (F-24) without failing.
+    expect(order1.order.id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(order1.order.id).toBe(order2.order.id)
 
     // Verify only one order exists
     const ordersRes = await fetch(`${API_URL}/sessions/${sessionId}/orders`, {

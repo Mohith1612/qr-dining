@@ -1,7 +1,7 @@
 # SigNoz Deployment — Self-Hosted (Community Edition)
 
 Date: 2026-08-03 · Branch: `feature/signoz-observability`
-Companions: `signoz-adoption-decision.md` (why + go/no-go gate) · `docs/signoz-backend-instrumentation.md` (app changes) · `docs/signoz-rollout-runbook.md` (phases)
+Companions: [`docs/adr/0001-signoz-adoption.md`](../../docs/adr/0001-signoz-adoption.md) (why + go/no-go gate) · [`docs/history/signoz-backend-instrumentation.md`](../../docs/history/signoz-backend-instrumentation.md) (the app-change spec, since implemented) · [`docs/signoz-rollout-runbook.md`](../../docs/signoz-rollout-runbook.md) (phases)
 
 Skeleton files in this directory:
 
@@ -14,7 +14,7 @@ SigNoz v0.130.0 and later removed those files in favor of Foundry. The paired
 upstream collector tag is `v0.144.5`; all pinned long-running images publish
 `linux/arm64` manifests.
 
-> **⚠️ SOAK SAFETY — READ FIRST.** The local dev machine hosts the long-running soak stack under compose project **`qr-dining`** on ports **5432/6379/8080** (SEV-0 RC soak pending). Never bring SigNoz up with `-p qr-dining`, never bind those host ports, never run `docker compose down -v` against anything but the `qr-dining-signoz*` projects. Same standing rules as `OPERATIONS.md` §8.
+> **⚠️ SOAK SAFETY — READ FIRST.** The local dev machine hosts the long-running soak stack under compose project **`qr-dining`** on ports **5432/6379/8080** (SEV-0 RC soak pending). Never bring SigNoz up with `-p qr-dining`, never bind those host ports, never run `docker compose down -v` against anything but the `qr-dining-signoz*` projects. Same standing rules as `docs/OPERATIONS.md` §11.
 
 ## Topology
 

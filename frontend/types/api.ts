@@ -5,6 +5,9 @@ import type { WSEnvelope } from "./ws"
 export interface APIError {
   code: string
   message: string
+  // Optional, additive discriminator sent only where `code` is too coarse to
+  // act on (currently: terminal vs retryable guest-credential 401s).
+  reason?: string
 }
 
 export interface Session {

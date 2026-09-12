@@ -7,6 +7,7 @@ import (
 
 	"github.com/Mohith1612/qr-dining/internal/auth"
 	"github.com/Mohith1612/qr-dining/internal/config"
+	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/observability"
 	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
 	"github.com/Mohith1612/qr-dining/internal/repository"
@@ -67,7 +68,7 @@ func (h *WSHandler) Upgrade(c *gin.Context) {
 		respondError(c, http.StatusNotFound, CodeSessionNotFound, "session not found")
 		return
 	}
-	if sess.Status != "active" {
+	if !sessionServesRealtime(sess.Status) {
 		respondError(c, http.StatusConflict, CodeSessionClosed, "session is not active")
 		return
 	}
@@ -90,6 +91,21 @@ func recordWSTicketConsumeFailure(m *observability.Metrics, reason string) {
 	}
 }
 
+// sessionServesRealtime reports whether a session in this status may hold a live
+// WebSocket. Both statuses are non-terminal and both have events the guest needs:
+// payment_pending is exactly when PAYMENT_COMPLETED / PAYMENT_CANCELLED and the
+// remaining ORDER_* transitions arrive, so refusing the socket there blinds the
+// guest during settlement — the one moment they are watching hardest (F-07).
+//
+// The payment freeze is a CART freeze (domain.IsSessionCartFrozen), enforced at
+// the mutation endpoints; it was never meant to be a connectivity freeze.
+// awaiting_reactivation stays out: the client has a dedicated recovery path for
+// it (snapshot reactivates, then reconnects), and a refused ticket is that
+// path's trigger.
+func sessionServesRealtime(status sqlc.SessionStatus) bool {
+	return status == sqlc.SessionStatusActive || status == sqlc.SessionStatusPaymentPending
+}
+
 func (h *WSHandler) upgradeWithTicket(c *gin.Context, ticket string) {
 	claims, err := h.tickets.Consume(c.Request.Context(), ticket)
 	if err != nil {
@@ -108,7 +124,7 @@ func (h *WSHandler) upgradeWithTicket(c *gin.Context, ticket string) {
 		respondError(c, http.StatusNotFound, CodeSessionNotFound, "session not found")
 		return
 	}
-	if sess.Status != "active" || sess.BranchID != claims.BranchID {
+	if !sessionServesRealtime(sess.Status) || sess.BranchID != claims.BranchID {
 		respondError(c, http.StatusConflict, CodeSessionClosed, "session is not active")
 		return
 	}

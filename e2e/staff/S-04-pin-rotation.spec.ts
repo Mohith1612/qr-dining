@@ -2,11 +2,9 @@ import { test, expect } from "@playwright/test"
 import { API_URL } from "../playwright.config"
 import { seedOrg, loginStaff } from "../helpers/api"
 
-const adminToken = process.env.E2E_ADMIN_TOKEN ?? "e2e-admin-secret"
-
 test.describe("S-04: PIN rotation invalidates old PIN", () => {
   test("old PIN fails after rotation; new PIN succeeds", async () => {
-    const { branch, staff } = await seedOrg("s04")
+    const { branch, staff } = await seedOrg("s04", { staffRole: "waiter" })
 
     // Rotate PIN
     const newPin = "999999"
@@ -14,17 +12,11 @@ test.describe("S-04: PIN rotation invalidates old PIN", () => {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${adminToken}`,
+        "Authorization": `Bearer ${staff.token}`,
       },
-      body: JSON.stringify({ pin: newPin }),
+      body: JSON.stringify({ current_pin: staff.pin, new_pin: newPin }),
     })
-    // accept 200/204 or 404 if endpoint path differs
-    expect([200, 204, 404]).toContain(rotateRes.status)
-
-    if (rotateRes.status === 404) {
-      // Skip — PIN rotation endpoint not yet implemented
-      return
-    }
+    expect(rotateRes.status).toBe(204)
 
     // Old PIN should fail
     const oldLoginRes = await fetch(`${API_URL}/staff/auth`, {

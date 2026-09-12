@@ -27,6 +27,7 @@ type SessionService struct {
 	metrics          *observability.Metrics
 	presence         *redisPkg.Presence
 	hostAbsenceGrace time.Duration
+	tenantStatus     *TenantStatusGate
 }
 
 func NewSessionService(repos *repository.Repos, publisher *events.Publisher, metrics *observability.Metrics, presence *redisPkg.Presence) *SessionService {
@@ -47,9 +48,52 @@ func (s *SessionService) SetHostAbsenceGrace(grace time.Duration) {
 	}
 }
 
+// SetTenantStatusGate wires the organization/branch lifecycle gate consulted by
+// the two guest ENTRY points (CreateSession, JoinSession). It must be called at
+// startup before the service begins handling requests.
+func (s *SessionService) SetTenantStatusGate(gate *TenantStatusGate) {
+	s.tenantStatus = gate
+}
+
+// admitsGuests reports whether the branch may take new guests. Entry points call
+// it; nothing on a live session's path does, so an in-progress meal is never
+// interrupted by a suspension.
+func (s *SessionService) admitsGuests(ctx context.Context, branchID int64) error {
+	if s.tenantStatus == nil {
+		return nil
+	}
+	return s.tenantStatus.EnsureBranchAdmitsGuests(ctx, branchID)
+}
+
+// CreateSessionResult is the service return value AND — via the tags below —
+// the SESSION_CREATED event payload. The HTTP handler re-wraps it under its own
+// keys, so the tags exist for the event contract (F-27), matching the `session`
+// / `participant` naming used everywhere else.
+//
+// Anything published or logged from this type must go through
+// credentialSafeSession first. sqlc.Session carries session_token, and both the
+// WebSocket fan-out and the event_log row reach readers who must never see it.
 type CreateSessionResult struct {
-	Session     sqlc.Session
-	Participant sqlc.SessionParticipant
+	Session     sqlc.Session            `json:"session"`
+	Participant sqlc.SessionParticipant `json:"participant"`
+}
+
+// credentialSafeSession returns a copy of the session with the guest credential
+// (session_token) cleared. It is the services-side twin of the handler's
+// guestSafeSession: the HTTP layer had one, but the event and log paths did not,
+// so SESSION_CREATED broadcast and persisted the credential in full (F-27).
+// sqlc.Session is a value type, so the cleared copy never touches the DB row.
+func credentialSafeSession(s sqlc.Session) sqlc.Session {
+	s.SessionToken = ""
+	return s
+}
+
+// credentialSafeResult is what may leave the process: published to the session's
+// WebSocket channel, or written to event_log (which branch staff can read back
+// through GET /sessions/{id}/events).
+func credentialSafeResult(r CreateSessionResult) CreateSessionResult {
+	r.Session = credentialSafeSession(r.Session)
+	return r
 }
 
 // CreateSession opens a new session for a table.
@@ -62,6 +106,12 @@ type CreateSessionResult struct {
 func (s *SessionService) CreateSession(ctx context.Context, tableID int64, displayName, deviceFingerprint, phoneE164 string) (CreateSessionResult, error) {
 	table, err := s.repos.GetTableByID(ctx, tableID)
 	if err != nil {
+		return CreateSessionResult{}, err
+	}
+
+	// A suspended organization or branch takes no new guests. Checked before the
+	// transaction so a blocked scan costs nothing and leaves no partial state.
+	if err := s.admitsGuests(ctx, table.BranchID); err != nil {
 		return CreateSessionResult{}, err
 	}
 
@@ -129,8 +179,10 @@ func (s *SessionService) CreateSession(ctx context.Context, tableID int64, displ
 		return CreateSessionResult{}, err
 	}
 
-	s.publisher.SessionCreated(ctx, result.Session.ID, result)
-	s.repos.LogEvent(ctx, result.Session.ID, result.Session.BranchID, "SESSION_CREATED", "participant", result.Participant.ID, result)
+	// Never the raw result: it contains session_token.
+	safe := credentialSafeResult(result)
+	s.publisher.SessionCreated(ctx, result.Session.ID, safe)
+	s.repos.LogEvent(ctx, result.Session.ID, result.Session.BranchID, "SESSION_CREATED", "participant", result.Participant.ID, safe)
 	return result, nil
 }
 
@@ -511,6 +563,12 @@ func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, d
 	if err != nil {
 		return sqlc.SessionParticipant{}, err
 	}
+	// Joining is entry, not continuation: a new device arriving at a suspended
+	// tenant is refused even though the session it would join keeps running for
+	// the guests already in it.
+	if err := s.admitsGuests(ctx, sess.BranchID); err != nil {
+		return sqlc.SessionParticipant{}, err
+	}
 	switch sess.Status {
 	case sqlc.SessionStatusActive, sqlc.SessionStatusPaymentPending:
 		// Joinable as-is. A guest scanning a table whose party is mid-payment can
@@ -523,7 +581,7 @@ func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, d
 			// The reactivation worker abandoned it between our read and update.
 			return sqlc.SessionParticipant{}, domain.ErrSessionClosed
 		}
-		s.publisher.SessionCreated(ctx, sessionID, map[string]string{"reason": "reactivated"})
+		s.publisher.SessionReactivated(ctx, sessionID, reactivatedPayload(sessionID))
 		s.repos.LogEvent(ctx, sessionID, sess.BranchID, "SESSION_REACTIVATED", "participant", 0, map[string]any{})
 	default:
 		// closed / abandoned / expired
@@ -543,6 +601,16 @@ func (s *SessionService) JoinSession(ctx context.Context, sessionID uuid.UUID, d
 	s.publisher.ParticipantJoined(ctx, sessionID, participant)
 	s.repos.LogEvent(ctx, sessionID, sess.BranchID, "PARTICIPANT_JOINED", "participant", participant.ID, participant)
 	return participant, nil
+}
+
+// reactivatedPayload is the SESSION_REACTIVATED body. It carries the session id
+// and the resulting status and nothing else — never the sqlc.Session row, whose
+// session_token is the guest credential and must not be broadcast (F-8).
+func reactivatedPayload(sessionID uuid.UUID) map[string]string {
+	return map[string]string{
+		"session_id": sessionID.String(),
+		"status":     string(sqlc.SessionStatusActive),
+	}
 }
 
 // Reactivate transitions an awaiting_reactivation session back to active. It is
@@ -565,7 +633,7 @@ func (s *SessionService) Reactivate(ctx context.Context, sessionID uuid.UUID) (s
 		}
 		sess.Status = sqlc.SessionStatusActive
 		sess.AwaitingReactivationAt.Valid = false
-		s.publisher.SessionCreated(ctx, sessionID, map[string]string{"reason": "reactivated"})
+		s.publisher.SessionReactivated(ctx, sessionID, reactivatedPayload(sessionID))
 		s.repos.LogEvent(ctx, sessionID, sess.BranchID, "SESSION_REACTIVATED", "participant", 0, map[string]any{})
 		return sess, nil
 	default:
@@ -618,7 +686,7 @@ func (s *SessionService) GetSnapshot(ctx context.Context, sessionID uuid.UUID, l
 		if _, err := s.repos.ReactivateSession(ctx, sessionID); err == nil {
 			sess.Status = sqlc.SessionStatusActive
 			sess.AwaitingReactivationAt.Valid = false
-			s.publisher.SessionCreated(ctx, sessionID, map[string]string{"reason": "reactivated"})
+			s.publisher.SessionReactivated(ctx, sessionID, reactivatedPayload(sessionID))
 			s.repos.LogEvent(ctx, sessionID, sess.BranchID, "SESSION_REACTIVATED", "participant", 0, map[string]any{})
 		}
 		// If ReactivateSession returned pgx.ErrNoRows it means the worker

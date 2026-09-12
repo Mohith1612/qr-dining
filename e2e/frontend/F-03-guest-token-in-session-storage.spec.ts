@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test"
 import { BASE_URL } from "../playwright.config"
 
 test.describe("F-03: Guest token stored in sessionStorage, not localStorage", () => {
-  test("after joining a session, token is in sessionStorage and not in localStorage", async ({ page }) => {
+  // VACUOUS(sig-5): never joins a session; passes when the real join flow writes the token to localStorage.
+  test.fixme("after joining a session, token is in sessionStorage and not in localStorage", async ({ page }) => {
     await page.goto(`${BASE_URL}/`)
 
     // Check if the app is reachable

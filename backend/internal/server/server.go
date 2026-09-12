@@ -90,8 +90,13 @@ func New(
 	middleware.SetTenantMetrics(metrics)
 
 	// ── Services ─────────────────────────────────────────────────────────────
+	// Organization/branch lifecycle gate for the three guest entry points (QR
+	// resolve, session create, session join). Short-TTL cached so a suspension
+	// check costs no query per scan.
+	tenantStatusGate := services.NewTenantStatusGate(repos, cache)
 	sessionSvc := services.NewSessionService(repos, publisher, metrics, presence)
 	sessionSvc.SetHostAbsenceGrace(cfg.Presence.HostAbsenceGrace)
+	sessionSvc.SetTenantStatusGate(tenantStatusGate)
 	participantSvc := services.NewParticipantService(repos, publisher, presence)
 	participantSvc.SetLogger(logger)
 	// Client WS PINGs double as the presence heartbeat: without this, presence
@@ -106,6 +111,7 @@ func New(
 	orderSvc := services.NewOrderService(repos, publisher, metrics, promoSvc)
 	assistanceSvc := services.NewAssistanceService(repos, publisher)
 	menuSvc := services.NewMenuService(repos, cache, publisher)
+	menuSvc.SetTenantStatusGate(tenantStatusGate)
 	lockoutStore := redisPkg.NewLockoutStore(redis)
 	staffSvc := services.NewStaffService(repos, cache, logger)
 	staffSvc.SetRequireSessionDBRow(cfg.FeatureFlags.AuthStaffSessionDBRequired)
@@ -152,6 +158,7 @@ func New(
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
 	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, supportSvc, billingSvc, enforcementObsSvc, collateralSvc, staffAnalyticsSvc, featureGate, auditWriter)
+	platformH.SetTenantStatusGate(tenantStatusGate)
 	flagH := handlers.NewFlagHandler(flagSvc, cache)
 	themeH := handlers.NewThemeHandler(themeSvc, repos)
 	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter, promoSvc)

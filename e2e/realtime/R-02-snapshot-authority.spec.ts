@@ -36,7 +36,8 @@ test.describe("R-02: Snapshot is authoritative state", () => {
     expect(snap.participants.some((p) => p.display_name === "P2")).toBe(true)
   })
 
-  test("snapshot with last_sequence returns missed_events field", async () => {
+  // VACUOUS(sig-2): substitutes an empty array for a missing field; passes when missed_events is omitted.
+  test.fixme("snapshot with last_sequence returns missed_events field", async () => {
     const { table } = await seedOrg("r02b")
     const created = await createSession(table.id, "SeqUser")
     const sessionId = created.session.id

@@ -4,7 +4,8 @@ import { seedOrg, createSession } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("O-04: Order idempotency — same key produces same order", () => {
-  test("duplicate order with same idempotency key does not create a second order", async () => {
+  // VACUOUS(sig-4): compares response fields the order API does not return; passes as undefined equals undefined.
+  test.fixme("duplicate order with same idempotency key does not create a second order", async () => {
     const { table, menu } = await seedOrg("o04")
     const created = await createSession(table.id, "IdempotGuest")
     const sessionId = created.session.id
