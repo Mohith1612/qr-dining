@@ -6,7 +6,7 @@
 # binds the Prometheus/Alertmanager UIs to localhost only (shared VM — reach
 # them via SSH tunnel, never the public interface).
 #
-# Layout on the VM (see DEPLOYMENT.md):
+# Layout on the VM (see docs/DEPLOYMENT.md):
 #   /opt/qr-dining/docker-compose.yml                          (deploy/vm/docker-compose.yml)
 #   /opt/qr-dining/observability/                              (copy of deploy/observability/)
 #   /opt/qr-dining/docker-compose.observability-vm.yml         (this file)
@@ -21,7 +21,7 @@
 # The base observability compose uses relative bind mounts (`./prometheus.yml`).
 # With multiple `-f` files, Compose resolves relative paths against the PROJECT
 # directory — the first file's directory — not against the file that contains
-# them. Run from /opt/qr-dining as DEPLOYMENT.md §5 says, `./prometheus.yml`
+# them. Run from /opt/qr-dining as docs/DEPLOYMENT.md §5 says, `./prometheus.yml`
 # therefore resolves to /opt/qr-dining/prometheus.yml, which does not exist, and
 # the container dies with "Are you trying to mount a directory onto a file".
 #

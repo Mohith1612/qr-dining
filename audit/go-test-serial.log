@@ -1,0 +1,25 @@
+?   	github.com/Mohith1612/qr-dining/cmd/bootstrap-admin	[no test files]
+?   	github.com/Mohith1612/qr-dining/cmd/migrate	[no test files]
+?   	github.com/Mohith1612/qr-dining/cmd/server	[no test files]
+ok  	github.com/Mohith1612/qr-dining/internal/audit	1.026s
+ok  	github.com/Mohith1612/qr-dining/internal/auth	1.013s
+ok  	github.com/Mohith1612/qr-dining/internal/authz	1.015s
+ok  	github.com/Mohith1612/qr-dining/internal/config	1.014s
+ok  	github.com/Mohith1612/qr-dining/internal/crypto	3.822s
+?   	github.com/Mohith1612/qr-dining/internal/db	[no test files]
+?   	github.com/Mohith1612/qr-dining/internal/db/sqlc	[no test files]
+ok  	github.com/Mohith1612/qr-dining/internal/domain	1.015s
+?   	github.com/Mohith1612/qr-dining/internal/events	[no test files]
+ok  	github.com/Mohith1612/qr-dining/internal/handlers	1.034s
+?   	github.com/Mohith1612/qr-dining/internal/middleware	[no test files]
+?   	github.com/Mohith1612/qr-dining/internal/observability	[no test files]
+?   	github.com/Mohith1612/qr-dining/internal/redis	[no test files]
+ok  	github.com/Mohith1612/qr-dining/internal/repository	4.283s
+?   	github.com/Mohith1612/qr-dining/internal/server	[no test files]
+ok  	github.com/Mohith1612/qr-dining/internal/services	3.031s
+?   	github.com/Mohith1612/qr-dining/internal/storage	[no test files]
+?   	github.com/Mohith1612/qr-dining/internal/testutil	[no test files]
+ok  	github.com/Mohith1612/qr-dining/internal/websocket	1.029s
+?   	github.com/Mohith1612/qr-dining/internal/worker	[no test files]
+?   	github.com/Mohith1612/qr-dining/migrations	[no test files]
+?   	github.com/Mohith1612/qr-dining/scripts/loadtest	[no test files]

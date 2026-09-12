@@ -3,6 +3,6 @@
 #
 # Loads DATABASE_URL + provider creds from /etc/qr-dining/backup.env, runs at 02:30,
 # and appends output to a log. A non-zero exit (missed backup) leaves a marker file
-# that the BackupFailed alert watches — see alerting-setup.md.
+# that the BackupFailed alert watches — see docs/OPERATIONS.md §3.
 
 30 2 * * * root set -a; . /etc/qr-dining/backup.env; set +a; /opt/qr-dining/backend/scripts/nightly-backup.sh >> /var/log/qr-dining-backup.log 2>&1 || touch /var/run/qr-dining-backup.failed

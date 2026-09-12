@@ -11,7 +11,7 @@
 #   * The app image is arm64-only (backend/docker/Dockerfile hardcodes GOARCH);
 #     this VM is Ampere arm64, so `docker compose pull` just works.
 #
-# Deploy pattern (see DEPLOYMENT.md):
+# Deploy pattern (see docs/DEPLOYMENT.md):
 #   cd /opt/qr-dining && docker compose pull && docker compose up -d
 #
 # NOTE for local development machines: do NOT run this file locally. The local
