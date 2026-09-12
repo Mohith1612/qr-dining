@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession, fetchSnapshot } from "../helpers/api"
 
 test.describe("M-04: Second device joins existing session", () => {
-  test("joining guest sees existing session state in snapshot", async () => {
+  // VACUOUS(sig-7): claims second-device behavior but uses fetch only; passes when device rejoin UI is broken.
+  test.fixme("joining guest sees existing session state in snapshot", async () => {
     const { table, menu } = await seedOrg("m04")
     const host = await createSession(table.id, "Host")
     const sessionId = host.session.id

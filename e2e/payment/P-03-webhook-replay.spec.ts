@@ -4,7 +4,8 @@ import { placeWebhook } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("P-03: Webhook replay idempotency", () => {
-  test("sending same signed webhook 3 times processes once", async () => {
+  // VACUOUS(sig-3): accepts success and multiple failure statuses; passes when no webhook is processed.
+  test.fixme("sending same signed webhook 3 times processes once", async () => {
     const secret = process.env.WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
     const externalEventId = crypto.randomUUID()
     const event = {

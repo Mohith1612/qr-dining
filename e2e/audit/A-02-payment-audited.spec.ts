@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder, fetchAudit } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("A-02: Payment events appear in audit log", () => {
-  test("payment initiation is audit-logged", async () => {
+  // VACUOUS(sig-1): audit fetch failures become an empty array; passes if payment auditing is unavailable.
+  test.fixme("payment initiation is audit-logged", async () => {
     const { table, menu } = await seedOrg("a02")
     const created = await createSession(table.id, "PayAudit")
     const sessionId = created.session.id

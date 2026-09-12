@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test"
 import { seedOrg, createSession, fetchSnapshot } from "../helpers/api"
 
 test.describe("R-08: Presence expiry — session structure", () => {
-  test("session snapshot includes expected fields for presence-based UX", async () => {
+  // VACUOUS(sig-6): fixture never expires presence; passes when participants never become absent.
+  test.fixme("session snapshot includes expected fields for presence-based UX", async () => {
     const { table } = await seedOrg("r08")
     const created = await createSession(table.id, "PresenceUser")
     const sessionId = created.session.id

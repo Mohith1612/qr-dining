@@ -5,7 +5,8 @@ import { seedOrg, loginStaff, fetchAudit } from "../helpers/api"
 const adminToken = process.env.E2E_ADMIN_TOKEN ?? "e2e-admin-secret"
 
 test.describe("A-03: Staff authentication events audited", () => {
-  test("successful staff login appears in audit log", async () => {
+  // VACUOUS(sig-1): audit fetch failures become an empty array; passes when successful logins are never audited.
+  test.fixme("successful staff login appears in audit log", async () => {
     const { branch, staff } = await seedOrg("a03")
     const staffCtx = await loginStaff(branch.code, staff.staffCode, staff.pin)
 
@@ -20,7 +21,8 @@ test.describe("A-03: Staff authentication events audited", () => {
     }
   })
 
-  test("failed staff login attempt is audit-logged", async () => {
+  // VACUOUS(sig-1): audit fetch failures become an empty array; passes when failed logins are never audited.
+  test.fixme("failed staff login attempt is audit-logged", async () => {
     const { branch, staff } = await seedOrg("a03b")
 
     await fetch(`${API_URL}/staff/auth`, {

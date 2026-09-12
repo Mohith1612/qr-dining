@@ -5,7 +5,8 @@ import { seedOrg, createSession } from "../helpers/api"
 const adminToken = process.env.E2E_ADMIN_TOKEN ?? "e2e-admin-secret"
 
 test.describe("PT-05: awaiting_reactivation worker pipeline", () => {
-  test("platform can mark a session as awaiting_reactivation", async () => {
+  // VACUOUS(sig-3): accepts 404 from the pause action; passes when no reactivation transition exists.
+  test.fixme("platform can mark a session as awaiting_reactivation", async () => {
     const { table } = await seedOrg("pt05")
     const created = await createSession(table.id, "PauseGuest")
     const sessionId = created.session.id

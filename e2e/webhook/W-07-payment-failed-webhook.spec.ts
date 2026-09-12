@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder, placeWebhook } from "../helpers/api
 import crypto from "crypto"
 
 test.describe("W-07: payment.failed webhook reverts session to active or payment_pending", () => {
-  test("payment.failed resets payment state without closing session", async () => {
+  // VACUOUS(sig-3): accepts 404 from the failed webhook and conditionally checks state; passes when reset is absent.
+  test.fixme("payment.failed resets payment state without closing session", async () => {
     const { table, menu } = await seedOrg("w07")
     const created = await createSession(table.id, "FailWebhook")
     const sessionId = created.session.id

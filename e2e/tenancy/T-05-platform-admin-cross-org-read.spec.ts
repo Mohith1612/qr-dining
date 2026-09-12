@@ -5,7 +5,8 @@ import { seedOrg, createSession } from "../helpers/api"
 const adminToken = process.env.E2E_ADMIN_TOKEN ?? "e2e-admin-secret"
 
 test.describe("T-05: Platform admin can read across all orgs", () => {
-  test("platform admin reads org B session that org A staff cannot", async () => {
+  // VACUOUS(sig-5): never creates or uses org A staff; passes when tenant staff can also read org B.
+  test.fixme("platform admin reads org B session that org A staff cannot", async () => {
     const orgB = await seedOrg("t05b")
     const sessionB = await createSession(orgB.table.id, "T05Guest")
     const sessionId = sessionB.session.id

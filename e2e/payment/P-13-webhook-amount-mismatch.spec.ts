@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder, placeWebhook } from "../helpers/api
 import crypto from "crypto"
 
 test.describe("P-13: Webhook amount mismatch flagged", () => {
-  test("webhook with amount different from initiated payment is flagged or rejected", async () => {
+  // VACUOUS(sig-3): accepts webhook success and failure; passes when a mismatched amount is silently accepted.
+  test.fixme("webhook with amount different from initiated payment is flagged or rejected", async () => {
     const { table, menu } = await seedOrg("p13")
     const created = await createSession(table.id, "WebhookMismatch")
     const sessionId = created.session.id

@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, loginStaff, createSession } from "../helpers/api"
 
 test.describe("S-07: Staff cannot mutate data from another branch", () => {
-  test("staff token from branch A rejected on branch B session operations", async () => {
+  // VACUOUS(sig-5): calls an unregistered close path; passes with 404 without exercising cross-branch authorization.
+  test.fixme("staff token from branch A rejected on branch B session operations", async () => {
     const orgA = await seedOrg("s07a")
     const orgB = await seedOrg("s07b")
 

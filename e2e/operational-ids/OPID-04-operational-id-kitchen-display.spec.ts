@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession, placeOrder, loginStaff } from "../helpers/api"
 
 test.describe("OPID-04: Operational ID visible to kitchen staff", () => {
-  test("kitchen orders list includes operational_id for display", async () => {
+  // VACUOUS(sig-3): accepts a missing endpoint and asserts field-present-or-absent; passes with no kitchen ID.
+  test.fixme("kitchen orders list includes operational_id for display", async () => {
     const { table, menu, branch, staff } = await seedOrg("opid04")
     const created = await createSession(table.id, "KitchenGuest")
     const sessionId = created.session.id

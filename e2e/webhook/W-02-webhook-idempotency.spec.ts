@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder, placeWebhook } from "../helpers/api
 import crypto from "crypto"
 
 test.describe("W-02: Webhook idempotency — duplicate delivery handled", () => {
-  test("sending the same webhook twice does not double-settle", async () => {
+  // VACUOUS(sig-3): accepts success or conflict on replay and never checks settlement count; passes on double settlement.
+  test.fixme("sending the same webhook twice does not double-settle", async () => {
     const { table, menu } = await seedOrg("w02")
     const created = await createSession(table.id, "WebhookIdem")
     const sessionId = created.session.id

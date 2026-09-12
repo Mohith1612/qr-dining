@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test"
 import { seedOrg, createSession, placeOrder } from "../helpers/api"
 
 test.describe("OPID-01: Order operational ID assigned on creation", () => {
-  test("created order has a non-null operational_id", async () => {
+  // VACUOUS(sig-2): asserts only when an operational ID field exists; passes when the field is absent.
+  test.fixme("created order has a non-null operational_id", async () => {
     const { table, menu } = await seedOrg("opid01")
     const created = await createSession(table.id, "OpIDGuest")
     const sessionId = created.session.id

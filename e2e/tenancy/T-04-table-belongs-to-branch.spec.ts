@@ -5,7 +5,8 @@ import { seedOrg } from "../helpers/api"
 const adminToken = process.env.E2E_ADMIN_TOKEN ?? "e2e-admin-secret"
 
 test.describe("T-04: Table belongs to one branch only", () => {
-  test("assigning a table from branch A to branch B is rejected", async () => {
+  // VACUOUS(sig-5): mutates only the identifier and never attempts branch reassignment; passes without ownership enforcement.
+  test.fixme("assigning a table from branch A to branch B is rejected", async () => {
     const orgA = await seedOrg("t04a")
     const orgB = await seedOrg("t04b")
 
@@ -21,7 +22,8 @@ test.describe("T-04: Table belongs to one branch only", () => {
     expect([400, 403, 404, 409, 422]).toContain(res.status)
   })
 
-  test("table token only works within its own branch context", async () => {
+  // VACUOUS(sig-2): accepts 404 and asserts branch ownership only on success; passes when QR resolution is absent.
+  test.fixme("table token only works within its own branch context", async () => {
     const orgA = await seedOrg("t04c")
 
     // The table token should resolve to its own branch

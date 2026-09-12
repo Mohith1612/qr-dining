@@ -4,7 +4,8 @@ import { API_URL } from "../playwright.config"
 const adminToken = process.env.E2E_ADMIN_TOKEN ?? "e2e-admin-secret"
 
 test.describe("PT-03: Platform MFA enforcement", () => {
-  test("platform admin MFA status endpoint is accessible", async () => {
+  // VACUOUS(sig-3): accepts success, unauthorized, and missing endpoint; passes when MFA status is unavailable.
+  test.fixme("platform admin MFA status endpoint is accessible", async () => {
     const res = await fetch(`${API_URL}/platform/mfa/status`, {
       headers: { "Authorization": `Bearer ${adminToken}` },
     })
@@ -12,7 +13,8 @@ test.describe("PT-03: Platform MFA enforcement", () => {
     expect([200, 401, 404]).toContain(res.status)
   })
 
-  test("platform admin MFA enroll endpoint responds", async () => {
+  // VACUOUS(sig-3): accepts nearly every success and failure response; passes when MFA enrollment is broken.
+  test.fixme("platform admin MFA enroll endpoint responds", async () => {
     const res = await fetch(`${API_URL}/platform/mfa/enroll`, {
       method: "POST",
       headers: {

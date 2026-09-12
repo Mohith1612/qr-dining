@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder, placeWebhook } from "../helpers/api
 import crypto from "crypto"
 
 test.describe("W-01: Valid webhook settles the session", () => {
-  test("payment.completed webhook transitions session to closed", async () => {
+  // VACUOUS(sig-2): asserts state only for a 200 snapshot and accepts payment_pending; passes without settlement.
+  test.fixme("payment.completed webhook transitions session to closed", async () => {
     const { table, menu } = await seedOrg("w01")
     const created = await createSession(table.id, "WebhookGuest")
     const sessionId = created.session.id

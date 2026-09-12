@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("P-10: Promo race — concurrent validation", () => {
-  test("concurrent promo applications do not double-discount", async () => {
+  // VACUOUS(sig-3): accepts success and failure for both attempts; passes when the promo endpoint is absent.
+  test.fixme("concurrent promo applications do not double-discount", async () => {
     const { table, menu } = await seedOrg("p10")
     const created = await createSession(table.id, "PromoRacer")
     const sessionId = created.session.id

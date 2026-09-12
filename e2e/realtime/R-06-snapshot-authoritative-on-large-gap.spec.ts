@@ -4,7 +4,8 @@ import { seedOrg, createSession } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("R-06: SNAPSHOT_AUTHORITATIVE when gap exceeds replay window", () => {
-  test("snapshot returns SNAPSHOT_AUTHORITATIVE signal or missed events for large gap", async () => {
+  // VACUOUS(sig-6): creates only three events and never exceeds the replay window; passes without large-gap behavior.
+  test.fixme("snapshot returns SNAPSHOT_AUTHORITATIVE signal or missed events for large gap", async () => {
     const { table, menu } = await seedOrg("r06")
     const created = await createSession(table.id, "GapUser")
     const sessionId = created.session.id

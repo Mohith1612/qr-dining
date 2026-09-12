@@ -4,7 +4,8 @@ import { seedOrg, createSession, loginStaff, placeOrder, fetchAudit } from "../h
 import crypto from "crypto"
 
 test.describe("P-01: Cash settlement happy path", () => {
-  test("guest initiates cash payment, staff settles, session closes", async () => {
+  // VACUOUS(sig-3): accepts 404 from settlement and never asserts closure; passes when settlement is unavailable.
+  test.fixme("guest initiates cash payment, staff settles, session closes", async () => {
     const { branch, table, menu, staff } = await seedOrg("p01")
     const created = await createSession(table.id, "PayGuest")
     const sessionId = created.session.id

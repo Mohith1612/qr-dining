@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession } from "../helpers/api"
 
 test.describe("F-01: QR rescan joins existing active session", () => {
-  test("scanning same table QR again after session exists allows join", async () => {
+  // VACUOUS(sig-7): claims a QR rescan but uses fetch only; passes when the browser rescan flow is broken.
+  test.fixme("scanning same table QR again after session exists allows join", async () => {
     const { table } = await seedOrg("f01")
 
     // First scan creates session

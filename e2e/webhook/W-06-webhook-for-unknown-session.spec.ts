@@ -4,7 +4,8 @@ import { placeWebhook } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("W-06: Webhook referencing unknown session handled safely", () => {
-  test("webhook for non-existent session_id returns 404 or is no-op", async () => {
+  // VACUOUS(sig-3): accepts success and multiple failures; passes when the handler processes the unknown session incorrectly.
+  test.fixme("webhook for non-existent session_id returns 404 or is no-op", async () => {
     const secret = process.env.WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
 
     const res = await placeWebhook("stripe", {

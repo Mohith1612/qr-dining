@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder, fetchSnapshot } from "../helpers/ap
 import crypto from "crypto"
 
 test.describe("F-02: Cart and order UI frozen during payment_pending", () => {
-  test("snapshot in payment_pending reflects frozen state for frontend", async () => {
+  // VACUOUS(sig-7): claims frozen UI but uses fetch only; passes when the controls remain enabled.
+  test.fixme("snapshot in payment_pending reflects frozen state for frontend", async () => {
     const { table, menu } = await seedOrg("f02")
     const created = await createSession(table.id, "FrozenUI")
     const sessionId = created.session.id

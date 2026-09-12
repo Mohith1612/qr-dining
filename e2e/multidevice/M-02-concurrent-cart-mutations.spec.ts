@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession } from "../helpers/api"
 
 test.describe("M-02: Concurrent cart mutations from two participants", () => {
-  test("two guests adding items concurrently both succeed or one gets a conflict", async () => {
+  // VACUOUS(sig-3): accepts both mutation success and conflict; passes when shared-cart concurrency rejects a guest.
+  test.fixme("two guests adding items concurrently both succeed or one gets a conflict", async () => {
     const { table, menu } = await seedOrg("m02")
     const created = await createSession(table.id, "GuestA")
     const sessionId = created.session.id

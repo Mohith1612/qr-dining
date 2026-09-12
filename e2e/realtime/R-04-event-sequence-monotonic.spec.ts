@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("R-04: Event sequences are monotonically increasing", () => {
-  test("missed_events from snapshot are in ascending sequence order", async () => {
+  // VACUOUS(sig-2): asserts only when at least two numeric events appear; passes when replay returns no events.
+  test.fixme("missed_events from snapshot are in ascending sequence order", async () => {
     const { table, menu } = await seedOrg("r04")
     const created = await createSession(table.id, "SeqUser")
     const sessionId = created.session.id

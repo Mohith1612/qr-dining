@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { placeWebhook } from "../helpers/api"
 
 test.describe("W-05: Unknown webhook event type accepted gracefully", () => {
-  test("unrecognised event type returns 200 without error (no-op)", async () => {
+  // VACUOUS(sig-3): accepts success and rejection for an event claimed accepted; passes when unknown events are rejected.
+  test.fixme("unrecognised event type returns 200 without error (no-op)", async () => {
     const secret = process.env.WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
 
     const res = await placeWebhook("stripe", {

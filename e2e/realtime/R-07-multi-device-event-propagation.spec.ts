@@ -4,7 +4,8 @@ import { seedOrg, createSession, fetchSnapshot } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("R-07: Multi-device event propagation", () => {
-  test("order placed by participant A visible in snapshot for participant B", async () => {
+  // VACUOUS(sig-7): claims multi-device propagation but uses fetch only; passes when live device delivery is broken.
+  test.fixme("order placed by participant A visible in snapshot for participant B", async () => {
     const { table, menu } = await seedOrg("r07")
 
     const hostCreated = await createSession(table.id, "DeviceA")

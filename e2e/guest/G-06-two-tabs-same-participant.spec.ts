@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession } from "../helpers/api"
 
 test.describe("G-06: Two tabs same participant — cart sync", () => {
-  test("cart update in one tab reflects in snapshot for other tab", async ({ browser }) => {
+  // VACUOUS(sig-7): claims two-tab behavior but performs only HTTP requests; passes when browser tab sync is broken.
+  test.fixme("cart update in one tab reflects in snapshot for other tab", async ({ browser }) => {
     const { table, menu } = await seedOrg("g06")
     const created = await createSession(table.id, "TabUser")
     const sessionId = created.session.id
