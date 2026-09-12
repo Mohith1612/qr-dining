@@ -1,51 +1,38 @@
 import { test, expect } from "@playwright/test"
 import { API_URL } from "../playwright.config"
-import { seedOrg, createSession, placeOrder, placeWebhook } from "../helpers/api"
 import crypto from "crypto"
 
-test.describe("W-01: Valid webhook settles the session", () => {
-  // VACUOUS(sig-2): asserts state only for a 200 snapshot and accepts payment_pending; passes without settlement.
-  test.fixme("payment.completed webhook transitions session to closed", async () => {
-    const { table, menu } = await seedOrg("w01")
-    const created = await createSession(table.id, "WebhookGuest")
-    const sessionId = created.session.id
-    const guestToken = created.guest_access_token
+// LIVE SECURITY CONTROL: the route is public and unauthenticated, so signature verification is live regardless of settlement.
+test.describe("W-01: Webhook signature verification discriminates", () => {
+  test("valid signature reaches payment lookup while invalid signature is rejected", async () => {
+    const clientSecret = process.env.PAYMENT_WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
+    const timestamp = Math.floor(Date.now() / 1000).toString()
+    const body = JSON.stringify({
+      id: crypto.randomUUID(),
+      event: "payment.success",
+      payment_ref: crypto.randomUUID(),
+      amount: 150,
+      currency: "INR",
+      session_id: crypto.randomUUID(),
+      branch_id: 1,
+    })
 
-    await placeOrder(sessionId, guestToken, menu.itemId, 1)
-
-    const ref = crypto.randomUUID()
-    // Initiate payment
-    await fetch(`${API_URL}/sessions/${sessionId}/payments`, {
+    const sign = (secret: string) =>
+      crypto.createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")
+    const post = (signature: string) => fetch(`${API_URL}/webhooks/payments/stripe`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${guestToken}`,
+        "X-Payment-Timestamp": timestamp,
+        "X-Payment-Signature": signature,
       },
-      body: JSON.stringify({
-        amount: menu.itemPrice,
-        method: "digital",
-        idempotency_key: ref,
-        reference: ref,
-      }),
+      body,
     })
 
-    const secret = process.env.WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
-    const res = await placeWebhook("stripe", {
-      event: "payment.completed",
-      session_id: sessionId,
-      reference: ref,
-      amount: menu.itemPrice,
-    }, secret)
+    const accepted = await post(sign(clientSecret))
+    expect(accepted.status).toBe(200)
 
-    expect([200, 202]).toContain(res.status)
-
-    // Session should now be closed or payment accepted
-    const snapRes = await fetch(`${API_URL}/sessions/${sessionId}/snapshot`, {
-      headers: { "Authorization": `Bearer ${guestToken}` },
-    })
-    if (snapRes.status === 200) {
-      const snap = await snapRes.json()
-      expect(["closed", "payment_pending"]).toContain(snap.session.status)
-    }
+    const rejected = await post(sign("deliberately-wrong-webhook-secret"))
+    expect(rejected.status).toBe(401)
   })
 })

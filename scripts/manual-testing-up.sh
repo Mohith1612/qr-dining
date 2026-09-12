@@ -26,6 +26,7 @@ export REDIS_URL="redis://localhost:26379/0"
 # ≥32 chars: release-mode config validation (pilot hardening phase A) fails
 # hard on short secrets. Fixed value so guest tokens stay valid across restarts.
 GUEST_SECRET="mtest-shared-secret-0123456789abcdef0123456789abcdef"
+WEBHOOK_SECRET="test-webhook-secret"
 CORS="http://localhost:3000,http://localhost:3001"
 
 RESET=0
@@ -61,10 +62,16 @@ sleep 1
 echo "▶ launch app-1 :8090 / app-2 :8095 (from /tmp, no .env)…"
 cd /tmp
 PORT=8090 WORKER_REGION=mtest-1 GUEST_TOKEN_SECRET="$GUEST_SECRET" CORS_ALLOWED_ORIGINS="$CORS" GIN_MODE=release \
+  PAYMENT_WEBHOOK_SECRET_STRIPE="$WEBHOOK_SECRET" \
+  RATE_LIMIT_RPM=10000 AUTH_RATE_LIMIT_RPM=10000 \
   AUDIT_LOG_V2_ENABLED=true \
+  AUTHZ_CENTRAL_POLICY_ENFORCE=true \
   DATABASE_URL="$DATABASE_URL" REDIS_URL="$REDIS_URL" nohup "$BIN" >/tmp/qrapp-mtest-1.log 2>&1 & disown
 PORT=8095 WORKER_REGION=mtest-2 GUEST_TOKEN_SECRET="$GUEST_SECRET" CORS_ALLOWED_ORIGINS="$CORS" GIN_MODE=release \
+  PAYMENT_WEBHOOK_SECRET_STRIPE="$WEBHOOK_SECRET" \
+  RATE_LIMIT_RPM=10000 AUTH_RATE_LIMIT_RPM=10000 \
   AUDIT_LOG_V2_ENABLED=true \
+  AUTHZ_CENTRAL_POLICY_ENFORCE=true \
   DATABASE_URL="$DATABASE_URL" REDIS_URL="$REDIS_URL" nohup "$BIN" >/tmp/qrapp-mtest-2.log 2>&1 & disown
 sleep 4
 echo "▶ readyz:"
@@ -73,7 +80,7 @@ curl -s --max-time 5 http://localhost:8095/readyz && echo "  <- :8095"
 echo "✓ backends up."
 
 # ── Frontends ────────────────────────────────────────────────────────────────
-# frontend-a = the repo (.env.local already points at :8090) on :3000.
+# frontend-a = the repo (process env explicitly points at :8090) on :3000.
 # frontend-b = a synced copy in /tmp pointing at :8095, on :3001 (cross-instance tests).
 FE_A="$ROOT/frontend"
 FE_B=/tmp/frontend-b
@@ -96,8 +103,10 @@ printf 'NEXT_PUBLIC_API_URL=http://localhost:8095\nNEXT_PUBLIC_WS_URL=ws://local
 rm -rf "$FE_A/.next" "$FE_B/.next"
 
 echo "▶ launch frontend-a :3000 (→:8090) / frontend-b :3001 (→:8095)…"
-( cd "$FE_A" && nohup npx next dev -p 3000 >/tmp/frontend-a.log 2>&1 ) & disown
-( cd "$FE_B" && nohup npx next dev -p 3001 >/tmp/frontend-b.log 2>&1 ) & disown
+( cd "$FE_A" && NEXT_PUBLIC_API_URL=http://localhost:8090 NEXT_PUBLIC_WS_URL=ws://localhost:8090 NEXT_PUBLIC_API_BASE=http://localhost:8090 \
+    nohup npx next dev -p 3000 >/tmp/frontend-a.log 2>&1 ) & disown
+( cd "$FE_B" && NEXT_PUBLIC_API_URL=http://localhost:8095 NEXT_PUBLIC_WS_URL=ws://localhost:8095 NEXT_PUBLIC_API_BASE=http://localhost:8095 \
+    nohup npx next dev -p 3001 >/tmp/frontend-b.log 2>&1 ) & disown
 
 echo "  waiting for frontends (first compile can take ~20s)…"
 fa=000; fb=000
