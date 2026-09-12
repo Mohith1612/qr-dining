@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession, placeOrder, placeWebhook } from "../helpers/api"
 import crypto from "crypto"
 
-test.describe("P-13: Webhook amount mismatch flagged", () => {
+// UNIMPLEMENTED/OUT OF SCOPE (P5): there is no merchant provider settlement integration.
+test.describe.skip("P-13: Webhook amount mismatch flagged", () => {
   // VACUOUS(sig-3): accepts webhook success and failure; passes when a mismatched amount is silently accepted.
   test.fixme("webhook with amount different from initiated payment is flagged or rejected", async () => {
     const { table, menu } = await seedOrg("p13")
@@ -30,7 +31,7 @@ test.describe("P-13: Webhook amount mismatch flagged", () => {
       }),
     })
 
-    const secret = process.env.WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
+    const secret = process.env.PAYMENT_WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
 
     // Send webhook with mismatched amount
     const res = await placeWebhook("stripe", {

@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession, placeOrder, placeWebhook } from "../helpers/api"
 import crypto from "crypto"
 
-test.describe("W-07: payment.failed webhook reverts session to active or payment_pending", () => {
+// UNIMPLEMENTED/OUT OF SCOPE (P5): payment method is a staff signal, not provider settlement.
+test.describe.skip("W-07: payment.failed webhook reverts session to active or payment_pending", () => {
   // VACUOUS(sig-3): accepts 404 from the failed webhook and conditionally checks state; passes when reset is absent.
   test.fixme("payment.failed resets payment state without closing session", async () => {
     const { table, menu } = await seedOrg("w07")
@@ -28,7 +29,7 @@ test.describe("W-07: payment.failed webhook reverts session to active or payment
       }),
     })
 
-    const secret = process.env.WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
+    const secret = process.env.PAYMENT_WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
     const failRes = await placeWebhook("stripe", {
       event: "payment.failed",
       session_id: sessionId,

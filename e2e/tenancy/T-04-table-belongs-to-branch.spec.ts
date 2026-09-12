@@ -2,24 +2,22 @@ import { test, expect } from "@playwright/test"
 import { API_URL } from "../playwright.config"
 import { seedOrg } from "../helpers/api"
 
-const adminToken = process.env.E2E_ADMIN_TOKEN ?? "e2e-admin-secret"
-
 test.describe("T-04: Table belongs to one branch only", () => {
   // VACUOUS(sig-5): mutates only the identifier and never attempts branch reassignment; passes without ownership enforcement.
   test.fixme("assigning a table from branch A to branch B is rejected", async () => {
     const orgA = await seedOrg("t04a")
     const orgB = await seedOrg("t04b")
 
-    // Attempt to reassign orgA's table to orgB's branch
-    const res = await fetch(`${API_URL}/branches/${orgB.branch.id}/tables/${orgA.table.id}`, {
-      method: "PUT",
+    // Attempt to update orgA's table with orgB's staff credential.
+    const res = await fetch(`${API_URL}/tables/${orgA.table.id}`, {
+      method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${adminToken}`,
+        "Authorization": `Bearer ${orgB.owner.token}`,
       },
       body: JSON.stringify({ identifier: "T-STOLEN" }),
     })
-    expect([400, 403, 404, 409, 422]).toContain(res.status)
+    expect(res.status).toBe(403)
   })
 
   // VACUOUS(sig-2): accepts 404 and asserts branch ownership only on success; passes when QR resolution is absent.
@@ -27,7 +25,7 @@ test.describe("T-04: Table belongs to one branch only", () => {
     const orgA = await seedOrg("t04c")
 
     // The table token should resolve to its own branch
-    const res = await fetch(`${API_URL}/tables/resolve?token=${orgA.table.token}`)
+    const res = await fetch(`${API_URL}/tables/by-qr/${orgA.table.token}`)
     if (res.ok) {
       const data = await res.json()
       expect(data.branch_id).toBe(orgA.branch.id)

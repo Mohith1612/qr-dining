@@ -1,19 +1,18 @@
 import { test, expect } from "@playwright/test"
 import { API_URL } from "../playwright.config"
-import { seedOrg, createSession } from "../helpers/api"
-
-const adminToken = process.env.E2E_ADMIN_TOKEN ?? "e2e-admin-secret"
+import { seedOrg, getPlatformToken } from "../helpers/api"
 
 test.describe("T-03: Suspended org rejects new sessions", () => {
   test("after org suspension, new session creation is rejected", async () => {
     const { org, table } = await seedOrg("t03")
+    const platformToken = await getPlatformToken()
 
     // Suspend the org
     const suspendRes = await fetch(`${API_URL}/platform/organizations/${org.id}/suspend`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${adminToken}`,
+        "Authorization": `Bearer ${platformToken}`,
       },
       body: JSON.stringify({ reason: "e2e_test" }),
     })

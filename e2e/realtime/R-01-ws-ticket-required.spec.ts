@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test"
 import { API_URL } from "../playwright.config"
 import { seedOrg, createSession } from "../helpers/api"
+import { attemptTicketUpgrade } from "../helpers/websocket"
 
 test.describe("R-01: WebSocket ticket authentication", () => {
   test("ws-ticket endpoint requires valid guest token", async () => {
@@ -18,7 +19,7 @@ test.describe("R-01: WebSocket ticket authentication", () => {
       },
       body: JSON.stringify({ since: 0 }),
     })
-    expect(validRes.status).toBe(200)
+    expect(validRes.status).toBe(201)
     const { ticket } = await validRes.json()
     expect(typeof ticket).toBe("string")
 
@@ -42,7 +43,7 @@ test.describe("R-01: WebSocket ticket authentication", () => {
     expect(badAuthRes.status).toBe(401)
   })
 
-  test("ticket is single-use — second upgrade attempt fails", async () => {
+  test("ticket is single-use — second upgrade attempt fails", async ({ page }) => {
     const { table } = await seedOrg("r01b")
     const created = await createSession(table.id, "SingleUseUser")
     const sessionId = created.session.id
@@ -56,16 +57,13 @@ test.describe("R-01: WebSocket ticket authentication", () => {
       },
       body: JSON.stringify({}),
     })
-    expect(ticketRes.status).toBe(200)
+    expect(ticketRes.status).toBe(201)
     const { ticket } = await ticketRes.json()
-
-    // WS upgrade with ticket (HTTP version check — actual WS upgrade needs WebSocket client)
-    const wsUrlCheck = await fetch(`${API_URL}/ws?ticket=${encodeURIComponent(ticket)}`, {
-      headers: { "Upgrade": "websocket", "Connection": "Upgrade" },
-    })
-    // Either 101 (upgraded) or 400 (not actually upgrading in fetch, but ticket consumed check)
-    // The important thing is the ticket format is valid
     expect(typeof ticket).toBe("string")
     expect(ticket.length).toBeGreaterThan(10)
+
+    await page.goto("/staff/login", { waitUntil: "domcontentloaded" })
+    expect(await attemptTicketUpgrade(page, API_URL, ticket)).toBe("opened")
+    expect(await attemptTicketUpgrade(page, API_URL, ticket)).toBe("rejected")
   })
 })

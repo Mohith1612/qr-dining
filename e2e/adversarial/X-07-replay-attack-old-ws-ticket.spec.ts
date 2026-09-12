@@ -1,9 +1,10 @@
 import { test, expect } from "@playwright/test"
 import { API_URL } from "../playwright.config"
 import { seedOrg, createSession } from "../helpers/api"
+import { attemptTicketUpgrade } from "../helpers/websocket"
 
 test.describe("X-07: WS ticket replay attack — expired/used ticket rejected", () => {
-  test("ticket expires within 30 seconds and cannot be reused", async () => {
+  test("ticket expires within 30 seconds and cannot be reused", async ({ page }) => {
     const { table } = await seedOrg("x07")
     const created = await createSession(table.id, "ReplayUser")
     const sessionId = created.session.id
@@ -18,14 +19,16 @@ test.describe("X-07: WS ticket replay attack — expired/used ticket rejected", 
       },
       body: JSON.stringify({}),
     })
-    expect(ticketRes.status).toBe(200)
+    expect(ticketRes.status).toBe(201)
     const { ticket, expires_in } = await ticketRes.json()
-    expect(expires_in).toBeLessThanOrEqual(30)
-
-    // A ticket that's been "consumed" by WebSocket upgrade can't be reused.
-    // In this test we verify the ticket format and TTL are correct.
-    // Actual consumption test requires a WebSocket client.
+    expect(expires_in).toBe(30)
     expect(typeof ticket).toBe("string")
     expect(ticket.length).toBeGreaterThan(10)
+
+    // A real browser upgrade consumes the Redis ticket. Replaying the exact
+    // same ticket must fail to open a second connection.
+    await page.goto("/staff/login", { waitUntil: "domcontentloaded" })
+    expect(await attemptTicketUpgrade(page, API_URL, ticket)).toBe("opened")
+    expect(await attemptTicketUpgrade(page, API_URL, ticket)).toBe("rejected")
   })
 })

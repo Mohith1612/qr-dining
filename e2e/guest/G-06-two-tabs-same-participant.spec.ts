@@ -26,9 +26,16 @@ test.describe("G-06: Two tabs same participant — cart sync", () => {
       headers: { "Authorization": `Bearer ${guestToken}` },
     })
     expect(cartRes.status).toBe(200)
-    const cart = await cartRes.json()
-    const items = cart.Items ?? cart.items ?? []
+    // snake_case per the CartResponse tags (F-26). Read `items` directly: the
+    // old `cart.Items ?? cart.items ?? []` chain would fall through to an empty
+    // array if both names were wrong, turning the length check into a silent
+    // pass rather than a failure.
+    const cart = await cartRes.json() as {
+      items: Array<{ menu_item_id: number }>
+    }
+    const items = cart.items
+    expect(Array.isArray(items)).toBe(true)
     expect(items.length).toBeGreaterThanOrEqual(1)
-    expect(items.some((i: { menu_item_id: number }) => i.menu_item_id === menu.itemId)).toBe(true)
+    expect(items.some((i) => i.menu_item_id === menu.itemId)).toBe(true)
   })
 })

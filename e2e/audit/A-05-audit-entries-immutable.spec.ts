@@ -1,8 +1,6 @@
 import { test, expect } from "@playwright/test"
 import { API_URL } from "../playwright.config"
-import { seedOrg, createSession, fetchAudit } from "../helpers/api"
-
-const adminToken = process.env.E2E_ADMIN_TOKEN ?? "e2e-admin-secret"
+import { seedOrg, createSession, fetchAudit, getPlatformToken } from "../helpers/api"
 
 test.describe("A-05: Audit entries cannot be deleted or modified", () => {
   // VACUOUS(sig-2): returns before DELETE when no audit rows are found; passes if audit creation is broken.
@@ -18,9 +16,10 @@ test.describe("A-05: Audit entries cannot be deleted or modified", () => {
     }
 
     const entryId = entries[0].id
+    const platformToken = await getPlatformToken()
     const delRes = await fetch(`${API_URL}/platform/audit/${entryId}`, {
       method: "DELETE",
-      headers: { "Authorization": `Bearer ${adminToken}` },
+      headers: { "Authorization": `Bearer ${platformToken}` },
     })
     expect([403, 404, 405]).toContain(delRes.status)
   })
@@ -37,11 +36,12 @@ test.describe("A-05: Audit entries cannot be deleted or modified", () => {
     }
 
     const entryId = entries[0].id
+    const platformToken = await getPlatformToken()
     const patchRes = await fetch(`${API_URL}/platform/audit/${entryId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${adminToken}`,
+        "Authorization": `Bearer ${platformToken}`,
       },
       body: JSON.stringify({ action: "tampered" }),
     })

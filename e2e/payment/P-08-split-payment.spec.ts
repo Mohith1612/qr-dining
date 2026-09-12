@@ -3,8 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession, placeOrder } from "../helpers/api"
 import crypto from "crypto"
 
-test.describe("P-08: Split payment — two guests pay half each", () => {
-  test("two partial payments accepted on same session", async () => {
+test.describe("P-08: Full-bill payment and one outstanding request", () => {
+  test("partial amount is rejected and a second initiation returns the existing payment", async () => {
     const { table, menu } = await seedOrg("p08")
 
     // Host creates session
@@ -12,48 +12,64 @@ test.describe("P-08: Split payment — two guests pay half each", () => {
     const sessionId = hostCreated.session.id
     const hostToken = hostCreated.guest_access_token
 
-    // Guest B joins
-    const joinRes = await fetch(`${API_URL}/sessions/${sessionId}/join`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ display_name: "GuestB" }),
-    })
-    const guestBToken = (await joinRes.json()).guest_access_token
-
     // Place order
     await placeOrder(sessionId, hostToken, menu.itemId, 2)
 
-    const half = Math.floor(menu.itemPrice)
+    const billRes = await fetch(`${API_URL}/sessions/${sessionId}/bill`, {
+      headers: { "Authorization": `Bearer ${hostToken}` },
+    })
+    expect(billRes.status).toBe(200)
+    const bill = await billRes.json() as { total: number }
+    expect(bill.total).toBeGreaterThan(0)
 
-    // Host pays half
-    const pay1 = await fetch(`${API_URL}/sessions/${sessionId}/payments`, {
+    const partialPayment = await fetch(`${API_URL}/sessions/${sessionId}/payments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${hostToken}`,
       },
       body: JSON.stringify({
-        amount: half,
+        amount: Math.round((bill.total - 0.01) * 100) / 100,
         method: "cash",
         idempotency_key: crypto.randomUUID(),
       }),
     })
-    expect([200, 201]).toContain(pay1.status)
+    expect(partialPayment.status).toBe(422)
+    const partialError = await partialPayment.json()
+    expect(partialError.code).toBe("PAYMENT_AMOUNT_INVALID")
 
-    // GuestB pays other half (session may still be active or payment_pending)
-    const pay2 = await fetch(`${API_URL}/sessions/${sessionId}/payments`, {
+    const firstPayment = await fetch(`${API_URL}/sessions/${sessionId}/payments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${guestBToken}`,
+        "Authorization": `Bearer ${hostToken}`,
       },
       body: JSON.stringify({
-        amount: half,
-        method: "digital",
+        amount: bill.total,
+        method: "cash",
         idempotency_key: crypto.randomUUID(),
       }),
     })
-    // May succeed or fail depending on session state and split payment policy
-    expect([200, 201, 409]).toContain(pay2.status)
+    expect(firstPayment.status).toBe(201)
+    const first = await firstPayment.json() as { id: number; status: string }
+    expect(first.id).toBeGreaterThan(0)
+    expect(first.status).toBe("requires_staff_confirmation")
+
+    const secondPayment = await fetch(`${API_URL}/sessions/${sessionId}/payments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${hostToken}`,
+      },
+      body: JSON.stringify({
+        amount: bill.total,
+        method: "cash",
+        idempotency_key: crypto.randomUUID(),
+      }),
+    })
+    expect(secondPayment.status).toBe(200)
+    const second = await secondPayment.json() as { id: number; status: string }
+    expect(second.id).toBe(first.id)
+    expect(second.status).toBe("requires_staff_confirmation")
   })
 })

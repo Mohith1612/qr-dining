@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession, placeOrder, placeWebhook } from "../helpers/api"
 import crypto from "crypto"
 
-test.describe("W-02: Webhook idempotency — duplicate delivery handled", () => {
+// UNIMPLEMENTED/OUT OF SCOPE (P5): payment method is a staff signal, not provider settlement.
+test.describe.skip("W-02: Webhook idempotency — duplicate delivery handled", () => {
   // VACUOUS(sig-3): accepts success or conflict on replay and never checks settlement count; passes on double settlement.
   test.fixme("sending the same webhook twice does not double-settle", async () => {
     const { table, menu } = await seedOrg("w02")
@@ -28,7 +29,7 @@ test.describe("W-02: Webhook idempotency — duplicate delivery handled", () => 
       }),
     })
 
-    const secret = process.env.WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
+    const secret = process.env.PAYMENT_WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
     const event = {
       event: "payment.completed",
       session_id: sessionId,

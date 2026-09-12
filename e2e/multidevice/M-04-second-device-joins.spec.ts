@@ -29,7 +29,7 @@ test.describe("M-04: Second device joins existing session", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ display_name: "NewDevice" }),
     })
-    expect(joinRes.status).toBe(200)
+    expect(joinRes.status).toBe(201)
     const { guest_access_token: newToken } = await joinRes.json()
 
     // New device fetches snapshot — should see the session

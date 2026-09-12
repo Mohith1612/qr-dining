@@ -19,14 +19,12 @@ test.describe("G-03: Guest credential after revocation", () => {
       },
       body: JSON.stringify({ reason: "test_revocation" }),
     })
-    // Accept 200 or 404 (endpoint may vary)
-    expect([200, 204, 404]).toContain(closeRes.status)
+    expect(closeRes.status).toBe(200)
 
     // Attempt cart action with revoked token
     const cartRes = await fetch(`${API_URL}/sessions/${sessionId}/cart`, {
       headers: { "Authorization": `Bearer ${guestToken}` },
     })
-    // Should be 401 or 410 (session gone)
-    expect([401, 410, 403]).toContain(cartRes.status)
+    expect(cartRes.status).toBe(401)
   })
 })

@@ -2,8 +2,8 @@ import { test, expect } from "@playwright/test"
 import { API_URL } from "../playwright.config"
 import { seedOrg, createSession } from "../helpers/api"
 
-test.describe("L-05: Host close is idempotent", () => {
-  test("DELETE session twice returns success both times", async () => {
+test.describe("L-05: Host close revokes the guest credential", () => {
+  test("first close succeeds and replay with the revoked credential is rejected", async () => {
     const { table } = await seedOrg("l05")
     const created = await createSession(table.id, "HostClose")
     const sessionId = created.session.id
@@ -13,13 +13,14 @@ test.describe("L-05: Host close is idempotent", () => {
       method: "DELETE",
       headers: { "Authorization": `Bearer ${guestToken}` },
     })
-    expect([200, 204]).toContain(close1.status)
+    expect(close1.status).toBe(204)
 
     const close2 = await fetch(`${API_URL}/sessions/${sessionId}`, {
       method: "DELETE",
       headers: { "Authorization": `Bearer ${guestToken}` },
     })
-    // Second close should be no-op 200/204 or 409/410 (session already closed)
-    expect([200, 204, 409, 410]).toContain(close2.status)
+    expect(close2.status).toBe(401)
+    const replayError = await close2.json()
+    expect(replayError.code).toBe("UNAUTHORIZED")
   })
 })
