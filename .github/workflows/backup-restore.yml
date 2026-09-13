@@ -1,0 +1,78 @@
+name: Backup Restore Drill
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backup-restore:
+    name: Backup & Restore Drill
+    runs-on: ubuntu-latest
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The job always reports a status so it can be required without leaving
+      # unrelated PRs stuck at "Expected". Only relevant paths run the drill.
+      - name: Detect migration or backup-script changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ -z "$BASE_SHA" ] || [[ "$BASE_SHA" =~ ^0+$ ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- \
+            backend/migrations backend/scripts .github/workflows/backup-restore.yml; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-go@v5
+        if: steps.changes.outputs.run == 'true'
+        with:
+          go-version: "1.26.8"
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Exercise backup, restore, wedge, and force recovery
+        if: steps.changes.outputs.run == 'true'
+        working-directory: backend
+        run: |
+          set -o pipefail
+          scripts/tests/backup-restore-test.sh | tee "$RUNNER_TEMP/backup-restore.log"
+
+      # The harness intentionally exits zero with SKIP when prerequisites are
+      # absent. A CI drill that did no work must be red.
+      - name: Reject a skipped or incomplete drill
+        if: steps.changes.outputs.run == 'true'
+        run: scripts/ci/assert-backup-restore-ran.sh "$RUNNER_TEMP/backup-restore.log"
+
+      - name: No relevant changes
+        if: steps.changes.outputs.run != 'true'
+        run: echo "Backup/restore drill is not required for this change set"
+
+      - name: Upload drill output
+        if: always() && steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-restore-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/backup-restore.log
+          if-no-files-found: warn
+          retention-days: 14
