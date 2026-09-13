@@ -6,12 +6,23 @@ import (
 )
 
 var sensitiveKeys = map[string]bool{
-	"pin":                 true,
-	"pin_hash":            true,
-	"current_pin":         true,
-	"new_pin":             true,
-	"token":               true,
-	"token_hash":          true,
+	"pin":         true,
+	"pin_hash":    true,
+	"current_pin": true,
+	"new_pin":     true,
+	"token":       true,
+	"token_hash":  true,
+	// The guest session credential. `token` above does not cover it: the lookup
+	// is an exact match on the whole key, and no entry in sensitiveSubstrings
+	// matches "session_token" either. This is the field behind the three
+	// SESSION_CREATED / sessions.active / force-close leaks.
+	"session_token": true,
+	// Plural. The singular "recovery_code" below never matched the column, the
+	// json tag, or the Go field — all three are recovery_codes.
+	"recovery_codes": true,
+	// sha256 of the ephemeral MFA challenge. The "mfa" substring rule does not
+	// reach it: the name says nothing about MFA.
+	"challenge_hash":      true,
 	"password":            true,
 	"password_hash":       true,
 	"card_number":         true,

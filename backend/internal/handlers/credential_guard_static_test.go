@@ -14,7 +14,7 @@ package handlers
 //
 // audit_log.before_json / after_json is a fourth surface, defended by a
 // denylist rather than a projection and opaque to a type walk. It is checked
-// separately by TestAuditRedactionGapsAreKnown in the runtime half.
+// separately by TestAuditRedactionCoversEverySecret in part 4.
 //
 // What this part does: resolve the static type of every payload expression at
 // those call sites and walk it for secret-shaped fields. It is a tripwire on
@@ -954,5 +954,77 @@ func TestInventoryScrubbersExist(t *testing.T) {
   function was renamed (update the row) or it was deleted (the exposure is
   now unguarded — this is the bug).`, e.Scrubber, e.key(), e.Why)
 		}
+	}
+}
+
+// TestCredentialStoresNeverReachAWire names the types that exist to HOLD
+// credentials and asserts none of them reaches any surface.
+//
+// The inventory above is an allowlist: it proves nothing about a type that is
+// simply absent. Absence can mean "correctly never serialized" or "the scan
+// failed to resolve the call site", and those are not the same claim. These
+// types are important enough to assert positively.
+//
+// repository.PlatformMFA is the reason this test exists. It holds the bcrypt
+// recovery-code hashes and the encrypted TOTP secret, and it carries NO json
+// tags — so if it ever reached a response it would ship as "RecoveryCodes" and
+// "SecretEncrypted", not the snake_case names the catalogue is keyed on. The
+// walker normalizes for exactly this case; this test is what keeps that honest.
+func TestCredentialStoresNeverReachAWire(t *testing.T) {
+	mod := loadModule(t)
+
+	const repoPath = "github.com/Mohith1612/qr-dining/internal/repository"
+	const sqlcPath = "github.com/Mohith1612/qr-dining/internal/db/sqlc"
+
+	stores := []struct {
+		pkg, name, holds string
+	}{
+		{repoPath, "PlatformMFA", "bcrypt hashes of the MFA recovery codes, and the encrypted TOTP secret"},
+		{sqlcPath, "PlatformUserMfa", "the platform_user_mfa row: recovery_codes (bcrypt hashes) and secret_encrypted"},
+		{sqlcPath, "PlatformUser", "password_hash"},
+		{sqlcPath, "Staff", "pin_hash"},
+		{sqlcPath, "StaffSession", "token_hash — sha256 of a live staff bearer token"},
+		{sqlcPath, "PlatformSession", "token_hash — sha256 of a live platform bearer token"},
+		{sqlcPath, "PlatformMfaChallenge", "challenge_hash"},
+	}
+
+	// Every payload type the scan resolved, by full type string, with the sites.
+	scan := scanWireSurfaces(t)
+	reached := map[string][]finding{}
+	for _, f := range scan.Findings {
+		bare := strings.TrimPrefix(strings.TrimPrefix(f.PayloadType, "[]"), "*")
+		reached[bare] = append(reached[bare], f)
+	}
+
+	for _, store := range stores {
+		full := store.pkg + "." + store.name
+		t.Run(store.name, func(t *testing.T) {
+			// The type must still carry what we think it carries — otherwise
+			// this test passes for the wrong reason.
+			typ := mod.lookupType(t, store.pkg, store.name)
+			if len(walkTypeForSecrets(typ, secretJSONNames()).Exposures) == 0 {
+				t.Errorf("%s no longer exposes any credential field.\n"+
+					"  It was listed here because it holds %s.\n"+
+					"  Either the field moved (find where) or this row is obsolete (delete it).",
+					shortType(typ), store.holds)
+				return
+			}
+
+			if hits, ok := reached[full]; ok {
+				var where []string
+				for _, f := range hits {
+					where = append(where, fmt.Sprintf("%s at %s (%s)", f.JSONPath, strings.Join(f.Sites, ", "), f.Surface))
+				}
+				t.Errorf(`
+%s reached a wire surface.
+
+  it holds:  %s
+  reached:   %s
+
+  This type exists to store credentials. It has no business on any wire —
+  project the fields you need into a response type instead.`,
+					shortType(typ), store.holds, strings.Join(where, "; "))
+			}
+		})
 	}
 }

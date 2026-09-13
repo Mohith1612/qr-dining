@@ -459,53 +459,113 @@ func TestPersistedPayloadsCarryNoCredential(t *testing.T) {
 	p.assertClean(t, surfacePersisted)
 }
 
-// TestAuditRedactionGapsAreKnown checks the production denylist in
-// internal/audit/redaction.go against the catalogue.
+// TestAuditRedactionCoversEverySecret checks the production denylist in
+// internal/audit/redaction.go against the derived catalogue.
 //
 // audit_log.before_json / after_json is a fourth wire surface — the platform
-// audit read API serves it — and it is defended by a hand-written key list
-// rather than by a projection. That list is exactly the kind of artefact this
-// guard exists to distrust, so it gets compared against the derived catalogue.
+// audit read API serves it — and it is the one surface defended by a
+// hand-written key list rather than by a projection. That list is exactly the
+// kind of artefact this guard exists to distrust, so it is checked against the
+// catalogue rather than read.
 //
-// It does not assert the gaps are closed; closing them means editing production
-// code, which is out of scope here. It asserts the gap list does not GROW.
-func TestAuditRedactionGapsAreKnown(t *testing.T) {
-	// Ruled-secret names that audit.Redact is known NOT to redact today.
-	// Ruled-secret names that audit.Redact does NOT redact today. Each was
-	// found by this test, not by reading the list.
-	knownGaps := map[string]string{
-		"session_token": "audit.sensitiveKeys has `token` and `token_hash` but not `session_token`, and none of " +
-			"sensitiveSubstrings matches it. Not currently reachable — the only two Before/After writers are " +
-			"staff.go:216 and staff.go:462, both explicit maps — but it is the same shape as the three leaks: " +
-			"a denylist that does not know about the field.",
-		"recovery_codes": "audit.sensitiveKeys has `recovery_code`, singular. The column and the json tag are " +
-			"`recovery_codes`, plural, and the lookup is an exact map hit. One character.",
-		"challenge_hash": "not in sensitiveKeys, and `mfa` is a substring rule that `challenge_hash` does not " +
-			"contain — the name says nothing about MFA.",
-	}
+// When this test was first written it found three escapes: session_token,
+// recovery_codes and challenge_hash. All three are now in sensitiveKeys, so
+// knownGaps is empty and every ruled secret must be redacted. The map stays
+// because the next gap should be recordable without deleting the tripwire.
+func TestAuditRedactionCoversEverySecret(t *testing.T) {
+	// Ruled-secret json names that audit.Redact is knowingly allowed to pass
+	// through. Empty is the correct state; an entry here is a debt with a name.
+	knownGaps := map[string]string{}
 
-	for name := range secretJSONNames() {
-		before := json.RawMessage(fmt.Sprintf(`{%q:%q}`, name, "LIVE-CREDENTIAL-VALUE"))
+	const canary = "LIVE-CREDENTIAL-VALUE"
+	for name, why := range secretJSONNames() {
+		before := json.RawMessage(fmt.Sprintf(`{%q:%q}`, name, canary))
 		redacted, _ := audit.Redact(before, nil)
-		isRedacted := !strings.Contains(string(redacted), "LIVE-CREDENTIAL-VALUE")
+		isRedacted := !strings.Contains(string(redacted), canary)
 
-		_, known := knownGaps[name]
+		reason, known := knownGaps[name]
 		switch {
 		case isRedacted && known:
-			t.Errorf("audit.Redact now redacts %q — delete it from knownGaps in this test.", name)
+			t.Errorf("audit.Redact now redacts %q — delete it from knownGaps.\n  (it was recorded because: %s)", name, reason)
 		case !isRedacted && !known:
 			t.Errorf(`
 audit.Redact does not redact the credential field %q.
 
-  audit_log.before_json / after_json is served by the platform audit read API,
-  and is defended by the hand-written key list in internal/audit/redaction.go
-  rather than by a projection.
+  audit_log.before_json / after_json is served by the platform audit read API
+  and is defended by the hand-written key list in internal/audit/redaction.go,
+  not by a projection. isSensitive does an exact match on the whole key and
+  then a substring pass, so a near-miss — a plural, a prefix, a synonym —
+  silently passes the credential through.
 
-  Add %q to sensitiveKeys there, or — if it genuinely must survive redaction —
-  record it in knownGaps in this test with the reason.
+  Add %q to sensitiveKeys there, or record it in knownGaps with the reason.
 
   why %q is a credential:
-    %s`, name, name, name, secretRulings[name].why)
+    %s`, name, name, name, why)
 		}
 	}
+}
+
+// TestAuditRedactionIsNotFooledByGoFieldNames records a narrower gap in the
+// same denylist, found while confirming that the MFA recovery-code hashes never
+// reach a response.
+//
+// isSensitive lowercases the key and compares whole strings, so it matches
+// "recovery_codes" but not "RecoveryCodes". Marshalling a struct with no json
+// tags produces the latter — and repository.PlatformMFA, which holds those
+// bcrypt hashes, has no json tags. Nothing does that today: both Before/After
+// writers (staff.go:216, staff.go:462) pass explicit snake_case maps, and
+// TestCredentialStoresNeverReachAWire holds the line on the HTTP side.
+//
+// Left as a recorded fact rather than fixed: teaching isSensitive to normalize
+// camelCase changes what production redacts, which is a wider change than the
+// three keys this commit adds.
+func TestAuditRedactionIsNotFooledByGoFieldNames(t *testing.T) {
+	// The Go-name forms that slip past isSensitive today. Two of the eight ruled
+	// secrets are caught by accident and not by design: SecretEncrypted matches
+	// the "secret" substring rule, and Token is an exact key already on the
+	// list. The rest are whole-key misses.
+	wantPassThrough := []string{
+		"ChallengeHash", "PasswordHash", "PinHash",
+		"RecoveryCodes", "SessionToken", "TokenHash",
+	}
+
+	const canary = "LIVE-CREDENTIAL-VALUE"
+	var got []string
+	for name := range secretJSONNames() {
+		goName := goFieldNameFor(name)
+		before := json.RawMessage(fmt.Sprintf(`{%q:%q}`, goName, canary))
+		redacted, _ := audit.Redact(before, nil)
+		if strings.Contains(string(redacted), canary) {
+			got = append(got, goName)
+		}
+	}
+	sort.Strings(got)
+
+	if strings.Join(got, ",") != strings.Join(wantPassThrough, ",") {
+		t.Errorf(`audit.Redact's behaviour on Go-style field names changed.
+
+  passes through now: %s
+  expected:           %s
+
+  Fewer is an improvement — update wantPassThrough and say what closed it.
+  More means a new credential field is exposed by this route too.`,
+			strings.Join(got, ", "), strings.Join(wantPassThrough, ", "))
+	}
+	t.Logf("audit.Redact compares whole lowercased keys, so %d of the %d ruled secrets pass through "+
+		"under their untagged Go names (%s). Unreachable today — no audit writer marshals an untagged struct.",
+		len(got), len(secretJSONNames()), strings.Join(got, ", "))
+}
+
+// goFieldNameFor turns a catalogue json name into the Go field name an untagged
+// struct would serialize under: session_token -> SessionToken.
+func goFieldNameFor(jsonName string) string {
+	var b strings.Builder
+	for _, seg := range splitName(jsonName) {
+		if seg == "" {
+			continue
+		}
+		b.WriteString(strings.ToUpper(seg[:1]))
+		b.WriteString(seg[1:])
+	}
+	return b.String()
 }

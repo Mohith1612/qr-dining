@@ -332,13 +332,16 @@ func (w *typeWalker) walk(t types.Type, jsonPath, goPath string, onPath map[stri
 			continue
 		}
 		if name == "" {
+			// encoding/json falls back to the Go field name verbatim, so an
+			// untagged RecoveryCodes ships as "RecoveryCodes". The catalogue is
+			// keyed on json names, so the lookup below normalizes.
 			name = f.Name()
 		}
 
 		childJSON := jsonPath + "." + name
 		childGo := goPath + " → " + f.Name() + " " + shortType(f.Type())
 
-		if _, isSecret := w.secrets[name]; isSecret {
+		if isSecret := w.isSecretField(name); isSecret {
 			w.exposures = append(w.exposures, exposure{
 				Root: w.root, Field: name, JSONPath: childJSON, GoPath: childGo,
 			})
@@ -369,6 +372,26 @@ func (w *typeWalker) underlyingHidesSecrets(t types.Type) bool {
 		}
 	}
 	return false
+}
+
+// isSecretField matches a serialized key against the catalogue. It tries the
+// key as written and then its snake_case normalization, because hand-written
+// Go structs without json tags serialize under their Go field names:
+// repository.PlatformMFA.RecoveryCodes holds the bcrypt recovery-code hashes
+// and has no tag, so it would ship as "RecoveryCodes" and a literal lookup for
+// "recovery_codes" would miss it.
+func (w *typeWalker) isSecretField(name string) bool {
+	if _, ok := w.secrets[name]; ok {
+		return true
+	}
+	_, ok := w.secrets[snakeCase(name)]
+	return ok
+}
+
+// snakeCase normalizes a Go field name or json key to the catalogue's form.
+// It is the identity on names that are already snake_case.
+func snakeCase(name string) string {
+	return strings.Join(splitName(name), "_")
 }
 
 func structOf(t types.Type) *types.Struct {
