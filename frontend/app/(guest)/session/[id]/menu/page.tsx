@@ -334,7 +334,7 @@ export default function MenuPage({ params }: Props) {
     if (categories.length > 0 && activeCatId === null) {
       setActiveCatId(categories[0].id)
     }
-  }, [categories.length, activeCatId])
+  }, [categories, activeCatId])
 
   useEffect(() => {
     const container = scrollContainerRef.current
@@ -359,7 +359,6 @@ export default function MenuPage({ params }: Props) {
     })
 
     return () => observerRef.current?.disconnect()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categories])
 
   useEffect(() => {

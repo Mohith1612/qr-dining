@@ -50,7 +50,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function PaymentPage() {
   const orders = useOrdersStore((s) => s.orders)
-  const { session, participant, participants, isHost } = useSession()
+  const { session, participants, isHost } = useSession()
   const hostName = participants.find((p) => p.is_host)?.display_name
   const completedPayment = useSessionStore((s) => s.completedPayment)
   const cancelledPayment = useSessionStore((s) => s.cancelledPayment)
@@ -116,7 +116,6 @@ export default function PaymentPage() {
     } finally {
       if (attempt === 0) setBillLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id])
 
   useEffect(() => {

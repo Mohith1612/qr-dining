@@ -105,7 +105,8 @@ if (BYPASS) {
 }
 
 const apiUrl = checkUrl("NEXT_PUBLIC_API_URL", process.env.NEXT_PUBLIC_API_URL, "http", true);
-const wsUrl = checkUrl("NEXT_PUBLIC_WS_URL", process.env.NEXT_PUBLIC_WS_URL, "ws", true);
+// Validated for its side effect (errors[]); the parsed URL itself is not needed here.
+checkUrl("NEXT_PUBLIC_WS_URL", process.env.NEXT_PUBLIC_WS_URL, "ws", true);
 // NEXT_PUBLIC_API_BASE drives the CSP connect-src in next.config.ts. Optional,
 // but if present it must be valid and consistent with the runtime API URL or
 // the browser will block API/WS calls.
