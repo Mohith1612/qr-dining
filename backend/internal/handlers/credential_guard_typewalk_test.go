@@ -43,6 +43,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -607,5 +609,64 @@ func blindSpotPaths(t types.Type, secrets map[string]string) map[string]string {
 	for _, b := range walkTypeForSecrets(t, secrets).BlindSpots {
 		out[b.JSONPath] = b.Reason
 	}
+	return out
+}
+
+// moduleKeyUniverse returns every string that could plausibly appear as a key
+// in a serialized payload anywhere in this module: json tag names, Go field
+// names of untagged fields, and string-literal keys in map composite literals.
+//
+// Used to measure a redaction change against the real key space rather than
+// against a handful of examples.
+func moduleKeyUniverse(t *testing.T) []string {
+	t.Helper()
+	mod := loadModule(t)
+	seen := map[string]bool{}
+
+	for _, pkg := range mod.Packages {
+		for _, file := range pkg.Files {
+			ast.Inspect(file, func(n ast.Node) bool {
+				switch node := n.(type) {
+				case *ast.StructType:
+					for _, f := range node.Fields.List {
+						tag := ""
+						if f.Tag != nil {
+							if unq, err := strconv.Unquote(f.Tag.Value); err == nil {
+								tag, _, _ = strings.Cut(reflect.StructTag(unq).Get("json"), ",")
+							}
+						}
+						for _, nm := range f.Names {
+							if tag != "" && tag != "-" {
+								seen[tag] = true
+							} else if tag == "" {
+								seen[nm.Name] = true
+							}
+						}
+					}
+				case *ast.CompositeLit:
+					for _, elt := range node.Elts {
+						kv, ok := elt.(*ast.KeyValueExpr)
+						if !ok {
+							continue
+						}
+						lit, ok := kv.Key.(*ast.BasicLit)
+						if !ok || lit.Kind != token.STRING {
+							continue
+						}
+						if unq, err := strconv.Unquote(lit.Value); err == nil && unq != "" {
+							seen[unq] = true
+						}
+					}
+				}
+				return true
+			})
+		}
+	}
+
+	out := make([]string, 0, len(seen))
+	for k := range seen {
+		out = append(out, k)
+	}
+	sort.Strings(out)
 	return out
 }

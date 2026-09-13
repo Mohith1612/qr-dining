@@ -489,6 +489,7 @@ These remain in `docs/`/`docs/history/` unedited; **this section is the correcti
 3. **563 frontend `no-unused-vars` warnings** (redesign residue); cleanup is unscheduled.
 4. **`/tmp`-hosted soak binary** — bitten twice; relocate for the RC soak.
 5. **Two collateral surfaces** (platform studio + admin tab) — watch for config-schema divergence.
+6. **`ActorScope` and `Metadata` bypass audit redaction.** `Writer.record` applies `Redact` to `Before`/`After` only (`backend/internal/audit/writer.go:76`); `ActorScopeJson` and `MetadataJson` go through `toJSON` unfiltered (`writer.go:78-79`, stored at `writer.go:94` and `writer.go:103`) and are served by the platform audit read API. 18 call sites populate them, all with hand-written literals today, so nothing sensitive currently lands there — the same "unreachable until someone embeds a row" posture that preceded the three `session_token` leaks. Fix is one line each; deliberately not folded into the redaction work of 2026-09-13 (commits `b9b79b8`, `1653ac1`) to keep that change auditable.
 
 ### Never touch casually
 Session transition table · bill snapshot semantics · audit-log schema/trigger · loyalty ledger constraints · additive-migration rule · the soak stack · payment escalation's alert-only property.

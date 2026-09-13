@@ -505,55 +505,141 @@ audit.Redact does not redact the credential field %q.
 	}
 }
 
-// TestAuditRedactionIsNotFooledByGoFieldNames records a narrower gap in the
-// same denylist, found while confirming that the MFA recovery-code hashes never
-// reach a response.
+// TestAuditRedactionTreatsBothSpellingsAlike pins the property that the
+// camelCase normalization in audit.isSensitive exists to establish: a key
+// classifies the same whether it arrives as json-tag snake_case or as the Go
+// field name an untagged struct serializes under.
 //
-// isSensitive lowercases the key and compares whole strings, so it matches
-// "recovery_codes" but not "RecoveryCodes". Marshalling a struct with no json
-// tags produces the latter — and repository.PlatformMFA, which holds those
-// bcrypt hashes, has no json tags. Nothing does that today: both Before/After
-// writers (staff.go:216, staff.go:462) pass explicit snake_case maps, and
-// TestCredentialStoresNeverReachAWire holds the line on the HTTP side.
+// The gap this replaces was found while confirming the MFA recovery-code
+// hashes never reach a response. isSensitive compared whole lowercased keys,
+// so it matched "recovery_codes" but not "RecoveryCodes" — and
+// repository.PlatformMFA, which holds those bcrypt hashes, carries no json
+// tags at all. Six of the eight ruled secrets were under-redacted in that
+// spelling.
 //
-// Left as a recorded fact rather than fixed: teaching isSensitive to normalize
-// camelCase changes what production redacts, which is a wider change than the
-// three keys this commit adds.
-func TestAuditRedactionIsNotFooledByGoFieldNames(t *testing.T) {
-	// The Go-name forms that slip past isSensitive today. Two of the eight ruled
-	// secrets are caught by accident and not by design: SecretEncrypted matches
-	// the "secret" substring rule, and Token is an exact key already on the
-	// list. The rest are whole-key misses.
-	wantPassThrough := []string{
-		"ChallengeHash", "PasswordHash", "PinHash",
-		"RecoveryCodes", "SessionToken", "TokenHash",
+// Measured over every key in the codebase, closing it changed exactly one
+// classification (RecoveryCodes, the only untagged credential field that
+// actually exists) and un-redacted nothing.
+func TestAuditRedactionTreatsBothSpellingsAlike(t *testing.T) {
+	const canary = "LIVE-CREDENTIAL-VALUE"
+	redacts := func(key string) bool {
+		before := json.RawMessage(fmt.Sprintf(`{%q:%q}`, key, canary))
+		out, _ := audit.Redact(before, nil)
+		return !strings.Contains(string(out), canary)
+	}
+
+	for name, why := range secretJSONNames() {
+		goName := goFieldNameFor(name)
+		if goName == name {
+			continue // single-word names have one spelling
+		}
+		if !redacts(goName) {
+			t.Errorf(`
+audit.Redact redacts %q but not %q — the same credential under the two
+spellings the same field can serialize as.
+
+  A struct with json tags produces the first. A struct without them produces
+  the second: repository.PlatformMFA is exactly that, and holds the bcrypt
+  recovery-code hashes.
+
+  why %q is a credential:
+    %s`, name, goName, name, why)
+		}
+	}
+}
+
+// TestAuditRedactionSurfaceIsPinned lists every key in this module that
+// audit.Redact will strip, and fails when that set changes.
+//
+// It answers the question the camelCase change raised: does widening the match
+// redact something it should not? The substring rules are blunt — "mfa" and
+// "pin_" match more than credentials — and normalization injects the
+// underscores that make them reachable in a second spelling. That is fine
+// while the set stays deliberate, and this is what keeps it deliberate.
+//
+// A key appearing here means audit_log.before_json / after_json will show
+// "[REDACTED]" instead of the value. Losing a field from an audit trail is a
+// real cost, so a new entry deserves a look rather than a shrug.
+//
+// Three entries are broader than the catalogue: mfa_required and
+// mfa_expires_at are not credentials (a policy bool and a timestamp), and
+// pin_version is a monotonic counter ruled NOT secret. All three predate the
+// camelCase change — their snake_case spellings already matched — and are left
+// alone here; narrowing the substring list is its own task.
+func TestAuditRedactionSurfaceIsPinned(t *testing.T) {
+	want := map[string]bool{
+		// config / env field names
+		"GuestTokenSecret": true, "MFAEncryptionKey": true, "SecretAccessKey": true,
+		"WebhookSecrets": true, "mfaEncKey": true,
+		// the untagged credential store — the key the camelCase change added
+		"RecoveryCodes": true, "SecretEncrypted": true,
+		// catalogue secrets, json spellings
+		"challenge_hash": true, "password_hash": true, "pin_hash": true,
+		"recovery_codes": true, "secret_encrypted": true, "session_token": true,
+		"token": true, "token_hash": true,
+		// denylist entries that predate all of this
+		"access_token": true, "api_key": true, "card_number": true, "card_pan": true,
+		"client_secret": true, "csrf_token": true, "current_pin": true,
+		"cvc": true, "cvv": true, "expiry": true, "guest_access_token": true,
+		"mfa_challenge": true, "mfa_code": true, "new_pin": true, "otp": true,
+		"otp_code": true, "pan": true, "password": true, "payment_signature": true,
+		"pin": true, "private_key": true, "recovery_code": true,
+		"refresh_token": true, "secret": true, "signature": true,
+		"webhook_signature": true, "x-payment-signature": true,
+		"x_payment_signature": true,
+		// broader than the catalogue; see the note above
+		"MfaRequired": true, "mfa_required": true, "mfa_expires_at": true,
+		"pin_version": true,
 	}
 
 	const canary = "LIVE-CREDENTIAL-VALUE"
-	var got []string
-	for name := range secretJSONNames() {
-		goName := goFieldNameFor(name)
-		before := json.RawMessage(fmt.Sprintf(`{%q:%q}`, goName, canary))
-		redacted, _ := audit.Redact(before, nil)
-		if strings.Contains(string(redacted), canary) {
-			got = append(got, goName)
+	keys := moduleKeyUniverse(t)
+	if len(keys) < 500 {
+		t.Fatalf("only %d candidate keys found; the scan is broken, not the schema", len(keys))
+	}
+
+	got := map[string]bool{}
+	for _, k := range keys {
+		raw := json.RawMessage(fmt.Sprintf(`{%q:%q}`, k, canary))
+		out, _ := audit.Redact(raw, nil)
+		if !strings.Contains(string(out), canary) {
+			got[k] = true
 		}
 	}
-	sort.Strings(got)
 
-	if strings.Join(got, ",") != strings.Join(wantPassThrough, ",") {
-		t.Errorf(`audit.Redact's behaviour on Go-style field names changed.
-
-  passes through now: %s
-  expected:           %s
-
-  Fewer is an improvement — update wantPassThrough and say what closed it.
-  More means a new credential field is exposed by this route too.`,
-			strings.Join(got, ", "), strings.Join(wantPassThrough, ", "))
+	var added, removed []string
+	for k := range got {
+		if !want[k] {
+			added = append(added, k)
+		}
 	}
-	t.Logf("audit.Redact compares whole lowercased keys, so %d of the %d ruled secrets pass through "+
-		"under their untagged Go names (%s). Unreachable today — no audit writer marshals an untagged struct.",
-		len(got), len(secretJSONNames()), strings.Join(got, ", "))
+	for k := range want {
+		if !got[k] {
+			removed = append(removed, k)
+		}
+	}
+	sort.Strings(added)
+	sort.Strings(removed)
+
+	for _, k := range added {
+		t.Errorf(`audit.Redact now strips %q, which it did not before.
+
+  normalized form: %q
+  Anything under this key is replaced with "[REDACTED]" in
+  audit_log.before_json / after_json.
+
+  If it is a credential, good — add it to want in this test. If it is not, a
+  blunt rule in internal/audit/redaction.go caught it by accident and an audit
+  trail just lost a field; narrow the rule instead.`, k, snakeCase(k))
+	}
+	for _, k := range removed {
+		t.Errorf(`audit.Redact no longer strips %q.
+
+  Either the field was renamed or deleted (drop it from want), or a redaction
+  rule was narrowed and a credential is now written to audit_log in the clear.`, k)
+	}
+
+	t.Logf("%d of %d module keys are redacted by audit.Redact", len(got), len(keys))
 }
 
 // goFieldNameFor turns a catalogue json name into the Go field name an untagged
