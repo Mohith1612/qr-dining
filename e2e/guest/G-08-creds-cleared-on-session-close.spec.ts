@@ -15,8 +15,10 @@ test.describe("G-08: guest credentials are cleared when the session ends", () =>
     const participantId = created.participant.id
     const lsKey = `guest_creds:${sessionId}`
 
-    // Seed the credentials exactly as the join flow persists them.
-    await page.goto(`/session/${sessionId}`)
+    // Seed the credentials on the app origin before mounting the guarded session
+    // route. Navigating to /session without them races SessionLayout's redirect
+    // to /, so writing them afterwards does not prove SessionProvider mounted.
+    await page.goto("/")
     await page.evaluate(({ id, pid, tok, key }) => {
       sessionStorage.setItem("session_id", id)
       sessionStorage.setItem("participant_id", String(pid))
@@ -24,13 +26,18 @@ test.describe("G-08: guest credentials are cleared when the session ends", () =>
       localStorage.setItem(key, JSON.stringify({ participantId: pid, token: tok }))
     }, { id: sessionId, pid: participantId, tok: guestToken, key: lsKey })
 
-    await page.reload()
+    const snapshotPromise = page.waitForResponse((response) => {
+      const url = new URL(response.url())
+      return response.request().method() === "GET"
+        && url.pathname === `/sessions/${sessionId}/snapshot`
+    })
+    await page.goto(`/session/${sessionId}`)
 
-    // Precondition: the app is running with the credentials in place.
-    await expect.poll(
-      () => page.evaluate((key) => localStorage.getItem(key), lsKey),
-      { timeout: 10_000 }
-    ).not.toBeNull()
+    // Precondition: the guarded route stayed live and SessionProvider completed
+    // its initial snapshot, rather than merely finding a credential in storage.
+    const snapshot = await snapshotPromise
+    expect(snapshot.status()).toBe(200)
+    await expect(page).toHaveURL(new RegExp(`/session/${sessionId}/?$`))
 
     await forceCloseSession(sessionId, guestToken)
 
