@@ -8,17 +8,25 @@ test.describe("G-01: Fresh guest session and order", () => {
     const created = await createSession(table.id, "Alice")
     const { sessionId, guestToken } = { sessionId: created.session.id, guestToken: created.guest_access_token }
 
-    // Navigate to the session as if coming via QR
-    await page.goto(`/session/${sessionId}`)
-
-    // Inject credentials that would have been set by the QR flow
+    // Inject credentials on the app origin before mounting the guarded session
+    // route, matching the ordering of the real QR flow.
+    await page.goto("/")
     await page.evaluate(({ id, pid, tok }) => {
       sessionStorage.setItem("session_id", id)
       sessionStorage.setItem("participant_id", String(pid))
       sessionStorage.setItem("guest_access_token", tok)
     }, { id: sessionId, pid: created.participant.id, tok: guestToken })
 
-    await page.reload()
+    const snapshotPromise = page.waitForResponse((response) => {
+      const url = new URL(response.url())
+      return response.request().method() === "GET"
+        && url.pathname === `/sessions/${sessionId}/snapshot`
+    })
+    await page.goto(`/session/${sessionId}`)
+
+    const initialSnapshot = await snapshotPromise
+    expect(initialSnapshot.status()).toBe(200)
+    await expect(page).toHaveURL(new RegExp(`/session/${sessionId}/?$`))
     await expect(page.locator("text=Welcome, Alice")).toBeVisible({ timeout: 10_000 })
 
     // Navigate to menu and add an item

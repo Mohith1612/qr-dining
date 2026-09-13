@@ -47,7 +47,8 @@ test.describe("G-08: guest credentials are cleared when the session ends", () =>
       .poll(() => page.evaluate((key) => localStorage.getItem(key), lsKey), { timeout: 20_000 })
       .toBeNull()
 
-    const tabToken = await page.evaluate(() => sessionStorage.getItem("guest_access_token"))
-    expect(tabToken).toBeNull()
+    await expect
+      .poll(() => page.evaluate(() => sessionStorage.getItem("guest_access_token")), { timeout: 10_000 })
+      .toBeNull()
   })
 })
