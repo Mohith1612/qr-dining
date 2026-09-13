@@ -313,7 +313,7 @@ groups:
           description: "A settled session disagrees on snapshot_vs_orders or collected_vs_snapshot. One confirmed instance requires immediate fallback for the service. Find the table and exact amounts in billing.reconciliation.discrepancy audit rows. Independence and the 24h root-cause deadline require manual incident tracking; see docs/PILOT-ABORT-CRITERIA.md A1."
 
       # Abort criterion A2. Tenant scope denials are enforced unconditionally,
-      # independent of AUTHZ_CENTRAL_POLICY_ENFORCE (handlers/authz.go:59), so a
+      # independent of AUTHZ_CENTRAL_POLICY_ENFORCE (backend/internal/handlers/authz.go:59), so a
       # branch_mismatch/org_mismatch denial is a real blocked cross-tenant access
       # attempt, not a shadow observation. In a single-site pilot the legitimate
       # rate is exactly zero: one event is a page, not a trend.
@@ -366,4 +366,4 @@ groups:
           severity: ticket
         annotations:
           summary: "No successful backup in >26h"
-          description: "Early warning ahead of BackupTooOld (36h). Note that qr_dining_backup_last_run_status cannot be trusted on its own: nightly-backup.sh exits before installing its ERR trap when DATABASE_URL is unset, so a missing env file leaves the status metric reporting the last good run (finding R-3, docs/history/restore-verification-report-2026-09-12.md)."
+          description: "Early warning ahead of BackupTooOld (36h). Last-run status changes only when nightly-backup.sh starts; a scheduler or wrapper failure that never invokes it writes no status. Investigate the schedule and textfile wiring; see docs/OPERATIONS.md and docs/RECOVERY.md."

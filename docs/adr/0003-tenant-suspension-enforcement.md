@@ -2,6 +2,11 @@
 
 **Status:** Accepted · **Date:** 2026-09-12 · **Outcome:** organization and branch lifecycle status are now read by three guest entry points; live sessions are deliberately untouched; one asymmetry is left open (§7)
 
+> **Current verification, 2026-09-13.** The three entry gates remain wired
+> (`backend/internal/services/menu.go:98-112`;
+> `backend/internal/services/session.go:99-115,567-596`). The staff-login
+> asymmetry in §7 also remains (`backend/internal/services/staff.go:179-197`).
+
 > **Context.** Until this change the `organizations.status` and `branches.status`
 > columns were inert on every guest path. `handlers/platform_lifecycle.go` said so in
 > a comment: *"No operational path reads these statuses yet — the flip is inert until

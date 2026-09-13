@@ -1,147 +1,231 @@
-# RECOVERY.md — QR-Dining Backup & Disaster Recovery
+# Recovery
 
-**Canonical backup and disaster-recovery guide.** Companions: [DEPLOYMENT.md](DEPLOYMENT.md) · [OPERATIONS.md](OPERATIONS.md) · [RUNBOOKS.md](RUNBOOKS.md).
+Last verified: 2026-09-13.
 
-Certification evidence: [history/restore-verification-report-2026-09-12.md](history/restore-verification-report-2026-09-12.md) (**current** — schema 40, local-provider round trip, restore timed at volume, restore-and-replay failure documented) · [history/restore-verification-report.md](history/restore-verification-report.md) (schema 33, 2026-06-09, original Phase E certification).
+This is the destructive database-recovery procedure. A bad application deploy is
+an image rollback, not a database restore; the production compose file pins the
+application image through `IMAGE_TAG` (`deploy/vm/docker-compose.yml:43-51`).
 
-> **Forward-fix only.** A restore is safe **only into the schema version the dump was taken at**.
-> Restoring an older dump and letting the app migrate it forward is **not** a supported path:
-> migration 22 cannot be re-applied to a populated `audit_log`, and the failure leaves
-> `schema_migrations` dirty so the app will not start. Verified empirically 2026-09-12.
-> See [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md) §0 and [RUNBOOKS.md §8](RUNBOOKS.md#8-migration-rollback).
+Legacy backup-test output may say “RECOVERY.md §3a”; that pointer means
+[Rehearsed scratch restore](#rehearsed-scratch-restore).
 
----
+## Non-negotiable constraint: forward fixes only
 
-## 1. What exists
+Do not roll the production schema down. The down migrations from 16 through 24
+remove identity, tenancy, audit, realtime, idempotency, billing-snapshot, and
+session-lifecycle state (`backend/migrations/000016_identity_hardening.down.sql:1-17`,
+`backend/migrations/000017_organization_model.down.sql:1-19`,
+`backend/migrations/000018_platform_trust_domain.down.sql:1-13`,
+`backend/migrations/000019_audit_log_v2.down.sql:1-7`,
+`backend/migrations/000020_realtime_session_hardening.down.sql:1-2`,
+`backend/migrations/000021_payment_order_correctness.down.sql:1-34`,
+`backend/migrations/000022_operational_ux_cleanup.down.sql:1-21`,
+`backend/migrations/000023_session_lifecycle_states.down.sql:1-8`,
+`backend/migrations/000024_session_lifecycle_invariants.down.sql:1-5`). Migration
+36 deletes payment-time promo redemptions, migration 38 deletes the Serene theme
+preset and assignments, and migration 39 has no reversible down operation
+(`backend/migrations/000036_promo_redemption_payment.down.sql:1-9`,
+`backend/migrations/000038_serene_theme_preset.down.sql:1-4`,
+`backend/migrations/000039_normalize_promo_redemption_phones.down.sql:1-4`).
 
-- **Nightly dump** (02:30, systemd timer → `backend/scripts/nightly-backup.sh`): `pg_dump --format=custom --compress=9` → sha256 → upload to R2 → append-only `manifest.jsonl` → retention prune (14 days) → Prometheus textfile metrics. Any failure exits non-zero **and** sets `qr_dining_backup_last_run_status 1`, including a missing/unreadable env file — the script reports through an `EXIT` trap installed before any validation, so every exit path is covered. (Until 2026-09-12 the guard ran first and exited silently, leaving the metric on the last good run; finding R-3, fixed and regression-tested in `backend/scripts/tests/backup-restore-test.sh`.)
-- **Bucket layout** (`R2_BUCKET`, currently the temporary `qr-dining-backups`):
-  - `backups/YYYY/MM/backup_YYYYMMDD_HHMMSS.dump` (UTC-named, one per run)
-  - `backups/manifest.jsonl` — one JSON line per backup: `{timestamp,key,bytes,sha256,provider,retention_days}`. **The manifest is the index of record**: pick restore candidates from it and always verify sha256 after download.
-- **Provider abstraction** (`backend/scripts/lib/storage.sh`): `BACKUP_PROVIDER=r2|s3|local`, same code path (AWS CLI) for both clouds. Nothing is bucket-name-aware beyond env.
-- **RPO: ≤24h** (nightly). Note the worst case lands where it hurts most: the timer fires at 02:30 server time, so a Friday service running to 01:00 is not backed up until 90 minutes later, and a failure at 02:00 loses the whole Friday night.
-- **RTO: minutes**, now measured rather than estimated. At ~90 days of single-site pilot volume (297 MB DB, 500K `audit_log` rows, 16 MB dump) on an amd64 dev host: `pg_dump` ~3 s, `pg_restore` 8–13 s, sha256 0.1 s. Assume 2–3× on the Ampere VM; **budget 5 minutes** for the mechanical path including download and the app's ~12 s restart. **~1–2h** for a full-host rebuild via [DEPLOYMENT.md](DEPLOYMENT.md).
+Restore a dump at the schema version it contains. Do not roll an existing
+database backward to meet an older binary. The restore script prints the
+restored version and dirty flag after its row-count check
+(`backend/scripts/restore.sh:119-136`).
 
-## 2. Choosing a backup
+## Backup artifact and selection
 
-```bash
-export AWS_ACCESS_KEY_ID=<R2_ACCESS_KEY> AWS_SECRET_ACCESS_KEY=<R2_SECRET_KEY>
-EP=--endpoint-url=https://<account_id>.r2.cloudflarestorage.com
-aws s3 cp s3://$R2_BUCKET/backups/manifest.jsonl - $EP --region auto | tail -5   # newest last
-aws s3 cp s3://$R2_BUCKET/<key-from-manifest> ./restore-candidate.dump $EP --region auto
-sha256sum restore-candidate.dump    # MUST equal the manifest line's sha256 — stop if not
-```
+`nightly-backup.sh` creates a compressed custom-format dump, computes SHA-256,
+uploads the dump, appends its key, size, checksum, provider, and retention to
+`manifest.jsonl`, then prunes old objects (`backend/scripts/nightly-backup.sh:94-145`).
+The manifest is append-only while retention deletes objects, so old manifest
+lines can be tombstones; confirm the chosen object exists before downloading it
+(`backend/scripts/nightly-backup.sh:113-145`).
 
-> **The manifest lists objects that *were* created, not objects that still exist.** It is
-> append-only; retention deletes the object but leaves its line behind. Any entry older than
-> `RETENTION_DAYS` (14) is a tombstone whose key will 404. Verified 2026-09-12. Prefer the newest
-> entries, and treat a missing object as expected rather than as a lost backup.
+Before any restore:
 
-## 3. Restore procedures (verified pattern)
+1. Put the restaurant on its documented fallback and stop application writes.
+   The pilot stop/abort thresholds are in
+   [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md).
+2. Select an existing dump object, download it, and recompute SHA-256. Compare
+   that value with the same object's manifest entry. The backup writes the
+   checksum over the dump before upload (`backend/scripts/nightly-backup.sh:101-124`).
+3. Record the dump's `schema_migrations` version after restore and do not start
+   a binary whose expected schema differs (`backend/scripts/restore.sh:132-136`).
 
-`backend/scripts/restore.sh [--yes] [--preserve-owner] <dump>` — **destructive**: `pg_restore --clean --if-exists --single-transaction --no-owner --no-privileges` into `DATABASE_URL`, then row-count and migration-state validation. Single-transaction = all-or-nothing.
+The storage adapter supports `r2`, `s3`, and `local`; each provider's required
+variables and commands are implemented in `backend/scripts/lib/storage.sh:8-118`.
 
-- `--yes` (or `FORCE=1`) skips the confirmation prompt — required for drills, cron and CI, which have no terminal. Without it and without a terminal the script now says so and exits, instead of aborting silently.
-- `--no-owner --no-privileges` is the **default** so a restore works on a rebuilt host that does not yet have the app role. Pass `--preserve-owner` only when restoring onto a server that already has the original roles and you need the exact grants back.
-- Both behaviours are regression-tested: `backend/scripts/tests/backup-restore-test.sh`.
+## Rehearsed scratch restore
 
-### 3a. Drill / side-restore (non-destructive — also the quarterly drill)
-
-Runs everything inside containers; needs no host pg tools. This exact procedure passed against the real R2 bucket on 2026-07-18 (§5):
-
-> The drill server deliberately uses a different role (`bv`) from the production dump's owner.
-> That works because `restore.sh` passes `--no-owner --no-privileges` by default — restored objects
-> are owned by the connecting role. Until 2026-09-12 it did not, and this drill could not have
-> restored a production dump at all: `ALTER ... OWNER TO qrdining` aborted, and
-> `--single-transaction` meant nothing was restored (finding R-1).
-
-```bash
-docker network create qr-restore-drill
-docker run -d --name qr-drill-db --network qr-restore-drill \
-  -e POSTGRES_USER=bv -e POSTGRES_PASSWORD=drill -e POSTGRES_DB=bvdb postgres:17-alpine
-docker run --rm --network qr-restore-drill \
-  --env-file /etc/qr-dining/backup.env \
-  -e DATABASE_URL=postgres://bv:drill@qr-drill-db:5432/bvdb \
-  -v /opt/qr-dining/repo/backend/scripts:/scripts:ro -v /tmp/drill:/work \
-  postgres:17-alpine bash -c '
-    apk add --no-cache bash aws-cli >/dev/null
-    export AWS_ACCESS_KEY_ID=$R2_ACCESS_KEY AWS_SECRET_ACCESS_KEY=$R2_SECRET_KEY
-    KEY=$(aws s3 cp s3://$R2_BUCKET/backups/manifest.jsonl - --endpoint-url $R2_ENDPOINT --region auto | tail -1 | sed -n "s/.*\"key\":\"\([^\"]*\)\".*/\1/p")
-    aws s3 cp s3://$R2_BUCKET/$KEY /work/candidate.dump --endpoint-url $R2_ENDPOINT --region auto
-    sha256sum /work/candidate.dump     # compare to manifest before proceeding
-    bash /scripts/restore.sh --yes /work/candidate.dump'
-# inspect, then: docker rm -f qr-drill-db && docker network rm qr-restore-drill
-```
-
-### 3b. Production restore (destructive — real incident only)
-
-1. Freeze traffic: `cd /opt/qr-dining && docker compose stop app` (proxy 502s; other VM projects unaffected).
-2. If any current data might matter, take a pre-restore dump first (`nightly-backup.sh` manually — it uploads and manifests it).
-3. Download + sha256-verify the chosen dump (§2).
-4. `DATABASE_URL=postgres://<user>:<pw>@localhost-or-container/qrdining bash restore.sh candidate.dump` — from a postgres:17 container on `qr-dining_internal` (attach with `docker run --network qr-dining_qr-dining_internal …`) since the DB is not exposed to the host.
-5. `docker compose start app` → `/readyz` 200.
-   > **Only restore a dump taken at the schema version the running binary expects.** The previous
-   > wording here claimed the app "re-migrates idempotently if the dump predates newer
-   > migrations". That is false and was never tested. Migration 22 runs `UPDATE audit_log`
-   > (`000022:109`) against the immutability trigger from `000019:82`; with even one audit row
-   > present it aborts and golang-migrate leaves `schema_migrations` at `22, dirty=true`, after
-   > which the app cannot start and `cmd/migrate` cannot unwedge it. Migration 40's up likewise
-   > refuses to apply if any session has two non-terminal payments. If you must replay across
-   > those migrations, [RUNBOOKS.md §8](RUNBOOKS.md#8-migration-rollback) has the tested
-   > last-resort procedure and what it costs.
-6. Verify: row counts (restore.sh prints the six core tables), one full guest journey, audit_log immutability intact (an UPDATE attempt on audit_log must fail), and `SELECT version, dirty FROM schema_migrations` reads the expected version with `dirty = false`.
-
-## 3c. Local / ad-hoc backups (development)
-
-The nightly job above is the production path. For a one-off dump on a development or throwaway database:
-
-> **Requires a host `pg_dump` whose major version matches the server (17).** On a host carrying
-> only PostgreSQL 16 client tools this fails outright — `pg_dump: error: aborting because of
-> server version mismatch` — and no dump is written. Either install `postgresql-client-17` or run
-> it in a container the way §3a does. Verified 2026-09-12 (finding R-2).
+Use a disposable PostgreSQL 17 target. The regression harness uses two isolated
+`postgres:17-alpine` containers and deliberately gives the target a different
+owner role (`backend/scripts/tests/backup-restore-test.sh:12-18`,
+`backend/scripts/tests/backup-restore-test.sh:65-87`). Run:
 
 ```bash
 cd backend
-DATABASE_URL=postgres://user:pass@host:5432/db ./scripts/backup.sh
-# writes $BACKUP_DIR/backup_YYYYMMDD_HHMMSS.dump   (BACKUP_DIR defaults to ./backups)
-
-DATABASE_URL=postgres://user:pass@host:5432/db ./scripts/restore.sh ./backups/backup_YYYYMMDD_HHMMSS.dump
+scripts/tests/backup-restore-test.sh
 ```
 
-`backup.sh` prunes local dumps older than `RETENTION_DAYS`. Note that the script's own comment says the default is 7 while the code uses **30** — trust the code, and set the variable explicitly if the value matters to you. This local pruning is unrelated to the 14-day R2 retention used by `nightly-backup.sh`.
+The harness skips successfully when Docker or Go is absent, so a zero exit is
+not sufficient by itself; read its output and require a non-zero pass count and
+zero failures (`backend/scripts/tests/backup-restore-test.sh:51-52`,
+`backend/scripts/tests/backup-restore-test.sh:310-311`). It verifies:
 
-These local dumps carry **no manifest and no checksum**, so they are not restore candidates for an incident. Use §2 for that.
+- default restore onto a host without the source owner, including table and
+  audit-row counts, clean schema version, object ownership, and the audit trigger
+  (`backend/scripts/tests/backup-restore-test.sh:109-149`);
+- failure metrics for missing configuration, an unreachable database, and an
+  invalid provider (`backend/scripts/tests/backup-restore-test.sh:151-198`);
+- the migration-22 dirty wedge and its full recovery
+  (`backend/scripts/tests/backup-restore-test.sh:200-263`); and
+- explicit behavior with no terminal, `--yes`, `FORCE=1`, piped confirmation,
+  refusal, and bad options (`backend/scripts/tests/backup-restore-test.sh:265-308`).
 
-## 4. Disaster scenarios
+## Production restore
 
-| Scenario | Action |
-|---|---|
-| Bad deploy / app regression | Not a restore case: pin previous `IMAGE_TAG`, `docker compose up -d app` ([OPERATIONS.md §2](OPERATIONS.md#2-deploying-a-new-version)) |
-| Postgres data corruption / bad mutation | §3b. Data loss bounded by last nightly (≤24h RPO) |
-| `qr-dining_postgres_data` volume lost | `docker compose up -d postgres` (fresh volume) → §3b into the empty DB |
-| Redis volume lost | Nothing to restore — Redis is disposable by design; restart it, realtime self-recovers |
-| Whole VM lost | Rebuild per [DEPLOYMENT.md](DEPLOYMENT.md) (proxy stack first) → §3b with the newest manifest entry. Secrets must come from the password manager — they are not in git |
-| R2 bucket lost / creds leaked | Backups are the *copy*; the live DB is intact. Create bucket + new scoped token, update `/etc/qr-dining/backup.env`, run one manual backup, roll the leaked token |
-| Backup job silently broken | `BackupTooOld` pages at >36h; `journalctl -u qr-dining-backup` for the failing step; every step is fail-hard so the journal names it |
+This operation replaces the target database. `restore.sh` uses `--clean`,
+`--if-exists`, and `--single-transaction` (`backend/scripts/restore.sh:108-117`).
 
-## 5. Verification log
+1. Stop the application so no writes race the restore:
 
-| Date | What | Result |
-|---|---|---|
-| 2026-06-09 | Full round trip, `local` provider (Phase E cert) | PASS — 56/56 tables row-identical, trigger + checksum fidelity ([history/restore-verification-report.md](history/restore-verification-report.md)) |
-| 2026-07-18 | **Full round trip against the real R2 bucket** (temporary `qr-dining-backups`, account `16465dc4…`): containerized pg_dump 17 → upload → manifest append → fresh download → sha256 vs manifest (`fc5a2ecd…` ✓) → `restore.sh` into a second postgres:17 → content checksum source vs restored (`a2926ca4…` = `a2926ca4…` ✓) → retention pass, textfile metrics `status 0` + success timestamp | **PASS** — closes the "never tested against real R2" SEV-1. Found+fixed en route: BusyBox-incompatible `date` in the retention step (now epoch-based, portable) |
-| 2026-09-12 | **Re-run at schema 40** (Track F), `local` provider, source = manual-testing DB with real transactional data: `nightly-backup.sh` → sha256 vs manifest ✓ → `restore.sh` into a fresh DB → 59/59 tables row-identical, 168 indexes / 214 constraints / 36 sequences / 14 enums / 1 trigger identical, 10/10 money tables content-checksum identical, all 36 sequence `last_value`s preserved, immutability trigger verified to enforce. Retention pruning and `--single-transaction` atomicity exercised, not assumed. Restore timed at 297 MB / 500K audit rows. | **PASS** on the backup→restore loop. **FAIL** on restore-and-replay: migration 22 cannot be re-applied to a populated `audit_log` and wedges the app (`dirty=true`). Found: R-1 `restore.sh` lacks `--no-owner` (a rebuilt host cannot be restored to); R-2 host `backup.sh` broken by pg_dump 16 vs server 17; R-3 backup failure metric not written when `DATABASE_URL` is unset. [history/restore-verification-report-2026-09-12.md](history/restore-verification-report-2026-09-12.md) |
+   ```bash
+   cd /opt/qr-dining
+   docker compose stop app
+   ```
 
-**Automated regression tests** for this path live in `backend/scripts/tests/backup-restore-test.sh`
-(requires docker + go, spins up its own throwaway servers, touches nothing else). It covers the
-rebuilt-host restore, the backup failure metric, the migration-22 wedge and its recovery, and the
-non-interactive restore. Run it after any change to these scripts, and as a smoke test before a
-quarterly drill.
+2. Take a best-effort pre-restore dump if PostgreSQL is readable, and retain the
+   incident copy separately. The supported automated backup invocation and its
+   required `DATABASE_URL` are defined by
+   `backend/scripts/nightly-backup.sh:6-15,82-102`.
 
-Re-run the §3a drill: within week 1 of go-live (at real data volume — record the duration to update RTO), after any bucket rename, and quarterly.
+3. Restore the verified artifact using PostgreSQL 17 client tools:
 
-**Abort criteria that depend on this file:** [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md)
-A4 (data loss / stale backup) and §5 (recovery ladder). The backup alerts have a known blind
-spot — `qr_dining_backup_last_run_status` keeps reporting the last good run when `DATABASE_URL`
-is unset, so read `qr_dining_backup_last_success_timestamp_seconds` directly rather than trusting
-the absence of a page.
+   ```bash
+   DATABASE_URL="$TARGET_DATABASE_URL" backend/scripts/restore.sh --yes /path/to/backup.dump
+   ```
+
+   `--yes` (or `FORCE=1`) is required without an interactive input stream
+   (`backend/scripts/restore.sh:7-17,89-105`). The default omits original ownership
+   and privileges so a rebuilt host need not contain the source role; use
+   `--preserve-owner` only when those roles exist and exact grants are required
+   (`backend/scripts/restore.sh:19-26,77-82`).
+
+4. Require the restore command to exit zero. Review its counts for `sessions`,
+   `orders`, `payments`, `staff`, `menu_items`, and `event_log`, and require
+   `dirty=false` in the printed migration state (`backend/scripts/restore.sh:119-136`).
+
+5. Verify the audit trigger before reopening. This statement must fail:
+
+   ```sql
+   UPDATE audit_log
+   SET action = 'recovery-trigger-check'
+   WHERE id = (SELECT min(id) FROM audit_log);
+   ```
+
+   The trigger rejects every update or delete
+   (`backend/migrations/000019_audit_log_v2.up.sql:75-84`). If `audit_log` is empty,
+   verify the trigger exists in `pg_trigger` instead; do not insert synthetic
+   production audit data.
+
+6. Start the application, then require `/readyz` to succeed. The route is wired
+   separately from `/health` (`backend/internal/server/server.go:187-190`).
+
+## Known dirty-migration wedge at version 22
+
+Migration 22 updates all existing `audit_log` rows
+(`backend/migrations/000022_operational_ux_cleanup.up.sql:102-113`), while migration
+19 installed a trigger that rejects all updates and deletes
+(`backend/migrations/000019_audit_log_v2.up.sql:75-84`). Replaying migration 22
+against a populated log therefore fails and leaves golang-migrate dirty. Empty-DB
+CI does not exercise that population-dependent collision; its migration job
+creates a fresh database before `up`, `down`, and `up`
+(`.github/workflows/ci.yml:125-157`).
+
+Use this only for the confirmed `version=22 dirty=true` case:
+
+```bash
+# Inspect; do not guess the recorded state.
+DATABASE_URL="$DATABASE_URL" go run ./backend/cmd/migrate version
+
+# Take an incident backup first. Then change only the recorded version.
+DATABASE_URL="$DATABASE_URL" go run ./backend/cmd/migrate force 21
+```
+
+`force` changes only migration metadata; it neither applies nor undoes SQL
+(`backend/cmd/migrate/main.go:55-80,96-110`). Running `up` now without addressing
+the trigger simply wedges at 22 again; the regression test asserts that behavior
+(`backend/scripts/tests/backup-restore-test.sh:241-246`). Record the start of the
+tamper-evidence gap, then:
+
+```sql
+DROP TRIGGER trg_audit_log_immutable ON audit_log;
+```
+
+```bash
+DATABASE_URL="$DATABASE_URL" go run ./backend/cmd/migrate up
+```
+
+Immediately restore and test the trigger:
+
+```sql
+CREATE TRIGGER trg_audit_log_immutable
+    BEFORE UPDATE OR DELETE ON audit_log
+    FOR EACH ROW EXECUTE FUNCTION audit_log_immutable();
+
+-- This must fail.
+UPDATE audit_log SET action = 'x'
+WHERE id = (SELECT min(id) FROM audit_log);
+```
+
+The complete drop/replay/re-create/test sequence is exercised by
+`backend/scripts/tests/backup-restore-test.sh:248-263`. Keep the restaurant closed
+until enforcement is restored, and record the exact trigger-free window in the
+incident report.
+
+Migration 40 has a different data-dependent guard: it raises when a session
+already has multiple non-terminal payments before creating the partial unique
+index (`backend/migrations/000040_one_non_terminal_payment_per_session.up.sql:1-29`).
+Do not `force` through that guard; reconcile the duplicate payments with recorded
+operator decisions before applying the migration.
+
+## Track F verification record
+
+The 2026-09-12 rehearsal used a live schema-40 source, generated a dump with the
+production backup script, recomputed the stored object's checksum, restored into
+a fresh PostgreSQL 17 database, and compared source and target
+(`docs-before-rebuild:docs/history/restore-verification-report-2026-09-12.md:15-37,39-71`).
+The measured small-database timings were 218/236/230 ms for `pg_dump`,
+532/521/485 ms for `pg_restore`, 2.88 s for the complete backup script, and
+3.18 s for the complete restore script
+(`docs-before-rebuild:docs/history/restore-verification-report-2026-09-12.md:102-113`).
+On an inflated 297 MB scratch database, `pg_dump` took 2.828/3.001 s,
+`pg_restore` took 12.836/8.312 s, and SHA-256 took 114 ms
+(`docs-before-rebuild:docs/history/restore-verification-report-2026-09-12.md:114-124`).
+These are measurements from one development host, not production RTO guarantees
+(`docs-before-rebuild:docs/history/restore-verification-report-2026-09-12.md:102-130`).
+
+The restored copy matched all 59 source-table row counts, all inspected schema
+object counts, all 10 money-bearing table content hashes, and all 36 sequence
+values; the audit trigger and migration-40 payment index were present, and a
+failed single-transaction restore left no partial schema
+(`docs-before-rebuild:docs/history/restore-verification-report-2026-09-12.md:132-190`).
+
+That rehearsal found four tool defects: fresh-host ownership failure, missing
+failure metrics for pre-validation exits, silent no-stdin restore failure, and no
+in-tree dirty-version recovery command. The current fixes are respectively the
+default ownership flags, an early `EXIT` trap, explicit `--yes`/`FORCE=1` plus an
+EOF error, and `migrate version`/`force`
+(`backend/scripts/restore.sh:7-26,77-105`,
+`backend/scripts/nightly-backup.sh:27-79`,
+`backend/cmd/migrate/main.go:42-80`). Incorrect deploy comments about the failure
+signal were an additional documentation defect and are corrected to point at the
+textfile metric emitted by the script (`backend/scripts/nightly-backup.sh:27-75`).
+
+The original evidence, including command output, remains retrievable from the
+immutable baseline tag:
+
+```bash
+git show docs-before-rebuild:docs/history/restore-verification-report-2026-09-12.md
+```

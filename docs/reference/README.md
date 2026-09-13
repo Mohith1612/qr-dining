@@ -1,22 +1,21 @@
-# Reference contracts
+# Reference
 
-Specifications the implementation is required to satisfy. A difference between one of these documents and the code is a **bug**, not a documentation gap — decide which side is wrong, then fix that side.
+Last verified: 2026-09-13.
 
-These files are cited by `§` number from code comments and tests. **Do not rename them.**
-
-| Document | Contract | Cited by |
-|---|---|---|
-| [session-lifecycle-state-machine.md](session-lifecycle-state-machine.md) | Session states, transitions, freeze and resurrection rules, the terminal snapshot read window | `internal/services/session.go` |
-| [payment-finalization-invariants.md](payment-finalization-invariants.md) | Payment correctness: settlement, idempotency, webhooks, bill snapshots, `payment_pending` entry/exit | `internal/db/sqlc/sessions.sql.go`, `internal/db/sqlc/querier.go` |
-| [realtime-reconciliation-invariants.md](realtime-reconciliation-invariants.md) | Hub, pub/sub, sequencing, reconnect, presence, slow-consumer eviction | `internal/websocket/`, `internal/events/` |
-| [security-hardening-checklist.md](security-hardening-checklist.md) | §-numbered security gate list | `internal/middleware/security_headers.go` (§9) |
-| [websocket-events.md](websocket-events.md) | WebSocket envelope and event catalogue — the client-facing contract | frontend WS client |
-| [reconnect-guide.md](reconnect-guide.md) | Client reconnect: snapshot reconciliation, backoff, the diff algorithm | frontend WS client |
-
-## Currency
-
-The three invariant documents carry dated "Phase A/B implementation status" headers recording what was wired when. Those headers are accurate; read them together with the body, since a `[ ]` further down may already have been implemented by a later phase.
-
-`security-hardening-checklist.md` is the clearest example: its Phase A and Phase B notes describe rate limiting, lockouts, MFA and credential revocation as **done**, while checkboxes in the body still show them open. Trust the phase notes and [../SECURITY.md](../SECURITY.md) over the checkboxes.
-
-The narrative security model is [../SECURITY.md](../SECURITY.md); the architecture that these contracts constrain is [../ARCHITECTURE.md](../ARCHITECTURE.md).
+- [Payment finalization](payment-finalization-invariants.md) is the narrow money
+  concurrency contract; the implementation is in the payment handler/service and
+  migration 40 (`backend/internal/handlers/payment.go:105-193`,
+  `backend/internal/services/payment.go:128-355`,
+  `backend/migrations/000040_one_non_terminal_payment_per_session.up.sql:1-29`).
+- [Realtime reconciliation](realtime-reconciliation-invariants.md) defines durable
+  sequence, replay, and snapshot replacement behavior
+  (`backend/internal/repository/session.go:200-281`,
+  `backend/internal/services/session.go:651-779`).
+- [Session lifecycle](session-lifecycle-state-machine.md) is the detailed state
+  reference generated from the domain transition table
+  (`backend/internal/domain/statemachine.go:19-47,82-107`).
+- [WebSocket events](websocket-events.md) lists only current producers and marks
+  declared-but-unused events (`backend/internal/websocket/message.go:13-61`,
+  `backend/internal/events/events.go:86-183`).
+- [Security hardening checklist](security-hardening-checklist.md) is a review aid;
+  the narrative security model is [../SECURITY.md](../SECURITY.md).

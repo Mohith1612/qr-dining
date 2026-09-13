@@ -1,19 +1,15 @@
 # Architecture decision records
 
-One file per significant, hard-to-reverse decision: the context, the choice, and why. An ADR is written once and then amended only with a dated superseding note — it is a record of what was decided at a point in time, not a living document.
+ADRs retain the context, choice, and rejected alternatives from the date of the
+decision. Their reasoning is historical; use [../ARCHITECTURE.md](../ARCHITECTURE.md)
+and [../INVARIANTS.md](../INVARIANTS.md) for current implementation behavior.
 
-| ADR | Decision | Date | Status |
+| ADR | Decision | Date | Current verification |
 |---|---|---|---|
-| [0001](0001-signoz-adoption.md) | Adopt self-hosted SigNoz (Community Edition) for distributed tracing alongside the existing Prometheus stack | 2026-08-03 | Accepted — implemented, gated on `OTEL_ENABLED` |
-| [0002](0002-r3-policy-decisions.md) | Ratify the three central-authz policy semantics that gate rollout wave R3 | 2026-05-29 | Accepted — all three ratified existing behaviour; R3 remains in shadow |
-| [0003](0003-tenant-suspension-enforcement.md) | Enforce organization/branch suspension at guest entry only, leaving live sessions to finish | 2026-09-12 | Accepted — implemented, unflagged; one gap open (staff login lockout) |
+| [0001](0001-signoz-adoption.md) | Adopt self-hosted SigNoz for distributed tracing alongside Prometheus | 2026-08-03 | Tracing is implemented but defaults off; setup continues without it when initialization fails (`backend/internal/config/config.go:214-225`; `backend/cmd/server/main.go:39-44`). No retained evidence proves the checked-in SigNoz deployment has run. |
+| [0002](0002-r3-policy-decisions.md) | Ratify central-authorization policy semantics | 2026-05-29 | Tenant-scope denials are unconditional; role denials depend on `AUTHZ_CENTRAL_POLICY_ENFORCE` (`backend/internal/handlers/authz.go:48-103`). Code defaults false; manual testing sets true (`backend/internal/config/config.go:253-263`; `scripts/manual-testing-up.sh:62-75`). |
+| [0003](0003-tenant-suspension-enforcement.md) | Enforce organization/branch suspension at guest entry, not on live sessions | 2026-09-12 | QR resolve, session create, and join use the gate (`backend/internal/services/menu.go:98-112`; `backend/internal/services/session.go:99-115,567-596`). Staff authentication still rejects inactive organization or branch status (`backend/internal/services/staff.go:179-197`). |
 
-## Notes on the current records
-
-**0001** was written before the instrumentation existed and reads in the future tense ("no OpenTelemetry anywhere in the codebase"). OpenTelemetry **is** now implemented and `OTEL_ENABLED` defaults to `false`. The implementation spec is archived at [../history/signoz-backend-instrumentation.md](../history/signoz-backend-instrumentation.md); the phased rollout is [../signoz-rollout-runbook.md](../signoz-rollout-runbook.md).
-
-**0002** closed the last hard blocker on R3 by ratifying existing behaviour, so no production behaviour change was required. R3 is still off, gated on 48 hours of zero shadow mismatches — see [../OPERATIONS.md §4](../OPERATIONS.md#4-rollout-flags-the-enforcement-ladder).
-
-## Adding one
-
-Number sequentially, name it `NNNN-short-slug.md`, and open with the date, the status, and the decision in one sentence. Record the alternatives you rejected and why — that is the part that stops the decision being relitigated.
+Number a new record sequentially and preserve its reasoning after acceptance.
+When a decision changes, add a dated superseding note or a new ADR rather than
+rewriting the old rationale.

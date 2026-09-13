@@ -6,12 +6,12 @@
 # root-only .env written from deploy/vm/.env.production.example.
 #
 # Deliberate deviations from the VM reference defaults:
-#   * postgres:17-alpine (not 16) — the app, its 38 migrations, and the restore
+#   * postgres:17-alpine (not 16) — the app, its 40 migrations, and the restore
 #     certification are all validated against Postgres 17. Do not downgrade.
 #   * The app image is arm64-only (backend/docker/Dockerfile hardcodes GOARCH);
 #     this VM is Ampere arm64, so `docker compose pull` just works.
 #
-# Deploy pattern (see docs/DEPLOYMENT.md):
+# Deploy pattern (see docs/OPERATIONS.md):
 #   cd /opt/qr-dining && docker compose pull && docker compose up -d
 #
 # NOTE for local development machines: do NOT run this file locally. The local
