@@ -34,13 +34,25 @@ test.describe("L-11: automatic reactivation clears the paused banner", () => {
       await route.fulfill({ response, json: body })
     })
 
-    await page.goto(`/session/${sessionId}`)
+    // Establish the browser identity before mounting the guarded session route.
+    // Otherwise SessionLayout can redirect to / before these writes land.
+    await page.goto("/")
     await page.evaluate(({ id, pid, tok }) => {
       sessionStorage.setItem("session_id", id)
       sessionStorage.setItem("participant_id", String(pid))
       sessionStorage.setItem("guest_access_token", tok)
     }, { id: sessionId, pid: participantId, tok: guestToken })
-    await page.reload()
+
+    const snapshotPromise = page.waitForResponse((response) => {
+      const url = new URL(response.url())
+      return response.request().method() === "GET"
+        && url.pathname === `/sessions/${sessionId}/snapshot`
+    })
+    await page.goto(`/session/${sessionId}`)
+
+    const initialSnapshot = await snapshotPromise
+    expect(initialSnapshot.status()).toBe(200)
+    await expect(page).toHaveURL(new RegExp(`/session/${sessionId}/?$`))
 
     const pausedBanner = page.getByText(/table is paused/i)
     await expect(pausedBanner).toBeVisible({ timeout: 12_000 })
