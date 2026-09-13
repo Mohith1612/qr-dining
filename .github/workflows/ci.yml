@@ -8,14 +8,29 @@ on:
     branches: [main]
   workflow_dispatch:
 
-defaults:
-  run:
-    working-directory: backend
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  lint:
-    name: Lint
+  repository-hygiene:
+    name: Repository Hygiene
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject committed conflict markers
+        run: "! git grep -nE '^(<{7}|={7}|>{7})( |$)' -- '*.go' '*.ts' '*.tsx' '*.md' '*.sql' '*.yml'"
+
+  go-quality:
+    name: Go Build, Vet & Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -24,6 +39,12 @@ jobs:
           go-version: "1.26.8"
           cache: true
           cache-dependency-path: backend/go.sum
+
+      - name: Assert pinned Go toolchains agree
+        run: ../scripts/ci/check-go-toolchain.sh
+
+      - name: Verify dependencies
+        run: go mod verify
 
       - name: Check gofmt
         run: |
@@ -34,23 +55,56 @@ jobs:
             exit 1
           fi
 
-      - name: go vet
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
         run: go vet ./...
 
-      # Both the action major and the linter version are pinned on purpose: an RC
-      # has to lint identically on a re-run months from now, and `version: latest`
-      # silently changes the gate under a rebuild of the same commit. v2.12.2 is
-      # the version this branch was certified against (0 issues).
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 -tags=integration ./...
+
+      # Pin both the action major and the tool version. A re-run of an old
+      # commit must not silently acquire a different lint gate.
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.12.2
-          args: --timeout=5m
+          args: --timeout=5m --build-tags=integration
           working-directory: backend
 
-  test:
-    name: Build and Unit Test
+  go-integration:
+    name: Go Integration & Credential Guards
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: qr_dining
+          POSTGRES_PASSWORD: qr_dining
+          POSTGRES_DB: qrdining_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qr_dining -d qrdining_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgres://qr_dining:qr_dining@localhost:5432/qrdining_test?sslmode=disable
+      TEST_REDIS_URL: redis://localhost:6379/1
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -60,45 +114,43 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      - name: Verify dependencies
-        run: go mod verify
+      # Package serialization is mandatory. The packages share one database
+      # and issue TRUNCATE CASCADE during cleanup; parallel packages deadlock.
+      - name: Integration tests (race detector, serialized packages)
+        run: |
+          set -o pipefail
+          go test -tags=integration ./... -race -count=1 -p 1 -json \
+            | tee "$RUNNER_TEMP/go-integration.json"
 
-      - name: Build
-        run: go build ./...
-
-      - name: Unit tests (with race detector)
-        run: go test -count=1 -race ./...
+      # go test exits zero when every integration test calls t.Skip. Require
+      # passing DB and Redis sentinels, plus every credential_guard_* test.
+      - name: Prove integration and credential guards ran
+        run: ../scripts/ci/assert-go-tests-ran.sh "$RUNNER_TEMP/go-integration.json"
 
   govulncheck:
-    name: Vulnerability Scan
+    name: Go Vulnerability Scan
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
-      # Keep this exact patch aligned with backend/go.mod's toolchain directive
-      # and backend/docker/Dockerfile. govulncheck reports standard-library
-      # vulnerabilities against the toolchain it runs on, so all build and scan
-      # paths must use the same version.
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.8"
           cache: true
           cache-dependency-path: backend/go.sum
 
-      # The scanner itself IS pinned, so the analysis is reproducible.
-      #
-      # No custom filtering: govulncheck's default source-mode behaviour is
-      # already "fail only on what is actionable". It exits non-zero only when a
-      # vulnerable symbol is actually reachable from this module's call graph,
-      # and exits 0 when a vulnerable module is merely required but never called.
-      # Verified both directions locally before this job was added — reverting
-      # the x/text and grpc upgrades makes it fail, restoring them makes it pass.
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 
   sqlc-check:
     name: sqlc Drift Check
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -112,10 +164,10 @@ jobs:
         run: sudo apt-get install -y postgresql-client
         working-directory: .
 
-      - name: Run sqlc generate
+      - name: Generate sqlc bindings
         run: go tool sqlc generate
 
-      - name: Check for sqlc drift
+      - name: Reject sqlc drift
         run: |
           if ! git diff --exit-code internal/db/sqlc/; then
             echo "sqlc generated code is out of sync. Run 'go tool sqlc generate' and commit the result."
@@ -131,16 +183,19 @@ jobs:
         env:
           POSTGRES_USER: qr_dining
           POSTGRES_PASSWORD: qr_dining
-          POSTGRES_DB: qr_dining_test
+          POSTGRES_DB: qrdining_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U qr_dining -d qr_dining_test"
+          --health-cmd "pg_isready -U qr_dining -d qrdining_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgres://qr_dining:qr_dining@localhost:5432/qr_dining_test?sslmode=disable
+      DATABASE_URL: postgres://qr_dining:qr_dining@localhost:5432/qrdining_test?sslmode=disable
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -156,20 +211,90 @@ jobs:
           go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate -path migrations -database "$DATABASE_URL" down -all
           go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate -path migrations -database "$DATABASE_URL" up
 
-  integration:
-    name: Integration Tests
+  frontend:
+    name: Frontend Lint, Typecheck & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # Do not replace this with next lint: it misses hooks/, scripts/, store/,
+      # providers/, and types/, and it no longer exists in Next 16.
+      - name: ESLint (zero warnings)
+        run: npx eslint . --max-warnings=0
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
+        env:
+          ALLOW_LOCALHOST_BUILD: "true"
+
+  marketing:
+    name: Marketing Check & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: marketing
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: npm
+          cache-dependency-path: marketing/package-lock.json
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+
+  contracts:
+    name: Contracts & Prometheus Rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      - name: Lint OpenAPI contract
+        run: npx --yes @redocly/cli@2.43.3 lint openapi.yaml
+
+      - name: Check Prometheus alert rules
+        run: >-
+          docker run --rm
+          -v "$PWD:/workspace:ro"
+          --entrypoint promtool
+          prom/prometheus:v2.54.1
+          check rules /workspace/deploy/observability/prometheus-alerts.yml
+
+  e2e-desktop:
+    name: E2E Desktop
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: qr_dining
-          POSTGRES_PASSWORD: qr_dining
-          POSTGRES_DB: qr_dining_test
+          POSTGRES_USER: qrdining
+          POSTGRES_PASSWORD: qrdining
+          POSTGRES_DB: qrdining_e2e
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U qr_dining -d qr_dining_test"
+          --health-cmd "pg_isready -U qrdining -d qrdining_e2e"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -183,8 +308,26 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      TEST_DATABASE_URL: postgres://qr_dining:qr_dining@localhost:5432/qr_dining_test?sslmode=disable
-      TEST_REDIS_URL: redis://localhost:6379/0
+      CI: "true"
+      DATABASE_URL: postgres://qrdining:qrdining@localhost:5432/qrdining_e2e?sslmode=disable
+      REDIS_URL: redis://localhost:6379/0
+      PORT: "8090"
+      GIN_MODE: release
+      GUEST_TOKEN_SECRET: ci-e2e-guest-secret-0123456789abcdef0123456789abcdef
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      PAYMENT_WEBHOOK_SECRET_STRIPE: test-webhook-secret
+      RATE_LIMIT_RPM: "10000"
+      AUTH_RATE_LIMIT_RPM: "10000"
+      AUDIT_LOG_V2_ENABLED: "true"
+      AUTHZ_CENTRAL_POLICY_ENFORCE: "true"
+      NEXT_PUBLIC_API_URL: http://localhost:8090
+      NEXT_PUBLIC_WS_URL: ws://localhost:8090
+      NEXT_PUBLIC_API_BASE: http://localhost:8090
+      ALLOW_LOCALHOST_BUILD: "true"
+      API_URL: http://localhost:8090
+      APP_URL: http://localhost:3000
+      E2E_PLATFORM_EMAIL: admin@platform.local
+      E2E_PLATFORM_PASSWORD: Platform!admin1
     steps:
       - uses: actions/checkout@v4
 
@@ -194,33 +337,88 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      # The unit `test` job compiles none of the //go:build integration files, so
-      # without this job the cross-tenant authz regression tests never run at all.
-      #
-      # -p 1 is mandatory, not tuning: every package shares this one database and
-      # one Redis, so parallel package binaries truncate each other's fixtures and
-      # fail with deadlocks and FK violations that are isolation artifacts rather
-      # than product bugs. The suite runs its own migrations on startup.
-      - name: Integration tests (with race detector)
-        run: go test -count=1 -p 1 -race -tags integration ./...
-
-  openapi:
-    name: OpenAPI Lint
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .
-    steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "lts/*"
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/package-lock.json
 
-      # Uses the committed redocly.yaml ruleset. Guards the spec against becoming
-      # invalid; it does not prove the spec still matches the server's routes.
-      - name: Lint openapi.yaml
-        run: npx --yes @redocly/cli@2.43.3 lint openapi.yaml
+      - name: Restore Playwright browser cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+
+      - name: Install frontend and E2E dependencies
+        run: |
+          npm ci --prefix frontend
+          npm ci --prefix e2e
+
+      # --with-deps is required even on a browser-cache hit: the cache contains
+      # browser binaries, while the runner image still needs system libraries.
+      - name: Install Chromium and system dependencies
+        run: npx --prefix e2e playwright install --with-deps chromium
+
+      - name: Assert the quarantine census
+        run: scripts/ci/check-e2e-census.sh
+
+      - name: Build backend, migrate, and seed
+        working-directory: backend
+        run: |
+          go build -o "$RUNNER_TEMP/qr-dining" ./cmd/server
+          go run ./cmd/migrate up
+          go run ./scripts/seed.go
+
+      - name: Build frontend
+        run: npm run build --prefix frontend
+
+      - name: Start backend and frontend
+        run: |
+          cd "$RUNNER_TEMP"
+          nohup ./qr-dining >e2e-backend.log 2>&1 &
+          echo $! >e2e-backend.pid
+          cd "$GITHUB_WORKSPACE/frontend"
+          nohup npm run start -- --hostname 0.0.0.0 --port 3000 >"$RUNNER_TEMP/e2e-frontend.log" 2>&1 &
+          echo $! >"$RUNNER_TEMP/e2e-frontend.pid"
+
+      - name: Wait for the stack
+        run: |
+          for attempt in $(seq 1 60); do
+            api=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 http://localhost:8090/readyz || true)
+            app=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 http://localhost:3000/staff/login || true)
+            if [ "$api" = 200 ] && [ "$app" = 200 ]; then
+              echo "E2E stack ready (API=$api, app=$app)"
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/e2e-backend.log" || true
+          cat "$RUNNER_TEMP/e2e-frontend.log" || true
+          exit 1
+
+      - name: Playwright desktop
+        working-directory: e2e
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: artifacts/desktop-results.json
+        run: npx --no-install playwright test --project=desktop --reporter=list,json
+
+      - name: Require 75 passed and 59 skipped
+        if: always()
+        run: node scripts/ci/assert-playwright-results.mjs e2e/artifacts/desktop-results.json 75 59
+
+      - name: Upload Playwright evidence and service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-desktop-${{ github.run_attempt }}
+          path: |
+            e2e/artifacts
+            ${{ runner.temp }}/e2e-backend.log
+            ${{ runner.temp }}/e2e-frontend.log
+          if-no-files-found: warn
+          retention-days: 7
 
   docker-build:
     name: Docker Build
@@ -231,11 +429,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Required: the runtime stage is a real linux/arm64 image and its
-      # `apk add` / `adduser` layer executes under emulation on an amd64 runner.
-      # Without this the build dies with "exec /bin/sh: exec format error".
-      # The builder stage is pinned to $BUILDPLATFORM in the Dockerfile, so QEMU
-      # only carries that one small layer, not the Go compile.
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
@@ -244,8 +437,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # PRs build only; pushes to main and v* tags also publish to GHCR so the
-      # VM can `docker compose pull` with IMAGE_TAG (VM deployment convention).
       - name: Log in to GHCR
         if: github.event_name == 'push'
         uses: docker/login-action@v3
