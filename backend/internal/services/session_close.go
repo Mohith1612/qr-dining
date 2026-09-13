@@ -16,6 +16,11 @@ import (
 
 // ForceCloseResult reports what a staff force close actually did, so the audit
 // entry can name the payments it disposed of.
+//
+// Session goes through credentialSafeSession before it is returned: the handler
+// serializes this struct straight to the caller, and sqlc.Session carries
+// session_token (F-8/F-27). The OpenAPI contract for this route already says so
+// — it responds with #/components/schemas/Session, which has no such field.
 type ForceCloseResult struct {
 	Session sqlc.Session `json:"session"`
 	// CancelledPaymentIDs are the non-terminal payments cancelled alongside the
@@ -70,7 +75,7 @@ func (s *SessionService) ForceCloseByStaff(ctx context.Context, id uuid.UUID, st
 		return ForceCloseResult{}, err
 	}
 	return ForceCloseResult{
-		Session:             updated,
+		Session:             credentialSafeSession(updated),
 		CancelledPaymentIDs: cancelled,
 		StrandedPaymentIDs:  stranded,
 	}, nil
