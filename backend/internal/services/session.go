@@ -202,6 +202,13 @@ func (s *SessionService) GetSession(ctx context.Context, id uuid.UUID) (sqlc.Ses
 }
 
 // SessionWithTable is a session enriched with the human-readable table identifier.
+//
+// The embedded row is flattened into the JSON object by the handler, so every
+// sqlc.Session field ships as a top-level key — session_token included. Build it
+// only from credentialSafeSession: this goes to every staff client on the
+// branch, down to kitchen, which needs the identifier and the status and nothing
+// else. The OpenAPI contract for this route already says so — it responds with
+// #/components/schemas/Session, which has no such field.
 type SessionWithTable struct {
 	sqlc.Session
 	TableIdentifier string `json:"table_identifier"`
@@ -214,7 +221,7 @@ func (s *SessionService) ListActiveForBranch(ctx context.Context, branchID int64
 	}
 	result := make([]SessionWithTable, len(sessions))
 	for i, sess := range sessions {
-		swt := SessionWithTable{Session: sess}
+		swt := SessionWithTable{Session: credentialSafeSession(sess)}
 		if t, err := s.repos.GetTableByID(ctx, sess.TableID); err == nil {
 			swt.TableIdentifier = t.Identifier
 		}

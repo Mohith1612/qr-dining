@@ -19,7 +19,9 @@ export interface Session {
   visit_number?: number
   host_participant_id: number | null
   status: "active" | "closed" | "abandoned" | "awaiting_reactivation" | "expired" | "payment_pending"
-  session_token: string
+  // No session_token: it is the guest credential and the server strips it from
+  // every response (guestSafeSession / credentialSafeSession). openapi.yaml's
+  // Session schema has never declared it — this type had simply diverged.
   created_at: string
   closed_at: string | null
 }
