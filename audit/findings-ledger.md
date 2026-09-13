@@ -11,6 +11,10 @@ If the real v2 ledger surfaces, merge into it and delete this.
 > overlaps this one. Its **F-27 is "Theme Management Is an Ad Hoc JSON Setting"** — unrelated to
 > the F-27 below. An agent told to "close F-27" and left to locate it will find the wrong finding.
 > Always cite the ledger alongside the ID.
+>
+> That document's numbering runs to **F-30** ("Error States Are Too Generic for Operations"), so
+> this ledger skips F-30 and resumes at F-31. The gap is deliberate — there is no missing F-30
+> finding here.
 
 | ID | Finding | Status |
 |---|---|---|
@@ -20,9 +24,56 @@ If the real v2 ledger surfaces, merge into it and delete this.
 | F-24 | — | Fixed (no detail recovered). |
 | F-25 | — | Fixed (no detail recovered). |
 | F-26 | Cart endpoint leaks Go field names. | **Open.** In progress. |
-| F-27 | `SESSION_CREATED` WS payload serialized `{Session, Participant}`, exposing `session_token` — a live guest credential — to every connected client and persisting it to `event_log` / `session_events`. | **Closed.** Code fixed. **No scrub and no credential rotation required:** R1 was local staging on the owner's machine (single instance, host-built binary, local PG/Redis, idle tail, no real traffic) and no real guest has ever scanned a QR on any deployed instance. Every leaked token is synthetic. Drop and reseed the test databases when convenient; **leave the soak DB alone — it is certification evidence.** |
+| F-27 | `SESSION_CREATED` WS payload serialized `{Session, Participant}`, exposing `session_token` — a live guest credential — to every connected client and persisting it to `event_log` / `session_events`. | **Closed.** Code fixed. **No scrub and no credential rotation required:** R1 was local staging on the owner's machine (single instance, host-built binary, local PG/Redis, idle tail, no real traffic) and no real guest has ever scanned a QR on any deployed instance. Every leaked token is synthetic. Drop and reseed the test databases when convenient; **leave the soak DB alone — it is certification evidence.** **Regression guard added 2026-09-13** (`b9b79b8`): F-27 and the two sibling leaks are now covered by a structural guard rather than three separate regression tests — see F-31 below. |
 | F-28 | Three further blanket-500 error mappings. | **Open.** |
 | F-29 | Payment page loses "awaiting confirmation" on reload. | **Open.** |
+| F-31 | `audit_log` credential exposure: the redaction denylist missed three credential fields, and missed every field again under its Go-field-name spelling. | **Closed** — `1653ac1`, `1c6830f`. See below. |
+| F-32 | `AuditEvent.ActorScope` and `AuditEvent.Metadata` bypass `Redact` entirely. | **Open.** See below. |
+
+### F-31 — audit redaction missed credentials twice (closed)
+
+`audit_log.before_json` / `after_json` is served by the platform audit read API and is the one
+credential surface defended by a hand-written denylist (`backend/internal/audit/redaction.go`)
+rather than by a projection. It leaked in two independent ways, each a different way a hand-kept
+list rots:
+
+1. **Three fields absent.** `session_token` (the F-27 field — `token` was listed, but the lookup
+   compares whole keys), `recovery_codes` (the list had `recovery_code`, **singular**, against an
+   exact map lookup), and `challenge_hash` (the `mfa` substring rule cannot reach a name that does
+   not contain "mfa"). Fixed in `1653ac1`.
+2. **Every field, under its other spelling.** `isSensitive` compared whole lowercased keys, so it
+   matched `recovery_codes` but not `RecoveryCodes`. A struct with no json tags serializes under
+   its Go field names, and `repository.PlatformMFA` — which holds the bcrypt recovery-code hashes
+   and the encrypted TOTP secret — has no tags at all. Six of the eight credential fields were
+   under-redacted in that spelling. Fixed in `1c6830f` by retrying against a snake_case
+   normalization; measured over all 1006 module keys, this changed exactly one classification
+   (`RecoveryCodes`) and un-redacted nothing.
+
+Neither was reachable when found: the only two `Before`/`After` writers
+(`backend/internal/handlers/staff.go:216` and `:462`) pass explicit snake_case maps. Fixed anyway,
+because "unreachable until someone embeds a row" is precisely the state F-27 was in.
+
+Guarded by `TestAuditRedactionCoversEverySecret`, `TestAuditRedactionTreatsBothSpellingsAlike` and
+`TestAuditRedactionSurfaceIsPinned` (`backend/internal/handlers/credential_guard_runtime_test.go`).
+The last of those pins the 47 module keys the denylist strips, in both directions — the substring
+rules are blunt (`pin_` matches `spin_count`, `mfa` matches `mfa_required`) and losing a field from
+an audit trail is a real cost.
+
+### F-32 — ActorScope and Metadata are never redacted
+
+`Writer.record` applies `Redact` to `Before` / `After` only
+(`backend/internal/audit/writer.go:76`). `ActorScopeJson` and `MetadataJson` are built by `toJSON`
+with no filtering at all (`backend/internal/audit/writer.go:78-79`) and stored unmodified
+(`writer.go:94`, `writer.go:103`). The platform audit read API serves both.
+
+18 call sites populate these two fields, all with hand-written literals today, so nothing sensitive
+currently lands there — the same posture F-27 held until a response type embedded the row. The fix
+is one line each; kept out of the F-31 commits so that change stayed auditable.
+
+Whoever takes this should note that `Metadata` carries operational values worth keeping
+(`{"provider": ..., "reason": ...}` at `backend/internal/handlers/payment.go:223`), so redacting
+the whole field is not the fix — running it through `Redact` like `Before`/`After` is.
+
 
 ## Cluster E
 
