@@ -52,11 +52,10 @@ const COLUMNS: { status: OrderStatus; label: string; tone: string; toneSoft: str
 ]
 
 function KitchenCard({
-  order, tone, toneSoft, onAdvance, onCancel, advancing, canceling,
+  order, tone, onAdvance, onCancel, advancing, canceling,
 }: {
   order: KitchenOrder
   tone: string
-  toneSoft: string
   onAdvance: (id: string, next: OrderStatus) => void
   onCancel: (id: string) => void
   advancing: boolean
@@ -319,7 +318,6 @@ export default function KitchenPage() {
                           key={order.id}
                           order={order}
                           tone={tone}
-                          toneSoft={toneSoft}
                           onAdvance={handleAdvance}
                           onCancel={handleCancel}
                           advancing={advancing === order.id}

@@ -19,7 +19,6 @@ export function SessionTimeoutBanner() {
   const sessionExpiringAt = useSessionStore((s) => s.sessionExpiringAt)
   const completedPayment = useSessionStore((s) => s.completedPayment)
   const session = useSessionStore((s) => s.session)
-  const participant = useSessionStore((s) => s.participant)
 
   const [secondsLeft, setSecondsLeft] = useState(0)
   const lastAnnouncedMinute = useRef(-1)

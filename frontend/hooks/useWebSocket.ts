@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef } from "react"
 import { WSConnection } from "@/lib/ws/connection"
-import { reconcileSnapshot } from "@/lib/ws/reconciliation"
 import { useSessionStore } from "@/store/session"
 import { useCartStore } from "@/store/cart"
 import { useMenuStore } from "@/store/menu"
@@ -12,7 +11,7 @@ import { useWsStore } from "@/store/ws"
 import { cartApi } from "@/lib/api/cart"
 import { toast } from "sonner"
 import type { WSEventHandlerMap } from "@/types/ws"
-import type { Participant, Order, AssistanceRequest, Payment, Session, SessionSnapshot } from "@/types/api"
+import type { Participant, Order, AssistanceRequest, Payment, Session } from "@/types/api"
 import { track } from "@/lib/product-analytics/events"
 import { registerGuestSessionProps, unregisterGuestSessionProps } from "@/lib/product-analytics/identity"
 
