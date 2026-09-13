@@ -376,7 +376,7 @@ func TestConcurrentPaymentInitiations_CreateAndCollectOneFullBillPayment(t *test
 			}
 			select {
 			case <-partialFinished:
-				break
+				// falls through to the loop exit below
 			case <-deadline:
 				responses <- httptest.NewRecorder()
 				return
