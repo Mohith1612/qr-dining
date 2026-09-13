@@ -62,7 +62,7 @@ jobs:
         run: go vet ./...
 
       - name: Staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 -tags=integration ./...
 
       # Pin both the action major and the tool version. A re-run of an old
       # commit must not silently acquire a different lint gate.
@@ -70,7 +70,7 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.12.2
-          args: --timeout=5m
+          args: --timeout=5m --build-tags=integration
           working-directory: backend
 
   go-integration:
