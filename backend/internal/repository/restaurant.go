@@ -26,6 +26,14 @@ func (r *Repos) GetRestaurantByBranchID(ctx context.Context, branchID int64) (sq
 	return row, err
 }
 
+func (r *Repos) GetRestaurantByID(ctx context.Context, id int64) (sqlc.Restaurant, error) {
+	row, err := r.q.GetRestaurantByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Restaurant{}, domain.ErrTenantNotFound
+	}
+	return row, err
+}
+
 func (r *Repos) UpdateRestaurantLogoByBranchID(ctx context.Context, branchID int64, logoURL string) error {
 	return r.q.UpdateRestaurantLogoByBranchID(ctx, sqlc.UpdateRestaurantLogoByBranchIDParams{
 		ID:      branchID,
@@ -54,4 +62,13 @@ func (r *Repos) UpdateRestaurantBillingByBranchID(ctx context.Context, branchID 
 		FROM branches b
 		WHERE b.id = $4 AND b.restaurant_id = r.id
 	`, taxRate, serviceChargeRate, includeTaxInPrice, branchID)
+}
+
+func (r *Repos) UpdateRestaurantCustomerMemoryByBranchID(ctx context.Context, branchID int64, enabled bool) error {
+	return r.ExecRaw(ctx, `
+		UPDATE restaurants r
+		SET settings_json = settings_json || jsonb_build_object('customer_memory_enabled', $1::bool)
+		FROM branches b
+		WHERE b.id = $2 AND b.restaurant_id = r.id
+	`, enabled, branchID)
 }

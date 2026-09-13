@@ -5,15 +5,123 @@ package services_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/events"
+	redisPkg "github.com/Mohith1612/qr-dining/internal/redis"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/Mohith1612/qr-dining/internal/testutil"
 	"github.com/google/uuid"
 )
+
+func TestInitiatePaymentRequiresStaffConfirmationForEveryMethod(t *testing.T) {
+	tests := []struct {
+		name   string
+		method sqlc.PaymentMethod
+	}{
+		{name: "cash", method: sqlc.PaymentMethodCash},
+		{name: "card", method: sqlc.PaymentMethodCard},
+		{name: "card_manual", method: sqlc.PaymentMethodCardManual},
+		{name: "upi", method: sqlc.PaymentMethodUpi},
+		{name: "digital", method: sqlc.PaymentMethodDigital},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool := testutil.OpenTestDB(t)
+			f := testutil.SeedFixtures(t, pool)
+			repos := testutil.NewTestRepos(pool)
+			pub := events.NewNoopPublisher()
+			sessionSvc := newTestSessionService(repos, pub)
+			paymentSvc := newTestPaymentService(repos, pub, sessionSvc)
+			t.Cleanup(func() {
+				testutil.TruncateTables(t, pool, "sessions", "session_participants", "payments", "bill_snapshots", "idempotency_keys")
+			})
+
+			ctx := context.Background()
+			sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
+			if err != nil {
+				t.Fatalf("CreateSession: %v", err)
+			}
+
+			payment, err := paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
+				SessionID:      sess.Session.ID,
+				BranchID:       f.BranchID,
+				Method:         tt.method,
+				IdempotencyKey: uuid.NewString(),
+				ActorType:      "participant",
+				ActorID:        sess.Participant.ID,
+				Bill: services.BillSnapshotInput{
+					Total:          50.00,
+					Currency:       "INR",
+					CreatedByActor: "guest:0",
+				},
+			})
+			if err != nil {
+				t.Fatalf("InitiatePayment: %v", err)
+			}
+			if payment.Status != sqlc.PaymentStatusRequiresStaffConfirmation {
+				t.Fatalf("payment status: got %s, want requires_staff_confirmation", payment.Status)
+			}
+		})
+	}
+}
+
+func TestInitiatePayment_AbsentParticipantCannotBecomeHost(t *testing.T) {
+	pool := testutil.OpenTestDB(t)
+	f := testutil.SeedFixtures(t, pool)
+	repos := testutil.NewTestRepos(pool)
+	redisClient := openServiceTestRedis(t)
+	presence := redisPkg.NewPresence(redisClient)
+	pub := events.NewNoopPublisher()
+	sessionSvc := services.NewSessionService(repos, pub, testMetrics(), presence)
+	paymentSvc := newTestPaymentService(repos, pub, sessionSvc)
+	t.Cleanup(func() {
+		testutil.TruncateTables(t, pool, "sessions", "session_participants", "payments", "bill_snapshots", "idempotency_keys")
+	})
+
+	ctx := context.Background()
+	created, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	absentGuest, err := sessionSvc.JoinSession(ctx, created.Session.ID, "Bob", "fp-bob", "")
+	if err != nil {
+		t.Fatalf("JoinSession: %v", err)
+	}
+	setParticipantDBLastSeen(t, pool, created.Participant.ID, time.Now().Add(-6*time.Minute))
+
+	_, err = paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
+		SessionID:      created.Session.ID,
+		BranchID:       f.BranchID,
+		Method:         sqlc.PaymentMethodDigital,
+		IdempotencyKey: uuid.NewString(),
+		ActorType:      "participant",
+		ActorID:        absentGuest.ID,
+		Bill: services.BillSnapshotInput{
+			Total:          50,
+			Currency:       "INR",
+			CreatedByActor: "guest",
+		},
+		Provider:           "razorpay",
+		ProviderPaymentRef: "pay_absent_actor",
+	})
+	if !errors.Is(err, domain.ErrNotSessionHost) {
+		t.Fatalf("absent guest InitiatePayment: got %v, want ErrNotSessionHost", err)
+	}
+
+	var paymentCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM payments WHERE session_id = $1`, created.Session.ID).Scan(&paymentCount); err != nil {
+		t.Fatalf("count payments: %v", err)
+	}
+	if paymentCount != 0 {
+		t.Fatalf("payment count: got %d, want 0", paymentCount)
+	}
+}
 
 func TestWebhookReplay_Idempotent(t *testing.T) {
 	pool := testutil.OpenTestDB(t)
@@ -117,6 +225,20 @@ func TestManualPaymentRequiresStaffSettlementAndRejectsStaleSnapshot(t *testing.
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
+
+	// Place an order BEFORE initiating payment (the order path is frozen once
+	// payment is in progress) and record it as the bill snapshot's source order.
+	placed, err := orderSvc.PlaceOrder(ctx, services.PlaceOrderRequest{
+		SessionID:             sess.Session.ID,
+		BranchID:              f.BranchID,
+		PlacedByParticipantID: sess.Participant.ID,
+		IdempotencyKey:        uuid.NewString(),
+		Items:                 []services.OrderItem{{MenuItemID: f.MenuItemID, Quantity: 1}},
+	})
+	if err != nil {
+		t.Fatalf("PlaceOrder: %v", err)
+	}
+
 	payment, err := paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
 		SessionID:               sess.Session.ID,
 		BranchID:                f.BranchID,
@@ -129,6 +251,7 @@ func TestManualPaymentRequiresStaffSettlementAndRejectsStaleSnapshot(t *testing.
 			Total:          50.00,
 			Currency:       "INR",
 			CreatedByActor: "guest:0",
+			SourceOrderIDs: []uuid.UUID{placed.Order.ID},
 		},
 	})
 	if err != nil {
@@ -137,17 +260,17 @@ func TestManualPaymentRequiresStaffSettlementAndRejectsStaleSnapshot(t *testing.
 	if payment.Status != sqlc.PaymentStatusRequiresStaffConfirmation {
 		t.Fatalf("payment status: got %s, want requires_staff_confirmation", payment.Status)
 	}
-	if _, err := orderSvc.PlaceOrder(ctx, services.PlaceOrderRequest{
-		SessionID:             sess.Session.ID,
-		BranchID:              f.BranchID,
-		PlacedByParticipantID: sess.Participant.ID,
-		IdempotencyKey:        uuid.NewString(),
-		Items:                 []services.OrderItem{{MenuItemID: f.MenuItemID, Quantity: 1}},
-	}); err != nil {
-		t.Fatalf("PlaceOrder: %v", err)
+
+	// Drift the active-order set after the snapshot was captured: cancelling the
+	// snapshotted order makes the snapshot stale. Applied directly because the
+	// order path is frozen during payment — this simulates the drift the
+	// staff-settlement freshness guard must reject.
+	if _, err := pool.Exec(ctx, `UPDATE orders SET status = 'cancelled' WHERE id = $1`, placed.Order.ID); err != nil {
+		t.Fatalf("cancel snapshotted order: %v", err)
 	}
+
 	if _, err := paymentSvc.SettlePaymentByStaff(ctx, payment.ID, 1, f.BranchID); !isErr(err, domain.ErrBillSnapshotStale) {
-		t.Fatalf("settle stale snapshot error: got %v", err)
+		t.Fatalf("settle stale snapshot error: got %v, want ErrBillSnapshotStale", err)
 	}
 }
 
@@ -256,5 +379,149 @@ func TestInitiatePayment_IdempotencyConflictAndReplay(t *testing.T) {
 	req.Bill.Total = 60.00
 	if _, err := paymentSvc.InitiatePayment(ctx, req); !isErr(err, domain.ErrIdempotencyConflict) {
 		t.Fatalf("changed payment replay error: got %v, want idempotency conflict", err)
+	}
+}
+
+func TestInitiatePayment_HostRetryReturnsExistingPayment(t *testing.T) {
+	pool := testutil.OpenTestDB(t)
+	f := testutil.SeedFixtures(t, pool)
+	repos := testutil.NewTestRepos(pool)
+	pub := events.NewNoopPublisher()
+	sessionSvc := newTestSessionService(repos, pub)
+	paymentSvc := newTestPaymentService(repos, pub, sessionSvc)
+	t.Cleanup(func() {
+		testutil.TruncateTables(t, pool, "sessions", "session_participants", "payments", "bill_snapshots", "idempotency_keys")
+	})
+
+	ctx := context.Background()
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	request := func(key string) (sqlc.Payment, error) {
+		return paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
+			SessionID:      sess.Session.ID,
+			BranchID:       f.BranchID,
+			Method:         sqlc.PaymentMethodCash,
+			IdempotencyKey: key,
+			ActorType:      "participant",
+			ActorID:        sess.Participant.ID,
+			Bill: services.BillSnapshotInput{
+				Subtotal:       300,
+				Total:          300,
+				Currency:       "INR",
+				CreatedByActor: "guest",
+			},
+		})
+	}
+
+	first, err := request(uuid.NewString())
+	if err != nil {
+		t.Fatalf("first InitiatePayment: %v", err)
+	}
+	second, err := request(uuid.NewString())
+	if err != nil {
+		t.Fatalf("retry InitiatePayment: %v", err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("retry returned payment %d, want existing payment %d", second.ID, first.ID)
+	}
+
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM payments WHERE session_id = $1`, sess.Session.ID).Scan(&count); err != nil {
+		t.Fatalf("count payments: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("payment rows: got %d, want 1", count)
+	}
+}
+
+func TestInitiatePayment_ConcurrentHostRetriesReturnExistingPayment(t *testing.T) {
+	pool := testutil.OpenTestDB(t)
+	f := testutil.SeedFixtures(t, pool)
+	repos := testutil.NewTestRepos(pool)
+	pub := events.NewNoopPublisher()
+	sessionSvc := newTestSessionService(repos, pub)
+	paymentSvc := newTestPaymentService(repos, pub, sessionSvc)
+	t.Cleanup(func() {
+		testutil.TruncateTables(t, pool, "sessions", "session_participants", "payments", "bill_snapshots", "idempotency_keys")
+	})
+
+	ctx := context.Background()
+	sess, err := sessionSvc.CreateSession(ctx, f.TableID, "Alice", "fp-alice", "")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	blocker, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin blocker transaction: %v", err)
+	}
+	defer blocker.Rollback(ctx) //nolint:errcheck
+	if _, err := blocker.Exec(ctx, `SELECT id FROM sessions WHERE id = $1 FOR UPDATE`, sess.Session.ID); err != nil {
+		t.Fatalf("lock session: %v", err)
+	}
+
+	type result struct {
+		payment sqlc.Payment
+		err     error
+	}
+	results := make(chan result, 2)
+	start := make(chan struct{})
+	for range 2 {
+		go func(key string) {
+			<-start
+			payment, err := paymentSvc.InitiatePayment(ctx, services.InitiatePaymentRequest{
+				SessionID:      sess.Session.ID,
+				BranchID:       f.BranchID,
+				Method:         sqlc.PaymentMethodCash,
+				IdempotencyKey: key,
+				ActorType:      "participant",
+				ActorID:        sess.Participant.ID,
+				Bill: services.BillSnapshotInput{
+					Subtotal:       300,
+					Total:          300,
+					Currency:       "INR",
+					CreatedByActor: "guest",
+				},
+			})
+			results <- result{payment: payment, err: err}
+		}(uuid.NewString())
+	}
+	close(start)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var keyCount int
+		if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM idempotency_keys WHERE scope_id = $1`, sess.Session.ID.String()).Scan(&keyCount); err != nil {
+			t.Fatalf("count payment idempotency keys: %v", err)
+		}
+		if keyCount == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("payment initiations did not reach the transaction barrier")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := blocker.Commit(ctx); err != nil {
+		t.Fatalf("release session lock: %v", err)
+	}
+
+	first, second := <-results, <-results
+	if first.err != nil {
+		t.Errorf("first concurrent initiation: %v", first.err)
+	}
+	if second.err != nil {
+		t.Errorf("second concurrent initiation: %v", second.err)
+	}
+	if first.err == nil && second.err == nil && first.payment.ID != second.payment.ID {
+		t.Errorf("concurrent retries returned different payments: %d and %d", first.payment.ID, second.payment.ID)
+	}
+	var paymentCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM payments WHERE session_id = $1`, sess.Session.ID).Scan(&paymentCount); err != nil {
+		t.Fatalf("count payments: %v", err)
+	}
+	if paymentCount != 1 {
+		t.Fatalf("payment rows: got %d, want 1", paymentCount)
 	}
 }

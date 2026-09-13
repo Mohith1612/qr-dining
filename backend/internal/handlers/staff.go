@@ -179,8 +179,26 @@ func (h *StaffHandler) CreateStaff(c *gin.Context) {
 	}
 
 	role := sqlc.StaffRole(req.Role)
+	if !staffRoleIn(role, sqlc.StaffRoleOwner, sqlc.StaffRoleManager, sqlc.StaffRoleWaiter, sqlc.StaffRoleKitchen) {
+		// An unrecognised role used to reach the staff_role enum and come back
+		// as a Postgres cast failure, which this handler reported as a 500.
+		respondValidationError(c, "role must be one of: owner, manager, waiter, kitchen")
+		return
+	}
 	staff, err := h.svc.CreateStaff(c.Request.Context(), branchID, role, req.Name, req.StaffCode, req.PIN)
 	if err != nil {
+		// A staff_code collision is the manager choosing a code that is already
+		// taken on this branch — a conflict with existing state, not a server
+		// fault. 409 (not 422) for the same reason DUPLICATE_TABLE_IDENTIFIER is
+		// 409: the payload is perfectly processable, it just loses a race with a
+		// row that already exists, and retrying with a different code succeeds.
+		// Reporting 500 here told the manager to call support and told alerting
+		// the service was down.
+		if errors.Is(err, domain.ErrDuplicateStaffCode) {
+			respondError(c, http.StatusConflict, CodeDuplicateStaffCode,
+				"that staff code is already in use at this branch")
+			return
+		}
 		respondInternalError(c)
 		return
 	}
@@ -244,6 +262,9 @@ func (h *StaffHandler) RotatePIN(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionStaffPinUpdate, authz.StaffResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
+	if !requireActorBranch(c, sess, target.BranchID) {
+		return
+	}
 
 	var req rotatePINRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -260,6 +281,117 @@ func (h *StaffHandler) RotatePIN(c *gin.Context) {
 		return
 	}
 
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:     target.BranchID,
+		ResourceType: audit.ResourceStaff,
+		ResourceID:   audit.IDStr(staffID),
+		Action:       audit.ActionStaffPINReset,
+		Result:       audit.ResultSuccess,
+		ActorType:    audit.ActorTypeStaff,
+		ActorID:      audit.IDStr(sess.StaffID),
+		RiskLevel:    audit.RiskHigh,
+	})
+	c.Status(http.StatusNoContent)
+}
+
+// ListStaff returns the active staff roster for a branch (owner/manager),
+// without pin hashes. GET /branches/:id/staff
+func (h *StaffHandler) ListStaff(c *gin.Context) {
+	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid branch id")
+		return
+	}
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok || sess.BranchID != branchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+	if sess.Role != sqlc.StaffRoleOwner && sess.Role != sqlc.StaffRoleManager {
+		respondError(c, http.StatusForbidden, CodeForbidden, "only owners and managers can view the staff roster")
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, branchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionStaffListRead, authz.BranchResource(branchID, orgID)) {
+		return
+	}
+	roster, err := h.repos.ListStaffRosterForBranch(c.Request.Context(), branchID)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"staff": roster})
+}
+
+type resetPINRequest struct {
+	NewPIN string `json:"new_pin" binding:"required,min=4,max=8"`
+}
+
+// ResetPIN sets a new PIN for another staff member WITHOUT the current PIN —
+// the manager/owner forgotten-PIN path. POST /staff/:id/pin/reset
+// Rules: you cannot reset your own PIN here (use the self-change endpoint);
+// a manager may reset only waiters/kitchen; an owner may reset anyone in branch.
+func (h *StaffHandler) ResetPIN(c *gin.Context) {
+	staffID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid staff id")
+		return
+	}
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	if sess.Role != sqlc.StaffRoleOwner && sess.Role != sqlc.StaffRoleManager {
+		respondError(c, http.StatusForbidden, CodeForbidden, "only owners and managers can reset PINs")
+		return
+	}
+	if sess.StaffID == staffID {
+		respondError(c, http.StatusBadRequest, CodeValidationError, "use the change-PIN option for your own PIN")
+		return
+	}
+	target, err := h.repos.GetStaffByID(c.Request.Context(), staffID)
+	if err != nil {
+		respondError(c, http.StatusNotFound, CodeUnauthorized, "staff not found")
+		return
+	}
+	if target.BranchID != sess.BranchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+	// A manager may only reset waiters/kitchen; owners may reset anyone.
+	if sess.Role == sqlc.StaffRoleManager &&
+		(target.Role == sqlc.StaffRoleOwner || target.Role == sqlc.StaffRoleManager) {
+		respondError(c, http.StatusForbidden, CodeForbidden, "managers can only reset waiter and kitchen PINs")
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, sess)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, target.BranchID)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionStaffPinReset, authz.StaffResource(target.ID, target.BranchID, orgID)) {
+		return
+	}
+	var req resetPINRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	if err := h.svc.ResetPINScoped(c.Request.Context(), staffID, target.BranchID, sess.Role, req.NewPIN); err != nil {
+		respondInternalError(c)
+		return
+	}
 	h.audit.Record(c.Request.Context(), audit.AuditEvent{
 		BranchID:     target.BranchID,
 		ResourceType: audit.ResourceStaff,
@@ -303,6 +435,9 @@ func (h *StaffHandler) DeactivateStaff(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionStaffDeactivate, authz.StaffResource(target.ID, target.BranchID, orgID)) {
 		return
 	}
+	if !requireActorBranch(c, sess, target.BranchID) {
+		return
+	}
 
 	if err := h.svc.DeactivateScoped(c.Request.Context(), staffID, target.BranchID); err != nil {
 		respondInternalError(c)
@@ -319,9 +454,9 @@ func (h *StaffHandler) DeactivateStaff(c *gin.Context) {
 		ActorType:      audit.ActorTypeStaff,
 		ActorID:        audit.IDStr(sess.StaffID),
 		ActorScope: map[string]any{
-			"org_id": actor.Scope.OrganizationID,
+			"org_id":    actor.Scope.OrganizationID,
 			"branch_id": target.BranchID,
-			"role": string(sess.Role),
+			"role":      string(sess.Role),
 		},
 		RiskLevel: audit.RiskHigh,
 		After:     audit.MustJSON(map[string]any{"is_active": false}),

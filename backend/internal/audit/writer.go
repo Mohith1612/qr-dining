@@ -35,7 +35,17 @@ func (w *Writer) Record(ctx context.Context, ev AuditEvent) {
 	if !w.enabled {
 		return
 	}
+	w.record(ctx, ev)
+}
 
+// RecordRequired persists evidence that must exist independently of the
+// general audit rollout flag. Use only for integrity detectors whose signal is
+// incomplete without a row identifying the affected resource and exact facts.
+func (w *Writer) RecordRequired(ctx context.Context, ev AuditEvent) {
+	w.record(ctx, ev)
+}
+
+func (w *Writer) record(ctx context.Context, ev AuditEvent) {
 	reqCtx := FromContext(ctx)
 	if ev.RequestID == "" {
 		ev.RequestID = reqCtx.RequestID

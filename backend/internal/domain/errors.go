@@ -4,13 +4,13 @@ import "errors"
 
 // Session lifecycle
 var (
-	ErrSessionNotFound             = errors.New("session not found")
-	ErrSessionClosed               = errors.New("session is closed or abandoned")
-	ErrSessionAlreadyActive        = errors.New("table already has an active session")
-	ErrSessionNotActive            = errors.New("session is not in an active state")
-	ErrPaymentInProgress           = errors.New("payment in progress; cart and order changes are frozen")
-	ErrSessionTerminalReadExpired  = errors.New("session has ended and read window has expired")
-	ErrGuestCredentialRevoked      = errors.New("guest credential has been revoked")
+	ErrSessionNotFound            = errors.New("session not found")
+	ErrSessionClosed              = errors.New("session is closed or abandoned")
+	ErrSessionAlreadyActive       = errors.New("table already has an active session")
+	ErrSessionNotActive           = errors.New("session is not in an active state")
+	ErrPaymentInProgress          = errors.New("payment in progress; cart and order changes are frozen")
+	ErrSessionTerminalReadExpired = errors.New("session has ended and read window has expired")
+	ErrGuestCredentialRevoked     = errors.New("guest credential has been revoked")
 )
 
 // Participants
@@ -19,6 +19,9 @@ var (
 	ErrParticipantUnauthorized = errors.New("participant not authorized for this action")
 	ErrNotSessionHost          = errors.New("only the session host can perform this action")
 	ErrParticipantNotInSession = errors.New("participant does not belong to this session")
+	// ErrHostTransferDuringPayment guards a manual host handoff while the host
+	// owns an in-flight bill (session in payment_pending).
+	ErrHostTransferDuringPayment = errors.New("cannot transfer host while a payment is pending")
 )
 
 // Orders
@@ -37,6 +40,7 @@ var (
 	ErrMenuItemUnavailable = errors.New("menu item is not available")
 	ErrMenuItemNotFound    = errors.New("menu item not found")
 	ErrModifierNotFound    = errors.New("modifier not found for menu item")
+	ErrModifierConflict    = errors.New("only one option may be chosen from this group")
 )
 
 // Assistance
@@ -66,12 +70,23 @@ var (
 	ErrTableNotFound            = errors.New("table not found")
 	ErrTableOccupied            = errors.New("table already has an active session")
 	ErrDuplicateTableIdentifier = errors.New("table identifier already exists for this branch")
+	ErrDuplicateBranchCode      = errors.New("branch code already exists")
 )
 
 // Menu categories
 var (
 	ErrCategoryNotFound = errors.New("category not found")
 	ErrCategoryNotEmpty = errors.New("category has items and cannot be deleted")
+)
+
+// Staff
+var (
+	// ErrDuplicateStaffCode is the translated form of the
+	// idx_staff_branch_staff_code_unique violation. staff_code is the human
+	// identifier a staff member types at login, so a collision is a normal
+	// data-entry conflict the manager must resolve — not a server fault.
+	ErrDuplicateStaffCode = errors.New("staff code already exists for this branch")
+	ErrInvalidStaffRole   = errors.New("invalid staff role")
 )
 
 // Auth
@@ -88,12 +103,52 @@ var (
 var (
 	ErrTenantNotFound = errors.New("tenant not found")
 	ErrTenantMismatch = errors.New("resource does not belong to the request tenant")
+	// ErrOrganizationSuspended / ErrBranchSuspended are returned when a guest
+	// tries to ENTER a tenant whose lifecycle status is not "active" (suspended
+	// or archived) — create a session, join one, or resolve a table QR. They are
+	// never raised against a session already in progress: suspension is a
+	// billing and compliance action, not an emergency stop.
+	ErrOrganizationSuspended = errors.New("this restaurant is not currently accepting new guests")
+	ErrBranchSuspended       = errors.New("this location is not currently accepting new guests")
 )
 
 // Subscriptions / Plans
 var (
-	ErrPlanNotFound   = errors.New("subscription plan not found")
-	ErrAnalyticsGated = errors.New("analytics not available on current plan")
+	ErrPlanNotFound        = errors.New("subscription plan not found")
+	ErrAnalyticsGated      = errors.New("analytics not available on current plan")
+	ErrOrgPlanNotAssigned  = errors.New("organization has no plan assignment")
+	ErrEntitlementNotFound = errors.New("entitlement not found in catalog")
+)
+
+// Billing (org-level subscription lifecycle, invoices)
+var (
+	ErrSubscriptionNotFound          = errors.New("organization subscription not found")
+	ErrInvalidSubscriptionTransition = errors.New("invalid subscription status transition")
+	ErrInvoiceNotFound               = errors.New("invoice not found")
+	ErrInvalidInvoiceTransition      = errors.New("invalid invoice status transition")
+)
+
+// Platform feature flags / theme
+var (
+	ErrFlagNotFound           = errors.New("feature flag not found")
+	ErrThemePresetNotFound    = errors.New("theme preset not found")
+	ErrCustomThemeNotEntitled = errors.New("custom theme tokens require the custom.theme entitlement")
+	ErrInvalidThemeToken      = errors.New("invalid theme token")
+)
+
+// QR collateral
+var (
+	ErrInvalidCollateralConfig = errors.New("invalid collateral config")
+)
+
+// Staff performance analytics / loyalty (entitlement + platform-flag gated)
+var (
+	ErrStaffAnalyticsDisabled    = errors.New("staff performance analytics is not enabled for this organization")
+	ErrLoyaltyDisabled           = errors.New("loyalty is not enabled for this organization")
+	ErrLoyaltyProgramInactive    = errors.New("loyalty program is not active for this organization")
+	ErrLoyaltyInsufficientPoints = errors.New("insufficient loyalty points")
+	ErrLoyaltyAccountNotFound    = errors.New("loyalty account not found")
+	ErrInvalidLoyaltyRequest     = errors.New("invalid loyalty request")
 )
 
 // Customers
@@ -109,6 +164,9 @@ var (
 	ErrMinOrderNotMet   = errors.New("order total does not meet promo minimum")
 	ErrPromoExhausted   = errors.New("promo has reached its maximum redemption limit")
 	ErrPromoAlreadyUsed = errors.New("promo already used by this customer")
+	// ErrPromoPhoneRequired is returned when a promo has a per-phone usage limit
+	// but no phone was supplied, so the limit cannot be enforced.
+	ErrPromoPhoneRequired = errors.New("phone number required to use this promo")
 )
 
 // Generic

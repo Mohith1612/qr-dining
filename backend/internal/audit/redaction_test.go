@@ -90,8 +90,12 @@ func TestRedact_BothBeforeAndAfter(t *testing.T) {
 	gotBefore, gotAfter := Redact(before, after)
 
 	var rb, ra map[string]any
-	json.Unmarshal(gotBefore, &rb)
-	json.Unmarshal(gotAfter, &ra)
+	if err := json.Unmarshal(gotBefore, &rb); err != nil {
+		t.Fatalf("unmarshal redacted before: %v", err)
+	}
+	if err := json.Unmarshal(gotAfter, &ra); err != nil {
+		t.Fatalf("unmarshal redacted after: %v", err)
+	}
 
 	if rb["pin"] != "[REDACTED]" {
 		t.Errorf("before.pin: got %v, want [REDACTED]", rb["pin"])
@@ -174,12 +178,12 @@ func TestRedact_PhaseAExpandedKeys(t *testing.T) {
 func TestRedact_PhaseASubstrings(t *testing.T) {
 	// Derived names should match via substring rules added in Phase A.
 	raw, _ := json.Marshal(map[string]any{
-		"stripe_signature":  "sig_123",
+		"stripe_signature":     "sig_123",
 		"X-Razorpay-Signature": "sig_456",
-		"new_pin_hash":      "hash",
-		"mfa_secret":        "totp",
-		"client_2fa_seed":   "abc",
-		"benign_field":      "ok",
+		"new_pin_hash":         "hash",
+		"mfa_secret":           "totp",
+		"client_2fa_seed":      "abc",
+		"benign_field":         "ok",
 	})
 	got, _ := Redact(raw, nil)
 	var result map[string]any

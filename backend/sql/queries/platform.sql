@@ -62,6 +62,17 @@ INSERT INTO branches (restaurant_id, organization_id, name, address, timezone, b
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
+-- name: UpdatePlatformBranch :one
+-- Super-admin edit of an existing branch's identity fields. branch_code is
+-- unique; a collision surfaces as a 23505 the handler maps to a 409.
+UPDATE branches SET
+  name = $2,
+  timezone = $3,
+  branch_code = $4,
+  order_prefix = $5
+WHERE id = $1
+RETURNING *;
+
 -- name: CreateOrganizationBranchMembership :exec
 INSERT INTO organization_branch_memberships (organization_id, branch_id)
 VALUES ($1, $2)

@@ -10,6 +10,7 @@ interface BackendCartItem {
   note: string
   item_name?: string
   item_price?: number
+  image_url?: string | null
   is_available?: boolean
 }
 
@@ -25,10 +26,10 @@ function mapCartItem(item: BackendCartItem): CartItem {
 
 export const cartApi = {
   getCart: (sessionId: string, guestToken: string) =>
-    api.get<{ Cart: { id: number; session_id: string; participant_id: number }; Items: BackendCartItem[] }>(
+    api.get<{ cart: { id: number; session_id: string; participant_id: number }; items: BackendCartItem[] }>(
       `/sessions/${sessionId}/cart`,
       { guestToken }
-    ).then(r => (r.Items ?? []).map(mapCartItem)),
+    ).then(r => (r.items ?? []).map(mapCartItem)),
 
   addItem: (
     sessionId: string,

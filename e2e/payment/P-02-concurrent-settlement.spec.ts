@@ -4,7 +4,8 @@ import { seedOrg, createSession, loginStaff, placeOrder } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("P-02: Concurrent settlement attempts", () => {
-  test("two staff settle same payment — one wins, one no-ops", async () => {
+  // VACUOUS(sig-2): returns when the payment ID field is absent; passes without attempting either settlement.
+  test.fixme("two staff settle same payment — one wins, one no-ops", async () => {
     const { branch, table, menu, staff } = await seedOrg("p02")
     const created = await createSession(table.id, "ConcurrentPay")
     const sessionId = created.session.id

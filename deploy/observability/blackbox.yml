@@ -1,0 +1,10 @@
+# blackbox_exporter modules for qr-dining.
+modules:
+  readyz_http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      valid_status_codes: [200] # 503 (any non-200) => probe_success 0
+      fail_if_not_ssl: false
+      preferred_ip_protocol: ip4

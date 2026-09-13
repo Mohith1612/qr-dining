@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { BottomSheet } from "./BottomSheet"
 import { customersApi } from "@/lib/api/customers"
 import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
+import { track } from "@/lib/product-analytics/events"
 
 interface Props {
   sessionId: string
@@ -22,6 +23,7 @@ export function CustomerOptIn({ sessionId, onComplete }: Props) {
     setSaving(true)
     try {
       await customersApi.link(sessionId, "+91" + phone, name, guestToken)
+      track("guest_optin_submitted", { has_name: Boolean(name.trim()) })
       toast.success("We'll remember you next time!")
       onComplete()
     } catch (err) {
@@ -67,6 +69,7 @@ export function CustomerOptIn({ sessionId, onComplete }: Props) {
               🇮🇳 +91
             </div>
             <input
+              data-ph-mask
               type="tel"
               inputMode="numeric"
               maxLength={10}
@@ -81,6 +84,7 @@ export function CustomerOptIn({ sessionId, onComplete }: Props) {
         <div>
           <span className="eyebrow" style={{ display: "block", marginBottom: 6 }}>Your name (optional)</span>
           <input
+            data-ph-mask
             type="text"
             placeholder="How should we call you?"
             value={name}

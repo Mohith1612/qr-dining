@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useOrdersStore } from "@/store/orders"
 import { useSession } from "@/hooks/useSession"
+import { useTenant } from "@/providers/TenantProvider"
 import { useSessionStore } from "@/store/session"
 import { paymentsApi } from "@/lib/api/payments"
 import { generateIdempotencyKey } from "@/lib/idempotency"
@@ -10,10 +11,14 @@ import { formatCurrency } from "@/lib/format"
 import { Banknote, CreditCard, Smartphone, CheckCircle, Clock, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
-import type { PaymentMethod, PaymentStatus, BillData } from "@/types/api"
+import { promosApi } from "@/lib/api/promos"
+import { X } from "lucide-react"
+import type { PaymentMethod, PaymentStatus, BillData, ValidatePromoResponse } from "@/types/api"
 import { HospitalityCard } from "@/components/shared/HospitalityCard"
 import { CustomerOptIn } from "@/components/shared/CustomerOptIn"
 import { BillBreakdown } from "@/components/shared/BillBreakdown"
+import { BottomSheet } from "@/components/shared/BottomSheet"
+import { track } from "@/lib/product-analytics/events"
 
 const PAYMENT_OPTIONS: {
   method: PaymentMethod
@@ -45,13 +50,15 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function PaymentPage() {
   const orders = useOrdersStore((s) => s.orders)
-  const { session, participant, participants, isHost } = useSession()
+  const { session, participants, isHost } = useSession()
   const hostName = participants.find((p) => p.is_host)?.display_name
   const completedPayment = useSessionStore((s) => s.completedPayment)
+  const cancelledPayment = useSessionStore((s) => s.cancelledPayment)
   const [bill, setBill] = useState<BillData | null>(null)
   const [billLoading, setBillLoading] = useState(true)
   const [billError, setBillError] = useState<string | null>(null)
   const [loading, setLoading] = useState<PaymentMethod | null>(null)
+  const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState(() => generateIdempotencyKey())
   // The payment we initiated, with its server-assigned status. Cash/card come
   // back as requires_staff_confirmation — NOT completed — so the UI must show
   // "awaiting confirmation" until a PAYMENT_COMPLETED event confirms it.
@@ -59,48 +66,161 @@ export default function PaymentPage() {
   const [paidTotal, setPaidTotal] = useState(0)
   const [showOptIn, setShowOptIn] = useState(false)
 
+  // Promo applied at the bill. Validated against the live bill total; the
+  // discount is previewed here and re-applied server-side at payment. Entry
+  // happens in a bottom sheet that always collects a phone number — the offer
+  // is tracked per number.
+  const [promoSheetOpen, setPromoSheetOpen] = useState(false)
+  const [promoCode, setPromoCode] = useState("")
+  const [appliedPromo, setAppliedPromo] = useState<ValidatePromoResponse | null>(null)
+  const [appliedPromoCode, setAppliedPromoCode] = useState("")
+  const [appliedPromoPhone, setAppliedPromoPhone] = useState<string | undefined>(undefined)
+  const [promoLoading, setPromoLoading] = useState(false)
+  const [promoError, setPromoError] = useState<string | null>(null)
+  const [promoPhone, setPromoPhone] = useState("")
+
   // Authoritative completion: either the initiate response already said
   // "completed" (e.g. an instantly-settled flow) or a PAYMENT_COMPLETED event
   // arrived over the websocket and was stored on the session.
   const isComplete = submitted?.status === "completed" || completedPayment !== null
 
-  // Fetch bill on mount and when orders change (new order placed triggers WS → store update).
+  // Staff withdrew the request (PAYMENT_CANCELLED). Drop back to the method
+  // picker instead of leaving the guest stranded on "Awaiting confirmation".
   useEffect(() => {
+    if (!cancelledPayment || isComplete) return
+    setSubmitted(null)
+    setShowOptIn(false)
+    setPaymentIdempotencyKey(generateIdempotencyKey())
+  }, [cancelledPayment, isComplete])
+
+  useEffect(() => {
+    setPaymentIdempotencyKey(generateIdempotencyKey())
+  }, [session?.id])
+
+  // Fetch bill on mount and when orders change (new order placed triggers WS → store update).
+  const fetchBill = useCallback(async (attempt = 0) => {
     if (!session?.id) return
     const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
     setBillLoading(true)
     setBillError(null)
-    paymentsApi
-      .getBill(session.id, guestToken)
-      .then(setBill)
-      .catch(() => setBillError("Could not load bill — please ask your waiter."))
-      .finally(() => setBillLoading(false))
+    try {
+      setBill(await paymentsApi.getBill(session.id, guestToken))
+    } catch {
+      // One automatic retry with a short backoff before surfacing the error —
+      // the bill briefly 500s right after an order lands while the snapshot settles.
+      if (attempt < 2) {
+        setTimeout(() => fetchBill(attempt + 1), 600)
+        return
+      }
+      setBillError("Could not load your bill just yet.")
+    } finally {
+      if (attempt === 0) setBillLoading(false)
+    }
+  }, [session?.id])
+
+  useEffect(() => {
+    fetchBill()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, orders.length])
 
+  // Only offer "save my preferences" when the restaurant has customer memory
+  // enabled — otherwise the opt-in submit returns FEATURE_DISABLED.
+  const customerMemoryEnabled = useTenant().settings.customer_memory_enabled === true
+
   useEffect(() => {
-    if (!submitted) return
+    if (!submitted || !customerMemoryEnabled) return
     const timer = setTimeout(() => setShowOptIn(true), 1500)
     return () => clearTimeout(timer)
-  }, [submitted])
+  }, [submitted, customerMemoryEnabled])
 
-  const total = bill?.total ?? 0
+  const billTotal = bill?.total ?? 0
+  const discount = appliedPromo?.discount_amount ?? 0
+  const total = Math.max(0, billTotal - discount)
+
+  const promoFormValid = !!promoCode.trim() && promoPhone.length === 10
+
+  async function handleApplyPromo() {
+    if (!promoFormValid || !session) return
+    setPromoLoading(true)
+    setPromoError(null)
+    try {
+      const code = promoCode.trim().toUpperCase()
+      const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
+      const phone = "+91" + promoPhone.trim()
+      const result = await promosApi.validate(session.id, code, billTotal, phone, guestToken)
+      setAppliedPromo(result)
+      setAppliedPromoCode(code)
+      setAppliedPromoPhone(phone)
+      track("promo_applied", { promo_code: code, discount_amount: result.discount_amount })
+      setPromoCode("")
+      setPromoSheetOpen(false)
+    } catch (err) {
+      track("promo_apply_failed", {
+        promo_code: promoCode.trim().toUpperCase(),
+        error_code: err instanceof ApiError ? err.code : "UNKNOWN",
+      })
+      if (err instanceof ApiError) {
+        const msgs: Record<string, string> = {
+          PROMO_NOT_FOUND:      "This promo code isn't valid right now.",
+          PROMO_PHONE_REQUIRED: "Add your phone number to use this offer.",
+          MIN_ORDER_NOT_MET:    "Your bill doesn't meet this promo's minimum.",
+          PROMO_EXHAUSTED:      "This offer has been claimed by too many guests.",
+          PROMO_ALREADY_USED:   "You've already used this offer.",
+        }
+        setPromoError(msgs[err.code] ?? "This promo code couldn't be applied.")
+      } else {
+        setPromoError("Couldn't validate the promo code. Please try again.")
+      }
+    } finally {
+      setPromoLoading(false)
+    }
+  }
+
+  function handleRemovePromo() {
+    if (appliedPromoCode) track("promo_removed", { promo_code: appliedPromoCode })
+    setAppliedPromo(null)
+    setAppliedPromoCode("")
+    setAppliedPromoPhone(undefined)
+    setPromoPhone("")
+    setPromoError(null)
+  }
 
   async function handlePay(method: PaymentMethod) {
     if (!session || submitted) return
     const guestToken = sessionStorage.getItem("guest_access_token") ?? undefined
     setLoading(method)
     try {
-      const payment = await paymentsApi.initiate(session.id, total, method, generateIdempotencyKey(), undefined, guestToken)
+      const promo = appliedPromo ? { code: appliedPromoCode, phoneE164: appliedPromoPhone } : undefined
+      const payment = await paymentsApi.initiate(session.id, total, method, paymentIdempotencyKey, undefined, guestToken, promo)
       setPaidTotal(total)
       setSubmitted({ method, status: payment.status })
+      track("payment_initiated", { method, amount: total })
       toast.success(
         payment.status === "completed"
           ? "Payment completed."
           : "Request sent — your server will confirm."
       )
     } catch (err) {
-      toast.error(err instanceof ApiError ? friendlyErrorMessage(err.code) : "Couldn't process payment. Please try again.")
+      // A visible failure ends this client attempt. A lost success is still
+      // safe to retry with a new key because the server returns the session's
+      // existing non-terminal payment.
+      setPaymentIdempotencyKey(generateIdempotencyKey())
+      if (err instanceof ApiError) {
+        const promoMsgs: Record<string, string> = {
+          PROMO_NOT_FOUND:    "Your promo code is no longer valid.",
+          MIN_ORDER_NOT_MET:  "Your bill doesn't meet the promo's minimum.",
+          PROMO_EXHAUSTED:    "This promo has reached its limit.",
+          PROMO_ALREADY_USED: "You've already used this promo.",
+        }
+        if (promoMsgs[err.code]) {
+          handleRemovePromo()
+          toast.error(promoMsgs[err.code])
+        } else {
+          toast.error(friendlyErrorMessage(err.code))
+        }
+      } else {
+        toast.error("Couldn't process payment. Please try again.")
+      }
     } finally {
       setLoading(null)
     }
@@ -119,7 +239,7 @@ export default function PaymentPage() {
           width: 84, height: 84, borderRadius: 999,
           background: toneSoft, border: `1px solid ${tone}`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: `0 0 0 8px ${toneSoft}, 0 12px 30px -10px rgba(0,0,0,0.4)`,
+          boxShadow: `0 0 0 8px ${toneSoft}, var(--shadow-2)`,
           marginBottom: 18,
         }}>
           {isComplete
@@ -130,7 +250,7 @@ export default function PaymentPage() {
         <p className="eyebrow" style={{ marginBottom: 6 }}>
           {isComplete ? "Payment confirmed" : "Awaiting confirmation"}
         </p>
-        <h2 className="serif" style={{ margin: 0, fontSize: 32, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.02em" }}>
+        <h2 className="serif" style={{ margin: 0, fontSize: 32, fontWeight: 600, color: "var(--ink-1)", letterSpacing: "-0.02em" }}>
           {isComplete ? "Thank you" : "Almost there"}
         </h2>
         <p style={{ margin: "10px 0 22px", color: "var(--ink-2)", fontSize: 14, lineHeight: 1.6, maxWidth: 300 }}>
@@ -175,23 +295,89 @@ export default function PaymentPage() {
 
   return (
     <div className="scrollarea flex-1 overflow-y-auto screen-enter" style={{ background: "var(--bg-base)" }}>
-      {/* Header */}
-      <div className="page-glow" style={{ padding: "24px 20px 16px" }}>
-        <span className="eyebrow">Your bill</span>
-        <h1 className="display-lg" style={{ margin: "6px 0 4px" }}>
-          Itemized bill
-        </h1>
-        <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 13 }}>
-          Review your order before settling up.
+      {/* Header — total due hero */}
+      <div className="page-glow" style={{ padding: "24px 20px 12px", textAlign: "center" }}>
+        <span className="eyebrow" style={{ color: "var(--ink-3)" }}>Total due</span>
+        <p className="serif" style={{ margin: "6px 0 0", fontSize: "clamp(34px, 11vw, 44px)", fontWeight: 600, letterSpacing: "-0.02em", color: "var(--ink-1)", lineHeight: 1.05 }}>
+          {billLoading || billError ? "—" : formatCurrency(total)}
         </p>
+        {discount > 0 && !billLoading && !billError && (
+          <p style={{ margin: "5px 0 0", color: "var(--ink-3)", fontSize: 12.5 }}>
+            <span style={{ textDecoration: "line-through" }}>{formatCurrency(billTotal)}</span> · {appliedPromoCode} saves {formatCurrency(discount)}
+          </p>
+        )}
       </div>
 
       {/* Bill breakdown */}
       <div style={{ padding: "0 20px 8px" }}>
         <HospitalityCard elev={1} style={{ padding: "16px 18px" }}>
           <BillBreakdown bill={bill} loading={billLoading} error={billError} />
+          {billError && (
+            <button
+              onClick={() => fetchBill()}
+              className="press"
+              style={{
+                marginTop: 12, width: "100%", height: 40, borderRadius: "var(--rad-md)",
+                background: "var(--bg-elev-1)", border: "1px solid var(--line-2)",
+                color: "var(--ink-1)", fontSize: 13, fontWeight: 500, cursor: "pointer",
+              }}
+            >
+              Try again
+            </button>
+          )}
         </HospitalityCard>
       </div>
+
+      {/* Promo code — host only, applied to the bill */}
+      {isHost && billTotal > 0 && (
+        <div style={{ padding: "8px 20px 0" }}>
+          {appliedPromo ? (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "12px 14px", borderRadius: "var(--rad-md)",
+              background: "var(--ok-soft)", border: "1px solid var(--ok)",
+            }}>
+              <CheckCircle style={{ width: 16, height: 16, color: "var(--ok)", flexShrink: 0 }} aria-hidden />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--ok)", lineHeight: 1.3 }}>
+                  {appliedPromoCode} applied — saving {formatCurrency(discount)}
+                </p>
+                {appliedPromo.description && (
+                  <p style={{ fontSize: 12, color: "var(--ok)", opacity: 0.8, marginTop: 2 }}>{appliedPromo.description}</p>
+                )}
+              </div>
+              <button onClick={handleRemovePromo} aria-label="Remove promo code" style={{
+                width: 24, height: 24, borderRadius: "50%", background: "transparent",
+                border: "none", color: "var(--ok)", cursor: "pointer", flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <X size={14} aria-hidden />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setPromoError(null); setPromoSheetOpen(true) }}
+              className="press"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                width: "100%", height: 46, padding: "0 14px",
+                borderRadius: "var(--rad-md)",
+                background: "var(--bg-elev-1)", border: "1px dashed var(--line-2)",
+                color: "var(--ink-2)", fontSize: 13, fontWeight: 500, cursor: "pointer",
+              }}
+            >
+              <span>Have a promo code?</span>
+              <ChevronRight size={16} aria-hidden style={{ opacity: 0.7 }} />
+            </button>
+          )}
+          {appliedPromo && (
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line-1)" }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)" }}>To pay</span>
+              <span className="serif" style={{ fontSize: 18, fontWeight: 600, color: "var(--accent)" }}>{formatCurrency(total)}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Payment methods — host-controlled: only the host requests the bill/payment */}
       {!isHost ? (
@@ -203,7 +389,7 @@ export default function PaymentPage() {
               textAlign: "center",
             }}
           >
-            <p style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)", marginBottom: 4 }}>
+            <p data-ph-mask style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)", marginBottom: 4 }}>
               {hostName ? `${hostName} settles the bill` : "The table host settles the bill"}
             </p>
             <p style={{ fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
@@ -245,7 +431,7 @@ export default function PaymentPage() {
                   }
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="serif" style={{ fontSize: 15, fontWeight: 500, color: "var(--ink-1)" }}>{label}</div>
+                  <div className="serif" style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-1)" }}>{label}</div>
                   <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2, lineHeight: 1.5 }}>{description}</div>
                 </div>
                 <ChevronRight style={{ width: 16, height: 16, color: "var(--ink-3)", flexShrink: 0 }} aria-hidden />
@@ -261,6 +447,76 @@ export default function PaymentPage() {
         )}
       </div>
       )}
+
+      {/* Promo entry sheet — code + phone are both required; the offer is
+          tracked against the phone number. */}
+      <BottomSheet open={promoSheetOpen} onClose={() => setPromoSheetOpen(false)} title="Apply a promo code">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "4px 0 8px" }}>
+          <div>
+            <span className="eyebrow" style={{ display: "block", marginBottom: 6 }}>Promo code</span>
+            <input
+              type="text"
+              value={promoCode}
+              onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null) }}
+              placeholder="e.g. HAPPY20"
+              aria-label="Promo code"
+              autoFocus
+              style={{
+                width: "100%", height: 46, borderRadius: "var(--rad-md)",
+                background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+                padding: "0 14px", fontSize: 14, color: "var(--ink-1)", outline: "none",
+                letterSpacing: "0.04em",
+              }}
+            />
+          </div>
+          <div>
+            <span className="eyebrow" style={{ display: "block", marginBottom: 6 }}>Phone number</span>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{
+                height: 46, padding: "0 12px", borderRadius: "var(--rad-md)",
+                background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+                display: "flex", alignItems: "center", fontSize: 14, color: "var(--ink-2)", flexShrink: 0,
+              }}>🇮🇳 +91</div>
+              <input
+                data-ph-mask
+                type="tel" inputMode="numeric" maxLength={10}
+                value={promoPhone}
+                onChange={(e) => { setPromoPhone(e.target.value.replace(/\D/g, "")); setPromoError(null) }}
+                onKeyDown={(e) => e.key === "Enter" && promoFormValid && handleApplyPromo()}
+                placeholder="10-digit number"
+                aria-label="Phone number for this offer"
+                style={{
+                  flex: 1, height: 46, borderRadius: "var(--rad-md)",
+                  background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+                  padding: "0 14px", fontSize: 14, color: "var(--ink-1)", outline: "none",
+                }}
+              />
+            </div>
+            <p style={{ marginTop: 6, fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.4 }}>
+              Offers are tracked per phone number.
+            </p>
+          </div>
+          {promoError && (
+            <p style={{ fontSize: 12.5, color: "var(--alert)", lineHeight: 1.4 }}>{promoError}</p>
+          )}
+          <button
+            onClick={handleApplyPromo}
+            disabled={promoLoading || !promoFormValid}
+            className="press"
+            aria-label="Apply promo code"
+            style={{
+              height: 48, borderRadius: "var(--rad-md)",
+              background: "var(--accent)", color: "var(--accent-ink)",
+              border: "1px solid var(--accent)", fontSize: 14, fontWeight: 600,
+              opacity: promoLoading || !promoFormValid ? 0.5 : 1,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              cursor: promoLoading || !promoFormValid ? "not-allowed" : "pointer",
+            }}
+          >
+            {promoLoading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : "Apply offer"}
+          </button>
+        </div>
+      </BottomSheet>
     </div>
   )
 }

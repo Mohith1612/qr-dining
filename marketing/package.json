@@ -1,0 +1,26 @@
+{
+  "name": "qr-dining-marketing",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "tsc --noEmit -p functions/tsconfig.json && astro check && astro build",
+    "preview": "astro preview",
+    "check": "tsc --noEmit -p functions/tsconfig.json && astro check"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@astrojs/sitemap": "^3.7.3",
+    "@fontsource-variable/hanken-grotesk": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@lucide/astro": "^1.27.0",
+    "@tailwindcss/vite": "^4.1.11",
+    "astro": "^7.2.4",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250726.0"
+  }
+}

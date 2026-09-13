@@ -1,0 +1,17 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ProseLayout from "../../components/ProseLayout.astro";
+const headings=["Information we collect","How we use information","Guest data","Sharing and service providers","Retention and security","Your choices","Contact us"];
+---
+<BaseLayout title="Privacy Policy | QR Dining" description="How QR Dining collects, uses, protects, and retains information from website visitors, restaurant teams, and dine-in guests.">
+  <ProseLayout title="Privacy policy" eyebrow="Trust at every table" headings={headings} summary="We collect only what is needed to answer demo requests and run the restaurant service. We do not sell personal information. Restaurant guest data belongs to the restaurant using QR Dining and is handled only to provide the service.">
+    <p class="legal-note"><strong>Founder action before launch:</strong> this operational draft must be reviewed against the final company entity, vendor list, retention schedule, and counsel's advice.</p>
+    <h2 id="information-we-collect">Information we collect</h2><p>When you request a demo, we collect the details you provide: your name, restaurant name, city, phone number, email address, restaurant type, and optional message. Our hosting provider may also process standard request data such as IP address, browser type, and request time for security and reliability.</p>
+    <h2 id="how-we-use-information">How we use information</h2><p>We use demo-request details to contact you, understand your restaurant, arrange a product walkthrough, and follow up about a possible pilot. We also use limited technical data to prevent abuse, diagnose problems, and protect the website.</p>
+    <h2 id="guest-data">Guest data</h2><p>Restaurants may use QR Dining to process table-session information, orders, bills, payments recorded by staff, loyalty activity, and guest contact details where a guest chooses to provide them. The restaurant determines why that data is collected; QR Dining processes it to provide the service.</p>
+    <h2 id="sharing-and-service-providers">Sharing and service providers</h2><p>We use service providers for hosting, email delivery, monitoring, and backups. They receive only the information necessary to perform those services. We may disclose information when required by law or to protect people, the service, or our legal rights. We do not sell personal information.</p>
+    <h2 id="retention-and-security">Retention and security</h2><p>We retain information only for as long as it is needed for the purposes described here, contractual obligations, legitimate operations, and applicable law. QR Dining uses access controls, audit records, encrypted transport, monitored systems, and tested backups. No internet service can promise absolute security.</p>
+    <h2 id="your-choices">Your choices</h2><p>You may ask us to access, correct, or delete personal information you submitted through this site, subject to applicable law and records we must retain. You may also ask us to stop sales follow-up at any time.</p>
+    <h2 id="contact-us">Contact us</h2><p>Questions or requests about privacy can be sent to <a href="mailto:hello@qrdining.app">hello@qrdining.app</a>. Please include enough detail for us to understand and verify the request.</p>
+  </ProseLayout>
+</BaseLayout>

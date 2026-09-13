@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -9,18 +10,22 @@ import (
 
 	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
+	"github.com/Mohith1612/qr-dining/internal/domain"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/repository"
+	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
 type BranchHandler struct {
-	repos *repository.Repos
-	audit *audit.Writer
+	repos      *repository.Repos
+	theme      *services.ThemeService
+	collateral *services.CollateralService
+	audit      *audit.Writer
 }
 
-func NewBranchHandler(repos *repository.Repos, auditWriter *audit.Writer) *BranchHandler {
-	return &BranchHandler{repos: repos, audit: auditWriter}
+func NewBranchHandler(repos *repository.Repos, themeSvc *services.ThemeService, collateralSvc *services.CollateralService, auditWriter *audit.Writer) *BranchHandler {
+	return &BranchHandler{repos: repos, theme: themeSvc, collateral: collateralSvc, audit: auditWriter}
 }
 
 type updateBranchRequest struct {
@@ -31,6 +36,7 @@ type updateBranchRequest struct {
 	TaxRate               *float64 `json:"tax_rate"`
 	ServiceChargeRate     *float64 `json:"service_charge_rate"`
 	IncludeTaxInPrice     *bool    `json:"include_tax_in_price"`
+	CustomerMemoryEnabled *bool    `json:"customer_memory_enabled"`
 }
 
 var validThemes = map[string]bool{
@@ -60,8 +66,15 @@ func (h *BranchHandler) GetBranch(c *gin.Context) {
 
 	theme := "dark-luxury"
 	var taxRate, serviceChargeRate float64
-	var includeTaxInPrice bool
+	var includeTaxInPrice, customerMemoryEnabled bool
+	var restaurantName, logoURL string
+	var restaurantID int64
 	if restaurant, err := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID); err == nil {
+		restaurantID = restaurant.ID
+		restaurantName = restaurant.Name
+		if restaurant.LogoUrl.Valid {
+			logoURL = restaurant.LogoUrl.String
+		}
 		var settings map[string]any
 		if json.Unmarshal(restaurant.SettingsJson, &settings) == nil {
 			if t, ok := settings["theme"].(string); ok && validThemes[t] {
@@ -76,12 +89,16 @@ func (h *BranchHandler) GetBranch(c *gin.Context) {
 			if v, ok := settings["include_tax_in_price"].(bool); ok {
 				includeTaxInPrice = v
 			}
+			if v, ok := settings["customer_memory_enabled"].(bool); ok {
+				customerMemoryEnabled = v
+			}
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":                      branch.ID,
 		"organization_id":         branch.OrganizationID,
+		"restaurant_id":           restaurantID,
 		"name":                    branch.Name,
 		"branch_code":             branch.BranchCode,
 		"status":                  branch.Status,
@@ -92,6 +109,9 @@ func (h *BranchHandler) GetBranch(c *gin.Context) {
 		"tax_rate":                taxRate,
 		"service_charge_rate":     serviceChargeRate,
 		"include_tax_in_price":    includeTaxInPrice,
+		"customer_memory_enabled": customerMemoryEnabled,
+		"restaurant_name":         restaurantName,
+		"logo_url":                logoURL,
 	})
 }
 
@@ -156,7 +176,28 @@ func (h *BranchHandler) UpdateBranch(c *gin.Context) {
 			respondValidationError(c, "theme must be one of: dark-luxury, modern-minimal")
 			return
 		}
+		// Unified write-path: the structured tenant_themes row is the authoritative
+		// source (preset only → no custom tokens → no entitlement gate). We write it
+		// first so the read path (which prefers tenant_themes) always reflects the
+		// operator's choice; the legacy settings_json.theme write below is preserved
+		// for backward compatibility.
+		restaurant, err := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID)
+		if err != nil {
+			respondInternalError(c)
+			return
+		}
+		if _, err := h.theme.SetTheme(c.Request.Context(), restaurant.OrganizationID, *req.Theme, nil, nil); err != nil {
+			respondInternalError(c)
+			return
+		}
 		if err := h.repos.UpdateRestaurantThemeByBranchID(c.Request.Context(), branchID, *req.Theme); err != nil {
+			respondInternalError(c)
+			return
+		}
+	}
+
+	if req.CustomerMemoryEnabled != nil {
+		if err := h.repos.UpdateRestaurantCustomerMemoryByBranchID(c.Request.Context(), branchID, *req.CustomerMemoryEnabled); err != nil {
 			respondInternalError(c)
 			return
 		}
@@ -165,6 +206,9 @@ func (h *BranchHandler) UpdateBranch(c *gin.Context) {
 	updatedFields := []string{}
 	if req.SessionTimeoutMinutes != nil {
 		updatedFields = append(updatedFields, "session_timeout_minutes")
+	}
+	if req.CustomerMemoryEnabled != nil {
+		updatedFields = append(updatedFields, "customer_memory_enabled")
 	}
 	if req.LogoURL != nil {
 		updatedFields = append(updatedFields, "logo_url")
@@ -237,4 +281,70 @@ func (h *BranchHandler) UpdateBranch(c *gin.Context) {
 		Metadata:     map[string]any{"fields_updated": updatedFields},
 	})
 	c.Status(http.StatusNoContent)
+}
+
+// GET /branches/:id/collateral — staff-protected. Returns the saved QR collateral
+// config (or defaults) for the branch.
+func (h *BranchHandler) GetCollateral(c *gin.Context) {
+	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid branch id")
+		return
+	}
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok || sess.BranchID != branchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+	cfg, err := h.collateral.GetForBranch(c.Request.Context(), branchID)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"collateral": cfg, "formats": services.AllowedCollateralFormats()})
+}
+
+// PUT /branches/:id/collateral — owner/manager only. Validates and persists the QR
+// collateral config. Writes the same branch_collateral row the platform operator does.
+func (h *BranchHandler) UpdateCollateral(c *gin.Context) {
+	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid branch id")
+		return
+	}
+	sess, ok := middleware.GetStaffSession(c)
+	if !ok || sess.BranchID != branchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return
+	}
+	if sess.Role != sqlc.StaffRoleOwner && sess.Role != sqlc.StaffRoleManager {
+		respondError(c, http.StatusForbidden, CodeForbidden, "only owners and managers can update collateral")
+		return
+	}
+	var raw json.RawMessage
+	if err := c.ShouldBindJSON(&raw); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	cfg, err := h.collateral.SetForBranch(c.Request.Context(), branchID, raw, nil)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidCollateralConfig) {
+			respondValidationError(c, err.Error())
+			return
+		}
+		respondInternalError(c)
+		return
+	}
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:     branchID,
+		ResourceType: audit.ResourceBranch,
+		ResourceID:   audit.IDStr(branchID),
+		Action:       audit.ActionBranchSettingsUpdate,
+		Result:       audit.ResultSuccess,
+		ActorType:    audit.ActorTypeStaff,
+		ActorID:      audit.IDStr(sess.StaffID),
+		RiskLevel:    audit.RiskLow,
+		Metadata:     map[string]any{"resource": "collateral", "format": cfg.Format},
+	})
+	c.JSON(http.StatusOK, gin.H{"collateral": cfg})
 }

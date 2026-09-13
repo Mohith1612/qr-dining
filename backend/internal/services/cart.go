@@ -36,9 +36,13 @@ type AddItemRequest struct {
 	Note          string
 }
 
+// CartResponse is returned verbatim by GET /sessions/{id}/cart, so its tags are
+// the wire contract. Without them Go exported the field names as `Cart`/`Items`,
+// which contradicted every other response in the API — the same accidental
+// leakage as PlaceOrderResult (F-24, F-26). snake_case, like the rest.
 type CartResponse struct {
-	Cart  sqlc.Cart
-	Items []sqlc.ListCartItemsRow
+	Cart  sqlc.Cart               `json:"cart"`
+	Items []sqlc.ListCartItemsRow `json:"items"`
 }
 
 func (s *CartService) GetCart(ctx context.Context, sessionID uuid.UUID, participantID int64) (CartResponse, error) {
@@ -161,11 +165,27 @@ func (s *CartService) snapshotModifiers(ctx context.Context, itemID int64, modif
 		idSet[m.ID] = m
 	}
 
+	// A modifier group is single-select if ANY of its rows carry the flag.
+	singleSelectGroup := make(map[string]bool)
+	for _, m := range allModifiers {
+		if m.SingleSelect {
+			singleSelectGroup[m.ModifierGroup] = true
+		}
+	}
+
 	snapshots := make([]ModifierSnapshot, 0, len(modifierIDs))
+	groupChosen := make(map[string]int64)
 	for _, id := range modifierIDs {
 		m, ok := idSet[id]
 		if !ok {
 			return nil, fmt.Errorf("%w: id %d", domain.ErrModifierNotFound, id)
+		}
+		// Enforce single-select: at most one option per single-select group.
+		if singleSelectGroup[m.ModifierGroup] {
+			if prev, dup := groupChosen[m.ModifierGroup]; dup && prev != id {
+				return nil, fmt.Errorf("%w: group %q", domain.ErrModifierConflict, m.ModifierGroup)
+			}
+			groupChosen[m.ModifierGroup] = id
 		}
 		delta, err := m.PriceDelta.Float64Value()
 		if err != nil {

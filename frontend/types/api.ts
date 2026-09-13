@@ -5,6 +5,9 @@ import type { WSEnvelope } from "./ws"
 export interface APIError {
   code: string
   message: string
+  // Optional, additive discriminator sent only where `code` is too coarse to
+  // act on (currently: terminal vs retryable guest-credential 401s).
+  reason?: string
 }
 
 export interface Session {
@@ -16,9 +19,20 @@ export interface Session {
   visit_number?: number
   host_participant_id: number | null
   status: "active" | "closed" | "abandoned" | "awaiting_reactivation" | "expired" | "payment_pending"
-  session_token: string
+  // No session_token: it is the guest credential and the server strips it from
+  // every response (guestSafeSession / credentialSafeSession). openapi.yaml's
+  // Session schema has never declared it — this type had simply diverged.
   created_at: string
   closed_at: string | null
+}
+
+// ForceCloseResult is the response from POST /sessions/:id/force-close
+// (services.ForceCloseResult). Stranded payments are non-terminal ones the
+// domain transition table refuses to cancel — reported, never force-written.
+export interface ForceCloseResult {
+  session: Session
+  cancelled_payment_ids: number[] | null
+  stranded_payment_ids?: number[] | null
 }
 
 export interface Participant {
@@ -48,6 +62,7 @@ export interface CartItem {
   added_at: string
   item_name?: string
   item_price?: number
+  image_url?: string | null
 }
 
 export interface ItemModifier {
@@ -57,6 +72,7 @@ export interface ItemModifier {
   price_delta: number
   is_required?: boolean
   modifier_group?: string
+  single_select?: boolean
 }
 
 export type DietaryFlag = 'vegetarian' | 'vegan' | 'jain' | 'egg' | 'non-veg'
@@ -211,6 +227,17 @@ export interface Staff {
   name: string
   role: StaffRole
   staff_code?: string
+}
+
+// Roster row returned by GET /branches/:id/staff (no pin hash; active staff only).
+export interface StaffRosterMember {
+  id: number
+  branch_id: number
+  name: string
+  role: StaffRole
+  staff_code: string
+  is_active: boolean
+  created_at: string
 }
 
 export interface StaffSession {

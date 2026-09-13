@@ -1,0 +1,33 @@
+?   	github.com/Mohith1612/qr-dining/cmd/bootstrap-admin	[no test files]
+?   	github.com/Mohith1612/qr-dining/cmd/migrate	[no test files]
+?   	github.com/Mohith1612/qr-dining/cmd/server	[no test files]
+ok  	github.com/Mohith1612/qr-dining/internal/audit	1.038s
+ok  	github.com/Mohith1612/qr-dining/internal/auth	1.020s
+ok  	github.com/Mohith1612/qr-dining/internal/authz	1.027s
+ok  	github.com/Mohith1612/qr-dining/internal/config	1.026s
+ok  	github.com/Mohith1612/qr-dining/internal/crypto	5.805s
+?   	github.com/Mohith1612/qr-dining/internal/db	[no test files]
+?   	github.com/Mohith1612/qr-dining/internal/db/sqlc	[no test files]
+ok  	github.com/Mohith1612/qr-dining/internal/domain	1.022s
+?   	github.com/Mohith1612/qr-dining/internal/events	[no test files]
+ok  	github.com/Mohith1612/qr-dining/internal/handlers	1.038s
+?   	github.com/Mohith1612/qr-dining/internal/middleware	[no test files]
+?   	github.com/Mohith1612/qr-dining/internal/observability	[no test files]
+?   	github.com/Mohith1612/qr-dining/internal/redis	[no test files]
+ok  	github.com/Mohith1612/qr-dining/internal/repository	7.812s
+?   	github.com/Mohith1612/qr-dining/internal/server	[no test files]
+--- FAIL: TestEnforcementObservability (1.16s)
+    enforcement_observability_integration_test.go:79: SubscriptionObservability: ERROR: deadlock detected (SQLSTATE 40P01)
+--- FAIL: TestEntitlementResolution (0.35s)
+    entitlement_integration_test.go:47: exec "INSERT INTO restaurant_subscriptions (restaurant_id, plan_id, status) VALUES ($1,$2,'active')": ERROR: insert or update on table "restaurant_subscriptions" violates foreign key constraint "restaurant_subscriptions_restaurant_id_fkey" (SQLSTATE 23503)
+--- FAIL: TestFeatureFlagResolution (1.12s)
+    flag_integration_test.go:45: ERROR: deadlock detected (SQLSTATE 40P01)
+FAIL
+FAIL	github.com/Mohith1612/qr-dining/internal/services	6.548s
+?   	github.com/Mohith1612/qr-dining/internal/storage	[no test files]
+?   	github.com/Mohith1612/qr-dining/internal/testutil	[no test files]
+ok  	github.com/Mohith1612/qr-dining/internal/websocket	1.035s
+?   	github.com/Mohith1612/qr-dining/internal/worker	[no test files]
+?   	github.com/Mohith1612/qr-dining/migrations	[no test files]
+?   	github.com/Mohith1612/qr-dining/scripts/loadtest	[no test files]
+FAIL

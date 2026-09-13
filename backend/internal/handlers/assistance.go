@@ -73,6 +73,10 @@ func (h *AssistanceHandler) Request(c *gin.Context) {
 
 	ar, err := h.svc.Request(c.Request.Context(), sessionID, req.TableID, participantID, reqType)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotSessionHost) {
+			respondError(c, http.StatusForbidden, CodeForbidden, "Only the table host can request the bill.")
+			return
+		}
 		respondInternalError(c)
 		return
 	}
@@ -110,6 +114,9 @@ func (h *AssistanceHandler) Acknowledge(c *gin.Context) {
 		return
 	}
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionAssistanceAck, authz.AssistanceResource(target.ID, session.BranchID, target.SessionID, orgID)) {
+		return
+	}
+	if !requireActorBranch(c, staffSession, session.BranchID) {
 		return
 	}
 	ar, err := h.svc.Acknowledge(c.Request.Context(), id, session.BranchID, staffSession.StaffID)
@@ -151,6 +158,9 @@ func (h *AssistanceHandler) Resolve(c *gin.Context) {
 		return
 	}
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionAssistanceResolve, authz.AssistanceResource(target.ID, session.BranchID, target.SessionID, orgID)) {
+		return
+	}
+	if !requireActorBranch(c, staffSession, session.BranchID) {
 		return
 	}
 	ar, err := h.svc.Resolve(c.Request.Context(), id, session.BranchID, staffSession.StaffID)

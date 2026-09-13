@@ -43,7 +43,7 @@ func (w *workerQuerier) ListSessionsExpiringSoon(ctx context.Context) ([]worker.
 	for _, r := range rows {
 		result = append(result, worker.ExpiringSoonSession{
 			ID:                    r.ID,
-			CreatedAt:             r.CreatedAt,
+			LastActivityAt:        r.LastActivityAt,
 			SessionTimeoutMinutes: r.SessionTimeoutMinutes,
 		})
 	}
@@ -62,8 +62,8 @@ func (w *workerQuerier) LogEvent(ctx context.Context, sessionID uuid.UUID, branc
 	w.repos.LogEvent(ctx, sessionID, branchID, eventType, actorType, actorID, payload)
 }
 
-func (w *workerQuerier) ListReactivationCandidates(ctx context.Context, olderThan time.Time) ([]worker.ReactivationCandidate, error) {
-	rows, err := w.repos.ListReactivationCandidates(ctx, olderThan)
+func (w *workerQuerier) ListReactivationCandidates(ctx context.Context, createdBefore, idleBefore time.Time) ([]worker.ReactivationCandidate, error) {
+	rows, err := w.repos.ListReactivationCandidates(ctx, createdBefore, idleBefore)
 	if err != nil {
 		return nil, err
 	}
@@ -122,4 +122,8 @@ func (w *workerQuerier) ListPaymentPendingStalled(ctx context.Context, olderThan
 		})
 	}
 	return out, nil
+}
+
+func (w *workerQuerier) ListBillingReconciliationDiscrepancies(ctx context.Context, windowStart, windowEnd time.Time) ([]worker.BillingReconciliationDiscrepancy, error) {
+	return w.repos.ListBillingReconciliationDiscrepancies(ctx, windowStart, windowEnd)
 }

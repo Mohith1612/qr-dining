@@ -1,0 +1,18 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ProseLayout from "../../components/ProseLayout.astro";
+const headings=["Using this website","Demo requests","Pilot services","Restaurant responsibilities","Intellectual property","Service availability","Liability","Changes and contact"];
+---
+<BaseLayout title="Terms of Service | QR Dining" description="Terms that apply when you use the QR Dining website, request a demo, or participate in an early restaurant pilot.">
+  <ProseLayout title="Terms of service" eyebrow="Clear terms, plainly said" headings={headings}>
+    <p class="legal-note"><strong>Founder action before launch:</strong> this layout and operational draft need counsel review and the final company entity, governing law, billing, warranty, and liability language.</p>
+    <h2 id="using-this-website">Using this website</h2><p>You may use this website to learn about QR Dining and request a demo. Do not misuse the site, interfere with its operation, probe it without permission, submit unlawful material, or impersonate another person.</p>
+    <h2 id="demo-requests">Demo requests</h2><p>A demo request is an expression of interest, not an order or guarantee of service. We may contact you using the details provided to understand your restaurant and decide whether a pilot is a suitable fit.</p>
+    <h2 id="pilot-services">Pilot services</h2><p>Any restaurant pilot, subscription, pricing commitment, onboarding scope, and support arrangement will be confirmed separately in writing. Early-access features may change as the product develops, and we will communicate material changes that affect an active pilot.</p>
+    <h2 id="restaurant-responsibilities">Restaurant responsibilities</h2><p>Restaurants are responsible for the accuracy of their menus, prices, tax settings, staff access, settlement confirmations, and notices to guests. QR Dining is a dine-in operations layer and does not replace the restaurant's legal, tax, food-safety, or payment obligations.</p>
+    <h2 id="intellectual-property">Intellectual property</h2><p>The website, product, design, software, and QR Dining marks belong to QR Dining or its licensors. Restaurants retain ownership of their names, menus, brand assets, and other material they provide, while allowing us to use that material to provide the requested service.</p>
+    <h2 id="service-availability">Service availability</h2><p>We work to keep QR Dining reliable and recoverable, but no service is uninterrupted in every circumstance. Planned maintenance, networks, devices, third-party services, and events beyond reasonable control may affect availability.</p>
+    <h2 id="liability">Liability</h2><p>The final limits, exclusions, warranties, and remedies for restaurant use will be stated in the pilot or subscription agreement. Nothing on this website creates a warranty beyond what applicable law requires.</p>
+    <h2 id="changes-and-contact">Changes and contact</h2><p>We may update these terms when the website, product, or law changes. The date at the top will show the latest revision. Questions can be sent to <a href="mailto:hello@qrdining.app">hello@qrdining.app</a>.</p>
+  </ProseLayout>
+</BaseLayout>

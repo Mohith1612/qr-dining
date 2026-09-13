@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const LoggerKey = "logger"
@@ -16,9 +17,11 @@ func Logger(base zerolog.Logger) gin.HandlerFunc {
 		start := time.Now()
 
 		requestID, _ := c.Get(RequestIDKey)
-		log := base.With().
-			Str("request_id", requestID.(string)).
-			Logger()
+		logCtx := base.With().Str("request_id", requestID.(string))
+		if sc := trace.SpanContextFromContext(c.Request.Context()); sc.IsValid() {
+			logCtx = logCtx.Str("trace_id", sc.TraceID().String()).Str("span_id", sc.SpanID().String())
+		}
+		log := logCtx.Logger()
 
 		c.Set(LoggerKey, log)
 		c.Next()

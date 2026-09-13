@@ -8,31 +8,23 @@ interface PlaceOrderItem {
   note?: string
 }
 
-interface BackendPlaceOrderResponse {
-  Order: Order
-  OrderItems: OrderItem[]
-}
-
 interface PlaceOrderResponse {
   order: Order
   order_items: OrderItem[]
 }
 
 export const ordersApi = {
+  // Promos are applied at the bill now, not at order placement.
   place: (
     sessionId: string,
     guestToken: string,
     idempotencyKey: string,
-    items: PlaceOrderItem[],
-    promoCode?: string,
-    phoneE164?: string
+    items: PlaceOrderItem[]
   ) =>
-    api.post<BackendPlaceOrderResponse>(`/sessions/${sessionId}/orders`, {
+    api.post<PlaceOrderResponse>(`/sessions/${sessionId}/orders`, {
       idempotency_key: idempotencyKey,
       items,
-      ...(promoCode ? { promo_code: promoCode } : {}),
-      ...(phoneE164 ? { phone_e164: phoneE164 } : {}),
-    }, { guestToken }).then(r => ({ order: r.Order, order_items: r.OrderItems }) as PlaceOrderResponse),
+    }, { guestToken }),
 
   list: (sessionId: string) =>
     api.get<Order[]>(`/sessions/${sessionId}/orders`),

@@ -32,5 +32,6 @@ func newTestAssistanceService(repos *repository.Repos, pub *events.Publisher) *s
 func newTestPaymentService(repos *repository.Repos, pub *events.Publisher, sessionSvc *services.SessionService) *services.PaymentService {
 	svc := services.NewPaymentService(repos, pub, testMetrics(), sessionSvc, zerolog.Nop())
 	svc.SetHostAuthority(sessionSvc)
+	svc.SetPromoService(services.NewPromoService(repos))
 	return svc
 }

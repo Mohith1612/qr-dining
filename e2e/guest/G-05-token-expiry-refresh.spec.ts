@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession, fetchSnapshot } from "../helpers/api"
 
 test.describe("G-05: Guest token expiry refresh via snapshot", () => {
-  test("snapshot read on active session returns refreshed token hint", async () => {
+  // VACUOUS(sig-6): fixture never approaches token expiry; passes when refresh is absent or broken.
+  test.fixme("snapshot read on active session returns refreshed token hint", async () => {
     const { table } = await seedOrg("g05")
     const created = await createSession(table.id, "ExpiryUser")
     const sessionId = created.session.id

@@ -36,16 +36,18 @@ export function useCart() {
     }
   }
 
-  async function removeItem(itemId: number): Promise<void> {
-    if (!session) return
+  async function removeItem(itemId: number): Promise<boolean> {
+    if (!session) return false
     const guestToken = sessionStorage.getItem("guest_access_token")
-    if (!guestToken) return
+    if (!guestToken) return false
     const snapshot = useCartStore.getState().items
     useCartStore.getState().removeItem(itemId)
     try {
       await cartApi.removeItem(session.id, guestToken, itemId)
-    } catch {
+      return true
+    } catch (error) {
       useCartStore.getState().setItems(snapshot)
+      throw error
     }
   }
 

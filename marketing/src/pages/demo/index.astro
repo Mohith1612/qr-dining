@@ -1,0 +1,80 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+const title = "Request a demo | QR Dining";
+const description = "A live walkthrough on a real table — your menu, your branding. We reply within one working day.";
+const schema = {"@context":"https://schema.org","@type":"BreadcrumbList",itemListElement:[{"@type":"ListItem",position:1,name:"Home",item:"https://qrdining.app/"},{"@type":"ListItem",position:2,name:"Request a demo",item:"https://qrdining.app/demo"}]};
+---
+<BaseLayout title={title} description={description} image="/og-demo.png" schema={schema}>
+  <section class="demo-page">
+    <div class="container demo-heading"><p class="eyebrow">A table, not a slide deck</p><h1>Let's put it on a table.</h1><p class="lede">Tell us a little about your restaurant. You'll speak directly with the people building QR Dining — no sales hand-off.</p></div>
+    <div class="container demo-grid">
+      <aside class="next-steps reveal">
+        <p class="eyebrow">What happens next</p>
+        <ol><li><span class="mono">01</span><div><b>We understand your setup</b><p>A short call about your room, menu, service, and payment flow.</p></div></li><li><span class="mono">02</span><div><b>A live table walkthrough</b><p>Join from two phones and watch the order reach the kitchen and floor.</p></div></li><li><span class="mono">03</span><div><b>We onboard it ourselves</b><p>If it fits, we prepare your menu, tables, staff access, and QR cards with you.</p></div></li></ol>
+        <div class="founder-note"><p>Prefer email?</p><a href="mailto:hello@qrdining.app">hello@qrdining.app</a><small>We reply within one working day.</small></div>
+      </aside>
+      <div class="form-card card reveal">
+        <form data-demo-form novalidate>
+          <div class="field-grid">
+            <div class="field"><label for="name">Your name</label><input id="name" name="name" autocomplete="name" required /><p class="error" id="name-error"></p></div>
+            <div class="field"><label for="restaurant">Restaurant name</label><input id="restaurant" name="restaurant" autocomplete="organization" required /><p class="error" id="restaurant-error"></p></div>
+            <div class="field"><label for="city">City</label><input id="city" name="city" autocomplete="address-level2" required /><p class="error" id="city-error"></p></div>
+            <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91 98765 43210" required /><p class="error" id="phone-error"></p></div>
+            <div class="field full"><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" placeholder="you@restaurant.com" required /><p class="error" id="email-error"></p></div>
+            <div class="field full"><label for="restaurantType">Restaurant type</label><select id="restaurantType" name="restaurantType" required><option value="">Choose one</option><option>Café</option><option>Restaurant</option><option>Food court</option><option>Fine dining</option><option>Cloud kitchen</option><option>Chain</option></select><p class="error" id="restaurantType-error"></p></div>
+            <div class="field full"><label for="message">Anything we should know? <span>Optional</span></label><textarea id="message" name="message" rows="4" placeholder="Number of tables, branches, or what you'd like to fix."></textarea></div>
+            <div class="honey" aria-hidden="true"><label for="website">Website</label><input id="website" name="website" tabindex="-1" autocomplete="off" /></div>
+          </div>
+          <p class="form-error" data-form-error role="alert"></p>
+          <button class="button button-primary submit-button" type="submit"><span>Request demo</span><i aria-hidden="true"></i></button>
+          <p class="consent">By sending this form, you agree that we may contact you about QR Dining. Read our <a href="/privacy">privacy policy</a>.</p>
+        </form>
+        <div class="success" data-success aria-live="polite" hidden><div class="success-mark" aria-hidden="true">✓</div><p class="eyebrow">Request received</p><h2>Got it — we'll be in touch.</h2><p>We'll reach out within one working day. Keep an eye on the email or phone you shared.</p><a class="button button-ghost" href="/">Back to home</a></div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  const form = document.querySelector<HTMLFormElement>("[data-demo-form]");
+  const success = document.querySelector<HTMLElement>("[data-success]");
+  const formError = document.querySelector<HTMLElement>("[data-form-error]");
+  const rules: Record<string, (value:string)=>string> = {
+    name: value => value.trim().length >= 2 ? "" : "Please enter your name.",
+    restaurant: value => value.trim().length >= 2 ? "" : "Please enter the restaurant name.",
+    city: value => value.trim().length >= 2 ? "" : "Please enter your city.",
+    phone: value => value.replace(/\D/g,"").length >= 10 ? "" : "Please enter a valid phone number.",
+    email: value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? "" : "Please enter a valid email address.",
+    restaurantType: value => value ? "" : "Please choose a restaurant type.",
+  };
+  const validate = (input: HTMLInputElement | HTMLSelectElement) => {
+    const message = rules[input.name]?.(input.value) || "";
+    const error = document.getElementById(`${input.name}-error`);
+    input.toggleAttribute("aria-invalid", Boolean(message));
+    if (message) input.setAttribute("aria-describedby", `${input.name}-error`); else input.removeAttribute("aria-describedby");
+    if (error) error.textContent = message;
+    return !message;
+  };
+  form?.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input[required],select[required]").forEach(input => input.addEventListener("blur", () => validate(input)));
+  form?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const inputs = [...form.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input[required],select[required]")];
+    if (!inputs.every(validate)) { inputs.find(input => input.hasAttribute("aria-invalid"))?.focus(); return; }
+    const button = form.querySelector<HTMLButtonElement>("button[type=submit]");
+    if (button) { button.disabled = true; button.classList.add("loading"); button.querySelector("span")!.textContent = "Sending…"; }
+    if (formError) formError.textContent = "";
+    try {
+      const response = await fetch("/api/demo", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(Object.fromEntries(new FormData(form))) });
+      if (!response.ok) throw new Error("Request failed");
+      form.hidden = true; if (success) success.hidden = false;
+    } catch {
+      if (formError) formError.textContent = "We couldn't send that. Please try again or email hello@qrdining.app.";
+      if (button) { button.disabled = false; button.classList.remove("loading"); button.querySelector("span")!.textContent = "Request demo"; }
+    }
+  });
+</script>
+
+<style>
+  .demo-page{padding:84px 0 112px;background:var(--glow-warm)}.demo-heading{max-width:750px;margin-bottom:64px;text-align:center}.demo-heading h1{margin-bottom:22px}.demo-heading .lede{margin-inline:auto}.demo-grid{display:grid;grid-template-columns:.7fr 1.3fr;gap:72px;align-items:start}.next-steps{padding-top:24px}.next-steps ol{padding:0;margin:28px 0 38px;list-style:none}.next-steps li{display:grid;grid-template-columns:36px 1fr;gap:14px;padding:0 0 26px;position:relative}.next-steps li:not(:last-child):before{content:"";position:absolute;left:14px;top:26px;bottom:2px;width:1px;background:var(--line-1)}.next-steps li>span{width:29px;height:29px;display:grid;place-items:center;border:1px solid var(--line-2);border-radius:50%;background:var(--canvas);color:var(--gold);font-size:8px;z-index:1}.next-steps b{font-size:15px}.next-steps li p{margin:4px 0 0;color:var(--ink-2);font-size:13px}.founder-note{padding:22px;border:1px solid var(--line-1);border-radius:14px;background:rgba(255,255,255,.55)}.founder-note p{margin:0;color:var(--ink-3);font-size:12px}.founder-note a{display:block;color:var(--ink);font-weight:600;text-underline-offset:3px}.founder-note small{color:var(--ink-3)}.form-card{padding:36px}.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.field{display:flex;flex-direction:column}.field.full{grid-column:1/-1}.field label{margin-bottom:7px;font-size:13px;font-weight:600}.field label span{color:var(--ink-3);font-weight:400}.field input,.field select,.field textarea{width:100%;min-height:46px;padding:10px 13px;border:1px solid var(--line-2);border-radius:8px;background:#fff;color:var(--ink);font-size:16px}.field textarea{resize:vertical}.field input::placeholder,.field textarea::placeholder{color:var(--ink-4)}.field [aria-invalid=true]{border-color:#ba1a1a}.error{min-height:18px;margin:3px 0 -18px;color:#ba1a1a;font-size:12px}.honey{position:absolute;left:-9999px}.form-error{min-height:20px;margin:20px 0 4px;color:#ba1a1a;font-size:13px}.submit-button{min-width:170px}.submit-button i{display:none;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}.submit-button.loading i{display:block}.submit-button:disabled{cursor:wait;opacity:.75}@keyframes spin{to{transform:rotate(360deg)}}.consent{max-width:540px;margin:14px 0 0;color:var(--ink-3);font-size:11px}.consent a{text-underline-offset:2px}.success{padding:72px 30px;text-align:center}.success-mark{width:48px;height:48px;display:grid;place-items:center;margin:0 auto 24px;border-radius:50%;background:rgba(63,125,84,.12);color:#3f7d54;font-weight:700}.success h2{margin-bottom:14px}.success>p:not(.eyebrow){max-width:460px;margin:0 auto 28px;color:var(--ink-2)}
+  @media(max-width:639px){.demo-page{padding:64px 0}.demo-heading{margin-bottom:42px;text-align:left}.demo-grid{display:flex;flex-direction:column;gap:38px}.next-steps{order:0;padding-top:0}.form-card{order:1;width:100%;padding:24px 18px}.field-grid{grid-template-columns:1fr}.field.full{grid-column:auto}.submit-button{width:100%}.success{padding:48px 10px}}
+</style>

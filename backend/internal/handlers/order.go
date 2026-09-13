@@ -37,8 +37,7 @@ type placeOrderRequest struct {
 	PlacedByParticipantID int64                `json:"placed_by_participant_id"`
 	IdempotencyKey        string               `json:"idempotency_key" binding:"required"`
 	Items                 []services.OrderItem `json:"items" binding:"required,min=1"`
-	PromoCode             *string              `json:"promo_code"`
-	PhoneE164             *string              `json:"phone_e164"`
+	// Promo moved to payment initiation — order placement no longer takes a code.
 }
 
 func (h *OrderHandler) PlaceOrder(c *gin.Context) {
@@ -93,8 +92,6 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		PlacedByParticipantID: participantID,
 		IdempotencyKey:        req.IdempotencyKey,
 		Items:                 req.Items,
-		PromoCode:             req.PromoCode,
-		PhoneE164:             req.PhoneE164,
 	})
 	if err != nil {
 		switch {
@@ -110,14 +107,6 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 			respondError(c, http.StatusConflict, CodePaymentInProgress, err.Error())
 		case errors.Is(err, domain.ErrMenuItemUnavailable):
 			respondError(c, http.StatusUnprocessableEntity, CodeMenuItemUnavailable, err.Error())
-		case errors.Is(err, domain.ErrPromoNotFound):
-			respondError(c, http.StatusNotFound, CodePromoNotFound, "This promo code isn't valid right now.")
-		case errors.Is(err, domain.ErrMinOrderNotMet):
-			respondError(c, http.StatusUnprocessableEntity, CodeMinOrderNotMet, err.Error())
-		case errors.Is(err, domain.ErrPromoExhausted):
-			respondError(c, http.StatusConflict, CodePromoExhausted, "This offer has been claimed by too many guests.")
-		case errors.Is(err, domain.ErrPromoAlreadyUsed):
-			respondError(c, http.StatusConflict, CodePromoAlreadyUsed, "You've already used this offer.")
 		case errors.Is(err, domain.ErrIdempotencyConflict):
 			respondError(c, http.StatusConflict, "IDEMPOTENCY_CONFLICT", err.Error())
 		case errors.Is(err, domain.ErrParticipantNotInSession):
@@ -197,6 +186,9 @@ func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 		action = authz.ActionOrderMarkServed
 	}
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, action, authz.OrderResource(target.ID, target.BranchID, target.SessionID, orgID)) {
+		return
+	}
+	if !requireActorBranch(c, staffSession, target.BranchID) {
 		return
 	}
 	order, err := h.svc.UpdateOrderStatus(c.Request.Context(), orderID, target.BranchID, newStatus, staffSession.StaffID)

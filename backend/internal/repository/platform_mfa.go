@@ -18,11 +18,11 @@ import (
 var ErrMFANotEnrolled = errors.New("mfa not enrolled")
 
 type PlatformMFA struct {
-	PlatformUserID   int64
-	SecretEncrypted  string
-	Status           string
-	RecoveryCodes    []string
-	EnrolledAtUnix   int64
+	PlatformUserID  int64
+	SecretEncrypted string
+	Status          string
+	RecoveryCodes   []string
+	EnrolledAtUnix  int64
 }
 
 func (r *Repos) GetPlatformMFA(ctx context.Context, userID int64) (PlatformMFA, error) {

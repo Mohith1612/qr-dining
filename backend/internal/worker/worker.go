@@ -28,7 +28,7 @@ type ExpiredSession struct {
 // ExpiringSoonSession is the projection used by the expiry warner.
 type ExpiringSoonSession struct {
 	ID                    uuid.UUID
-	CreatedAt             time.Time
+	LastActivityAt        time.Time
 	SessionTimeoutMinutes int16
 }
 
@@ -61,6 +61,10 @@ type StalledPaymentPending struct {
 	InitiatedAt    time.Time
 }
 
+// BillingReconciliationDiscrepancy is the public one-pass result returned to
+// operational callers and integration tests.
+type BillingReconciliationDiscrepancy = repository.BillingReconciliationDiscrepancy
+
 // Querier abstracts the DB queries the worker needs.
 // Implemented by *sqlc.Queries after code generation; interface allows compilation before that.
 type Querier interface {
@@ -71,11 +75,12 @@ type Querier interface {
 	ReconcileSessionTables(ctx context.Context) ([]repository.SessionTableReconciliation, error)
 	LogEvent(ctx context.Context, sessionID uuid.UUID, branchID int64, eventType, actorType string, actorID int64, payload any)
 
-	ListReactivationCandidates(ctx context.Context, olderThan time.Time) ([]ReactivationCandidate, error)
+	ListReactivationCandidates(ctx context.Context, createdBefore, idleBefore time.Time) ([]ReactivationCandidate, error)
 	TransitionToAwaitingReactivation(ctx context.Context, id uuid.UUID) error
 	ListAwaitingReactivationExpired(ctx context.Context, olderThan time.Time) ([]AwaitingReactivationExpired, error)
 	HasNonTerminalPayment(ctx context.Context, sessionID uuid.UUID) (bool, error)
 	ListPaymentPendingStalled(ctx context.Context, olderThan time.Time) ([]StalledPaymentPending, error)
+	ListBillingReconciliationDiscrepancies(ctx context.Context, windowStart, windowEnd time.Time) ([]BillingReconciliationDiscrepancy, error)
 }
 
 // Worker runs lightweight background maintenance goroutines.
@@ -91,6 +96,9 @@ type Worker struct {
 	audit     *audit.Writer
 	region    string
 	logger    zerolog.Logger
+	// sessionIdleGrace is the durable no-presence interval required before an
+	// established active session may enter awaiting_reactivation.
+	sessionIdleGrace time.Duration
 }
 
 func New(
@@ -108,15 +116,72 @@ func New(
 		region = "default"
 	}
 	return &Worker{
-		db:        db,
-		queries:   queries,
-		redis:     redis,
-		publisher: publisher,
-		presence:  presence,
-		metrics:   metrics,
-		audit:     auditWriter,
-		region:    region,
-		logger:    logger.With().Str("component", "worker").Logger(),
+		db:               db,
+		queries:          queries,
+		redis:            redis,
+		publisher:        publisher,
+		presence:         presence,
+		metrics:          metrics,
+		audit:            auditWriter,
+		region:           region,
+		logger:           logger.With().Str("component", "worker").Logger(),
+		sessionIdleGrace: 5 * time.Minute,
+	}
+}
+
+// ReconcileBilling performs one read-only reconciliation pass over settled
+// sessions in [windowStart, windowEnd). It never corrects, cancels, settles, or
+// otherwise mutates payments, bills, orders, promos, loyalty, or sessions.
+// Audit rows and metrics are observations only; money remains operator-owned.
+func (w *Worker) ReconcileBilling(ctx context.Context, windowStart, windowEnd time.Time) ([]BillingReconciliationDiscrepancy, error) {
+	findings, err := w.queries.ListBillingReconciliationDiscrepancies(ctx, windowStart, windowEnd)
+	if err != nil {
+		return nil, err
+	}
+	counts := map[string]int{
+		"snapshot_vs_orders":    0,
+		"collected_vs_snapshot": 0,
+	}
+	for _, finding := range findings {
+		counts[finding.Comparison]++
+		if w.audit != nil && !finding.AlreadyAudited {
+			w.audit.RecordRequired(ctx, audit.AuditEvent{
+				OrganizationID: finding.OrganizationID,
+				BranchID:       finding.BranchID,
+				SessionID:      finding.SessionID,
+				TableID:        finding.TableID,
+				ResourceType:   audit.ResourceSession,
+				ResourceID:     finding.SessionID.String(),
+				Action:         audit.ActionBillingReconciliationDiscrepancy,
+				Result:         audit.ResultFailure,
+				ActorType:      audit.ActorTypeSystem,
+				ActorID:        "system",
+				Source:         audit.SourceSystem,
+				RiskLevel:      audit.RiskCritical,
+				Metadata: map[string]any{
+					"bill_snapshot_id": finding.BillSnapshotID,
+					"comparison":       finding.Comparison,
+					"expected_amount":  finding.ExpectedAmount,
+					"actual_amount":    finding.ActualAmount,
+					"difference":       finding.Difference,
+					"currency":         finding.Currency,
+				},
+			})
+		}
+	}
+	if w.metrics != nil && w.metrics.BillingReconciliationDiscrepancies != nil {
+		for comparison, count := range counts {
+			w.metrics.BillingReconciliationDiscrepancies.WithLabelValues(comparison).Set(float64(count))
+		}
+	}
+	return findings, nil
+}
+
+// SetSessionIdleGrace overrides the five-minute default. It must be called at
+// startup before RunReactivationPipeline begins.
+func (w *Worker) SetSessionIdleGrace(grace time.Duration) {
+	if grace > 0 {
+		w.sessionIdleGrace = grace
 	}
 }
 
@@ -166,8 +231,9 @@ func (w *Worker) RunSessionExpiryWarner(ctx context.Context, interval time.Durat
 }
 
 // RunPresenceExpiry scans active sessions and publishes PARTICIPANT_LEFT for
-// participants whose last heartbeat has expired. Presence itself auto-expires
-// via Redis TTL; this worker ensures WebSocket clients get a notification.
+// participants whose last heartbeat has expired. Live presence expires by
+// field age; the Redis key TTL is storage cleanup. This worker ensures
+// WebSocket clients get a notification.
 func (w *Worker) RunPresenceExpiry(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -179,8 +245,8 @@ func (w *Worker) RunPresenceExpiry(ctx context.Context, interval time.Duration) 
 		case <-ticker.C:
 			w.runWithLock(ctx, "presence_expiry", 50*time.Second, func() {
 				w.safeRun("presence_expiry", func() {
-					// Presence TTL is managed by Redis itself; this is a no-op notification hook
-					// for future implementation when participant-left events are needed on expiry.
+					// Field-age filtering is applied by presence readers; this remains a
+					// no-op notification hook until participant-left events are needed.
 					w.logger.Debug().Msg("presence expiry worker tick")
 				})
 			})
@@ -189,8 +255,9 @@ func (w *Worker) RunPresenceExpiry(ctx context.Context, interval time.Duration) 
 }
 
 // RunReactivationPipeline drives the awaiting_reactivation lifecycle:
-//   - Active sessions whose presence has been gone past `presenceGrace` are
-//     moved to awaiting_reactivation. The table stays occupied.
+//   - Active sessions past the creation grace whose newest durable participant
+//     heartbeat is older than sessionIdleGrace and whose live Redis presence is
+//     empty are moved to awaiting_reactivation. The table stays occupied.
 //   - awaiting_reactivation sessions whose `awaiting_reactivation_at` is older
 //     than `reactivationWindow` are abandoned, unless a non-terminal payment
 //     exists (TIM-1).
@@ -221,7 +288,9 @@ func (w *Worker) RunReactivationPipeline(ctx context.Context, interval, presence
 // RunPaymentPendingEscalation surfaces sessions stuck in payment_pending past
 // the warn/critical thresholds. It is ALERT-ONLY: it never mutates payment or
 // session state (auto-settle/auto-cancel would violate settlement invariants).
-// Recovery stays operator-driven — staff settle or cancel via the normal flows.
+// Recovery stays operator-driven: staff settle via PATCH /payments/:id/settle
+// or cancel via PATCH /payments/:id/cancel, and can force-close the session
+// with POST /sessions/:id/force-close.
 func (w *Worker) RunPaymentPendingEscalation(ctx context.Context, interval, warnAfter, criticalAfter time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -236,6 +305,47 @@ func (w *Worker) RunPaymentPendingEscalation(ctx context.Context, interval, warn
 					tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 					defer cancel()
 					w.escalatePaymentPending(tickCtx, warnAfter, criticalAfter)
+				})
+			})
+		}
+	}
+}
+
+const (
+	billingReconciliationLookback    = 24 * time.Hour
+	billingReconciliationQuietPeriod = time.Minute
+)
+
+// RunBillingReconciliation observes recently settled sessions for A1 billing
+// discrepancies. It is strictly read-only with respect to money: it must never
+// correct, cancel, settle, refund, or adjust financial/session state. Its only
+// writes are reporting signals (Prometheus and immutable audit records).
+func (w *Worker) RunBillingReconciliation(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.runWithLock(ctx, "billing_reconciliation", 50*time.Second, func() {
+				w.safeRun("billing_reconciliation", func() {
+					// Keep execution below the lock TTL. runWithLock's bare DEL is
+					// unfenced, so this worker must not intentionally outlive its lock.
+					tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					defer cancel()
+					windowEnd := time.Now().UTC().Add(-billingReconciliationQuietPeriod)
+					findings, err := w.ReconcileBilling(tickCtx, windowEnd.Add(-billingReconciliationLookback), windowEnd)
+					if err != nil {
+						w.logger.Error().Err(err).Msg("reconcile settled-session billing")
+						w.metrics.WorkerRunsTotal.WithLabelValues("billing_reconciliation", "error").Inc()
+						return
+					}
+					if len(findings) > 0 {
+						w.logger.Error().Int("discrepancies", len(findings)).Msg("billing reconciliation discrepancies found")
+					}
+					w.metrics.WorkerRunsTotal.WithLabelValues("billing_reconciliation", "ok").Inc()
 				})
 			})
 		}
@@ -320,8 +430,14 @@ func (w *Worker) markEscalated(ctx context.Context, sessionID uuid.UUID, level s
 }
 
 func (w *Worker) runReactivationPipeline(ctx context.Context, presenceGrace, reactivationWindow time.Duration) {
-	// Phase 1: active → awaiting_reactivation when presence is empty.
-	candidates, err := w.queries.ListReactivationCandidates(ctx, time.Now().UTC().Add(-presenceGrace))
+	// Phase 1: active → awaiting_reactivation only after both the creation
+	// grace and the durable participant-idle grace, with Redis still empty.
+	now := time.Now().UTC()
+	candidates, err := w.queries.ListReactivationCandidates(
+		ctx,
+		now.Add(-presenceGrace),
+		now.Add(-w.sessionIdleGrace),
+	)
 	if err != nil {
 		w.logger.Error().Err(err).Msg("list reactivation candidates")
 		w.metrics.WorkerRunsTotal.WithLabelValues("reactivation_pipeline", "error").Inc()
@@ -329,7 +445,7 @@ func (w *Worker) runReactivationPipeline(ctx context.Context, presenceGrace, rea
 	}
 	movedToAwaiting := 0
 	for _, c := range candidates {
-		present, err := w.presence.GetPresentScoped(ctx, c.OrganizationID, c.BranchID, c.ID)
+		present, err := w.presence.GetPresentForSession(ctx, c.OrganizationID, c.BranchID, c.ID)
 		if err != nil {
 			w.logger.Warn().Err(err).Str("session_id", c.ID.String()).Msg("read presence")
 			continue
@@ -466,10 +582,14 @@ func (w *Worker) reconcileSessionTables(ctx context.Context) {
 			Int64("table_id", action.TableID).
 			Msg("session table reconciliation applied")
 		if action.SessionID != uuid.Nil {
-			w.publisher.SessionClosed(ctx, action.SessionID, map[string]string{"reason": action.Action})
-			w.presence.DeleteScoped(ctx, action.OrganizationID, action.BranchID, action.SessionID)
+			if action.Action == "duplicate_abandoned" {
+				w.publisher.SessionClosed(ctx, action.SessionID, map[string]string{"reason": action.Action})
+				w.presence.DeleteScoped(ctx, action.OrganizationID, action.BranchID, action.SessionID)
+			}
 			w.queries.LogEvent(ctx, action.SessionID, action.BranchID, "SESSION_RECONCILED", "system", 0, map[string]any{"reason": action.Action})
-			w.recordSystemSessionAudit(ctx, audit.ActionSessionAbandon, result, map[string]any{"reason": action.Action})
+			if action.Action == "duplicate_abandoned" {
+				w.recordSystemSessionAudit(ctx, audit.ActionSessionAbandon, result, map[string]any{"reason": action.Action})
+			}
 		} else {
 			w.queries.LogEvent(ctx, uuid.Nil, action.BranchID, "TABLE_RECONCILED", "system", 0, map[string]any{"reason": action.Action, "table_id": action.TableID})
 			w.recordSystemSessionAudit(ctx, audit.ActionSessionClose, result, map[string]any{"reason": action.Action})
@@ -490,7 +610,7 @@ func (w *Worker) warnExpiringSessions(ctx context.Context) {
 	}
 	for i := range sessions {
 		s := &sessions[i]
-		expiresAt := s.CreatedAt.Add(time.Duration(s.SessionTimeoutMinutes) * time.Minute)
+		expiresAt := s.LastActivityAt.Add(time.Duration(s.SessionTimeoutMinutes) * time.Minute)
 		payload := expiryPayload{ExpiresAt: expiresAt.UTC().Format(time.RFC3339)}
 		w.publisher.SessionExpiringSoon(ctx, s.ID, payload)
 		if err := w.queries.MarkSessionWarned(ctx, s.ID); err != nil {

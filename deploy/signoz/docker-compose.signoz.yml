@@ -1,0 +1,141 @@
+# SigNoz Community Edition deployment pinned to v0.129.0.
+# This is the newest release that still ships deploy/docker Compose assets.
+name: qr-dining-signoz
+
+x-common: &common
+  restart: unless-stopped
+  logging: &default-logging
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+networks:
+  signoz:
+    external: true
+  signoz_internal:
+    internal: true
+
+volumes:
+  signoz_clickhouse_data:
+  signoz_zookeeper_data:
+  signoz_sqlite_data:
+  signoz_clickhouse_user_scripts:
+
+services:
+  init-clickhouse:
+    image: clickhouse/clickhouse-server:25.5.6
+    restart: on-failure
+    command: ["bash", "-c", "node_os=$$(uname -s | tr '[:upper:]' '[:lower:]'); node_arch=$$(uname -m | sed s/aarch64/arm64/ | sed s/x86_64/amd64/); cd /tmp; wget -O histogram-quantile.tar.gz https://github.com/SigNoz/signoz/releases/download/histogram-quantile%2Fv0.0.1/histogram-quantile_$${node_os}_$${node_arch}.tar.gz; tar -xvzf histogram-quantile.tar.gz; mv histogram-quantile /var/lib/clickhouse/user_scripts/histogramQuantile"]
+    volumes: [signoz_clickhouse_user_scripts:/var/lib/clickhouse/user_scripts]
+    networks: [signoz_internal, signoz]
+    logging: *default-logging
+
+  zookeeper-1:
+    <<: *common
+    image: signoz/zookeeper:3.7.1
+    user: root
+    environment:
+      ZOO_SERVER_ID: "1"
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+      ZOO_AUTOPURGE_INTERVAL: "1"
+      ZOO_ENABLE_PROMETHEUS_METRICS: "yes"
+      ZOO_PROMETHEUS_METRICS_PORT_NUMBER: "9141"
+    volumes: [signoz_zookeeper_data:/bitnami/zookeeper]
+    networks: [signoz_internal]
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -m 2 http://localhost:8080/commands/ruok | grep error | grep null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  clickhouse:
+    <<: *common
+    image: clickhouse/clickhouse-server:25.5.6
+    tty: true
+    depends_on:
+      init-clickhouse: {condition: service_completed_successfully}
+      zookeeper-1: {condition: service_healthy}
+    environment: {CLICKHOUSE_SKIP_USER_SETUP: "1"}
+    ulimits:
+      nproc: 65535
+      nofile: {soft: 262144, hard: 262144}
+    volumes:
+      - ./clickhouse/config.xml:/etc/clickhouse-server/config.xml:ro
+      - ./clickhouse/users.xml:/etc/clickhouse-server/users.xml:ro
+      - ./clickhouse/custom-function.xml:/etc/clickhouse-server/custom-function.xml:ro
+      - ./clickhouse/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+      - signoz_clickhouse_user_scripts:/var/lib/clickhouse/user_scripts
+      - signoz_clickhouse_data:/var/lib/clickhouse
+    networks: [signoz_internal]
+    mem_limit: 1536m
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "0.0.0.0:8123/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  signoz:
+    <<: *common
+    image: signoz/signoz:v0.129.0
+    depends_on:
+      clickhouse: {condition: service_healthy}
+    environment:
+      SIGNOZ_ALERTMANAGER_PROVIDER: signoz
+      SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN: tcp://clickhouse:9000
+      SIGNOZ_SQLSTORE_SQLITE_PATH: /var/lib/signoz/signoz.db
+      SIGNOZ_TOKENIZER_JWT_SECRET: local-eval-change-before-vm-deploy
+      TELEMETRY_ENABLED: "false"
+    volumes: [signoz_sqlite_data:/var/lib/signoz]
+    ports: ["127.0.0.1:3301:8080"]
+    networks: [signoz_internal, signoz]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  signoz-telemetrystore-migrator:
+    image: signoz/signoz-otel-collector:v0.144.5
+    restart: on-failure
+    depends_on:
+      clickhouse: {condition: service_healthy}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/signoz-otel-collector migrate bootstrap && /signoz-otel-collector migrate sync up && /signoz-otel-collector migrate async up"]
+    environment: &collector-env
+      SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_DSN: tcp://clickhouse:9000
+      SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_CLUSTER: cluster
+      SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_REPLICATION: "true"
+      SIGNOZ_OTEL_COLLECTOR_TIMEOUT: 10m
+    networks: [signoz_internal]
+    logging: *default-logging
+
+  signoz-otel-collector:
+    <<: *common
+    image: signoz/signoz-otel-collector:v0.144.5
+    depends_on:
+      signoz-telemetrystore-migrator: {condition: service_completed_successfully}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/signoz-otel-collector migrate sync check && /signoz-otel-collector --config=/etc/otel-collector-config.yaml"]
+    # The image runs as uid 10001, but Docker's per-container log files are
+    # root-owned and mode 0600. Without this the filelog receiver silently
+    # collects nothing: the pipeline stays healthy and zero logs arrive, which
+    # looks identical to "the app is quiet". The mount below is read-only.
+    user: root
+    environment:
+      <<: *collector-env
+      OTEL_RESOURCE_ATTRIBUTES: host.name=signoz-host,os.type=linux
+      LOW_CARDINAL_EXCEPTION_GROUPING: "false"
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./otel-collector-opamp-config.yaml:/etc/manager-config.yaml:ro
+      # HOST side is configurable because Docker's data-root is not always
+      # /var/lib/docker — the OCI VM this deploys to uses /data/docker, and
+      # mounting the wrong path yields an empty dir rather than an error.
+      # Check with: docker info --format '{{.DockerRootDir}}'
+      # The CONTAINER side stays fixed so otel-collector-config.yaml's include
+      # glob never has to change.
+      - ${DOCKER_CONTAINERS_DIR:-/var/lib/docker/containers}:/var/lib/docker/containers:ro
+    ports: ["127.0.0.1:4317:4317", "127.0.0.1:4318:4318"]
+    networks: [signoz_internal, signoz]
+    mem_limit: 256m

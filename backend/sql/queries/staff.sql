@@ -58,6 +58,13 @@ WHERE staff_id = $1 AND revoked_at IS NULL;
 -- name: ListActiveStaffForBranch :many
 SELECT * FROM staff WHERE branch_id = $1 AND is_active = TRUE ORDER BY name ASC;
 
+-- Pin-hash-free projection for the staff roster shown to managers/owners.
+-- name: ListStaffRosterForBranch :many
+SELECT id, branch_id, name, role, staff_code, is_active, created_at
+FROM staff
+WHERE branch_id = $1 AND is_active = TRUE
+ORDER BY name ASC;
+
 -- name: UpdateBranchSessionTimeout :exec
 UPDATE branches SET session_timeout_minutes = $2 WHERE id = $1;
 

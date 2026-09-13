@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test"
 import { seedOrg, createSession, placeOrder, fetchAudit } from "../helpers/api"
 
 test.describe("A-07: Guest-initiated actions audited by platform admin", () => {
-  test("order placement by guest appears in session audit", async () => {
+  // VACUOUS(sig-1): audit fetch failures become an empty array; passes when guest orders are never audited.
+  test.fixme("order placement by guest appears in session audit", async () => {
     const { table, menu } = await seedOrg("a07")
     const created = await createSession(table.id, "AuditOrderGuest")
     const sessionId = created.session.id

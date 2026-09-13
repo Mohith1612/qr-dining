@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manual-testing surfaces</title>
+  <link rel="stylesheet" href="manual-testing.css">
+</head>
+<body>
+<main>
+  <nav>
+    <a href="testing-dashboard.html">Dashboard</a>
+    <a href="how-to-use.html">Start and stop</a>
+    <a href="manual-testing-session-guide.html">Session guide</a>
+    <a href="manual-testing-checklist.html">Checklist</a>
+    <a aria-current="page" href="manual-testing-user-guide.html">Surfaces</a>
+    <a href="database-reference.html">Data reference</a>
+  </nav>
+
+  <h1>Surfaces under test</h1>
+  <p class="lede">Use the credentials and QR tokens printed by the current seed run. Do not copy identifiers from screenshots or old reports.</p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Guest</h2>
+      <p>Entry begins at <code>/table/&lt;qr-token&gt;</code>. Session pages cover menu, cart, orders, assistance, and payment.</p>
+      <p class="source"><code>frontend/app/(guest)/table/[token]/page.tsx:35-112</code>; <code>frontend/app/(guest)/session/[id]/menu/page.tsx:314-420</code>; <code>frontend/app/(guest)/session/[id]/payment/page.tsx:1-253</code></p>
+    </section>
+    <section class="card">
+      <h2>Staff</h2>
+      <p>Entry is <code>/staff/login</code>. Owner and manager land on the admin surface; waiter and kitchen roles have dedicated dashboards.</p>
+      <p class="source"><code>frontend/app/(staff)/staff/login/page.tsx:18-23,45-51</code>; <code>frontend/app/(staff)/staff/(dashboard)/admin/page.tsx:7-16</code>; <code>frontend/app/(staff)/staff/(dashboard)/waiter/page.tsx:233-253</code>; <code>frontend/app/(staff)/staff/(dashboard)/kitchen/page.tsx:186-202</code></p>
+    </section>
+    <section class="card">
+      <h2>Platform</h2>
+      <p>Entry is <code>/platform/login</code>. The protected API covers organizations, branches, billing, flags, analytics, themes, and support inspection.</p>
+      <p class="source"><code>frontend/app/(platform)/platform/login/page.tsx:1-162</code>; <code>backend/internal/server/server.go:281-377</code></p>
+    </section>
+  </div>
+
+  <h2>Behavior worth observing</h2>
+  <table>
+    <thead><tr><th>Area</th><th>Current server behavior</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Duplicate payment initiation</td><td>A matching non-terminal payment is returned instead of creating another payment.</td><td><code>backend/internal/services/payment.go:148-190</code>; <code>backend/internal/handlers/payment.go:186-193</code></td></tr>
+      <tr><td>Payment amount</td><td>An amount below the current total is rejected with HTTP 422.</td><td><code>backend/internal/handlers/payment.go:105-149</code></td></tr>
+      <tr><td>Host absence</td><td>Host promotion uses a three-minute grace and requires the acting participant to be present.</td><td><code>backend/internal/redis/presence.go:13-18</code>; <code>backend/internal/services/session.go:318-359,399-440</code></td></tr>
+      <tr><td>Tenant suspension</td><td>Organization and branch status gate QR resolution, session creation, and joining.</td><td><code>backend/internal/services/menu.go:98-112</code>; <code>backend/internal/services/session.go:99-115,567-596</code></td></tr>
+      <tr><td>Staff recovery</td><td>Protected routes allow payment cancellation and forced session closure.</td><td><code>backend/internal/server/server.go:379-392</code></td></tr>
+    </tbody>
+  </table>
+
+  <p class="warning">The frontend currently maps tenant-suspension failures to generic guest errors instead of preserving the backend error codes. Test the response and the displayed message separately. <span class="source"><code>frontend/app/(guest)/table/[token]/page.tsx:57-60,109-113</code></span></p>
+</main>
+</body>
+</html>

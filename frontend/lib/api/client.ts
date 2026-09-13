@@ -1,15 +1,37 @@
 import { env } from "@/config/env"
 import type { APIError } from "@/types/api"
 
+/** APIError.reason values the backend may send. See handlers/errors.go. */
+export const REASON_CREDENTIAL_REVOKED = "credential_revoked"
+
 export class ApiError extends Error {
   constructor(
     public readonly code: string,
     message: string,
-    public readonly status: number
+    public readonly status: number,
+    // Seconds from the Retry-After header, when the server sent one (e.g. on a
+    // 423 lockout). Undefined otherwise.
+    public readonly retryAfter?: number,
+    // Optional discriminator for cases where `code` is too coarse to act on.
+    // Every guest-credential failure is 401 UNAUTHORIZED; only some are
+    // terminal, and `reason` is how the client tells them apart.
+    public readonly reason?: string
   ) {
     super(message)
     this.name = "ApiError"
   }
+}
+
+/**
+ * True when a rejected request can never succeed by retrying the same stored
+ * credential: it was revoked, or its version was rotated (which is what closing
+ * a session does to every participant). Callers must stop reconnecting and move
+ * to a terminal state instead of looping.
+ */
+export function isRevokedCredentialError(err: unknown): boolean {
+  return err instanceof ApiError
+    && err.status === 401
+    && err.reason === REASON_CREDENTIAL_REVOKED
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -24,6 +46,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   INSUFFICIENT_ROLE:         "You don't have permission to do this.",
   INVALID_PHONE:             "Please enter a valid 10-digit mobile number.",
   NOT_SESSION_HOST:          "Only the table host can do this. Ask the host to send the order or request the bill.",
+  FEATURE_DISABLED:          "This restaurant doesn't offer saved preferences.",
+  MODIFIER_CONFLICT:         "Only one option may be chosen from this group.",
 }
 
 export function friendlyErrorMessage(code: string): string {
@@ -33,20 +57,23 @@ export function friendlyErrorMessage(code: string): string {
 type RequestOptions = {
   staffToken?: string
   guestToken?: string
+  platformToken?: string
   body?: unknown
   method?: string
 }
 
 async function request<T>(
   path: string,
-  { staffToken, guestToken, body, method = "GET" }: RequestOptions = {}
+  { staffToken, guestToken, platformToken, body, method = "GET" }: RequestOptions = {}
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   }
 
-  if (staffToken || guestToken) {
-    headers["Authorization"] = `Bearer ${staffToken ?? guestToken}`
+  // Platform is a separate trust domain; its token uses the same Bearer scheme
+  // but is never mixed with staff/guest tokens by callers.
+  if (staffToken || guestToken || platformToken) {
+    headers["Authorization"] = `Bearer ${staffToken ?? guestToken ?? platformToken}`
   }
 
   // In local dev, pass tenant slug via header so the backend can identify the tenant
@@ -67,7 +94,15 @@ async function request<T>(
     try {
       errBody = await res.json()
     } catch {}
-    throw new ApiError(errBody.code, errBody.message, res.status)
+    const retryHeader = res.headers.get("Retry-After")
+    const retryAfter = retryHeader ? Number(retryHeader) : undefined
+    throw new ApiError(
+      errBody.code,
+      errBody.message,
+      res.status,
+      Number.isFinite(retryAfter) ? retryAfter : undefined,
+      errBody.reason
+    )
   }
 
   if (res.status === 204) {
@@ -88,6 +123,9 @@ export const api = {
 
   patch: <T>(path: string, body: unknown, opts?: CallOptions) =>
     request<T>(path, { ...opts, method: "PATCH", body }),
+
+  put: <T>(path: string, body: unknown, opts?: CallOptions) =>
+    request<T>(path, { ...opts, method: "PUT", body }),
 
   delete: <T>(path: string, opts?: CallOptions) =>
     request<T>(path, { ...opts, method: "DELETE" }),

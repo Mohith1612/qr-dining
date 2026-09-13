@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("P-11: Bill snapshot immutable after payment initiated", () => {
-  test("bill amounts do not change once payment is in progress", async () => {
+  // VACUOUS(sig-5): never attempts to mutate the bill after payment; passes when snapshots are mutable.
+  test.fixme("bill amounts do not change once payment is in progress", async () => {
     const { table, menu } = await seedOrg("p11")
     const created = await createSession(table.id, "BillSnap")
     const sessionId = created.session.id

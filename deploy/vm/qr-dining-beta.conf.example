@@ -1,0 +1,166 @@
+# qr-dining BETA vhost for the CENTRAL reverse proxy.
+# Installs at /opt/proxy/nginx/conf.d/qr-dining-beta.conf
+#
+# Derived from qr-dining.conf.example (the production template, which keeps its
+# CHANGEME placeholders). Differences, all beta-specific:
+#   * concrete hostnames on mohith16.com instead of CHANGEME-DOMAIN.com
+#   * the existing WILDCARD cert (*.mohith16.com, DNS-01 via dns-cloudflare)
+#     rather than a per-host cert — no issuance is required for these names
+#   * routes across TWO backend instances (see the upstream section below)
+#
+# Install:
+#   cp qr-dining-beta.conf.example /opt/proxy/nginx/conf.d/qr-dining-beta.conf
+#   docker compose -f /opt/proxy/docker-compose.yml exec nginx nginx -t   # ALWAYS first
+#   docker compose -f /opt/proxy/docker-compose.yml exec nginx nginx -s reload
+#
+# This proxy also fronts grafana, job-queue and sketchiple. A config error here
+# takes all of them down, so `nginx -t` before every reload is not optional.
+#
+# WebSocket/idle note: the app pings every ~54s, so proxy_read_timeout on /ws
+# must stay well above that (3600s here). qr-api-beta is DNS-only (grey cloud)
+# in Cloudflare, so there is no CF edge idle window to satisfy and nginx sees
+# real client IPs — which is what makes the per-IP rate limiting below
+# meaningful during certification. Do not lower these timeouts.
+
+# Prefixed qr_ to avoid collisions with the other projects' vhosts on this
+# shared proxy (grafana/job-queue/sketchiple each define their own).
+map $http_upgrade $qr_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Per-IP limiter for the HTTP API surface. WebSocket upgrades are exempt — the
+# app enforces ws-ticket issuance and per-connection inbound limits itself.
+limit_req_zone $binary_remote_addr zone=qr_api:10m rate=30r/s;
+
+# ---------- upstream selection ----------
+#
+# The beta runs two backend instances against one Postgres and one Redis, so
+# cross-instance behaviour (Redis pub/sub fan-out, WS ticket portability,
+# background-worker coordination) is certifiable rather than assumed.
+#
+# There is deliberately NO upstream{} block. nginx resolves upstream hostnames
+# at CONFIG LOAD time, so if the qr-dining containers were down, this SHARED
+# proxy would fail to load and block config reloads for every other project on
+# the VM. Keeping the target in a variable defers DNS to request time via the
+# docker resolver, so the proxy stays healthy regardless of this app's state.
+# That property is worth more than what an upstream{} block would buy, so the
+# balancing is done with split_clients instead.
+#
+# Trade-off, stated plainly: split_clients gives NO automatic failover. If one
+# instance dies, the client IPs hashed to it get 502s until this file changes.
+# For a beta that is acceptable and arguably useful — instance loss becomes an
+# explicit, controllable test rather than something that silently self-heals.
+# Revisit before production.
+split_clients "${remote_addr}" $qr_upstream_split {
+    50%     qr_dining_app:8080;
+    *       qr_dining_app_2:8080;
+}
+
+# Hashing on the client address means a given device keeps the same instance
+# across reconnects (matching a sticky-LB assumption), while different devices
+# spread across both. The -1/-2 hostnames pin a device to a chosen instance so
+# cross-instance tests are deterministic instead of a coin flip.
+map $host $qr_upstream {
+    qr-api-beta-1.mohith16.com  qr_dining_app:8080;
+    qr-api-beta-2.mohith16.com  qr_dining_app_2:8080;
+    default                     $qr_upstream_split;
+}
+
+# ---------- HTTP: ACME challenge + redirect ----------
+server {
+    listen 80;
+    server_name qr-api-beta.mohith16.com qr-api-beta-1.mohith16.com qr-api-beta-2.mohith16.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ---------- HTTPS ----------
+server {
+    listen 443 ssl;
+    server_name qr-api-beta.mohith16.com qr-api-beta-1.mohith16.com qr-api-beta-2.mohith16.com;
+
+    # Wildcard cert already covering *.mohith16.com — shared with the other
+    # vhosts on this proxy. Renewed via DNS-01 (dns-cloudflare), NOT webroot.
+    ssl_certificate     /etc/letsencrypt/live/mohith16.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mohith16.com/privkey.pem;
+
+    # Docker service-name DNS for the proxy network; request-time resolution.
+    resolver 127.0.0.11 valid=30s;
+
+    # The app reads X-Forwarded-For via gin trusted proxies (TRUSTED_PROXIES in
+    # /opt/qr-dining/.env) — keep that set to the docker proxy network CIDR.
+    #
+    # ⚠ These server-level headers are inherited by a location ONLY IF that
+    # location sets no proxy_set_header of its own. nginx REPLACES the whole
+    # set at the more specific level rather than merging it. Any location below
+    # that needs its own header must therefore repeat all four, or the app
+    # silently sees the nginx container as the client — which collapses every
+    # guest into one rate-limit bucket and puts the proxy IP in the audit log.
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # WebSocket endpoint — long-lived, unbuffered, unthrottled.
+    location = /ws {
+        proxy_pass http://$qr_upstream;
+        proxy_http_version 1.1;
+
+        # Repeated deliberately — see the note above.
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $qr_connection_upgrade;
+
+        proxy_buffering    off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # Probes — unthrottled, no log noise. Hit the -1/-2 hostnames to probe a
+    # specific instance.
+    location = /health {
+        access_log off;
+        proxy_pass http://$qr_upstream;
+    }
+    location = /readyz {
+        access_log off;
+        proxy_pass http://$qr_upstream;
+    }
+
+    # Prometheus metrics — never public. Prometheus runs on the same host and
+    # scrapes both app containers directly over the docker network, so the only
+    # legitimate HTTP path to /metrics is local debugging.
+    location = /metrics {
+        allow 127.0.0.1;
+        deny all;
+        proxy_pass http://$qr_upstream;
+    }
+
+    # All other API traffic.
+    location / {
+        limit_req zone=qr_api burst=60 nodelay;
+        proxy_pass http://$qr_upstream;
+        proxy_http_version 1.1;
+
+        # Repeated deliberately — setting Connection below would otherwise
+        # discard the server-level set. See the note above.
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header Connection "";
+        proxy_read_timeout 30s;
+    }
+}

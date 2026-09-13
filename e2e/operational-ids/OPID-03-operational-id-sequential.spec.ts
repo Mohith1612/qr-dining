@@ -4,7 +4,8 @@ import { seedOrg, createSession } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("OPID-03: Operational IDs are sequential within a session", () => {
-  test("second order has higher operational_id than first", async () => {
+  // VACUOUS(sig-2): returns or asserts nothing when orders fail or IDs are absent; passes without sequencing.
+  test.fixme("second order has higher operational_id than first", async () => {
     const { table, menu } = await seedOrg("opid03")
     const created = await createSession(table.id, "SeqGuest")
     const sessionId = created.session.id

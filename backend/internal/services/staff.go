@@ -45,9 +45,12 @@ func NewStaffService(repos *repository.Repos, cache *redisPkg.Cache, logger zero
 		cache:  cache,
 		logger: logger,
 		lockPolicy: redisPkg.LockoutPolicy{
-			Window:         5 * time.Minute,
-			MaxFailures:    10,
-			LockoutTTL:     15 * time.Minute,
+			Window:      5 * time.Minute,
+			MaxFailures: 10,
+			// Short enough that a legitimate staffer who fat-fingered their PIN
+			// isn't stuck for long; the login screen shows a live countdown from
+			// the Retry-After header. Still deters online brute force at 10/window.
+			LockoutTTL:     2 * time.Minute,
 			FailOpenOnLoss: false,
 		},
 	}
@@ -328,6 +331,53 @@ func (s *StaffService) RotatePINScoped(ctx context.Context, staffID, branchID in
 		return fmt.Errorf("hash new PIN: %w", err)
 	}
 	return s.repos.UpdateStaffPINScoped(ctx, staffID, branchID, string(newHash))
+}
+
+// ResetPINScoped sets a new PIN for a staff member WITHOUT the current PIN —
+// the manager/owner reset path for a forgotten PIN. It invalidates the target's
+// active tokens so the old PIN can't keep a session alive.
+func (s *StaffService) ResetPINScoped(ctx context.Context, staffID, branchID int64, actorRole sqlc.StaffRole, newPIN string) error {
+	// Re-check the actor role here as well as in the handler: the central
+	// authorizer runs in shadow mode by default and cannot be relied on to
+	// block an account-takeover-grade operation.
+	if err := requireOwnerOrManager(actorRole); err != nil {
+		return err
+	}
+	staff, err := s.repos.GetStaffByID(ctx, staffID)
+	if err != nil {
+		return err
+	}
+	if staff.BranchID != branchID {
+		return domain.ErrUnauthorized
+	}
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPIN), bcryptCost)
+	if err != nil {
+		return fmt.Errorf("hash new PIN: %w", err)
+	}
+	if err := s.repos.UpdateStaffPINScoped(ctx, staffID, branchID, string(newHash)); err != nil {
+		return err
+	}
+	s.invalidateStaffTokens(ctx, staffID)
+	return nil
+}
+
+// invalidateStaffTokens revokes durable sessions and best-effort clears the
+// Redis token set for a staff member (Redis is ephemeral; failures are logged).
+func (s *StaffService) invalidateStaffTokens(ctx context.Context, staffID int64) {
+	if err := s.repos.RevokeStaffSessionsForStaff(ctx, staffID); err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to revoke durable staff sessions on pin reset")
+	}
+	setKey := staffTokenSetKey(staffID)
+	tokenKeys, err := s.cache.SMembers(ctx, setKey)
+	if err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to fetch token set on pin reset")
+		return
+	}
+	if len(tokenKeys) > 0 {
+		if err := s.cache.DeleteMany(ctx, append(tokenKeys, setKey)...); err != nil {
+			s.logger.Warn().Err(err).Int64("staff_id", staffID).Msg("failed to clear tokens on pin reset")
+		}
+	}
 }
 
 // Deactivate marks a staff member inactive and invalidates all their active Redis tokens.

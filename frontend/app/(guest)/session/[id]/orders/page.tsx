@@ -6,7 +6,7 @@ import { OrderSkeleton } from "@/components/shared/LoadingSkeleton"
 import { StatusBadge } from "@/components/shared/StatusBadge"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { formatCurrency, relativeTime } from "@/lib/format"
-import { ClipboardList } from "lucide-react"
+import { ClipboardList, Check } from "lucide-react"
 import type { Order, OrderStatus } from "@/types/api"
 
 const STATUS_STEPS: OrderStatus[] = ["pending", "confirmed", "preparing", "ready", "served"]
@@ -17,14 +17,15 @@ const STAGE_LABELS: Record<OrderStatus, string> = {
 function OrderCard({ order }: { order: Order }) {
   const stepIdx = STATUS_STEPS.indexOf(order.status as OrderStatus)
   const isLive = !["served", "cancelled"].includes(order.status)
+  const progress = stepIdx <= 0 ? 0 : stepIdx / (STATUS_STEPS.length - 1)
 
   return (
     <div style={{
-      background: "var(--bg-elev-2)", border: "1px solid var(--line-2)",
+      background: "var(--bg-elev-1)", border: "1px solid var(--line-1)",
       borderRadius: "var(--rad-lg)", boxShadow: "var(--shadow-2)",
       padding: 16, marginBottom: 12,
     }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 16 }}>
         <div>
           <p className="mono" style={{ fontSize: 12.5, color: "var(--ink-2)", marginBottom: 2 }}>
             {order.order_number ? `Order · #${order.order_number}` : `Order · #${order.id.slice(0, 6).toUpperCase()}`}
@@ -34,37 +35,61 @@ function OrderCard({ order }: { order: Order }) {
         <StatusBadge status={order.status as OrderStatus} />
       </div>
 
-      {/* Segment progress bar */}
+      {/* Node stepper */}
       {order.status !== "cancelled" && (
-        <>
-          <div className="seg-track" aria-label={`Order status: ${order.status}`}>
-            {STATUS_STEPS.map((step, i) => (
-              <div key={step} className={`seg${i < stepIdx ? " done" : i === stepIdx ? " active" : ""}`} aria-hidden />
-            ))}
+        <div style={{ position: "relative", padding: "0 2px", marginBottom: 14 }} aria-label={`Order status: ${order.status}`}>
+          {/* track + progress line */}
+          <div style={{ position: "absolute", left: 14, right: 14, top: 14, height: 2, background: "var(--line-2)", borderRadius: 2 }} aria-hidden />
+          <div style={{ position: "absolute", left: 14, top: 14, height: 2, background: "var(--accent)", borderRadius: 2, width: `calc((100% - 28px) * ${progress})`, transition: "width var(--dur-slow) var(--ease-out)" }} aria-hidden />
+          <div style={{ display: "flex", position: "relative" }}>
+            {STATUS_STEPS.map((step, i) => {
+              const done = i < stepIdx
+              const active = i === stepIdx
+              return (
+                <div key={step} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
+                  <span style={{
+                    width: 28, height: 28, borderRadius: "50%",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: done || active ? "var(--accent)" : "var(--bg-elev-1)",
+                    border: done || active ? "none" : "1px solid var(--line-2)",
+                    boxShadow: active ? "0 0 0 4px var(--accent-soft)" : "none",
+                    color: "var(--accent-ink)",
+                  }} aria-hidden>
+                    {done ? (
+                      <Check size={14} />
+                    ) : active ? (
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent-ink)", animation: "softPulse 1.4s ease-in-out infinite" }} />
+                    ) : null}
+                  </span>
+                  <span style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "center", lineHeight: 1.2, color: i <= stepIdx ? "var(--ink-2)" : "var(--ink-4)", fontWeight: active ? 700 : 500 }}>
+                    {STAGE_LABELS[step]}
+                  </span>
+                </div>
+              )
+            })}
           </div>
-          {/* Stage labels */}
-          <div style={{ display: "flex", marginTop: 6 }}>
-            {STATUS_STEPS.map((step, i) => (
-              <div key={step} style={{ flex: 1, fontSize: 10, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.05em", color: i <= stepIdx ? "var(--ink-2)" : "var(--ink-4)", fontWeight: i === stepIdx ? 700 : 400 }}>
-                {STAGE_LABELS[step]}
-              </div>
-            ))}
-          </div>
-        </>
+        </div>
       )}
 
       {order.status === "ready" && (
-        <div style={{ marginTop: 10, background: "var(--ok-soft)", border: "1px solid var(--ok)", borderRadius: "var(--rad-sm)", padding: "8px 12px", textAlign: "center", fontSize: 13, fontWeight: 600, color: "var(--ok)" }} role="alert" aria-live="assertive">
-          Your order is ready — enjoy!
+        <div style={{ marginBottom: 12, background: "var(--ok-soft)", border: "1px solid var(--ok)", borderRadius: "var(--rad-sm)", padding: "8px 12px", textAlign: "center", fontSize: 13, fontWeight: 600, color: "var(--ok)" }} role="alert" aria-live="assertive">
+          Your order is ready — it will be served shortly.
         </div>
       )}
 
-      {isLive && order.status !== "ready" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, color: "var(--ink-2)", fontSize: 12.5 }}>
-          <span className="live-dot" />
-          Updates arrive automatically
-        </div>
-      )}
+      {/* Summary footer */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid var(--line-1)" }}>
+        {isLive && order.status !== "ready" ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--ink-3)", fontSize: 12.5 }}>
+            <span className="live-dot" /> Updates arrive automatically
+          </span>
+        ) : (
+          <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{STAGE_LABELS[order.status as OrderStatus] ?? ""}</span>
+        )}
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)", fontVariantNumeric: "tabular-nums" }}>
+          {formatCurrency(order.total_amount)}
+        </span>
+      </div>
     </div>
   )
 }

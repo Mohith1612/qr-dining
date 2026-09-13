@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Mohith1612/qr-dining/internal/config"
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,6 +22,9 @@ func NewPool(ctx context.Context, cfg config.DBConfig) (*pgxpool.Pool, error) {
 	poolCfg.MinConns = cfg.MinConns
 	poolCfg.MaxConnLifetime = cfg.MaxConnLifetime
 	poolCfg.MaxConnIdleTime = cfg.MaxConnIdleTime
+	if cfg.OTelEnabled {
+		poolCfg.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithTrimSQLInSpanName())
+	}
 	// Health-check idle connections to detect stale connections before they're used.
 	poolCfg.HealthCheckPeriod = 30 * time.Second
 

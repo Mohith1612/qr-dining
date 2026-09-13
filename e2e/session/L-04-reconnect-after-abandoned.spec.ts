@@ -3,7 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession, forceCloseSession } from "../helpers/api"
 
 test.describe("L-04: Reconnect after session abandoned", () => {
-  test("force-closed session returns 410 or closed status for snapshot", async () => {
+  // VACUOUS(sig-7): claims reconnect behavior but performs HTTP requests only; passes when browser reconnect is broken.
+  test.fixme("force-closed session returns 410 or closed status for snapshot", async () => {
     const { table } = await seedOrg("l04")
     const created = await createSession(table.id, "AbandonUser")
     const sessionId = created.session.id

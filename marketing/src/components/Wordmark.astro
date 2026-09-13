@@ -1,0 +1,19 @@
+---
+const { inverted = false } = Astro.props;
+---
+<a class:list={["wordmark", { inverted }]} href="/" aria-label="QR Dining home">
+  <span class="mark" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+      <rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/>
+      <rect x="3" y="15" width="6" height="6" rx="1"/><path d="M15 15h3v3h3v3h-6v-6Zm6 0v1M12 3v5M12 12h3M12 18v3"/>
+    </svg>
+  </span>
+  <span>QR Dining</span>
+</a>
+
+<style>
+  .wordmark { display:inline-flex; align-items:center; gap:10px; color:var(--ink); font-size:17px; font-weight:650; letter-spacing:-.02em; text-decoration:none; white-space:nowrap; }
+  .mark { width:32px; height:32px; display:grid; place-items:center; border-radius:8px; background:#010101; color:#fff; }
+  .inverted { color:#fff; }
+  .inverted .mark { background:#fff; color:#010101; }
+</style>

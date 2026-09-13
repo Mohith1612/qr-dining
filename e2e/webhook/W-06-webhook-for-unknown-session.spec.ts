@@ -3,9 +3,11 @@ import { API_URL } from "../playwright.config"
 import { placeWebhook } from "../helpers/api"
 import crypto from "crypto"
 
-test.describe("W-06: Webhook referencing unknown session handled safely", () => {
-  test("webhook for non-existent session_id returns 404 or is no-op", async () => {
-    const secret = process.env.WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
+// UNIMPLEMENTED/OUT OF SCOPE (P5): payment method is a staff signal, not provider settlement.
+test.describe.skip("W-06: Webhook referencing unknown session handled safely", () => {
+  // VACUOUS(sig-3): accepts success and multiple failures; passes when the handler processes the unknown session incorrectly.
+  test.fixme("webhook for non-existent session_id returns 404 or is no-op", async () => {
+    const secret = process.env.PAYMENT_WEBHOOK_SECRET_STRIPE ?? "test-webhook-secret"
 
     const res = await placeWebhook("stripe", {
       event: "payment.completed",

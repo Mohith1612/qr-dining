@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manual observation checklist</title>
+  <link rel="stylesheet" href="manual-testing.css">
+</head>
+<body>
+<main>
+  <nav>
+    <a href="testing-dashboard.html">Dashboard</a>
+    <a href="how-to-use.html">Start and stop</a>
+    <a href="manual-testing-session-guide.html">Session guide</a>
+    <a aria-current="page" href="manual-testing-checklist.html">Checklist</a>
+    <a href="manual-testing-user-guide.html">Surfaces</a>
+    <a href="database-reference.html">Data reference</a>
+  </nav>
+
+  <h1>Observation checklist</h1>
+  <p class="lede">Selections and notes stay in this browser's local storage. “Pass” records a human observation; it is not an automated assertion or release certificate.</p>
+  <div class="toolbar">
+    <button class="button primary" id="export" type="button">Export Markdown</button>
+    <button class="button" id="reset" type="button">Reset checklist</button>
+  </div>
+
+  <section id="checks">
+    <article class="check" data-id="stack">
+      <h3>Both readiness endpoints report ready</h3>
+      <p>Readiness checks PostgreSQL and Redis. <span class="source"><code>backend/internal/handlers/health.go:26-54</code></span></p>
+    </article>
+    <article class="check" data-id="cross-instance">
+      <h3>A session created through Frontend A can be joined through Frontend B</h3>
+      <p>The frontends target separate app processes backed by shared PostgreSQL and Redis. <span class="source"><code>scripts/manual-testing-up.sh:62-75,96-109</code></span></p>
+    </article>
+    <article class="check" data-id="reconnect">
+      <h3>A disconnected guest reconciles to a full snapshot after reconnect</h3>
+      <p>The client fetches the snapshot while reconnecting and either replays contiguous events or reconciles the full state. <span class="source"><code>frontend/lib/ws/connection.ts:129-176</code></span></p>
+    </article>
+    <article class="check" data-id="payment-amount">
+      <h3>A below-total payment attempt is rejected</h3>
+      <p>The handler returns HTTP 422 for an amount below the computed total. <span class="source"><code>backend/internal/handlers/payment.go:105-149</code></span></p>
+    </article>
+    <article class="check" data-id="payment-reuse">
+      <h3>A repeated payment request returns the existing non-terminal payment</h3>
+      <p>The handler returns HTTP 200 on its reuse path. <span class="source"><code>backend/internal/handlers/payment.go:167-193</code></span></p>
+    </article>
+    <article class="check" data-id="payment-confirmation">
+      <h3>Every initiated payment appears for staff confirmation</h3>
+      <p>Initiation maps all supported methods to <code>requires_staff_confirmation</code>. <span class="source"><code>backend/internal/services/payment.go:759-773</code></span></p>
+    </article>
+    <article class="check" data-id="payment-cancel">
+      <h3>Staff can cancel a non-terminal payment with a reason</h3>
+      <p>The protected cancellation route is registered and the handler requires a reason. <span class="source"><code>backend/internal/server/server.go:379-392</code>; <code>backend/internal/handlers/payment.go:325-360</code></span></p>
+    </article>
+    <article class="check" data-id="force-close">
+      <h3>Staff can force-close a session with a reason</h3>
+      <p>The protected force-close route is registered and the handler requires a reason. <span class="source"><code>backend/internal/server/server.go:379-392</code>; <code>backend/internal/handlers/session.go:159-217</code></span></p>
+    </article>
+    <article class="check" data-id="suspension">
+      <h3>Suspension blocks QR resolve, create, and join at the API</h3>
+      <p>Those three service paths check organization and branch status. <span class="source"><code>backend/internal/services/menu.go:98-112</code>; <code>backend/internal/services/session.go:99-115,567-596</code></span></p>
+    </article>
+    <article class="check" data-id="projection">
+      <h3>No session token appears in create, active-session, or force-close responses</h3>
+      <p>Integration tests assert that those three response/event surfaces omit the token. <span class="source"><code>backend/internal/handlers/session_credential_leak_integration_test.go:40-132</code></span></p>
+    </article>
+  </section>
+
+  <script>
+    const storageKey = "qr-dining-manual-checklist-v2";
+    const states = ["Not run", "Pass", "Fail"];
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(storageKey) || "{}"); } catch { saved = {}; }
+
+    document.querySelectorAll(".check").forEach((check) => {
+      const id = check.dataset.id;
+      const choices = document.createElement("div");
+      choices.className = "choices";
+      states.forEach((state) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = state;
+        if ((saved[id]?.state || "Not run") === state) button.classList.add("selected");
+        button.addEventListener("click", () => {
+          saved[id] = { ...(saved[id] || {}), state };
+          localStorage.setItem(storageKey, JSON.stringify(saved));
+          choices.querySelectorAll("button").forEach((item) => item.classList.toggle("selected", item === button));
+        });
+        choices.appendChild(button);
+      });
+      const notes = document.createElement("textarea");
+      notes.placeholder = "Evidence, response code, timestamp, or reproduction notes";
+      notes.value = saved[id]?.notes || "";
+      notes.addEventListener("input", () => {
+        saved[id] = { ...(saved[id] || {}), state: saved[id]?.state || "Not run", notes: notes.value };
+        localStorage.setItem(storageKey, JSON.stringify(saved));
+      });
+      check.append(choices, notes);
+    });
+
+    document.querySelector("#export").addEventListener("click", () => {
+      const lines = ["# Manual-testing observations", "", `Exported: ${new Date().toISOString()}`, ""];
+      document.querySelectorAll(".check").forEach((check) => {
+        const result = saved[check.dataset.id] || { state: "Not run", notes: "" };
+        lines.push(`- **${result.state}** — ${check.querySelector("h3").textContent}`);
+        if (result.notes) lines.push(`  - ${result.notes.replaceAll("\n", " ")}`);
+      });
+      const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `manual-testing-${new Date().toISOString().slice(0, 10)}.md`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+
+    document.querySelector("#reset").addEventListener("click", () => {
+      if (!confirm("Clear all locally saved checklist results?")) return;
+      localStorage.removeItem(storageKey);
+      location.reload();
+    });
+  </script>
+</main>
+</body>
+</html>

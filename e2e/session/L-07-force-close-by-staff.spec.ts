@@ -18,15 +18,10 @@ test.describe("L-07: Force close by staff", () => {
       },
       body: JSON.stringify({ reason: "staff_force_close" }),
     })
-    // 200, 204, or 404 if endpoint not yet named exactly
-    expect([200, 204, 404]).toContain(closeRes.status)
+    expect(closeRes.status).toBe(200)
 
-    if (closeRes.status !== 404) {
-      // Verify audit trail if the endpoint succeeded
-      const audit = await fetchAudit("session", sessionId)
-      const closeAudit = audit.find((a) => a.action.includes("close") || a.action.includes("force"))
-      // Audit entry should exist for force close
-      expect(closeAudit ?? audit.length).toBeTruthy()
-    }
+    const audit = await fetchAudit("session", sessionId)
+    const closeAudit = audit.find((a) => a.action.includes("close") || a.action.includes("force"))
+    expect(closeAudit).toBeTruthy()
   })
 })

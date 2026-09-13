@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type PromoHandler struct {
@@ -45,7 +47,9 @@ func (h *PromoHandler) ValidatePromo(c *gin.Context) {
 	}
 
 	var req struct {
-		Code string `json:"code" binding:"required"`
+		Code       string  `json:"code" binding:"required"`
+		OrderTotal float64 `json:"order_total"`
+		PhoneE164  *string `json:"phone_e164"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondValidationError(c, err.Error())
@@ -65,12 +69,15 @@ func (h *PromoHandler) ValidatePromo(c *gin.Context) {
 	result, err := h.svc.ValidatePromo(c.Request.Context(), h.repos, services.ValidatePromoRequest{
 		BranchID:   sess.BranchID,
 		Code:       req.Code,
-		OrderTotal: 0, // validate endpoint doesn't know cart total; min-order check skipped for preview
+		OrderTotal: req.OrderTotal,
+		PhoneE164:  req.PhoneE164,
 	})
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrPromoNotFound):
 			respondError(c, http.StatusNotFound, CodePromoNotFound, "This promo code isn't valid right now.")
+		case errors.Is(err, domain.ErrPromoPhoneRequired):
+			respondError(c, http.StatusUnprocessableEntity, CodePromoPhoneRequired, "Add your phone number to use this offer.")
 		case errors.Is(err, domain.ErrMinOrderNotMet):
 			respondError(c, http.StatusUnprocessableEntity, CodeMinOrderNotMet, err.Error())
 		case errors.Is(err, domain.ErrPromoExhausted):
@@ -119,7 +126,64 @@ func (h *PromoHandler) ListPromos(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
-	c.JSON(http.StatusOK, promos)
+	out := make([]promoResponse, 0, len(promos))
+	for _, p := range promos {
+		out = append(out, toPromoResponse(p))
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// promoResponse mirrors sqlc.Promo but serializes the daily time window as
+// "HH:MM" strings — pgtype.Time marshals as a struct, which clients can't
+// render (it showed up as "[object Object]" in the admin promo list).
+type promoResponse struct {
+	ID              int64          `json:"id"`
+	BranchID        int64          `json:"branch_id"`
+	Code            string         `json:"code"`
+	Type            sqlc.PromoType `json:"type"`
+	Value           pgtype.Numeric `json:"value"`
+	MinOrderAmount  pgtype.Numeric `json:"min_order_amount"`
+	MaxUses         pgtype.Int4    `json:"max_uses"`
+	UsesPerPhone    int32          `json:"uses_per_phone"`
+	ValidFrom       time.Time      `json:"valid_from"`
+	ValidUntil      time.Time      `json:"valid_until"`
+	TimeWindowStart *string        `json:"time_window_start"`
+	TimeWindowEnd   *string        `json:"time_window_end"`
+	IsActive        bool           `json:"is_active"`
+	Description     pgtype.Text    `json:"description"`
+	CreatedAt       time.Time      `json:"created_at"`
+	RedeemedCount   int32          `json:"redeemed_count"`
+}
+
+func toPromoResponse(p sqlc.Promo) promoResponse {
+	return promoResponse{
+		ID:              p.ID,
+		BranchID:        p.BranchID,
+		Code:            p.Code,
+		Type:            p.Type,
+		Value:           p.Value,
+		MinOrderAmount:  p.MinOrderAmount,
+		MaxUses:         p.MaxUses,
+		UsesPerPhone:    p.UsesPerPhone,
+		ValidFrom:       p.ValidFrom,
+		ValidUntil:      p.ValidUntil,
+		TimeWindowStart: formatTimeOfDay(p.TimeWindowStart),
+		TimeWindowEnd:   formatTimeOfDay(p.TimeWindowEnd),
+		IsActive:        p.IsActive,
+		Description:     p.Description,
+		CreatedAt:       p.CreatedAt,
+		RedeemedCount:   p.RedeemedCount,
+	}
+}
+
+// formatTimeOfDay renders a pgtype.Time (microseconds since midnight) as "HH:MM".
+func formatTimeOfDay(t pgtype.Time) *string {
+	if !t.Valid {
+		return nil
+	}
+	totalMinutes := t.Microseconds / 1_000_000 / 60
+	s := fmt.Sprintf("%02d:%02d", totalMinutes/60, totalMinutes%60)
+	return &s
 }
 
 type createPromoRequest struct {
@@ -128,7 +192,7 @@ type createPromoRequest struct {
 	Value           float64 `json:"value" binding:"required"`
 	MinOrderAmount  float64 `json:"min_order_amount"`
 	MaxUses         *int32  `json:"max_uses"`
-	UsesPerPhone    int32   `json:"uses_per_phone"`
+	UsesPerPhone    *int32  `json:"uses_per_phone"`
 	ValidFrom       string  `json:"valid_from" binding:"required"`
 	ValidUntil      string  `json:"valid_until" binding:"required"`
 	TimeWindowStart *string `json:"time_window_start"` // "HH:MM" format
@@ -171,8 +235,14 @@ func (h *PromoHandler) CreatePromo(c *gin.Context) {
 		respondValidationError(c, "type must be flat_amount or percentage")
 		return
 	}
-	if req.UsesPerPhone == 0 {
-		req.UsesPerPhone = 1
+	// Per-guest limit: default to once-per-guest when the field is omitted, but
+	// honor an explicit 0 (unlimited / no phone required). Clamp negatives.
+	usesPerPhone := int32(1)
+	if req.UsesPerPhone != nil {
+		usesPerPhone = *req.UsesPerPhone
+		if usesPerPhone < 0 {
+			usesPerPhone = 0
+		}
 	}
 
 	validFrom, err := time.Parse(time.RFC3339, req.ValidFrom)
@@ -193,7 +263,7 @@ func (h *PromoHandler) CreatePromo(c *gin.Context) {
 		Value:          req.Value,
 		MinOrderAmount: req.MinOrderAmount,
 		MaxUses:        req.MaxUses,
-		UsesPerPhone:   req.UsesPerPhone,
+		UsesPerPhone:   usesPerPhone,
 		ValidFrom:      validFrom,
 		ValidUntil:     validUntil,
 		Description:    req.Description,
@@ -270,6 +340,134 @@ func (h *PromoHandler) DeactivatePromo(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// POST /branches/:id/promos/:promo_id/activate — re-enables a deactivated promo.
+func (h *PromoHandler) ActivatePromo(c *gin.Context) {
+	branchID, promo, staffSession, ok := h.resolvePromoForMutation(c)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, promo.BranchID)
+	if !ok {
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionPromoDeactivate, authz.PromoResource(promo.ID, promo.BranchID, orgID)) {
+		return
+	}
+	if err := h.svc.ActivatePromo(c.Request.Context(), promo.ID, branchID); err != nil {
+		respondInternalError(c)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// PATCH /branches/:id/promos/:promo_id — edits a promo's mutable fields.
+func (h *PromoHandler) UpdatePromo(c *gin.Context) {
+	branchID, promo, staffSession, ok := h.resolvePromoForMutation(c)
+	if !ok {
+		return
+	}
+	orgID, ok := restaurantIDForBranch(c, h.repos, promo.BranchID)
+	if !ok {
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionPromoCreate, authz.PromoResource(promo.ID, promo.BranchID, orgID)) {
+		return
+	}
+
+	var req createPromoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	usesPerPhone := int32(1)
+	if req.UsesPerPhone != nil {
+		usesPerPhone = *req.UsesPerPhone
+		if usesPerPhone < 0 {
+			usesPerPhone = 0
+		}
+	}
+	validFrom, err := time.Parse(time.RFC3339, req.ValidFrom)
+	if err != nil {
+		respondValidationError(c, "valid_from must be RFC3339")
+		return
+	}
+	validUntil, err := time.Parse(time.RFC3339, req.ValidUntil)
+	if err != nil {
+		respondValidationError(c, "valid_until must be RFC3339")
+		return
+	}
+	svcReq := services.UpdatePromoRequest{
+		PromoID:        promo.ID,
+		BranchID:       branchID,
+		Value:          req.Value,
+		MinOrderAmount: req.MinOrderAmount,
+		MaxUses:        req.MaxUses,
+		UsesPerPhone:   usesPerPhone,
+		ValidFrom:      validFrom,
+		ValidUntil:     validUntil,
+		Description:    req.Description,
+	}
+	if req.TimeWindowStart != nil && req.TimeWindowEnd != nil {
+		start, errS := parseHHMM(*req.TimeWindowStart)
+		end, errE := parseHHMM(*req.TimeWindowEnd)
+		if errS != nil || errE != nil {
+			respondValidationError(c, "time_window_start/end must be HH:MM")
+			return
+		}
+		svcReq.TimeWindowStart = &start
+		svcReq.TimeWindowEnd = &end
+	}
+	updated, err := h.svc.UpdatePromo(c.Request.Context(), svcReq)
+	if err != nil {
+		respondInternalError(c)
+		return
+	}
+	c.JSON(http.StatusOK, updated)
+}
+
+// resolvePromoForMutation loads the promo named by :id/:promo_id, verifies it
+// belongs to the branch, and returns the branch id, promo, and staff session.
+// Shared by activate/update.
+func (h *PromoHandler) resolvePromoForMutation(c *gin.Context) (int64, sqlc.Promo, services.StaffSession, bool) {
+	branchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid branch id")
+		return 0, sqlc.Promo{}, services.StaffSession{}, false
+	}
+	promoID, err := strconv.ParseInt(c.Param("promo_id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid promo id")
+		return 0, sqlc.Promo{}, services.StaffSession{}, false
+	}
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return 0, sqlc.Promo{}, services.StaffSession{}, false
+	}
+	promo, err := h.repos.GetPromoByID(c.Request.Context(), promoID)
+	if err != nil {
+		if errors.Is(err, domain.ErrPromoNotFound) {
+			respondError(c, http.StatusNotFound, CodePromoNotFound, err.Error())
+		} else {
+			respondInternalError(c)
+		}
+		return 0, sqlc.Promo{}, services.StaffSession{}, false
+	}
+	if promo.BranchID != branchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return 0, sqlc.Promo{}, services.StaffSession{}, false
+	}
+	return branchID, promo, staffSession, true
 }
 
 // parseHHMM parses "HH:MM" into a duration since midnight.

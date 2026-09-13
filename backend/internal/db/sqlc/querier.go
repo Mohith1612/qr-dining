@@ -18,28 +18,38 @@ type Querier interface {
 	// terminal stage of the awaiting_reactivation pipeline.
 	AbandonStaleSession(ctx context.Context, id uuid.UUID) error
 	ActivatePlatformMFA(ctx context.Context, arg ActivatePlatformMFAParams) (PlatformUserMfa, error)
+	ActivatePromo(ctx context.Context, arg ActivatePromoParams) error
 	AddCartItem(ctx context.Context, arg AddCartItemParams) (CartItem, error)
 	AddPlatformUserRole(ctx context.Context, arg AddPlatformUserRoleParams) error
+	// Signed manual adjustment; floors at zero. Positive part counts as earned,
+	// negative part as redeemed so balance = earned - redeemed stays invariant.
+	AdjustLoyaltyPoints(ctx context.Context, arg AdjustLoyaltyPointsParams) (CustomerLoyaltyAccount, error)
 	BumpAllParticipantCredentialVersions(ctx context.Context, sessionID uuid.UUID) error
 	ClearCart(ctx context.Context, cartID int64) error
 	CloseSessionIfActive(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) error
 	ConsumePlatformMFAChallenge(ctx context.Context, challengeHash string) error
 	ConsumeRecoveryCodes(ctx context.Context, arg ConsumeRecoveryCodesParams) error
+	CountEarnTransactionsForAccountSession(ctx context.Context, arg CountEarnTransactionsForAccountSessionParams) (int64, error)
 	CountItemsInCategory(ctx context.Context, categoryID int64) (int64, error)
+	CountLoyaltyAccounts(ctx context.Context, organizationID int64) (int64, error)
 	CountPromoRedemptions(ctx context.Context, promoID int64) (int64, error)
 	CountPromoRedemptionsByPhone(ctx context.Context, arg CountPromoRedemptionsByPhoneParams) (int64, error)
 	CreateAssistanceRequest(ctx context.Context, arg CreateAssistanceRequestParams) (AssistanceRequest, error)
 	CreateBillSnapshot(ctx context.Context, arg CreateBillSnapshotParams) (BillSnapshot, error)
+	CreateFeatureFlag(ctx context.Context, arg CreateFeatureFlagParams) (PlatformFeatureFlag, error)
 	CreateIdempotencyKey(ctx context.Context, arg CreateIdempotencyKeyParams) (IdempotencyKey, error)
+	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (SubscriptionInvoice, error)
 	CreateItemModifier(ctx context.Context, arg CreateItemModifierParams) (ItemModifier, error)
 	CreateItemModifierScoped(ctx context.Context, arg CreateItemModifierScopedParams) (ItemModifier, error)
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
 	CreateOrganizationBranchMembership(ctx context.Context, arg CreateOrganizationBranchMembershipParams) error
 	CreateOrganizationMember(ctx context.Context, arg CreateOrganizationMemberParams) (OrganizationMember, error)
+	CreateOrganizationSubscription(ctx context.Context, arg CreateOrganizationSubscriptionParams) (OrganizationSubscription, error)
 	CreateParticipant(ctx context.Context, arg CreateParticipantParams) (SessionParticipant, error)
 	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
+	CreatePlan(ctx context.Context, arg CreatePlanParams) (SubscriptionPlan, error)
 	CreatePlatformBranch(ctx context.Context, arg CreatePlatformBranchParams) (Branch, error)
 	CreatePlatformMFAChallenge(ctx context.Context, arg CreatePlatformMFAChallengeParams) (PlatformMfaChallenge, error)
 	CreatePlatformOrganization(ctx context.Context, arg CreatePlatformOrganizationParams) (Organization, error)
@@ -48,26 +58,43 @@ type Querier interface {
 	CreatePlatformSupportSession(ctx context.Context, arg CreatePlatformSupportSessionParams) (PlatformSupportSession, error)
 	CreatePromo(ctx context.Context, arg CreatePromoParams) (Promo, error)
 	CreatePromoRedemption(ctx context.Context, arg CreatePromoRedemptionParams) (PromoRedemption, error)
+	CreatePromoRedemptionForPayment(ctx context.Context, arg CreatePromoRedemptionForPaymentParams) (PromoRedemption, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateStaff(ctx context.Context, arg CreateStaffParams) (Staff, error)
 	CreateStaffSession(ctx context.Context, arg CreateStaffSessionParams) (StaffSession, error)
+	CreateSubscriptionPayment(ctx context.Context, arg CreateSubscriptionPaymentParams) (SubscriptionPayment, error)
 	CreateTable(ctx context.Context, arg CreateTableParams) (Table, error)
 	DeactivatePromo(ctx context.Context, arg DeactivatePromoParams) error
 	DeactivateStaff(ctx context.Context, id int64) error
+	// Guarded deduction: returns no row when the balance is insufficient. The row
+	// lock serializes concurrent redeems; the points_balance >= 0 CHECK is the
+	// backstop.
+	DeductLoyaltyPoints(ctx context.Context, arg DeductLoyaltyPointsParams) (CustomerLoyaltyAccount, error)
+	DeleteBranchFlagOverride(ctx context.Context, arg DeleteBranchFlagOverrideParams) error
 	DeleteCustomer(ctx context.Context, arg DeleteCustomerParams) error
+	DeleteGlobalFlagOverride(ctx context.Context, flagKey string) error
 	DeleteItemModifier(ctx context.Context, id int64) error
 	DeleteItemModifierScoped(ctx context.Context, arg DeleteItemModifierScopedParams) error
 	DeleteMenuCategory(ctx context.Context, arg DeleteMenuCategoryParams) error
 	DeleteMenuItem(ctx context.Context, arg DeleteMenuItemParams) error
+	DeleteOrganizationEntitlementOverride(ctx context.Context, arg DeleteOrganizationEntitlementOverrideParams) error
+	DeleteOrganizationFlagOverride(ctx context.Context, arg DeleteOrganizationFlagOverrideParams) error
+	DeletePlanEntitlements(ctx context.Context, planID int64) error
+	DeleteTable(ctx context.Context, arg DeleteTableParams) error
 	DisablePlatformMFA(ctx context.Context, platformUserID int64) error
 	FailIdempotencyKey(ctx context.Context, arg FailIdempotencyKeyParams) error
 	GetActivePlatformSessionByTokenHash(ctx context.Context, tokenHash string) (PlatformSession, error)
+	// Returns the table's in-progress session. Must match the non-terminal statuses
+	// the one-active-per-table unique index blocks, so a QR scan of an occupied table
+	// resolves the joinable session instead of falling through to a blocked create.
 	GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error)
 	GetActiveStaffSessionByTokenHash(ctx context.Context, tokenHash string) (StaffSession, error)
 	GetAssistanceRequestByID(ctx context.Context, id int64) (AssistanceRequest, error)
 	GetBillSnapshotByID(ctx context.Context, id int64) (BillSnapshot, error)
+	GetBillingProfile(ctx context.Context, organizationID int64) (OrganizationBillingProfile, error)
 	GetBranchByCode(ctx context.Context, branchCode string) (Branch, error)
 	GetBranchByID(ctx context.Context, id int64) (Branch, error)
+	GetBranchCollateral(ctx context.Context, branchID int64) (BranchCollateral, error)
 	// Returns order count per hour-of-day (0–23) in the branch's configured timezone.
 	GetBusyHours(ctx context.Context, arg GetBusyHoursParams) ([]GetBusyHoursRow, error)
 	GetCartByID(ctx context.Context, id int64) (Cart, error)
@@ -77,8 +104,23 @@ type Querier interface {
 	GetCustomerByPhone(ctx context.Context, arg GetCustomerByPhoneParams) (Customer, error)
 	GetCustomerSessionHistory(ctx context.Context, customerID pgtype.Int8) ([]GetCustomerSessionHistoryRow, error)
 	GetCustomerSessionHistoryScoped(ctx context.Context, arg GetCustomerSessionHistoryScopedParams) ([]GetCustomerSessionHistoryScopedRow, error)
+	GetEntitlement(ctx context.Context, key string) (Entitlement, error)
 	GetEventsBySession(ctx context.Context, sessionID pgtype.UUID) ([]EventLog, error)
+	GetFeatureFlag(ctx context.Context, key string) (PlatformFeatureFlag, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
+	GetInvoiceByID(ctx context.Context, id int64) (SubscriptionInvoice, error)
+	GetKitchenPeakThroughput(ctx context.Context, arg GetKitchenPeakThroughputParams) ([]GetKitchenPeakThroughputRow, error)
+	// Orders whose 'preparing' transition predates the window are excluded from
+	// avg_prep_seconds (prep_started_at is NULL inside the window) but still count
+	// in orders_completed.
+	GetKitchenPerformance(ctx context.Context, arg GetKitchenPerformanceParams) ([]GetKitchenPerformanceRow, error)
+	GetLoyaltyAccountByCustomer(ctx context.Context, arg GetLoyaltyAccountByCustomerParams) (CustomerLoyaltyAccount, error)
+	GetLoyaltyAccountByID(ctx context.Context, arg GetLoyaltyAccountByIDParams) (CustomerLoyaltyAccount, error)
+	// Participation: sessions in the window that produced a loyalty earn vs all
+	// sessions, org-scoped via branches.
+	GetLoyaltyParticipation(ctx context.Context, arg GetLoyaltyParticipationParams) (GetLoyaltyParticipationRow, error)
+	GetLoyaltyPointsSummary(ctx context.Context, arg GetLoyaltyPointsSummaryParams) (GetLoyaltyPointsSummaryRow, error)
+	GetLoyaltyProgram(ctx context.Context, organizationID int64) (OrganizationLoyaltyProgram, error)
 	GetMenuCategoryByID(ctx context.Context, id int64) (MenuCategory, error)
 	GetMenuItemByID(ctx context.Context, id int64) (MenuItem, error)
 	GetMenuItemsByIDs(ctx context.Context, dollar_1 []int64) ([]MenuItem, error)
@@ -100,17 +142,23 @@ type Querier interface {
 	GetOrganizationMembershipForStaff(ctx context.Context, arg GetOrganizationMembershipForStaffParams) (OrganizationMember, error)
 	// Returns daily UTC order count and revenue across an organization.
 	GetOrganizationOrderVolume(ctx context.Context, arg GetOrganizationOrderVolumeParams) ([]GetOrganizationOrderVolumeRow, error)
+	GetOrganizationPlanAssignment(ctx context.Context, organizationID int64) (OrganizationPlanAssignment, error)
 	// Returns the most ordered menu items across an organization within a time window.
 	GetOrganizationTopOrderedItems(ctx context.Context, arg GetOrganizationTopOrderedItemsParams) ([]GetOrganizationTopOrderedItemsRow, error)
 	GetParticipantByID(ctx context.Context, id int64) (SessionParticipant, error)
 	GetPaymentByID(ctx context.Context, id int64) (Payment, error)
 	GetPaymentByProviderRef(ctx context.Context, arg GetPaymentByProviderRefParams) (Payment, error)
+	GetPlanByID(ctx context.Context, id int64) (SubscriptionPlan, error)
 	GetPlanByTier(ctx context.Context, tier PlanTier) (SubscriptionPlan, error)
 	GetPlatformMFA(ctx context.Context, platformUserID int64) (PlatformUserMfa, error)
 	GetPlatformMFAChallengeByHash(ctx context.Context, challengeHash string) (PlatformMfaChallenge, error)
 	GetPlatformSupportSessionByID(ctx context.Context, id int64) (PlatformSupportSession, error)
 	GetPlatformUserByEmail(ctx context.Context, email string) (PlatformUser, error)
 	GetPlatformUserByID(ctx context.Context, id int64) (PlatformUser, error)
+	// Daily time windows are owner-entered wall-clock times for the BRANCH, so
+	// they are compared against branch-local time, not the DB server's LOCALTIME
+	// (UTC in production — a lunch-hour promo would silently never match at
+	// Indian lunch hours).
 	GetPromoByCode(ctx context.Context, arg GetPromoByCodeParams) (Promo, error)
 	GetPromoByCodeForUpdate(ctx context.Context, arg GetPromoByCodeForUpdateParams) (Promo, error)
 	GetPromoByID(ctx context.Context, id int64) (Promo, error)
@@ -122,30 +170,59 @@ type Querier interface {
 	GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionByToken(ctx context.Context, sessionToken string) (Session, error)
 	GetSessionParticipantByID(ctx context.Context, id int64) (SessionParticipant, error)
+	GetStaffAssistanceStats(ctx context.Context, arg GetStaffAssistanceStatsParams) ([]GetStaffAssistanceStatsRow, error)
 	GetStaffByBranchAndCode(ctx context.Context, arg GetStaffByBranchAndCodeParams) (Staff, error)
 	GetStaffByID(ctx context.Context, id int64) (Staff, error)
+	GetStaffDailyActivity(ctx context.Context, arg GetStaffDailyActivityParams) ([]GetStaffDailyActivityRow, error)
+	GetStaffLoginStats(ctx context.Context, arg GetStaffLoginStatsParams) ([]GetStaffLoginStatsRow, error)
+	// Staff performance analytics. Read-only aggregation over EXISTING sources:
+	// event_log (ORDER_STATUS_CHANGED / ASSISTANCE_* rows already carry staff
+	// actor_id), payments (settled_by_staff_id / settled_at), and staff_sessions
+	// (created_at = login moment, last_seen_at/revoked_at = activity bounds).
+	// No new event capture; windows are UTC, matching the existing analytics queries.
+	//
+	// event_log.actor_id is TEXT; staff joins go through a guarded CASE cast so a
+	// non-numeric legacy/system actor_id can never abort the query.
+	GetStaffOrderActivity(ctx context.Context, arg GetStaffOrderActivityParams) ([]GetStaffOrderActivityRow, error)
+	GetStaffSettlementStats(ctx context.Context, arg GetStaffSettlementStatsParams) ([]GetStaffSettlementStatsRow, error)
+	// Org-level subscription lifecycle + billing foundation queries.
+	// Mutations are driven by BillingService; status is recorded/audited, not enforced.
+	GetSubscriptionByOrg(ctx context.Context, organizationID int64) (OrganizationSubscription, error)
 	GetSubscriptionByRestaurant(ctx context.Context, restaurantID int64) (GetSubscriptionByRestaurantRow, error)
 	GetTableByID(ctx context.Context, id int64) (Table, error)
 	GetTableByQRToken(ctx context.Context, qrCodeToken string) (Table, error)
+	GetTenantThemeByRestaurant(ctx context.Context, restaurantID int64) (TenantTheme, error)
+	GetThemePreset(ctx context.Context, key string) (ThemePreset, error)
+	GetTopLoyaltyCustomers(ctx context.Context, organizationID int64) ([]GetTopLoyaltyCustomersRow, error)
 	// Returns the most ordered menu items for a branch within a time window.
 	GetTopOrderedItems(ctx context.Context, arg GetTopOrderedItemsParams) ([]GetTopOrderedItemsRow, error)
 	HasNonTerminalPaymentForSession(ctx context.Context, sessionID uuid.UUID) (bool, error)
 	IncrementPromoRedemptionCount(ctx context.Context, id int64) error
 	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error
 	InsertEventLog(ctx context.Context, arg InsertEventLogParams) error
+	InsertLoyaltyTransaction(ctx context.Context, arg InsertLoyaltyTransactionParams) (CustomerLoyaltyTransaction, error)
 	InsertMenuCategory(ctx context.Context, arg InsertMenuCategoryParams) (MenuCategory, error)
 	InsertMenuItem(ctx context.Context, arg InsertMenuItemParams) (MenuItem, error)
 	InsertPlatformAuditLog(ctx context.Context, arg InsertPlatformAuditLogParams) error
 	InsertWebhookEvent(ctx context.Context, arg InsertWebhookEventParams) (PaymentWebhookEvent, error)
 	LinkSessionToCustomer(ctx context.Context, arg LinkSessionToCustomerParams) error
+	// Assistance requests on the waiter board. Gated on a LIVE session (as the
+	// kitchen order board is) so a request whose table was abandoned or closed
+	// drops off instead of lingering after the guests have gone.
 	ListActiveAssistanceForBranch(ctx context.Context, branchID int64) ([]ListActiveAssistanceForBranchRow, error)
 	ListActiveOrderItemsForBranch(ctx context.Context, branchID int64) ([]ListActiveOrderItemsForBranchRow, error)
+	// Orders on the kitchen/waiter boards. Gated on a LIVE session so an order whose
+	// table was abandoned or closed (guests gone) drops off the board instead of
+	// lingering as a stale ticket.
 	ListActiveOrdersForBranch(ctx context.Context, branchID int64) ([]ListActiveOrdersForBranchRow, error)
+	// All live sessions for the branch, not just 'active': a payment_pending or
+	// awaiting_reactivation session still occupies its table and is relevant to
+	// staff, so the board reflects why a table reads occupied.
 	ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]Session, error)
-	// Returns active sessions older than the grace floor — candidates for the
-	// awaiting_reactivation transition. The worker still has to verify Redis
-	// presence absence before transitioning.
-	ListActiveSessionsForReactivationScan(ctx context.Context, dollar_1 time.Time) ([]ListActiveSessionsForReactivationScanRow, error)
+	// Returns active sessions older than the creation grace whose most recent
+	// durable participant heartbeat is older than the idle grace. The worker still
+	// has to verify Redis presence absence before transitioning.
+	ListActiveSessionsForReactivationScan(ctx context.Context, arg ListActiveSessionsForReactivationScanParams) ([]ListActiveSessionsForReactivationScanRow, error)
 	ListActiveStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
 	ListAllMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
 	ListAllMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error)
@@ -153,21 +230,40 @@ type Querier interface {
 	ListAuditLogForBranch(ctx context.Context, arg ListAuditLogForBranchParams) ([]AuditLog, error)
 	ListAuditLogForOrganization(ctx context.Context, arg ListAuditLogForOrganizationParams) ([]AuditLog, error)
 	ListAuditLogPlatform(ctx context.Context, arg ListAuditLogPlatformParams) ([]AuditLog, error)
+	// Read-only A1 detector. The latest completed payment selects the authoritative
+	// snapshot, while every completed payment in the session contributes to what
+	// was collected. Snapshot source_order_ids preserve the bill-time order set, so
+	// a later cancellation cannot rewrite an immutable settled bill.
+	ListBillingReconciliationDiscrepancies(ctx context.Context, arg ListBillingReconciliationDiscrepanciesParams) ([]ListBillingReconciliationDiscrepanciesRow, error)
+	ListBranchFlagOverrides(ctx context.Context, branchID int64) ([]PlatformFlagBranchOverride, error)
 	ListBranchesForOrganization(ctx context.Context, organizationID int64) ([]Branch, error)
 	ListCartItems(ctx context.Context, cartID int64) ([]ListCartItemsRow, error)
+	ListEntitlementCatalog(ctx context.Context) ([]Entitlement, error)
 	// Queries used by background worker routines.
-	// Finds sessions that have exceeded their branch-configured timeout.
+	// Finds sessions whose latest durable participant activity has exceeded their
+	// branch-configured timeout. Sessions without participants fall back to age.
 	ListExpiredSessions(ctx context.Context) ([]ListExpiredSessionsRow, error)
+	ListFeatureFlags(ctx context.Context) ([]PlatformFeatureFlag, error)
 	ListFeaturedMenuItems(ctx context.Context, branchID int64) ([]MenuItem, error)
+	ListFlagCatalogKeys(ctx context.Context) ([]ListFlagCatalogKeysRow, error)
+	ListFlagOverrideCounts(ctx context.Context) ([]ListFlagOverrideCountsRow, error)
+	ListGlobalFlagOverrides(ctx context.Context) ([]PlatformFlagGlobalOverride, error)
+	ListInvoicesByOrg(ctx context.Context, organizationID int64) ([]SubscriptionInvoice, error)
+	ListLoyaltyTransactions(ctx context.Context, arg ListLoyaltyTransactionsParams) ([]CustomerLoyaltyTransaction, error)
 	ListMenuCategoriesForBranch(ctx context.Context, branchID int64) ([]MenuCategory, error)
 	ListMenuItemsForCategory(ctx context.Context, categoryID int64) ([]MenuItem, error)
 	ListModifiersForItem(ctx context.Context, itemID int64) ([]ItemModifier, error)
 	ListModifiersForItems(ctx context.Context, dollar_1 []int64) ([]ItemModifier, error)
 	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)
 	ListOrdersForSession(ctx context.Context, sessionID uuid.UUID) ([]Order, error)
+	ListOrgResourceCounts(ctx context.Context) ([]ListOrgResourceCountsRow, error)
+	ListOrganizationEntitlementOverrides(ctx context.Context, organizationID int64) ([]OrganizationEntitlementOverride, error)
+	ListOrganizationFlagOverrides(ctx context.Context, organizationID int64) ([]PlatformFlagOrganizationOverride, error)
 	ListParticipantsBySession(ctx context.Context, sessionID uuid.UUID) ([]SessionParticipant, error)
+	ListPaymentsByOrg(ctx context.Context, organizationID int64) ([]SubscriptionPayment, error)
 	ListPaymentsForBranchByStatus(ctx context.Context, arg ListPaymentsForBranchByStatusParams) ([]ListPaymentsForBranchByStatusRow, error)
 	ListPaymentsForSession(ctx context.Context, sessionID uuid.UUID) ([]Payment, error)
+	ListPlanEntitlements(ctx context.Context, planID int64) ([]PlanEntitlement, error)
 	ListPlans(ctx context.Context) ([]SubscriptionPlan, error)
 	ListPlatformAuditLog(ctx context.Context, arg ListPlatformAuditLogParams) ([]PlatformAuditLog, error)
 	ListPlatformOrganizations(ctx context.Context) ([]Organization, error)
@@ -181,13 +277,38 @@ type Querier interface {
 	ListSessionsAwaitingReactivationExpired(ctx context.Context, dollar_1 time.Time) ([]ListSessionsAwaitingReactivationExpiredRow, error)
 	ListSessionsExpiringSoon(ctx context.Context) ([]ListSessionsExpiringSoonRow, error)
 	ListStaffForBranch(ctx context.Context, branchID int64) ([]Staff, error)
+	// Pin-hash-free projection for the staff roster shown to managers/owners.
+	ListStaffRosterForBranch(ctx context.Context, branchID int64) ([]ListStaffRosterForBranchRow, error)
+	// Enforcement observability: read-only aggregates that surface where enforcement
+	// WOULD bite if it were turned on. Observe-only — nothing here gates any path.
+	ListSubscriptionsForObservability(ctx context.Context) ([]ListSubscriptionsForObservabilityRow, error)
 	ListTablesForBranch(ctx context.Context, branchID int64) ([]Table, error)
+	ListThemePresets(ctx context.Context) ([]ThemePreset, error)
 	ListUnprocessedWebhooks(ctx context.Context) ([]PaymentWebhookEvent, error)
+	ListWebhookEventsByPayment(ctx context.Context, paymentID pgtype.Int8) ([]PaymentWebhookEvent, error)
 	MarkSessionWarned(ctx context.Context, id uuid.UUID) error
 	MarkWebhookProcessed(ctx context.Context, arg MarkWebhookProcessedParams) error
+	NextInvoiceNumber(ctx context.Context) (int64, error)
 	NextOrderNumber(ctx context.Context, arg NextOrderNumberParams) (int32, error)
 	NextPaymentNumber(ctx context.Context, arg NextPaymentNumberParams) (int32, error)
 	NextSessionNumber(ctx context.Context, arg NextSessionNumberParams) (int32, error)
+	PlatformActiveBranches(ctx context.Context, arg PlatformActiveBranchesParams) (int64, error)
+	PlatformActiveDiners(ctx context.Context, organizationID pgtype.Int8) (int64, error)
+	PlatformAuthzDenialsPerDay(ctx context.Context, arg PlatformAuthzDenialsPerDayParams) ([]PlatformAuthzDenialsPerDayRow, error)
+	PlatformGMV(ctx context.Context, arg PlatformGMVParams) (string, error)
+	PlatformOrdersPerDay(ctx context.Context, arg PlatformOrdersPerDayParams) ([]PlatformOrdersPerDayRow, error)
+	PlatformParticipantJoinsPerDay(ctx context.Context, arg PlatformParticipantJoinsPerDayParams) ([]PlatformParticipantJoinsPerDayRow, error)
+	PlatformPaymentsPerDay(ctx context.Context, arg PlatformPaymentsPerDayParams) ([]PlatformPaymentsPerDayRow, error)
+	PlatformRevenueByBranch(ctx context.Context, arg PlatformRevenueByBranchParams) ([]PlatformRevenueByBranchRow, error)
+	PlatformRevenueByOrg(ctx context.Context, arg PlatformRevenueByOrgParams) ([]PlatformRevenueByOrgRow, error)
+	PlatformRevenuePerDay(ctx context.Context, arg PlatformRevenuePerDayParams) ([]PlatformRevenuePerDayRow, error)
+	// Platform (cross-tenant) analytics. On-demand aggregation; optional org filter via
+	// sqlc.narg('organization_id') (NULL = platform-wide). UTC day bucketing for cross-tenant
+	// consistency. Operator-facing; not entitlement-gated.
+	PlatformSessionsPerDay(ctx context.Context, arg PlatformSessionsPerDayParams) ([]PlatformSessionsPerDayRow, error)
+	PlatformWebhookFailuresPerDay(ctx context.Context, arg PlatformWebhookFailuresPerDayParams) ([]PlatformWebhookFailuresPerDayRow, error)
+	// warned_at is cleared so a recovered session can be warned again by the
+	// expiry warner before its (unchanged) timeout.
 	ReactivateSession(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	RefreshTableQRToken(ctx context.Context, arg RefreshTableQRTokenParams) (Table, error)
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
@@ -200,7 +321,7 @@ type Querier interface {
 	SetParticipantHostFlags(ctx context.Context, arg SetParticipantHostFlagsParams) error
 	SetSessionHost(ctx context.Context, arg SetSessionHostParams) error
 	SettlePaymentByStaff(ctx context.Context, arg SettlePaymentByStaffParams) (Payment, error)
-	SumCompletedPaymentsForSession(ctx context.Context, sessionID uuid.UUID) (pgtype.Numeric, error)
+	SumCompletedPaymentsForBillSnapshot(ctx context.Context, arg SumCompletedPaymentsForBillSnapshotParams) (pgtype.Numeric, error)
 	TouchPlatformMFAUse(ctx context.Context, platformUserID int64) error
 	TouchPlatformSession(ctx context.Context, id uuid.UUID) error
 	TouchStaffSession(ctx context.Context, id uuid.UUID) error
@@ -211,7 +332,11 @@ type Querier interface {
 	UpdateAssistanceStatusScoped(ctx context.Context, arg UpdateAssistanceStatusScopedParams) (AssistanceRequest, error)
 	UpdateBranchOrderPrefix(ctx context.Context, arg UpdateBranchOrderPrefixParams) error
 	UpdateBranchSessionTimeout(ctx context.Context, arg UpdateBranchSessionTimeoutParams) error
+	UpdateBranchStatus(ctx context.Context, arg UpdateBranchStatusParams) (Branch, error)
 	UpdateCartItemQuantity(ctx context.Context, arg UpdateCartItemQuantityParams) (CartItem, error)
+	UpdateFeatureFlag(ctx context.Context, arg UpdateFeatureFlagParams) (PlatformFeatureFlag, error)
+	UpdateInvoiceStatus(ctx context.Context, arg UpdateInvoiceStatusParams) (SubscriptionInvoice, error)
+	UpdateItemModifierScoped(ctx context.Context, arg UpdateItemModifierScopedParams) (ItemModifier, error)
 	UpdateMenuCategory(ctx context.Context, arg UpdateMenuCategoryParams) (MenuCategory, error)
 	UpdateMenuItem(ctx context.Context, arg UpdateMenuItemParams) (MenuItem, error)
 	UpdateMenuItemAvailability(ctx context.Context, arg UpdateMenuItemAvailabilityParams) error
@@ -223,16 +348,41 @@ type Querier interface {
 	UpdateOrderStatusExpected(ctx context.Context, arg UpdateOrderStatusExpectedParams) (Order, error)
 	UpdateOrderStatusScoped(ctx context.Context, arg UpdateOrderStatusScopedParams) (Order, error)
 	UpdateOrganizationSettings(ctx context.Context, arg UpdateOrganizationSettingsParams) (Organization, error)
+	UpdateOrganizationStatus(ctx context.Context, arg UpdateOrganizationStatusParams) (Organization, error)
+	UpdateOrganizationSubscription(ctx context.Context, arg UpdateOrganizationSubscriptionParams) (OrganizationSubscription, error)
 	UpdateParticipantLastSeen(ctx context.Context, id int64) error
 	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
 	UpdatePaymentStatusExpected(ctx context.Context, arg UpdatePaymentStatusExpectedParams) (Payment, error)
+	UpdatePlan(ctx context.Context, arg UpdatePlanParams) (SubscriptionPlan, error)
+	// Super-admin edit of an existing branch's identity fields. branch_code is
+	// unique; a collision surfaces as a 23505 the handler maps to a 409.
+	UpdatePlatformBranch(ctx context.Context, arg UpdatePlatformBranchParams) (Branch, error)
+	// Edits the mutable fields of a promo. Code and type are immutable (changing
+	// them is effectively a different offer); redemptions already reference them.
+	UpdatePromo(ctx context.Context, arg UpdatePromoParams) (Promo, error)
 	UpdateRestaurantLogoByBranchID(ctx context.Context, arg UpdateRestaurantLogoByBranchIDParams) error
 	UpdateStaffPIN(ctx context.Context, arg UpdateStaffPINParams) error
+	UpdateTable(ctx context.Context, arg UpdateTableParams) (Table, error)
 	UpdateTableStatus(ctx context.Context, arg UpdateTableStatusParams) error
+	UpsertBillingProfile(ctx context.Context, arg UpsertBillingProfileParams) (OrganizationBillingProfile, error)
+	UpsertBranchCollateral(ctx context.Context, arg UpsertBranchCollateralParams) (BranchCollateral, error)
+	UpsertBranchFlagOverride(ctx context.Context, arg UpsertBranchFlagOverrideParams) (PlatformFlagBranchOverride, error)
 	UpsertCustomer(ctx context.Context, arg UpsertCustomerParams) (Customer, error)
+	UpsertGlobalFlagOverride(ctx context.Context, arg UpsertGlobalFlagOverrideParams) (PlatformFlagGlobalOverride, error)
+	// Accrual upsert: creates the account on first earn, otherwise adds points,
+	// spend, and (first earn per session only — caller decides) a visit.
+	UpsertLoyaltyAccountForEarn(ctx context.Context, arg UpsertLoyaltyAccountForEarnParams) (CustomerLoyaltyAccount, error)
+	// Customer loyalty (migration 000035). Accounts are org-scoped; the
+	// transactions table is an append-only signed points ledger.
+	UpsertLoyaltyProgram(ctx context.Context, arg UpsertLoyaltyProgramParams) (OrganizationLoyaltyProgram, error)
+	UpsertOrganizationEntitlementOverride(ctx context.Context, arg UpsertOrganizationEntitlementOverrideParams) (OrganizationEntitlementOverride, error)
+	UpsertOrganizationFlagOverride(ctx context.Context, arg UpsertOrganizationFlagOverrideParams) (PlatformFlagOrganizationOverride, error)
+	UpsertOrganizationPlanAssignment(ctx context.Context, arg UpsertOrganizationPlanAssignmentParams) (OrganizationPlanAssignment, error)
+	UpsertPlanEntitlement(ctx context.Context, arg UpsertPlanEntitlementParams) (PlanEntitlement, error)
 	UpsertPlatformMFAPending(ctx context.Context, arg UpsertPlatformMFAPendingParams) (PlatformUserMfa, error)
 	UpsertPlatformUser(ctx context.Context, arg UpsertPlatformUserParams) (PlatformUser, error)
 	UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) (RestaurantSubscription, error)
+	UpsertTenantTheme(ctx context.Context, arg UpsertTenantThemeParams) (TenantTheme, error)
 }
 
 var _ Querier = (*Queries)(nil)

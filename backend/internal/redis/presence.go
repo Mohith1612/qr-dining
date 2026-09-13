@@ -10,18 +10,37 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-const presenceTTL = 90 * time.Second
+const (
+	// The browser sends an application heartbeat every 30 seconds. Three missed
+	// heartbeats balance prompt absence detection against transient mobile drops.
+	presenceStaleAfter      = 90 * time.Second
+	defaultHostAbsenceGrace = 3 * time.Minute
+)
 
 // Presence tracks which session participants have active WebSocket connections.
-// Stored as a Redis hash: presence:{session_id} → {participant_id: last_seen_timestamp}
-// TTL is refreshed on each heartbeat. PostgreSQL remains the source of truth for
-// participant records; Redis presence is a live view of who is currently connected.
+// The primary hash is organization/branch scoped; a legacy unscoped hash is a
+// fallback when scope metadata cannot be resolved. Readers union both. Hash TTL
+// is refreshed on each heartbeat, while field age determines live presence.
+// PostgreSQL remains the source of truth for participant records.
 type Presence struct {
 	client *goredis.Client
+	keyTTL time.Duration
 }
 
 func NewPresence(client *goredis.Client) *Presence {
-	return &Presence{client: client}
+	return &Presence{
+		client: client,
+		keyTTL: defaultHostAbsenceGrace + presenceStaleAfter,
+	}
+}
+
+// SetHostAbsenceGrace retains heartbeat timestamps long enough to evaluate the
+// configured grace even after all clients stop refreshing a hash. It must be
+// called at startup before heartbeats begin.
+func (p *Presence) SetHostAbsenceGrace(grace time.Duration) {
+	if grace > 0 {
+		p.keyTTL = grace + presenceStaleAfter
+	}
 }
 
 // Heartbeat records a participant as present and refreshes the TTL.
@@ -41,7 +60,7 @@ func (p *Presence) heartbeat(ctx context.Context, key string, participantID int6
 
 	pipe := p.client.Pipeline()
 	pipe.HSet(ctx, key, field, now)
-	pipe.Expire(ctx, key, presenceTTL)
+	pipe.Expire(ctx, key, p.keyTTL)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("presence heartbeat: %w", err)
 	}
@@ -50,34 +69,70 @@ func (p *Presence) heartbeat(ctx context.Context, key string, participantID int6
 
 // GetPresent returns a map of participantID → last_seen for a session.
 func (p *Presence) GetPresent(ctx context.Context, sessionID uuid.UUID) (map[int64]time.Time, error) {
-	raw, err := p.client.HGetAll(ctx, presenceKey(0, 0, sessionID)).Result()
+	lastSeen, err := p.GetLastSeen(ctx, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("get presence: %w", err)
+		return nil, err
 	}
-
-	result := make(map[int64]time.Time, len(raw))
-	for idStr, tsStr := range raw {
-		id, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil {
-			continue
-		}
-		ts, err := time.Parse(time.RFC3339, tsStr)
-		if err != nil {
-			continue
-		}
-		result[id] = ts
-	}
-	return result, nil
+	return filterPresent(lastSeen, time.Now().UTC(), presenceStaleAfter), nil
 }
 
-// GetPresentScoped reads the organization/branch-scoped presence hash. Used
-// by the awaiting_reactivation worker since heartbeats write into the scoped
-// key path; the legacy unscoped path is checked separately.
+// GetLastSeen returns every valid participant timestamp in the legacy
+// unscoped presence hash, including stale entries.
+func (p *Presence) GetLastSeen(ctx context.Context, sessionID uuid.UUID) (map[int64]time.Time, error) {
+	return p.getLastSeen(ctx, presenceKey(0, 0, sessionID), "get presence")
+}
+
+// GetPresentScoped reads the organization/branch-scoped presence hash and
+// returns only participants seen within the current-presence threshold.
 func (p *Presence) GetPresentScoped(ctx context.Context, organizationID, branchID int64, sessionID uuid.UUID) (map[int64]time.Time, error) {
-	raw, err := p.client.HGetAll(ctx, presenceKey(organizationID, branchID, sessionID)).Result()
+	lastSeen, err := p.GetLastSeenScoped(ctx, organizationID, branchID, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("get presence scoped: %w", err)
+		return nil, err
 	}
+	return filterPresent(lastSeen, time.Now().UTC(), presenceStaleAfter), nil
+}
+
+// GetLastSeenScoped returns every valid participant timestamp in the scoped
+// presence hash, including stale entries.
+func (p *Presence) GetLastSeenScoped(ctx context.Context, organizationID, branchID int64, sessionID uuid.UUID) (map[int64]time.Time, error) {
+	return p.getLastSeen(ctx, presenceKey(organizationID, branchID, sessionID), "get presence scoped")
+}
+
+// GetPresentForSession returns the age-filtered union of the scoped presence
+// hash and the legacy fallback hash. All session-level readers use this view so
+// a successful fallback heartbeat cannot become invisible to one subsystem.
+func (p *Presence) GetPresentForSession(ctx context.Context, organizationID, branchID int64, sessionID uuid.UUID) (map[int64]time.Time, error) {
+	scoped, err := p.GetPresentScoped(ctx, organizationID, branchID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	unscoped, err := p.GetPresent(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return mergeLastSeen(scoped, unscoped), nil
+}
+
+// GetLastSeenForSession returns the unfiltered union used when evaluating the
+// longer host-absence grace period.
+func (p *Presence) GetLastSeenForSession(ctx context.Context, organizationID, branchID int64, sessionID uuid.UUID) (map[int64]time.Time, error) {
+	scoped, err := p.GetLastSeenScoped(ctx, organizationID, branchID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	unscoped, err := p.GetLastSeen(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return mergeLastSeen(scoped, unscoped), nil
+}
+
+func (p *Presence) getLastSeen(ctx context.Context, key, operation string) (map[int64]time.Time, error) {
+	raw, err := p.client.HGetAll(ctx, key).Result()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", operation, err)
+	}
+
 	result := make(map[int64]time.Time, len(raw))
 	for idStr, tsStr := range raw {
 		id, err := strconv.ParseInt(idStr, 10, 64)
@@ -93,10 +148,37 @@ func (p *Presence) GetPresentScoped(ctx context.Context, organizationID, branchI
 	return result, nil
 }
 
-// Remove deletes a participant from the presence hash on disconnect.
-func (p *Presence) Remove(ctx context.Context, sessionID uuid.UUID, participantID int64) error {
-	field := strconv.FormatInt(participantID, 10)
-	return p.client.HDel(ctx, presenceKey(0, 0, sessionID), field).Err()
+func filterPresent(lastSeen map[int64]time.Time, now time.Time, staleAfter time.Duration) map[int64]time.Time {
+	present := make(map[int64]time.Time, len(lastSeen))
+	for id, seenAt := range lastSeen {
+		if now.Sub(seenAt) <= staleAfter {
+			present[id] = seenAt
+		}
+	}
+	return present
+}
+
+func mergeLastSeen(sets ...map[int64]time.Time) map[int64]time.Time {
+	merged := map[int64]time.Time{}
+	for _, set := range sets {
+		for id, seenAt := range set {
+			if current, ok := merged[id]; !ok || seenAt.After(current) {
+				merged[id] = seenAt
+			}
+		}
+	}
+	return merged
+}
+
+// TryThrottle returns true when the caller has won the throttle window for
+// key (SETNX with ttl). Fail-open: a Redis error also returns true so the
+// throttled action (e.g. a DB last_seen write) still happens.
+func (p *Presence) TryThrottle(ctx context.Context, key string, ttl time.Duration) bool {
+	ok, err := p.client.SetNX(ctx, key, "", ttl).Result()
+	if err != nil {
+		return true
+	}
+	return ok
 }
 
 // Delete removes the entire presence hash for a session (called on session close/abandon).

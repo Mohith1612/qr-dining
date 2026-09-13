@@ -1,5 +1,5 @@
 import { api } from "./client"
-import type { Session, Participant, SessionSnapshot } from "@/types/api"
+import type { Session, Participant, SessionSnapshot, ForceCloseResult } from "@/types/api"
 
 interface CreateSessionResponse {
   session: Session
@@ -45,6 +45,22 @@ export const sessionsApi = {
   reactivate: (id: string, guestToken: string) =>
     api.post<Session>(`/sessions/${id}/reactivate`, {}, { guestToken }),
 
+  // Host hands the host role to another participant. The HOST_CHANGED WS event
+  // updates every client (badges + host-only controls).
+  transferHost: (id: string, participantId: number, guestToken: string) =>
+    api.post<{ ok: boolean; host_participant_id: number }>(
+      `/sessions/${id}/host`,
+      { participant_id: participantId },
+      { guestToken }
+    ),
+
   close: (id: string, guestToken: string) =>
     api.delete<void>(`/sessions/${id}`, { guestToken }),
+
+  // Manager/owner ends a table the guests never closed — walked out, or something
+  // happened outside the app. Closes the session, releases the table, revokes
+  // every guest credential and cancels any outstanding payment. `reason` is
+  // required and goes to the audit log.
+  forceClose: (id: string, reason: string, staffToken: string) =>
+    api.post<ForceCloseResult>(`/sessions/${id}/force-close`, { reason }, { staffToken }),
 }

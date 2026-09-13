@@ -28,13 +28,26 @@ const (
 	EventAssistanceResolved     EventType = "ASSISTANCE_RESOLVED"
 	EventPaymentInitiated       EventType = "PAYMENT_INITIATED"
 	EventPaymentCompleted       EventType = "PAYMENT_COMPLETED"
+	// EventPaymentCancelled tells live guests a payment request was withdrawn
+	// by staff. The payload carries the session status alongside the payment,
+	// because cancelling the last non-terminal payment releases the
+	// payment_pending freeze and the cart becomes writable again.
+	EventPaymentCancelled EventType = "PAYMENT_CANCELLED"
 	// EventPaymentSettlementStalled surfaces a payment_pending session whose
 	// settlement has stalled past the escalation threshold. Emitted by the
 	// escalation worker for operator visibility; no state change implied.
 	EventPaymentSettlementStalled EventType = "PAYMENT_SETTLEMENT_STALLED"
 	EventSessionClosed            EventType = "SESSION_CLOSED"
 	EventSessionExpiringSoon      EventType = "SESSION_EXPIRING_SOON"
-	EventPromoApplied             EventType = "PROMO_APPLIED"
+	// EventSessionReactivated tells live guests an idled session moved from
+	// awaiting_reactivation back to active, so they can drop the "table paused"
+	// overlay. This used to be published as SESSION_CREATED, which no client
+	// handler could act on and which collided with the genuine create event's
+	// payload shape — leaving the reactivation banner up over a live session
+	// (F-08). The payload is deliberately minimal: never the session row, which
+	// carries the guest credential (session_token).
+	EventSessionReactivated EventType = "SESSION_REACTIVATED"
+	EventPromoApplied       EventType = "PROMO_APPLIED"
 	// EventHostChanged tells live participants the session host was reassigned
 	// (the previous host left/was lost). Payload is the new host participant so
 	// clients can update the host badge and re-evaluate host-only affordances.
@@ -43,8 +56,8 @@ const (
 	// enabled/disabled mid-session so they can reconcile their menu and cart
 	// instead of failing an order against a now-unavailable item.
 	EventMenuItemAvailabilityChanged EventType = "MENU_ITEM_AVAILABILITY_CHANGED"
-	EventPing                     EventType = "PING"
-	EventPong                     EventType = "PONG"
+	EventPing                        EventType = "PING"
+	EventPong                        EventType = "PONG"
 )
 
 // Envelope is the standard shape for all WebSocket messages.

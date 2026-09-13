@@ -20,10 +20,12 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/storage"
 	ws "github.com/Mohith1612/qr-dining/internal/websocket"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 // Server owns the HTTP server and all wired dependencies.
@@ -54,6 +56,16 @@ func New(
 
 	// ── Middleware stack ─────────────────────────────────────────────────────
 	r.Use(middleware.Recover(logger))
+	if cfg.OTel.Enabled {
+		r.Use(otelgin.Middleware(cfg.OTel.ServiceName, otelgin.WithGinFilter(func(c *gin.Context) bool {
+			switch c.Request.URL.Path {
+			case "/health", "/readyz", "/metrics":
+				return false
+			default:
+				return true
+			}
+		})))
+	}
 	r.Use(middleware.RequestID())
 	r.Use(audit.Middleware())
 	r.Use(middleware.Logger(logger))
@@ -66,6 +78,7 @@ func New(
 	rateLimiter := redisPkg.NewRateLimiter(redis)
 	cache := redisPkg.NewCache(redis, metrics.CacheHitsTotal, metrics.CacheMissesTotal)
 	presence := redisPkg.NewPresence(redis)
+	presence.SetHostAbsenceGrace(cfg.Presence.HostAbsenceGrace)
 	wsTickets := redisPkg.NewWSTicketStore(redis)
 	guestTokens := auth.NewGuestTokenService(cfg.Auth.GuestTokenSecret, cfg.Auth.GuestTokenTTL)
 	authorizer := authz.NewEnforcingAuthorizer(cfg.FeatureFlags.AuthzCentralPolicyEnforce)
@@ -77,13 +90,28 @@ func New(
 	middleware.SetTenantMetrics(metrics)
 
 	// ── Services ─────────────────────────────────────────────────────────────
+	// Organization/branch lifecycle gate for the three guest entry points (QR
+	// resolve, session create, session join). Short-TTL cached so a suspension
+	// check costs no query per scan.
+	tenantStatusGate := services.NewTenantStatusGate(repos, cache)
 	sessionSvc := services.NewSessionService(repos, publisher, metrics, presence)
+	sessionSvc.SetHostAbsenceGrace(cfg.Presence.HostAbsenceGrace)
+	sessionSvc.SetTenantStatusGate(tenantStatusGate)
 	participantSvc := services.NewParticipantService(repos, publisher, presence)
+	participantSvc.SetLogger(logger)
+	// Client WS PINGs double as the presence heartbeat: without this, presence
+	// is never refreshed and the reactivation pipeline pauses live tables.
+	hub.SetPresenceRefresher(func(ctx context.Context, sessionID uuid.UUID, participantID int64) {
+		if err := participantSvc.UpdatePresenceThrottled(ctx, sessionID, participantID); err != nil {
+			logger.Debug().Err(err).Str("session_id", sessionID.String()).Msg("presence refresh failed")
+		}
+	})
 	cartSvc := services.NewCartService(repos, publisher)
 	promoSvc := services.NewPromoService(repos)
 	orderSvc := services.NewOrderService(repos, publisher, metrics, promoSvc)
 	assistanceSvc := services.NewAssistanceService(repos, publisher)
 	menuSvc := services.NewMenuService(repos, cache, publisher)
+	menuSvc.SetTenantStatusGate(tenantStatusGate)
 	lockoutStore := redisPkg.NewLockoutStore(redis)
 	staffSvc := services.NewStaffService(repos, cache, logger)
 	staffSvc.SetRequireSessionDBRow(cfg.FeatureFlags.AuthStaffSessionDBRequired)
@@ -96,33 +124,56 @@ func New(
 	// initiate payment. The session service is the single host authority.
 	orderSvc.SetHostAuthority(sessionSvc)
 	paymentSvc.SetHostAuthority(sessionSvc)
+	assistanceSvc.SetHostAuthority(sessionSvc)
+	// Promos are applied at payment initiation now (not order placement).
+	paymentSvc.SetPromoService(promoSvc)
 	subSvc := services.NewSubscriptionService(repos)
 	analyticsSvc := services.NewAnalyticsService(repos, subSvc, cache)
+	entitlementSvc := services.NewEntitlementService(repos, subSvc, metrics)
+	flagSvc := services.NewFlagService(repos, metrics)
+	platformAnalyticsSvc := services.NewPlatformAnalyticsService(repos, cache)
+	themeSvc := services.NewThemeService(repos, entitlementSvc)
+	collateralSvc := services.NewCollateralService(repos)
+	supportSvc := services.NewSupportService(repos)
+	billingSvc := services.NewBillingService(repos)
+	enforcementObsSvc := services.NewEnforcementObservabilityService(repos, entitlementSvc, cache)
 	customerSvc := services.NewCustomerService(repos)
+	// Gated features (entitlement + platform flag, both default off).
+	featureGate := services.NewFeatureGate(entitlementSvc, flagSvc, repos, cache)
+	staffAnalyticsSvc := services.NewStaffAnalyticsService(repos, featureGate, cache)
+	loyaltySvc := services.NewLoyaltyService(repos, featureGate, cache, logger, metrics)
+	// Loyalty earn rides payment completion but is nil-safe and error-isolated;
+	// it never alters payment semantics.
+	paymentSvc.SetLoyaltyAccrual(loyaltySvc)
 
 	// ── Audit writer ─────────────────────────────────────────────────────────
 	auditWriter := audit.NewWriter(dbsqlc.New(db), cfg.FeatureFlags.AuditLogV2Enabled, logger, metrics.AuditWriteFailuresTotal)
 
 	// ── Handlers ─────────────────────────────────────────────────────────────
 	health := handlers.NewHealthHandler(db, redis)
-	sessionH := handlers.NewSessionHandler(sessionSvc, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags, auditWriter)
+	sessionH := handlers.NewSessionHandler(sessionSvc, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags, authorizer, auditWriter)
 	cartH := handlers.NewCartHandler(cartSvc, repos, metrics, guestTokens, cfg.FeatureFlags)
 	orderH := handlers.NewOrderHandler(orderSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	assistanceH := handlers.NewAssistanceHandler(assistanceSvc, repos, metrics, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	menuH := handlers.NewMenuHandler(menuSvc)
 	staffH := handlers.NewStaffHandler(staffSvc, repos, metrics, cfg.FeatureFlags, authorizer, auditWriter)
-	platformH := handlers.NewPlatformHandler(repos, platformSvc, auditWriter)
-	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter)
+	platformH := handlers.NewPlatformHandler(repos, platformSvc, entitlementSvc, flagSvc, platformAnalyticsSvc, themeSvc, supportSvc, billingSvc, enforcementObsSvc, collateralSvc, staffAnalyticsSvc, featureGate, auditWriter)
+	platformH.SetTenantStatusGate(tenantStatusGate)
+	flagH := handlers.NewFlagHandler(flagSvc, cache)
+	themeH := handlers.NewThemeHandler(themeSvc, repos)
+	paymentH := handlers.NewPaymentHandler(paymentSvc, repos, guestTokens, cfg.FeatureFlags, cfg.Payment, authorizer, auditWriter, promoSvc)
 	wsH := handlers.NewWSHandler(hub, repos, metrics, guestTokens, wsTickets, cfg.FeatureFlags)
 	snapshotH := handlers.NewSnapshotHandler(sessionSvc, repos, guestTokens, cfg.FeatureFlags)
 	menuAdminH := handlers.NewMenuAdminHandler(menuSvc, repos, authorizer, auditWriter)
 	eventLogH := handlers.NewEventLogHandler(repos)
-	tenantH := handlers.NewTenantHandler(repos)
+	tenantH := handlers.NewTenantHandler(repos, themeSvc)
 	subH := handlers.NewSubscriptionHandler(repos, subSvc)
 	analyticsH := handlers.NewAnalyticsHandler(analyticsSvc)
+	staffAnalyticsH := handlers.NewStaffAnalyticsHandler(staffAnalyticsSvc)
+	loyaltyH := handlers.NewLoyaltyHandler(loyaltySvc)
 	orgH := handlers.NewOrganizationHandler(repos, analyticsSvc, cfg.FeatureFlags, authorizer, auditWriter)
 	tableH := handlers.NewTableHandler(repos, auditWriter)
-	branchH := handlers.NewBranchHandler(repos, auditWriter)
+	branchH := handlers.NewBranchHandler(repos, themeSvc, collateralSvc, auditWriter)
 	customerH := handlers.NewCustomerHandler(customerSvc, repos, guestTokens, cfg.FeatureFlags, authorizer, auditWriter)
 	uploadH := handlers.NewUploadHandler(storage.NewR2Client(cfg.R2), repos)
 	billingH := handlers.NewBillingHandler(repos, guestTokens, cfg.FeatureFlags)
@@ -148,6 +199,12 @@ func New(
 	api.DELETE("/sessions/:id", sessionH.Close)
 	api.POST("/sessions/:id/join", sessionH.Join)
 	api.POST("/sessions/:id/reactivate", sessionH.Reactivate)
+	// Host transfer — the current host hands off to another participant. Low
+	// per-session cap; a normal table changes host rarely.
+	api.POST("/sessions/:id/host",
+		middleware.RateLimitByKey(rateLimiter, "host_transfer_session", 6, func(c *gin.Context) string { return c.Param("id") }),
+		sessionH.TransferHost,
+	)
 	api.POST("/sessions/:id/ws-ticket",
 		middleware.RateLimitSensitive(rateLimiter, "ws_ticket", 60),
 		middleware.RateLimitByKey(rateLimiter, "ws_ticket_session", 12, func(c *gin.Context) string { return c.Param("id") }),
@@ -199,6 +256,8 @@ func New(
 	branchPublicAPI := api.Group("/branches/:id")
 	branchPublicAPI.Use(middleware.BranchTenantGuard(repos, cfg.FeatureFlags.TenancyOrganizationsEnabled))
 	branchPublicAPI.GET("/menu", menuH.GetMenu)
+	branchPublicAPI.GET("/feature-flags", flagH.ResolveForBranch)
+	branchPublicAPI.GET("/theme", themeH.ResolveForBranch)
 	api.GET("/tables/by-qr/:token", menuH.GetTableByQR)
 
 	// Reconnect reconciliation — full session state snapshot for WebSocket clients.
@@ -236,11 +295,86 @@ func New(
 	platformAPI.GET("/organizations/:org_id/branches", platformH.ListBranches)
 	platformAPI.POST("/organizations/:org_id/branches", platformH.CreateBranch)
 	platformAPI.GET("/branches/:branch_id", platformH.GetBranch)
+	platformAPI.PATCH("/branches/:branch_id", platformH.UpdateBranch)
+	platformAPI.GET("/branches/:branch_id/tables", platformH.ListBranchTables)
+	platformAPI.POST("/branches/:branch_id/tables", platformH.BatchCreateBranchTables)
+	platformAPI.GET("/branches/:branch_id/collateral", platformH.GetBranchCollateral)
+	platformAPI.PUT("/branches/:branch_id/collateral", platformH.SetBranchCollateral)
 	platformAPI.GET("/support/search", platformH.SearchSupport)
 	platformAPI.POST("/support/sessions", platformH.CreateSupportSession)
 	platformAPI.GET("/support/sessions", platformH.ListSupportSessions)
 	platformAPI.GET("/support/sessions/:id", platformH.GetSupportSession)
 	platformAPI.GET("/audit", platformH.ListAudit)
+
+	// Plan & entitlement governance (organization-level; resolve-only/shadow).
+	platformAPI.GET("/entitlements", platformH.ListEntitlements)
+	platformAPI.GET("/plans", platformH.ListPlatformPlans)
+	platformAPI.POST("/plans", platformH.CreatePlan)
+	platformAPI.PATCH("/plans/:plan_id", platformH.UpdatePlan)
+	platformAPI.PUT("/plans/:plan_id/entitlements", platformH.SetPlanEntitlements)
+	platformAPI.GET("/organizations/:org_id/entitlements", platformH.GetOrganizationEntitlements)
+	platformAPI.PUT("/organizations/:org_id/plan", platformH.AssignOrganizationPlan)
+	platformAPI.PUT("/organizations/:org_id/entitlements/:key", platformH.SetOrganizationEntitlementOverride)
+
+	// Subscription & billing foundation (org-level; status recorded/audited, not enforced).
+	// Reads: support/billing/auditor. Mutations: billing_admin (super_admin bypass).
+	platformAPI.GET("/organizations/:org_id/subscription", platformH.GetOrganizationSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/activate", platformH.ActivateSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/suspend", platformH.SuspendSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/renew", platformH.RenewSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/cancel", platformH.CancelSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/extend-trial", platformH.ExtendTrialSubscription)
+	platformAPI.POST("/organizations/:org_id/subscription/plan", platformH.ChangeSubscriptionPlan)
+	platformAPI.GET("/organizations/:org_id/billing-profile", platformH.GetBillingProfile)
+	platformAPI.PUT("/organizations/:org_id/billing-profile", platformH.UpdateBillingProfile)
+	platformAPI.GET("/organizations/:org_id/payments", platformH.ListOrganizationPayments)
+	platformAPI.POST("/organizations/:org_id/payments", platformH.RecordOrganizationPayment)
+	platformAPI.GET("/organizations/:org_id/invoices", platformH.ListOrganizationInvoices)
+	platformAPI.POST("/organizations/:org_id/invoices", platformH.CreateOrganizationInvoice)
+	platformAPI.GET("/organizations/:org_id/invoices/:invoice_id", platformH.GetOrganizationInvoice)
+	platformAPI.POST("/organizations/:org_id/invoices/:invoice_id/issue", platformH.IssueOrganizationInvoice)
+	platformAPI.POST("/organizations/:org_id/invoices/:invoice_id/mark-paid", platformH.MarkOrganizationInvoicePaid)
+	platformAPI.POST("/organizations/:org_id/invoices/:invoice_id/cancel", platformH.CancelOrganizationInvoice)
+
+	// Organization & branch lifecycle (status flip + audit; inert until enforcement).
+	platformAPI.POST("/organizations/:org_id/suspend", platformH.SuspendOrganization)
+	platformAPI.POST("/organizations/:org_id/activate", platformH.ActivateOrganization)
+	platformAPI.POST("/branches/:branch_id/suspend", platformH.SuspendBranch)
+	platformAPI.POST("/branches/:branch_id/activate", platformH.ActivateBranch)
+
+	// Feature-flag targeting (global -> org -> branch; separate from env strict flags).
+	platformAPI.GET("/flags", platformH.ListFlags)
+	platformAPI.POST("/flags", platformH.CreateFlag)
+	platformAPI.PATCH("/flags/:key", platformH.UpdateFlag)
+	platformAPI.PUT("/flags/:key/global", platformH.SetGlobalFlagOverride)
+	platformAPI.DELETE("/flags/:key/global", platformH.ClearGlobalFlagOverride)
+	platformAPI.PUT("/organizations/:org_id/flags/:key", platformH.SetOrganizationFlagOverride)
+	platformAPI.DELETE("/organizations/:org_id/flags/:key", platformH.ClearOrganizationFlagOverride)
+	platformAPI.GET("/organizations/:org_id/flags", platformH.GetOrganizationFlags)
+	platformAPI.PUT("/branches/:branch_id/flags/:key", platformH.SetBranchFlagOverride)
+	platformAPI.DELETE("/branches/:branch_id/flags/:key", platformH.ClearBranchFlagOverride)
+	platformAPI.GET("/branches/:branch_id/flags", platformH.GetBranchFlags)
+
+	// Enforcement observability (read-only; observe where enforcement would bite).
+	platformAPI.GET("/observability/subscriptions", platformH.GetSubscriptionObservability)
+	platformAPI.GET("/observability/entitlements", platformH.GetEntitlementObservability)
+	platformAPI.GET("/observability/flags", platformH.GetFlagObservability)
+
+	// Cross-tenant analytics (operator-facing; optional ?organization_id= filter).
+	platformAPI.GET("/analytics/usage", platformH.GetUsageAnalytics)
+	platformAPI.GET("/analytics/revenue", platformH.GetRevenueAnalytics)
+	platformAPI.GET("/analytics/health", platformH.GetHealthAnalytics)
+	platformAPI.GET("/analytics/staff-performance", platformH.GetStaffPerformanceAnalytics)
+
+	// Structured theme/branding (presets free; custom tokens require custom.theme).
+	platformAPI.GET("/theme/presets", platformH.ListThemePresets)
+	platformAPI.GET("/organizations/:org_id/theme", platformH.GetOrganizationTheme)
+	platformAPI.PUT("/organizations/:org_id/theme", platformH.SetOrganizationTheme)
+
+	// Support console — read-only operational inspection (observability, not control).
+	platformAPI.GET("/sessions/:id", platformH.GetSessionDetail)
+	platformAPI.GET("/orders/:id", platformH.GetOrderDetail)
+	platformAPI.GET("/payments/:id", platformH.GetPaymentDetail)
 
 	// Staff-protected routes (require valid staff token).
 	staffAPI := r.Group("/")
@@ -250,6 +384,12 @@ func New(
 	staffAPI.POST("/staff/logout", staffH.Logout)
 	staffAPI.PATCH("/orders/:id/status", orderH.UpdateStatus)
 	staffAPI.PATCH("/payments/:id/settle", paymentH.Settle)
+	// Recovery routes. A non-terminal payment freezes its session and a session
+	// otherwise ends only by host action or the stale cleaner, so without these
+	// a table can wedge with no staff-side way out. Both take a reason and are
+	// branch-scoped off the resource, never off client input.
+	staffAPI.PATCH("/payments/:id/cancel", paymentH.Cancel)
+	staffAPI.POST("/sessions/:id/force-close", sessionH.ForceClose)
 	staffAPI.PATCH("/assist/:id/ack", assistanceH.Acknowledge)
 	staffAPI.PATCH("/assist/:id/resolve", assistanceH.Resolve)
 
@@ -264,12 +404,25 @@ func New(
 	branchStaffAPI.POST("/menu/categories", menuAdminH.CreateCategory)
 	branchStaffAPI.POST("/menu/items", menuAdminH.CreateItem)
 	branchStaffAPI.POST("/staff", staffH.CreateStaff)
+	branchStaffAPI.GET("/staff", staffH.ListStaff)
 	branchStaffAPI.GET("/events/recent", eventLogH.GetBranchRecentEvents)
 	branchStaffAPI.GET("/analytics/top-items", analyticsH.GetTopItems)
 	branchStaffAPI.GET("/analytics/busy-hours", analyticsH.GetBusyHours)
 	branchStaffAPI.GET("/analytics/order-volume", analyticsH.GetOrderVolume)
+	branchStaffAPI.GET("/analytics/staff/waiters", staffAnalyticsH.GetWaiterPerformance)
+	branchStaffAPI.GET("/analytics/staff/kitchen", staffAnalyticsH.GetKitchenPerformance)
+	branchStaffAPI.GET("/analytics/staff/summary", staffAnalyticsH.GetStaffSummary)
+	branchStaffAPI.GET("/analytics/loyalty", loyaltyH.GetLoyaltyAnalytics)
+	branchStaffAPI.GET("/loyalty/program", loyaltyH.GetProgram)
+	branchStaffAPI.PUT("/loyalty/program", loyaltyH.PutProgram)
+	branchStaffAPI.GET("/loyalty/customers", loyaltyH.LookupCustomer)
+	branchStaffAPI.GET("/loyalty/accounts/:account_id/transactions", loyaltyH.ListTransactions)
+	branchStaffAPI.POST("/loyalty/accounts/:account_id/redeem", loyaltyH.Redeem)
+	branchStaffAPI.POST("/loyalty/accounts/:account_id/adjust", loyaltyH.Adjust)
 	branchStaffAPI.GET("/tables", tableH.ListTables)
 	branchStaffAPI.POST("/tables", tableH.CreateTable)
+	branchStaffAPI.GET("/collateral", branchH.GetCollateral)
+	branchStaffAPI.PUT("/collateral", branchH.UpdateCollateral)
 	branchStaffAPI.GET("", branchH.GetBranch)
 	branchStaffAPI.PATCH("", branchH.UpdateBranch)
 	branchStaffAPI.GET("/customers", customerH.SearchCustomers)
@@ -290,6 +443,8 @@ func New(
 	branchStaffAPI.GET("/promos", promoH.ListPromos)
 	branchStaffAPI.POST("/promos", promoH.CreatePromo)
 	branchStaffAPI.DELETE("/promos/:promo_id", promoH.DeactivatePromo)
+	branchStaffAPI.PATCH("/promos/:promo_id", promoH.UpdatePromo)
+	branchStaffAPI.POST("/promos/:promo_id/activate", promoH.ActivatePromo)
 
 	// Menu item updates — item-scoped, no branch param on path.
 	staffAPI.PATCH("/menu/items/:id", menuAdminH.UpdateItem)
@@ -299,6 +454,7 @@ func New(
 	staffAPI.POST("/menu/items/:id/modifiers", menuAdminH.AddItemModifier)
 	staffAPI.DELETE("/menu/categories/:id", menuAdminH.DeleteMenuCategory)
 	staffAPI.PATCH("/menu/categories/:id", menuAdminH.UpdateMenuCategory)
+	staffAPI.PATCH("/menu/modifiers/:id", menuAdminH.UpdateItemModifier)
 	staffAPI.DELETE("/menu/modifiers/:id", menuAdminH.DeleteItemModifier)
 
 	// Image upload presign — staff-protected.
@@ -307,9 +463,12 @@ func New(
 
 	// Table QR token refresh — table-scoped; branch ownership verified in handler.
 	staffAPI.PATCH("/tables/:id/qr-refresh", tableH.RefreshQR)
+	staffAPI.PATCH("/tables/:id", tableH.UpdateTable)
+	staffAPI.DELETE("/tables/:id", tableH.DeleteTable)
 
 	// Staff management — owner only (role enforced in handler).
 	staffAPI.PATCH("/staff/:id/pin", staffH.RotatePIN)
+	staffAPI.POST("/staff/:id/pin/reset", staffH.ResetPIN)
 	staffAPI.PATCH("/staff/:id/deactivate", staffH.DeactivateStaff)
 
 	// event_log read APIs — operational debugging and audit.

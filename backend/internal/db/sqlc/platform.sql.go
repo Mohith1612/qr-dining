@@ -597,6 +597,52 @@ func (q *Queries) TouchPlatformSession(ctx context.Context, id uuid.UUID) error 
 	return err
 }
 
+const updatePlatformBranch = `-- name: UpdatePlatformBranch :one
+UPDATE branches SET
+  name = $2,
+  timezone = $3,
+  branch_code = $4,
+  order_prefix = $5
+WHERE id = $1
+RETURNING id, restaurant_id, name, address, timezone, created_at, session_timeout_minutes, order_prefix, branch_code, organization_id, status, support_metadata_json
+`
+
+type UpdatePlatformBranchParams struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Timezone    string `json:"timezone"`
+	BranchCode  string `json:"branch_code"`
+	OrderPrefix string `json:"order_prefix"`
+}
+
+// Super-admin edit of an existing branch's identity fields. branch_code is
+// unique; a collision surfaces as a 23505 the handler maps to a 409.
+func (q *Queries) UpdatePlatformBranch(ctx context.Context, arg UpdatePlatformBranchParams) (Branch, error) {
+	row := q.db.QueryRow(ctx, updatePlatformBranch,
+		arg.ID,
+		arg.Name,
+		arg.Timezone,
+		arg.BranchCode,
+		arg.OrderPrefix,
+	)
+	var i Branch
+	err := row.Scan(
+		&i.ID,
+		&i.RestaurantID,
+		&i.Name,
+		&i.Address,
+		&i.Timezone,
+		&i.CreatedAt,
+		&i.SessionTimeoutMinutes,
+		&i.OrderPrefix,
+		&i.BranchCode,
+		&i.OrganizationID,
+		&i.Status,
+		&i.SupportMetadataJson,
+	)
+	return i, err
+}
+
 const upsertPlatformUser = `-- name: UpsertPlatformUser :one
 INSERT INTO platform_users (email, display_name, password_hash, status, mfa_required)
 VALUES ($1, $2, $3, $4, $5)

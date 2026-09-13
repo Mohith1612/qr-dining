@@ -3,24 +3,23 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession } from "../helpers/api"
 import crypto from "crypto"
 
-const adminToken = process.env.E2E_ADMIN_TOKEN ?? "e2e-admin-secret"
-
 test.describe("O-02: Ordering an unavailable item is rejected", () => {
   test("returns 400 or 422 when item is marked unavailable", async () => {
-    const { table, menu, branch } = await seedOrg("o02")
+    const { table, menu, branch, owner } = await seedOrg("o02")
     const created = await createSession(table.id, "OrderGuest")
     const sessionId = created.session.id
     const guestToken = created.guest_access_token
 
     // Mark item unavailable
-    await fetch(`${API_URL}/branches/${branch.id}/menu/items/${menu.itemId}`, {
+    const unavailableRes = await fetch(`${API_URL}/menu/items/${menu.itemId}/availability`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${adminToken}`,
+        "Authorization": `Bearer ${owner.token}`,
       },
-      body: JSON.stringify({ is_available: false }),
+      body: JSON.stringify({ available: false, branch_id: branch.id }),
     })
+    expect(unavailableRes.status).toBe(204)
 
     const res = await fetch(`${API_URL}/sessions/${sessionId}/orders`, {
       method: "POST",

@@ -246,3 +246,124 @@ groups:
         annotations:
           summary: "Payment settlement stalled (critical)"
           description: "A session has been in payment_pending past the critical threshold with a non-terminal payment. Staff must settle or cancel — the table cannot free until resolved. Escalation is alert-only; no automatic state change occurs."
+
+  - name: qr-dining-readyz-probe
+    rules:
+      # Authoritative datastore-outage page: /readyz returns 503 when Postgres OR
+      # Redis is unreachable, so probe_success==0 means a dependency is down and the
+      # app cannot serve. Pairs with prometheus.yml job qr-dining-readyz + blackbox.
+      - alert: ReadyzProbeFailing
+        expr: probe_success{job="qr-dining-readyz"} == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "/readyz probe failing — Postgres or Redis unavailable"
+          description: "The app is not ready: /readyz returned non-200, meaning Postgres or Redis is down (the JSON body names which). This is the authoritative dependency-outage page (Phase D F-1)."
+
+  - name: qr-dining-backup
+    rules:
+      # Backup metrics are written by nightly-backup.sh to the node_exporter
+      # textfile collector (set NODE_EXPORTER_TEXTFILE_DIR). The absent() guard
+      # also fires if the metric never appears (collector/script misconfigured).
+      - alert: BackupFailed
+        expr: qr_dining_backup_last_run_status != 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Nightly backup failed"
+          description: "The last qr-dining backup run exited non-zero. Check the backup log/journal and re-run nightly-backup.sh; the DB is unprotected until a backup succeeds."
+
+      - alert: BackupTooOld
+        expr: absent(qr_dining_backup_last_success_timestamp_seconds) or (time() - qr_dining_backup_last_success_timestamp_seconds) > 129600
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "No successful backup in >36h"
+          description: "No successful qr-dining backup has completed in over 36 hours (or the backup metric is missing). The nightly timer/cron may be broken — verify the schedule and storage credentials."
+
+  # ---------------------------------------------------------------------------
+  # Pilot abort criteria (docs/PILOT-ABORT-CRITERIA.md).
+  #
+  # These exist so a documented abort criterion has an observable signal. They
+  # are deliberately tighter than the general-purpose rules above: an abort
+  # criterion is not a trend: event counters fire at increase() > 0 and the A1
+  # state gauge fires whenever its latest successful scan is non-zero.
+  #
+  # Criterion A3 (one table cannot order or pay) still has no rule because no
+  # metric can express it — see the "Criteria with no telemetry" table in
+  # PILOT-ABORT-CRITERIA.md. Do not add an aspirational rule for it.
+  # ---------------------------------------------------------------------------
+  - name: qr-dining-pilot-abort
+    rules:
+      # Abort criterion A1. The gauge is populated by the read-only settled-session
+      # reconciliation worker. One discrepancy is A1's immediate FALLBACK threshold.
+      # The second-independent-instance / not-root-caused-within-24h ABORT decision
+      # cannot be represented by this aggregate: use the per-session immutable audit
+      # rows to adjudicate those conditions.
+      - alert: BillingReconciliationDiscrepancy
+        expr: sum(billing_reconciliation_discrepancies) > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Billing discrepancy detected — pilot abort criterion A1"
+          description: "A settled session disagrees on snapshot_vs_orders or collected_vs_snapshot. One confirmed instance requires immediate fallback for the service. Find the table and exact amounts in billing.reconciliation.discrepancy audit rows. Independence and the 24h root-cause deadline require manual incident tracking; see docs/PILOT-ABORT-CRITERIA.md A1."
+
+      # Abort criterion A2. Tenant scope denials are enforced unconditionally,
+      # independent of AUTHZ_CENTRAL_POLICY_ENFORCE (backend/internal/handlers/authz.go:59), so a
+      # branch_mismatch/org_mismatch denial is a real blocked cross-tenant access
+      # attempt, not a shadow observation. In a single-site pilot the legitimate
+      # rate is exactly zero: one event is a page, not a trend.
+      #
+      # Blind spot, stated so nobody mistakes silence for safety: this counts
+      # attempts the policy BLOCKED. A cross-tenant read the policy wrongly
+      # ALLOWS emits nothing at all.
+      - alert: CrossTenantScopeDenial
+        expr: sum(increase(authz_denied_total{reason=~"branch_mismatch|org_mismatch"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Cross-tenant access attempt denied — pilot abort criterion A2"
+          description: "authz_denied_total recorded a branch_mismatch or org_mismatch denial. In a single-site pilot the expected rate is zero. Treat as a potential cross-tenant exposure: identify the actor and resource from the AUTHZ_DENIED audit rows before deciding. See docs/PILOT-ABORT-CRITERIA.md A2."
+
+      # Abort criterion A5 support. AppTargetDown/ReadyzProbeFailing page at 1m;
+      # this one measures the criterion's actual threshold (10 consecutive
+      # minutes unavailable) so the decision clock is visible rather than
+      # reconstructed from when the first page arrived.
+      - alert: AppUnavailableAbortThreshold
+        expr: up{job="qr-dining"} == 0 or probe_success{job="qr-dining-readyz"} == 0
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "App unavailable for 10 minutes — pilot abort criterion A5 threshold reached"
+          description: "The app has been down or unready for 10 continuous minutes. Per docs/PILOT-ABORT-CRITERIA.md A5 this is the point at which the service falls back to paper for the night. A third occurrence across the pilot aborts it."
+
+      # Abort criterion A7. AuditWriteFailures already pages on a sustained rate;
+      # this fires on the first failure, because the audit trail is the only
+      # tamper-evident record of who touched money and a single gap in it is not
+      # recoverable after the fact.
+      - alert: AuditWriteFailureAny
+        expr: sum(increase(audit_write_failures_total[5m])) > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Audit log write failed — pilot abort criterion A7"
+          description: "At least one audit write failed. R1 (AUDIT_LOG_V2_ENABLED) is the never-disable guarantee; a gap in audit_log cannot be backfilled. See docs/PILOT-ABORT-CRITERIA.md A7."
+
+      # Abort criterion A4 support. BackupTooOld fires at 36h, which is the
+      # RECOVERY.md RPO alarm. This fires at 26h so the on-call has a working day
+      # to fix the backup before the 48h abort clock in A4 starts.
+      - alert: BackupStaleEarlyWarning
+        expr: absent(qr_dining_backup_last_success_timestamp_seconds) or (time() - qr_dining_backup_last_success_timestamp_seconds) > 93600
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "No successful backup in >26h"
+          description: "Early warning ahead of BackupTooOld (36h). Last-run status changes only when nightly-backup.sh starts; a scheduler or wrapper failure that never invokes it writes no status. Investigate the schedule and textfile wiring; see docs/OPERATIONS.md and docs/RECOVERY.md."

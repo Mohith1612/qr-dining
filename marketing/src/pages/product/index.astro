@@ -1,0 +1,45 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import FeatureMockup from "../../components/FeatureMockup.astro";
+import CTABanner from "../../components/CTABanner.astro";
+import { plans } from "../../data/site";
+const title = "Product — Guest ordering, kitchen display & restaurant admin | QR Dining";
+const description = "See the full platform: shared table sessions, waiter and kitchen boards, multi-branch admin, loyalty, promos, and print-ready QR collateral.";
+const schema = {"@context":"https://schema.org","@type":"SoftwareApplication",name:"QR Dining",applicationCategory:"BusinessApplication",operatingSystem:"Web",offers:plans.map(p=>({"@type":"Offer",priceCurrency:"INR",price:p.price,name:p.name}))};
+---
+<BaseLayout title={title} description={description} image="/og-product.png" schema={schema}>
+  <section class="page-hero"><div class="container"><p class="eyebrow">The full platform</p><h1>Everything a service runs on.</h1><p class="lede">From the first scan to the last settlement, every person sees the part of the service they need — connected by one live table session.</p></div></section>
+
+  <section id="guests" class="section">
+    <div class="container section-intro reveal"><p class="eyebrow">For guests</p><h2>One table. Every phone.</h2><p class="lede">Nobody passes a phone around. Guests join by name, browse at their own pace, build one cart together, and always know where the order stands.</p></div>
+    <div class="container spotlights">
+      <article class="spotlight reveal"><div><span class="mono">01 · BROWSE</span><h3>A real menu, not a PDF.</h3><p>Categories, photos, prices, dietary details, required choices, and availability stay current. A sold-out dish disappears from every table immediately.</p></div><FeatureMockup type="menu" /></article>
+      <article class="spotlight reverse reveal"><div><span class="mono">02 · TRACK</span><h3>No more “where's our food?”</h3><p>The table sees confirmed, preparing, ready, and served as the kitchen works. Waiter calls and bill requests enter the same live floor queue.</p></div><FeatureMockup type="tracking" /></article>
+    </div>
+  </section>
+
+  <section id="staff" class="section section-dark">
+    <div class="container section-intro reveal"><p class="eyebrow">For the floor and pass</p><h2>The order keeps moving.</h2><p class="lede">Kitchen and waiters do not share a cluttered admin screen. Each role gets a focused board, protected by staff PIN, with clear ownership of the next action.</p></div>
+    <div class="container spotlight dark-spotlight reveal"><div><span class="mono">03 · SERVICE</span><h3>One live picture of the floor.</h3><p>Waiters see attention calls, food ready to serve, bill requests, and staff-verified cash or card settlement. The kitchen sees clean tickets with every modifier, moving from confirmed to ready.</p><ul><li>Assistance calls stay open until acknowledged and resolved</li><li>Elapsed time is visible where it helps the team act</li><li>Payment status is tied back to the table and bill</li></ul></div><FeatureMockup type="waiter" /></div>
+  </section>
+
+  <section id="owners" class="section">
+    <div class="container section-intro reveal"><p class="eyebrow">For managers and owners</p><h2>Your restaurant, from one desk.</h2><p class="lede">Menus, tables, staff, promos, loyalty, branding, and performance sit above the live service — by branch or across the whole group.</p></div>
+    <div class="container spotlights">
+      <article class="spotlight reveal"><div><span class="mono">04 · CONTROL</span><h3>Change it once. See it everywhere.</h3><p>Publish menu availability mid-service, create staff access, prepare table QR codes, set promo rules, and compare how branches are running without hopping between systems.</p></div><FeatureMockup type="admin" /></article>
+      <div class="theme-strip reveal"><div><p class="eyebrow">Guest appearance</p><h3>Five rooms, five moods.</h3><p>Serene Hospitality, Dark Luxury, Modern Minimal, Warm Café, and Vibrant are ready-made guest themes. Premium restaurants can tune the details further.</p></div><div class="swatches"><span class="serene">Serene</span><span class="luxury">Luxury</span><span class="minimal">Minimal</span><span class="cafe">Café</span><span class="vibrant">Vibrant</span></div></div>
+    </div>
+  </section>
+
+  <section id="collateral" class="section section-sunken">
+    <div class="container spotlight reverse reveal"><div><p class="eyebrow">From screen to table</p><h2>The QR belongs in the room.</h2><p>Build table cards, standing cards, tents, sticker sheets, and bulk layouts with the correct table QR and restaurant branding already in place. Export a print-ready PDF, then print locally.</p><ul><li>A6 standing cards and table tents</li><li>Square cards, stickers, and bulk sheets</li><li>Per-table QR codes, checked before export</li></ul></div><FeatureMockup type="collateral" /></div>
+  </section>
+  <CTABanner heading="Put your menu on a live table." copy="Request a walkthrough and we'll show the guest, staff, and owner sides together — with the service flowing between them." />
+</BaseLayout>
+
+<style>
+  .page-hero{padding:112px 0 88px;background:var(--glow-warm);border-bottom:1px solid var(--line-1)}.page-hero .container{max-width:850px;text-align:center}.page-hero h1{margin-bottom:24px}.page-hero .lede{margin-inline:auto}.section-intro{max-width:760px;margin-bottom:70px}.spotlights{display:flex;flex-direction:column;gap:112px}.spotlight{display:grid;grid-template-columns:.72fr 1.28fr;gap:80px;align-items:center}.spotlight.reverse{grid-template-columns:1.28fr .72fr}.spotlight.reverse>div:first-child{order:2}.spotlight>div:first-child>span,.dark-spotlight>div:first-child>span{color:var(--gold);font-size:9px;letter-spacing:.08em}.spotlight h3,.dark-spotlight h3{margin:16px 0;font-size:28px}.spotlight p,.dark-spotlight p{color:var(--ink-2)}.dark-spotlight{display:grid;grid-template-columns:.72fr 1.28fr;gap:72px;align-items:center}.dark-spotlight>div:first-child>span{color:var(--ops-amber)}.dark-spotlight p,.dark-spotlight li{color:rgba(255,255,255,.6)}.spotlight ul,.dark-spotlight ul{padding:0;list-style:none}.spotlight li,.dark-spotlight li{position:relative;padding:7px 0 7px 20px;font-size:14px}.spotlight li:before,.dark-spotlight li:before{content:"";position:absolute;left:0;top:17px;width:8px;height:1px;background:var(--gold)}.dark-spotlight li:before{background:var(--ops-amber)}
+  .theme-strip{display:grid;grid-template-columns:1fr 1.2fr;gap:64px;align-items:center;padding-top:72px;border-top:1px solid var(--line-1)}.theme-strip p:last-child{color:var(--ink-2)}.swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.swatches span{aspect-ratio:.72;display:flex;align-items:flex-end;padding:10px;border:1px solid var(--line-1);border-radius:12px;background:#faf9f5;color:#1b1c1a;font-size:9px;font-weight:600;box-shadow:var(--shadow-1)}.swatches .luxury{background:#181410;color:#f4e8d1}.swatches .minimal{background:#fff}.swatches .cafe{background:#fbf3e7;color:#7a4017}.swatches .vibrant{background:#fff;border-top:10px solid #e63946}
+  @media(max-width:1023px){.spotlight,.spotlight.reverse,.dark-spotlight{gap:44px}.spotlights{gap:80px}}
+  @media(max-width:639px){.page-hero{padding:72px 0 64px}.section-intro{margin-bottom:46px}.spotlights{gap:72px}.spotlight,.spotlight.reverse,.dark-spotlight{grid-template-columns:1fr;gap:32px}.spotlight.reverse>div:first-child{order:0}.theme-strip{grid-template-columns:1fr;gap:26px;padding-top:56px}.swatches{gap:5px}.swatches span{padding:5px;font-size:7px}.spotlight h3,.dark-spotlight h3{font-size:24px}}
+</style>

@@ -1,8 +1,11 @@
+export type StaffRole = "owner" | "manager" | "waiter" | "kitchen"
+
 export interface SeededOrg {
   org: { id: number; name: string; slug: string }
   branch: { id: number; code: string; name: string }
   table: { id: number; token: string; identifier: string }
-  staff: { id: number; staffCode: string; pin: string; role: string }
+  owner: { id: number; staffCode: string; pin: string; role: "owner"; token: string }
+  staff: { id: number; staffCode: string; pin: string; role: StaffRole; token: string }
   menu: { categoryId: number; itemId: number; itemName: string; itemPrice: number }
 }
 
@@ -17,7 +20,7 @@ export interface StaffContext {
   token: string
   staffId: number
   branchId: number
-  role: string
+  role: StaffRole
 }
 
 export interface SessionSnapshot {

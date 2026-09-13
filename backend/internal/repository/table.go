@@ -50,3 +50,23 @@ func (r *Repos) CreateTable(ctx context.Context, p sqlc.CreateTableParams) (sqlc
 func (r *Repos) RefreshTableQRToken(ctx context.Context, tableID int64, newToken string) (sqlc.Table, error) {
 	return r.q.RefreshTableQRToken(ctx, sqlc.RefreshTableQRTokenParams{ID: tableID, QrCodeToken: newToken})
 }
+
+func (r *Repos) UpdateTable(ctx context.Context, tableID, branchID int64, identifier string, capacity int16) (sqlc.Table, error) {
+	t, err := r.q.UpdateTable(ctx, sqlc.UpdateTableParams{
+		ID:         tableID,
+		Identifier: identifier,
+		Capacity:   capacity,
+		BranchID:   branchID,
+	})
+	if err != nil {
+		if isDuplicateError(err) {
+			return sqlc.Table{}, domain.ErrDuplicateTableIdentifier
+		}
+		return sqlc.Table{}, err
+	}
+	return t, nil
+}
+
+func (r *Repos) DeleteTable(ctx context.Context, tableID, branchID int64) error {
+	return r.q.DeleteTable(ctx, sqlc.DeleteTableParams{ID: tableID, BranchID: branchID})
+}

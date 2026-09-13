@@ -1,8 +1,7 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { WSConnection } from "@/lib/ws/connection"
-import { reconcileSnapshot } from "@/lib/ws/reconciliation"
 import { useSessionStore } from "@/store/session"
 import { useCartStore } from "@/store/cart"
 import { useMenuStore } from "@/store/menu"
@@ -12,7 +11,9 @@ import { useWsStore } from "@/store/ws"
 import { cartApi } from "@/lib/api/cart"
 import { toast } from "sonner"
 import type { WSEventHandlerMap } from "@/types/ws"
-import type { Participant, Order, AssistanceRequest, Payment, SessionSnapshot } from "@/types/api"
+import type { Participant, Order, AssistanceRequest, Payment, Session } from "@/types/api"
+import { track } from "@/lib/product-analytics/events"
+import { registerGuestSessionProps, unregisterGuestSessionProps } from "@/lib/product-analytics/identity"
 
 export function useWebSocket(sessionId: string) {
   const connRef = useRef<WSConnection | null>(null)
@@ -20,7 +21,11 @@ export function useWebSocket(sessionId: string) {
   useEffect(() => {
     const handlers: WSEventHandlerMap = {
       SESSION_CLOSED: () => {
+        if (useSessionStore.getState().isHost) {
+          track("session_ended", { session_id: sessionId })
+        }
         useSessionStore.getState().markClosed()
+        unregisterGuestSessionProps()
       },
 
       SESSION_REACTIVATED: () => {
@@ -37,7 +42,23 @@ export function useWebSocket(sessionId: string) {
 
       PAYMENT_COMPLETED: (payload) => {
         const payment = payload as Payment
+        if (useSessionStore.getState().isHost) {
+          track("payment_completed", {
+            method: payment.method,
+            amount: Number(payment.amount),
+          })
+        }
         useSessionStore.getState().setCompletedPayment(payment)
+      },
+
+      // Staff withdrew the payment request — the bill is unpaid again and the
+      // cart is unfrozen. Without this the guest sits on "Awaiting confirmation"
+      // forever, because nothing else ever contradicts the initiate response.
+      PAYMENT_CANCELLED: (payload) => {
+        const p = payload as { payment?: Payment; session_status?: Session["status"] } | null
+        if (!p?.payment) return
+        useSessionStore.getState().applyPaymentCancelled(p.payment, p.session_status)
+        toast.info("Your server cancelled the payment request. You can keep ordering or try paying again.")
       },
 
       // An admin toggled a menu item. Reconcile the menu in realtime; if a
@@ -71,7 +92,16 @@ export function useWebSocket(sessionId: string) {
         const newHost = payload as Participant
         const wasHost = useSessionStore.getState().isHost
         useSessionStore.getState().applyHostChanged(newHost)
-        if (useSessionStore.getState().isHost && !wasHost) {
+        const state = useSessionStore.getState()
+        if (state.session && state.participant) {
+          registerGuestSessionProps({
+            sessionId: state.session.id,
+            participantId: state.participant.id,
+            isHost: state.isHost,
+            tableId: state.session.table_id,
+          })
+        }
+        if (state.isHost && !wasHost) {
           toast.info("You're now the table host — you can send orders and request the bill.")
         }
       },
@@ -90,28 +120,36 @@ export function useWebSocket(sessionId: string) {
         useOrdersStore.getState().addOrder(order)
       },
 
+      // Order status events are published wrapped as { order: {...} } (order.go
+      // publishOrderStatusEvent), unlike ORDER_PLACED which is top-level. Unwrap
+      // defensively so the live tracker advances without a page refresh (F-6).
       ORDER_CONFIRMED: (payload) => {
-        const order = payload as Order
+        const order = ((payload as { order?: Order })?.order ?? payload) as Order
+        if (!order?.id) return
         useOrdersStore.getState().updateStatus(order.id, "confirmed")
       },
 
       ORDER_PREPARING: (payload) => {
-        const order = payload as Order
+        const order = ((payload as { order?: Order })?.order ?? payload) as Order
+        if (!order?.id) return
         useOrdersStore.getState().updateStatus(order.id, "preparing")
       },
 
       ORDER_READY: (payload) => {
-        const order = payload as Order
+        const order = ((payload as { order?: Order })?.order ?? payload) as Order
+        if (!order?.id) return
         useOrdersStore.getState().updateStatus(order.id, "ready")
       },
 
       ORDER_SERVED: (payload) => {
-        const order = payload as Order
+        const order = ((payload as { order?: Order })?.order ?? payload) as Order
+        if (!order?.id) return
         useOrdersStore.getState().updateStatus(order.id, "served")
       },
 
       ORDER_CANCELLED: (payload) => {
-        const order = payload as Order
+        const order = ((payload as { order?: Order })?.order ?? payload) as Order
+        if (!order?.id) return
         useOrdersStore.getState().updateStatus(order.id, "cancelled")
       },
 
@@ -143,5 +181,8 @@ export function useWebSocket(sessionId: string) {
 
   const status = useWsStore((s) => s.status)
   const attempt = useWsStore((s) => s.attempt)
-  return { status, attempt }
+  const retry = useCallback(() => {
+    connRef.current?.retry()
+  }, [])
+  return { status, attempt, retry }
 }

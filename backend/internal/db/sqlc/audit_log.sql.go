@@ -280,11 +280,12 @@ const listAuditLogPlatform = `-- name: ListAuditLogPlatform :many
 SELECT id, organization_id, branch_id, restaurant_id, session_id, table_id, resource_type, resource_id, action, result, actor_type, actor_id, actor_display, actor_scope_json, request_id, correlation_id, idempotency_key, ip, user_agent, source, before_json, after_json, metadata_json, risk_level, row_hash, previous_hash, created_at, event_reference FROM audit_log
 WHERE ($1::BIGINT IS NULL OR organization_id = $1)
   AND ($2::BIGINT IS NULL OR branch_id = $2)
-  AND ($3::TEXT IS NULL OR actor_type::TEXT = $3)
-  AND ($4::TEXT IS NULL OR result::TEXT = $4)
-  AND ($5::TEXT IS NULL OR source::TEXT = $5)
-  AND ($6::TIMESTAMPTZ IS NULL OR created_at >= $6)
-  AND ($7::TIMESTAMPTZ IS NULL OR created_at < $7)
+  AND ($3::UUID IS NULL OR session_id = $3)
+  AND ($4::TEXT IS NULL OR actor_type::TEXT = $4)
+  AND ($5::TEXT IS NULL OR result::TEXT = $5)
+  AND ($6::TEXT IS NULL OR source::TEXT = $6)
+  AND ($7::TIMESTAMPTZ IS NULL OR created_at >= $7)
+  AND ($8::TIMESTAMPTZ IS NULL OR created_at < $8)
 ORDER BY created_at DESC, id DESC
 LIMIT 500
 `
@@ -292,6 +293,7 @@ LIMIT 500
 type ListAuditLogPlatformParams struct {
 	OrganizationID pgtype.Int8        `json:"organization_id"`
 	BranchID       pgtype.Int8        `json:"branch_id"`
+	SessionID      pgtype.UUID        `json:"session_id"`
 	ActorType      pgtype.Text        `json:"actor_type"`
 	Result         pgtype.Text        `json:"result"`
 	Source         pgtype.Text        `json:"source"`
@@ -303,6 +305,7 @@ func (q *Queries) ListAuditLogPlatform(ctx context.Context, arg ListAuditLogPlat
 	rows, err := q.db.Query(ctx, listAuditLogPlatform,
 		arg.OrganizationID,
 		arg.BranchID,
+		arg.SessionID,
 		arg.ActorType,
 		arg.Result,
 		arg.Source,

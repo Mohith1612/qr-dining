@@ -6,6 +6,7 @@ import (
 
 	"github.com/Mohith1612/qr-dining/internal/audit"
 	"github.com/Mohith1612/qr-dining/internal/authz"
+	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/middleware"
 	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/repository"
@@ -51,7 +52,11 @@ func requireAuthorized(c *gin.Context, repos *repository.Repos, authorizer *auth
 	}
 	requestID, _ := c.Get(middleware.RequestIDKey)
 	repos.LogAuthzDenied(c.Request.Context(), actor, action, resource, decision, stringValue(requestID))
-	enforced := authorizer.Enforce()
+	// Tenant scope violations are enforced regardless of AUTHZ_CENTRAL_POLICY_ENFORCE.
+	// A staff actor acting on another branch's or organization's resource is never
+	// legitimate traffic, so it has nothing to learn from a shadow week. Role-policy
+	// denials stay flag-gated: those are what the R3 rollout gate actually measures.
+	enforced := authorizer.Enforce() || decision.ScopeViolation
 	if writer != nil {
 		result := audit.ResultDenied
 		if !enforced {
@@ -96,6 +101,40 @@ func requireAuthorized(c *gin.Context, repos *repository.Repos, authorizer *auth
 	}
 	respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
 	return false
+}
+
+// requireActorBranch asserts that the authenticated staff member's own branch owns the
+// resource being acted on. It is defense in depth behind requireAuthorized on the
+// item-scoped routes that carry no branch path parameter (and therefore no
+// BranchTenantGuard): it holds even if the central policy is misconfigured, or if a
+// future action is added without being listed in authz.requiresSameBranch().
+//
+// Call it *after* requireAuthorized so the central path still records the AUTHZ_DENIED
+// audit row and its metrics; this is the backstop for the case where that path wrongly
+// allows the request.
+//
+// Returns false when the request was rejected — callers should bail.
+// staffRoleIn reports whether the actor holds one of the allowed roles. Routes
+// that must refuse a role today call this instead of relying on
+// requireAuthorized alone: role-policy denials there are still gated behind
+// AUTHZ_CENTRAL_POLICY_ENFORCE (shadow-allowed while it is off), which is the
+// right trade for legacy routes with traffic to learn from and the wrong one for
+// a new route that has none. Tenant scope denials are already unconditional.
+func staffRoleIn(role sqlc.StaffRole, allowed ...sqlc.StaffRole) bool {
+	for _, a := range allowed {
+		if role == a {
+			return true
+		}
+	}
+	return false
+}
+
+func requireActorBranch(c *gin.Context, sess services.StaffSession, resourceBranchID int64) bool {
+	if sess.BranchID == 0 || sess.BranchID != resourceBranchID {
+		respondError(c, http.StatusForbidden, CodeForbidden, "access denied")
+		return false
+	}
+	return true
 }
 
 // authzReasonSlug maps the human-readable policy reason to a bounded metric label.

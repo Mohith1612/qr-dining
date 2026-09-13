@@ -2,6 +2,7 @@ package observability
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
 // Metrics holds all Prometheus metric definitions.
@@ -49,6 +50,9 @@ type Metrics struct {
 	SessionDuration          prometheus.Histogram
 	IdempotencyReplaysTotal  *prometheus.CounterVec
 	LegacyIdentityUsageTotal *prometheus.CounterVec
+	// BillingReconciliationDiscrepancies is the number of discrepancies in the
+	// worker's latest successful settled-session scan, partitioned by comparison.
+	BillingReconciliationDiscrepancies *prometheus.GaugeVec
 
 	// Background workers
 	WorkerRunsTotal   *prometheus.CounterVec
@@ -56,6 +60,10 @@ type Metrics struct {
 
 	// Audit
 	AuditWriteFailuresTotal *prometheus.CounterVec
+
+	// LoyaltyAccrualFailuresTotal counts loyalty earn-accrual errors swallowed
+	// on the payment-completion path (the payment itself is never failed).
+	LoyaltyAccrualFailuresTotal prometheus.Counter
 
 	// LegacyAuthzBypassTotal counts policy denials that were allowed through
 	// because AUTHZ_CENTRAL_POLICY_ENFORCE was off. A spike here right before
@@ -77,6 +85,17 @@ type Metrics struct {
 	GuestTokenValidationFailedTotal *prometheus.CounterVec
 	WSTicketConsumeFailedTotal      *prometheus.CounterVec
 	PaymentPendingEscalationsTotal  *prometheus.CounterVec
+
+	// EntitlementEvaluationsTotal counts organization entitlement capability
+	// evaluations by capability and result. Shadow-only: the platform governance
+	// foundation resolves entitlements without enforcing them on operational
+	// paths, so a spike in "deny" here is a pre-enforcement would-break signal.
+	EntitlementEvaluationsTotal *prometheus.CounterVec
+
+	// FeatureFlagResolutionsTotal counts platform feature-flag resolution calls by
+	// scope (branch|organization). Observability for the platform flag-targeting
+	// system; distinct from the env-driven strict-rollout flags.
+	FeatureFlagResolutionsTotal *prometheus.CounterVec
 
 	// RateLimiterUnavailableTotal counts requests denied because the rate
 	// limiter backend was unreachable on a fail-closed surface (staff auth,
@@ -240,6 +259,11 @@ func NewMetrics() *Metrics {
 			Help: "Total uses of legacy client-supplied identity mechanisms by mechanism and endpoint class.",
 		}, []string{"mechanism", "endpoint_class"}),
 
+		BillingReconciliationDiscrepancies: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "billing_reconciliation_discrepancies",
+			Help: "Number of billing discrepancies in the latest successful settled-session scan by comparison.",
+		}, []string{"comparison"}),
+
 		WorkerRunsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "background_worker_runs_total",
 			Help: "Total background worker executions by worker name and status.",
@@ -254,6 +278,11 @@ func NewMetrics() *Metrics {
 			Name: "audit_write_failures_total",
 			Help: "Total audit_log write failures by action and error class.",
 		}, []string{"action", "error_class"}),
+
+		LoyaltyAccrualFailuresTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loyalty_accrual_failures_total",
+			Help: "Total loyalty earn-accrual errors swallowed on payment completion.",
+		}),
 
 		LegacyAuthzBypassTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "legacy_authz_bypass_total",
@@ -294,11 +323,21 @@ func NewMetrics() *Metrics {
 			Name: "payment_pending_escalations_total",
 			Help: "Total stalled payment_pending escalations emitted by the escalation worker, by level.",
 		}, []string{"level"}),
+
+		EntitlementEvaluationsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "entitlement_evaluations_total",
+			Help: "Total organization entitlement capability evaluations by capability and result (allow|deny). Shadow-only; not enforced on operational paths.",
+		}, []string{"capability", "result"}),
+
+		FeatureFlagResolutionsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "feature_flag_resolutions_total",
+			Help: "Total platform feature-flag resolution calls by scope (branch|organization).",
+		}, []string{"scope"}),
 	}
 
 	reg.MustRegister(
-		prometheus.NewGoCollector(),
-		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		m.HTTPRequestsTotal,
 		m.HTTPRequestDuration,
 		m.WSConnectionsActive,
@@ -328,9 +367,11 @@ func NewMetrics() *Metrics {
 		m.SessionDuration,
 		m.IdempotencyReplaysTotal,
 		m.LegacyIdentityUsageTotal,
+		m.BillingReconciliationDiscrepancies,
 		m.WorkerRunsTotal,
 		m.WorkerPanicsTotal,
 		m.AuditWriteFailuresTotal,
+		m.LoyaltyAccrualFailuresTotal,
 		m.LegacyAuthzBypassTotal,
 		m.RateLimiterUnavailableTotal,
 		m.AuthzDeniedTotal,
@@ -339,6 +380,8 @@ func NewMetrics() *Metrics {
 		m.GuestTokenValidationFailedTotal,
 		m.WSTicketConsumeFailedTotal,
 		m.PaymentPendingEscalationsTotal,
+		m.EntitlementEvaluationsTotal,
+		m.FeatureFlagResolutionsTotal,
 	)
 
 	return m

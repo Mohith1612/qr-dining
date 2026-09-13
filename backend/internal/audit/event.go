@@ -62,6 +62,7 @@ const (
 	ResourceCustomer               = "customer"
 	ResourcePromo                  = "promo"
 	ResourceQRToken                = "qr_token"
+	ResourceTable                  = "table"
 	ResourceAuditLog               = "audit_log"
 	ResourcePlatformSupportSession = "platform.support_session"
 )
@@ -80,7 +81,10 @@ const (
 	ActionSessionCreate            = "session.create"
 	ActionSessionClose             = "session.close"
 	ActionSessionAbandon           = "session.abandon"
+	ActionSessionForceClose        = "session.force_close"
 	ActionQRTokenRotate            = "qr_token.rotate"
+	ActionTableUpdate              = "table.update"
+	ActionTableDelete              = "table.delete"
 	ActionMenuItemCreate           = "menu.item.create"
 	ActionMenuItemUpdate           = "menu.item.update"
 	ActionMenuItemDelete           = "menu.item.delete"
@@ -89,6 +93,7 @@ const (
 	ActionMenuCategoryDelete       = "menu.category.delete"
 	ActionPaymentInitiate          = "payment.initiate"
 	ActionPaymentSettle            = "payment.settle"
+	ActionPaymentCancel            = "payment.cancel"
 	ActionPaymentWebhookProcess    = "payment.webhook.process"
 	ActionPaymentRefund            = "payment.refund"
 	ActionPaymentSettlementStalled = "payment.settlement.stalled"
@@ -100,6 +105,8 @@ const (
 	ActionAuditRead                = "audit.read"
 	ActionPlatformSupportAccess    = "platform.support_session.create"
 )
+
+const ActionBillingReconciliationDiscrepancy = "billing.reconciliation.discrepancy"
 
 // AuditEvent carries all fields for a single audit record.
 // ResourceType and Action are required. All other fields are optional but recommended.

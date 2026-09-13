@@ -1,0 +1,18 @@
+---
+const { title, eyebrow, summary, headings = [] } = Astro.props;
+---
+<section class="legal-hero"><div class="container"><p class="eyebrow">{eyebrow}</p><h1>{title}</h1><p class="updated mono">LAST UPDATED · 29 JULY 2026</p></div></section>
+<section class="legal-section">
+  <div class="container legal-grid">
+    <aside class="toc" aria-label="On this page"><p>On this page</p>{headings.map((heading:string)=><a href={`#${heading.toLowerCase().replaceAll(" ","-")}`}>{heading}</a>)}</aside>
+    <article class="prose">
+      {summary && <div class="summary"><p class="eyebrow">In plain English</p><p>{summary}</p></div>}
+      <slot />
+    </article>
+  </div>
+</section>
+
+<style>
+  .legal-hero{padding:88px 0 56px;border-bottom:1px solid var(--line-1);background:var(--glow-warm)}.legal-hero h1{margin-bottom:18px}.updated{color:var(--ink-3);font-size:9px;letter-spacing:.08em}.legal-section{padding:72px 0 112px}.legal-grid{display:grid;grid-template-columns:190px minmax(0,65ch);gap:72px;justify-content:center}.toc{position:sticky;top:100px;align-self:start;display:flex;flex-direction:column;gap:8px}.toc p{margin:0 0 8px;font-weight:600}.toc a{color:var(--ink-3);font-size:13px;text-decoration:none}.toc a:hover{color:var(--gold)}.summary{margin-bottom:48px;padding:24px;border:1px solid rgba(115,91,37,.18);border-radius:14px;background:rgba(255,223,158,.13)}.summary p:last-child{margin:0;color:var(--ink-2)}.prose :global(h2){margin:52px 0 16px;font-size:25px;scroll-margin-top:90px}.prose :global(h2:first-of-type){margin-top:0}.prose :global(p),.prose :global(li){color:var(--ink-2)}.prose :global(a){color:var(--ink);text-underline-offset:3px}.prose :global(ul){padding-left:22px}.prose :global(.legal-note){padding:16px;border-left:2px solid var(--gold);background:var(--sunken);font-size:14px}
+  @media(max-width:639px){.legal-hero{padding:64px 0 44px}.legal-section{padding:48px 0 72px}.legal-grid{grid-template-columns:1fr;gap:0}.toc{display:none}.summary{padding:20px}.prose :global(h2){font-size:23px}}
+</style>

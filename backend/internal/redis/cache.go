@@ -11,15 +11,13 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-const defaultCacheTTL = 5 * time.Minute
-
 // Cache provides a simple JSON get/set cache with TTL.
 // Used to avoid repeated DB lookups for hot read paths (e.g., session validation on WS auth).
 // A cache miss always falls back to PostgreSQL — Redis is never the source of truth.
 type Cache struct {
-	client   *goredis.Client
-	hits     prometheus.Counter // optional; nil if metrics not provided
-	misses   prometheus.Counter
+	client *goredis.Client
+	hits   prometheus.Counter // optional; nil if metrics not provided
+	misses prometheus.Counter
 }
 
 func NewCache(client *goredis.Client, hits, misses prometheus.Counter) *Cache {
@@ -81,4 +79,26 @@ func (c *Cache) DeleteMany(ctx context.Context, keys ...string) error {
 		return nil
 	}
 	return c.client.Del(ctx, keys...).Err()
+}
+
+// DeleteByPattern deletes every key matching a glob pattern (e.g. "featgate:*").
+// It scans in batches rather than using KEYS so it never blocks Redis. Intended
+// for rare operator-triggered invalidations, not hot paths.
+func (c *Cache) DeleteByPattern(ctx context.Context, pattern string) error {
+	var cursor uint64
+	for {
+		keys, next, err := c.client.Scan(ctx, cursor, pattern, 256).Result()
+		if err != nil {
+			return fmt.Errorf("cache scan: %w", err)
+		}
+		if len(keys) > 0 {
+			if err := c.client.Del(ctx, keys...).Err(); err != nil {
+				return fmt.Errorf("cache del: %w", err)
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			return nil
+		}
+	}
 }

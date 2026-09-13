@@ -19,17 +19,46 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/Mohith1612/qr-dining/internal/services"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type PlatformHandler struct {
-	repos *repository.Repos
-	svc   *services.PlatformService
-	audit *audit.Writer
+	repos       *repository.Repos
+	svc         *services.PlatformService
+	ent         *services.EntitlementService
+	flag        *services.FlagService
+	analytics   *services.PlatformAnalyticsService
+	theme       *services.ThemeService
+	support     *services.SupportService
+	billing     *services.BillingService
+	obs         *services.EnforcementObservabilityService
+	collateral  *services.CollateralService
+	staffPerf   *services.StaffAnalyticsService
+	featureGate *services.FeatureGate
+	audit       *audit.Writer
+	// tenantStatus is the guest-entry lifecycle cache. The lifecycle endpoints
+	// flush it so a suspend takes hold — and an activate lifts — immediately
+	// rather than after the cache TTL.
+	tenantStatus *services.TenantStatusGate
 }
 
-func NewPlatformHandler(repos *repository.Repos, svc *services.PlatformService, auditWriter *audit.Writer) *PlatformHandler {
-	return &PlatformHandler{repos: repos, svc: svc, audit: auditWriter}
+// SetTenantStatusGate wires the guest-entry lifecycle cache so organization and
+// branch suspend/activate can invalidate it. Called at startup.
+func (h *PlatformHandler) SetTenantStatusGate(gate *services.TenantStatusGate) {
+	h.tenantStatus = gate
+}
+
+// invalidateTenantStatus flushes the guest-entry lifecycle cache. nil-safe.
+func (h *PlatformHandler) invalidateTenantStatus(c *gin.Context) {
+	if h.tenantStatus != nil {
+		h.tenantStatus.Invalidate(c.Request.Context())
+	}
+}
+
+func NewPlatformHandler(repos *repository.Repos, svc *services.PlatformService, ent *services.EntitlementService, flag *services.FlagService, analytics *services.PlatformAnalyticsService, theme *services.ThemeService, support *services.SupportService, billing *services.BillingService, obs *services.EnforcementObservabilityService, collateral *services.CollateralService, staffPerf *services.StaffAnalyticsService, featureGate *services.FeatureGate, auditWriter *audit.Writer) *PlatformHandler {
+	return &PlatformHandler{repos: repos, svc: svc, ent: ent, flag: flag, analytics: analytics, theme: theme, support: support, billing: billing, obs: obs, collateral: collateral, staffPerf: staffPerf, featureGate: featureGate, audit: auditWriter}
 }
 
 type platformAuthRequest struct {
@@ -61,9 +90,9 @@ func (h *PlatformHandler) Authenticate(c *gin.Context) {
 	if result.Challenge != nil {
 		h.logPlatformAudit(c, 0, "platform.auth.mfa_challenge_issued", "platform_user", "", 0, 0, 0, gin.H{"email": services.NormalizePlatformEmail(req.Email)})
 		c.JSON(http.StatusOK, gin.H{
-			"mfa_required":      true,
-			"mfa_challenge":     result.Challenge.Challenge,
-			"mfa_expires_at":    result.Challenge.ExpiresAt,
+			"mfa_required":   true,
+			"mfa_challenge":  result.Challenge.Challenge,
+			"mfa_expires_at": result.Challenge.ExpiresAt,
 		})
 		return
 	}
@@ -318,6 +347,14 @@ func (h *PlatformHandler) CreateOrganization(c *gin.Context) {
 		return err
 	})
 	if err != nil {
+		// A duplicate org code or restaurant slug is a client conflict, not a
+		// server error — surface it so a retry after a mid-wizard failure gets a
+		// clear message instead of an opaque 500.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			respondError(c, http.StatusConflict, "ORGANIZATION_EXISTS", "An organization with that code or restaurant slug already exists. Use a different code, or check the Organizations list — it may have been created already.")
+			return
+		}
 		respondInternalError(c)
 		return
 	}
@@ -400,6 +437,7 @@ type createPlatformBranchRequest struct {
 	Timezone      string                `json:"timezone"`
 	BranchCode    string                `json:"branch_code"`
 	OrderPrefix   string                `json:"order_prefix"`
+	LogoURL       *string               `json:"logo_url"`
 	InitialTables []createTableRequest  `json:"initial_tables"`
 	InitialOwner  *platformOwnerRequest `json:"initial_owner"`
 }
@@ -510,8 +548,27 @@ func (h *PlatformHandler) CreateBranch(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		// Provisioning writes a branch, its tables and an initial owner in one
+		// transaction, so a unique violation can come from any of the three. The
+		// repository translates the table and staff collisions into domain
+		// errors, so match those too — matching only the raw pg error would send
+		// a duplicate staff code or table identifier to a 500.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" ||
+			errors.Is(err, domain.ErrDuplicateStaffCode) ||
+			errors.Is(err, domain.ErrDuplicateTableIdentifier) {
+			respondError(c, http.StatusConflict, "BRANCH_CONFLICT", "That branch code or an initial owner staff code is already in use. Choose a different one.")
+			return
+		}
 		respondInternalError(c)
 		return
+	}
+	// Tenant logo is restaurant-scoped; set it once the branch exists.
+	if req.LogoURL != nil && strings.TrimSpace(*req.LogoURL) != "" {
+		if err := h.repos.UpdateRestaurantLogoByBranchID(c.Request.Context(), branch.ID, strings.TrimSpace(*req.LogoURL)); err != nil {
+			respondInternalError(c)
+			return
+		}
 	}
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.branches.create", "branch", strconv.FormatInt(branch.ID, 10), org.ID, branch.ID, 0, gin.H{"table_count": len(tables), "initial_owner_created": owner != nil})
 	c.JSON(http.StatusCreated, gin.H{
@@ -553,8 +610,102 @@ func (h *PlatformHandler) GetBranch(c *gin.Context) {
 		respondError(c, http.StatusNotFound, CodeTenantNotFound, "branch not found")
 		return
 	}
+	resp := platformBranchResponse(branch)
+	// Surface restaurant name + logo for collateral/branding consumers (additive).
+	if restaurant, rerr := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID); rerr == nil {
+		resp["restaurant_name"] = restaurant.Name
+		resp["restaurant_slug"] = restaurant.Slug
+		resp["logo_url"] = textOrEmpty(restaurant.LogoUrl)
+	}
 	h.logPlatformAudit(c, session.PlatformUserID, "platform.branches.read", "branch", strconv.FormatInt(branch.ID, 10), branch.OrganizationID, branch.ID, 0, gin.H{})
-	c.JSON(http.StatusOK, platformBranchResponse(branch))
+	c.JSON(http.StatusOK, resp)
+}
+
+type updatePlatformBranchRequest struct {
+	Name        *string `json:"name"`
+	Timezone    *string `json:"timezone"`
+	BranchCode  *string `json:"branch_code"`
+	OrderPrefix *string `json:"order_prefix"`
+	LogoURL     *string `json:"logo_url"`
+}
+
+// PATCH /platform/branches/:branch_id — super_admin. Edits a branch's identity
+// (including the branch code) and the tenant logo. Only sent fields change.
+func (h *PlatformHandler) UpdateBranch(c *gin.Context) {
+	session, ok := h.requirePlatformRole(c)
+	if !ok {
+		return
+	}
+	branchID, ok := parseInt64Param(c, "branch_id", "invalid branch id")
+	if !ok {
+		return
+	}
+	branch, err := h.repos.GetBranchByID(c.Request.Context(), branchID)
+	if err != nil {
+		respondError(c, http.StatusNotFound, CodeTenantNotFound, "branch not found")
+		return
+	}
+	var req updatePlatformBranchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+
+	// Identity fields: fall back to current values for anything not sent.
+	name := branch.Name
+	if req.Name != nil {
+		if strings.TrimSpace(*req.Name) == "" {
+			respondValidationError(c, "name cannot be empty")
+			return
+		}
+		name = strings.TrimSpace(*req.Name)
+	}
+	timezone := branch.Timezone
+	if req.Timezone != nil && strings.TrimSpace(*req.Timezone) != "" {
+		timezone = strings.TrimSpace(*req.Timezone)
+	}
+	branchCode := branch.BranchCode
+	if req.BranchCode != nil {
+		bc := services.NormalizePlatformCode(*req.BranchCode)
+		if len(bc) < 2 {
+			respondValidationError(c, "branch code must be at least 2 characters")
+			return
+		}
+		branchCode = bc
+	}
+	orderPrefix := branch.OrderPrefix
+	if req.OrderPrefix != nil {
+		op := services.NormalizePlatformCode(*req.OrderPrefix)
+		if op == "" {
+			op = branch.OrderPrefix
+		}
+		orderPrefix = op
+	}
+
+	updated, err := h.repos.UpdatePlatformBranch(c.Request.Context(), branchID, name, timezone, branchCode, orderPrefix)
+	if err != nil {
+		if errors.Is(err, domain.ErrDuplicateBranchCode) {
+			respondError(c, http.StatusConflict, "BRANCH_CODE_EXISTS", "That branch code is already in use. Choose a different one.")
+			return
+		}
+		respondInternalError(c)
+		return
+	}
+	if req.LogoURL != nil {
+		if err := h.repos.UpdateRestaurantLogoByBranchID(c.Request.Context(), branchID, strings.TrimSpace(*req.LogoURL)); err != nil {
+			respondInternalError(c)
+			return
+		}
+	}
+
+	resp := platformBranchResponse(updated)
+	if restaurant, rerr := h.repos.GetRestaurantByBranchID(c.Request.Context(), branchID); rerr == nil {
+		resp["restaurant_name"] = restaurant.Name
+		resp["restaurant_slug"] = restaurant.Slug
+		resp["logo_url"] = textOrEmpty(restaurant.LogoUrl)
+	}
+	h.logPlatformAudit(c, session.PlatformUserID, "platform.branches.update", "branch", strconv.FormatInt(updated.ID, 10), updated.OrganizationID, updated.ID, 0, gin.H{"branch_code": branchCode})
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *PlatformHandler) SearchSupport(c *gin.Context) {
@@ -813,6 +964,14 @@ func restaurantResponse(restaurant sqlc.Restaurant) gin.H {
 	}
 }
 
+// textOrEmpty returns the string value of a nullable pgtype.Text, or "" when null.
+func textOrEmpty(t pgtype.Text) string {
+	if t.Valid {
+		return t.String
+	}
+	return ""
+}
+
 func platformBranchResponse(branch sqlc.Branch) gin.H {
 	return gin.H{
 		"id":                      branch.ID,
@@ -869,22 +1028,6 @@ func platformSupportSessionResponse(s sqlc.PlatformSupportSession) gin.H {
 		"starts_at":                    s.StartsAt,
 		"expires_at":                   s.ExpiresAt,
 		"created_at":                   s.CreatedAt,
-	}
-}
-
-func platformAuditResponse(row sqlc.PlatformAuditLog) gin.H {
-	return gin.H{
-		"id":                 row.ID,
-		"platform_user_id":   nullableInt64(row.PlatformUserID),
-		"action":             row.Action,
-		"target_type":        row.TargetType,
-		"target_id":          row.TargetID,
-		"organization_id":    nullableInt64(row.OrganizationID),
-		"branch_id":          nullableInt64(row.BranchID),
-		"support_session_id": nullableInt64(row.SupportSessionID),
-		"request_id":         row.RequestID,
-		"payload":            row.Payload,
-		"created_at":         row.CreatedAt,
 	}
 }
 
@@ -1001,6 +1144,14 @@ func auditV2PlatformFilters(c *gin.Context) (sqlc.ListAuditLogPlatformParams, bo
 		}
 		p.BranchID = pgtype.Int8{Int64: id, Valid: true}
 	}
+	if raw := strings.TrimSpace(c.Query("session_id")); raw != "" {
+		parsed, err := uuid.Parse(raw)
+		if err != nil {
+			respondValidationError(c, "invalid session_id")
+			return p, false
+		}
+		p.SessionID = pgtype.UUID{Bytes: parsed, Valid: true}
+	}
 	if actorType := strings.TrimSpace(c.Query("actor_type")); actorType != "" {
 		p.ActorType = pgtype.Text{String: actorType, Valid: true}
 	}
@@ -1039,12 +1190,4 @@ func generatedBranchCode(orgCode string) string {
 		return fmt.Sprintf("%s-BR-%d", services.NormalizePlatformCode(orgCode), time.Now().Unix()%100000)
 	}
 	return fmt.Sprintf("%s-BR-%s", services.NormalizePlatformCode(orgCode), strings.ToUpper(hex.EncodeToString(b[:])))
-}
-
-func platformError(c *gin.Context, err error) {
-	if errors.Is(err, domain.ErrUnauthorized) {
-		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "unauthorized")
-		return
-	}
-	respondInternalError(c)
 }

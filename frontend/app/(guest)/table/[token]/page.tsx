@@ -4,9 +4,14 @@ import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import { menuApi } from "@/lib/api/menu"
 import { sessionsApi } from "@/lib/api/sessions"
+import { themeApi } from "@/lib/api/theme"
+import { applyTheme } from "@/lib/theme/applyTheme"
 import { ApiError } from "@/lib/api/client"
 import { useSessionStore } from "@/store/session"
+import { persistGuestCreds } from "@/lib/guest-session"
 import { UtensilsCrossed } from "lucide-react"
+import { track } from "@/lib/product-analytics/events"
+import { registerBranchProps, registerGuestSessionProps } from "@/lib/product-analytics/identity"
 
 interface Props {
   params: Promise<{ token: string }>
@@ -34,11 +39,25 @@ export default function TableEntryPage({ params }: Props) {
     menuApi.resolveQrToken(token)
       .then(data => {
         setTableInfo(data)
+        registerBranchProps(data.branch_id)
+        track("qr_resolved", {
+          branch_id: data.branch_id,
+          table_id: data.table_id,
+          has_active_session: Boolean(data.session_id),
+        })
+        // Instant paint from the QR payload's legacy preset, then refine with the
+        // authoritative structured theme (preset + custom tokens) for the branch.
         if (data.branch_theme) {
-          document.documentElement.dataset.theme = data.branch_theme
+          applyTheme({ preset: data.branch_theme, tokens: {} })
         }
+        themeApi.resolveForBranch(data.branch_id)
+          .then(r => applyTheme(r.theme))
+          .catch(() => {})
       })
-      .catch(() => setError("This QR code is invalid or has expired."))
+      .catch((err) => {
+        track("qr_resolve_failed", { error_code: err instanceof ApiError ? err.code : "UNKNOWN" })
+        setError("This QR code is invalid or has expired.")
+      })
       .finally(() => setResolving(false))
   }, [token])
 
@@ -55,17 +74,35 @@ export default function TableEntryPage({ params }: Props) {
         // Table has an active session — join it
         const { session, participant, guest_access_token: guestToken } = await sessionsApi.join(tableInfo.session_id, name.trim(), trimmedPhone)
         useSessionStore.getState().setSession(session, participant)
-        sessionStorage.setItem("session_id", session.id)
-        sessionStorage.setItem("participant_id", String(participant.id))
-        sessionStorage.setItem("guest_access_token", guestToken)
+        persistGuestCreds(session.id, participant.id, guestToken)
+        registerGuestSessionProps({
+          sessionId: session.id,
+          participantId: participant.id,
+          isHost: participant.is_host,
+          tableId: session.table_id,
+        })
+        track("session_joined", {
+          session_id: session.id,
+          participant_id: participant.id,
+          phone_provided: Boolean(trimmedPhone),
+        })
         sessionId = session.id
       } else {
         // No active session — create one
         const { session, participant, guest_access_token: guestToken } = await sessionsApi.create(tableInfo.table_id, name.trim(), trimmedPhone)
         useSessionStore.getState().setSession(session, participant)
-        sessionStorage.setItem("session_id", session.id)
-        sessionStorage.setItem("participant_id", String(participant.id))
-        sessionStorage.setItem("guest_access_token", guestToken)
+        persistGuestCreds(session.id, participant.id, guestToken)
+        registerGuestSessionProps({
+          sessionId: session.id,
+          participantId: participant.id,
+          isHost: participant.is_host,
+          tableId: session.table_id,
+        })
+        track("session_created", {
+          session_id: session.id,
+          participant_id: participant.id,
+          phone_provided: Boolean(trimmedPhone),
+        })
         sessionId = session.id
       }
       router.push(`/session/${sessionId}`)
@@ -79,7 +116,7 @@ export default function TableEntryPage({ params }: Props) {
 
   if (resolving) {
     return (
-      <div className="atmos min-h-svh flex items-center justify-center" style={{ background: "var(--bg-base)" }}>
+      <div className="atmos min-h-svh flex items-center justify-center" style={{ background: "var(--bg-base)", fontFamily: "var(--font-body)" }}>
         <div style={{ position: "absolute", inset: 0, background: "var(--glow-warm)", pointerEvents: "none" }} />
         <div className="relative z-10 flex flex-col items-center gap-4">
           <div className="skeleton" style={{ width: 88, height: 88, borderRadius: 26 }} />
@@ -92,13 +129,13 @@ export default function TableEntryPage({ params }: Props) {
 
   if (error && !tableInfo) {
     return (
-      <div className="atmos min-h-svh flex flex-col items-center justify-center px-8 text-center gap-5" style={{ background: "var(--bg-base)" }}>
+      <div className="atmos min-h-svh flex flex-col items-center justify-center px-8 text-center gap-5" style={{ background: "var(--bg-base)", fontFamily: "var(--font-body)" }}>
         <div style={{ position: "absolute", inset: 0, background: "var(--glow-warm)", pointerEvents: "none" }} />
         <div className="relative z-10 flex flex-col items-center gap-4">
           <div style={{ width: 64, height: 64, borderRadius: "var(--rad-lg)", background: "var(--bg-elev-2)", border: "1px solid var(--line-2)", boxShadow: "var(--shadow-2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <UtensilsCrossed size={28} style={{ color: "var(--ink-3)" }} aria-hidden />
           </div>
-          <h1 className="serif" style={{ fontSize: 28, fontWeight: 500, color: "var(--ink-1)" }}>Invalid code</h1>
+          <h1 className="serif" style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--ink-1)" }}>Invalid code</h1>
           <p style={{ color: "var(--ink-2)", fontSize: 14, maxWidth: 280 }}>{error}</p>
         </div>
       </div>
@@ -106,7 +143,7 @@ export default function TableEntryPage({ params }: Props) {
   }
 
   return (
-    <div className="atmos min-h-svh flex flex-col items-center justify-center screen-enter" style={{ background: "var(--bg-base)" }}>
+    <div className="atmos min-h-svh flex flex-col items-center justify-center screen-enter" style={{ background: "var(--bg-base)", fontFamily: "var(--font-body)" }}>
       <div style={{ position: "absolute", inset: 0, background: "var(--glow-warm)", pointerEvents: "none" }} />
       <div className="relative z-10 w-full px-7" style={{ maxWidth: 420 }}>
 
@@ -115,7 +152,7 @@ export default function TableEntryPage({ params }: Props) {
           <p className="eyebrow" style={{ marginBottom: 12 }}>
             Table {tableInfo?.label ?? tableInfo?.table_id}
           </p>
-          <h1 className="serif" style={{ margin: "0 0 10px", fontSize: 40, fontWeight: 500, letterSpacing: "-0.02em", color: "var(--ink-1)", lineHeight: 1.05 }}>
+          <h1 className="serif" style={{ margin: "0 0 10px", fontSize: "clamp(32px, 10vw, 40px)", fontWeight: 600, letterSpacing: "-0.02em", color: "var(--ink-1)", lineHeight: 1.05 }}>
             {isJoining ? "Join the party." : "Welcome."}
           </h1>
           <p style={{ color: "var(--ink-2)", fontSize: 14.5, lineHeight: 1.6, maxWidth: 260, marginInline: "auto" }}>
@@ -127,8 +164,8 @@ export default function TableEntryPage({ params }: Props) {
 
         {/* Name card */}
         <div style={{
-          background: "var(--bg-elev-2)",
-          border: "1px solid var(--line-2)",
+          background: "var(--bg-elev-1)",
+          border: "1px solid var(--line-1)",
           borderRadius: "var(--rad-lg)",
           boxShadow: "var(--shadow-2)",
           padding: "20px 20px 18px",
@@ -136,6 +173,7 @@ export default function TableEntryPage({ params }: Props) {
           <label className="eyebrow" style={{ display: "block", marginBottom: 10, fontSize: 10 }}>Your name</label>
           <form onSubmit={handleSubmit}>
             <input
+              data-ph-mask
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Aanya"
@@ -144,8 +182,8 @@ export default function TableEntryPage({ params }: Props) {
               required
               style={{
                 width: "100%", border: 0, outline: 0, background: "transparent",
-                fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-                fontSize: 24, fontWeight: 500, color: "var(--ink-1)", letterSpacing: "-0.01em",
+                fontFamily: "var(--font-hanken-grotesk, 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif)",
+                fontSize: 24, fontWeight: 600, color: "var(--ink-1)", letterSpacing: "-0.01em",
               }}
             />
             <div style={{ height: 1, background: "var(--line-2)", margin: "10px 0 16px" }} />
@@ -155,6 +193,7 @@ export default function TableEntryPage({ params }: Props) {
               Phone <span style={{ color: "var(--ink-4)", textTransform: "none", letterSpacing: 0 }}>· optional</span>
             </label>
             <input
+              data-ph-mask
               type="tel"
               inputMode="tel"
               value={phone}

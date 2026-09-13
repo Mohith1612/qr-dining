@@ -145,6 +145,7 @@ SELECT
     ci.note,
     mi.name AS item_name,
     mi.price AS item_price,
+    mi.image_url,
     mi.is_available
 FROM cart_items ci
 JOIN menu_items mi ON mi.id = ci.menu_item_id
@@ -161,6 +162,7 @@ type ListCartItemsRow struct {
 	Note                  string          `json:"note"`
 	ItemName              string          `json:"item_name"`
 	ItemPrice             pgtype.Numeric  `json:"item_price"`
+	ImageUrl              pgtype.Text     `json:"image_url"`
 	IsAvailable           bool            `json:"is_available"`
 }
 
@@ -182,6 +184,7 @@ func (q *Queries) ListCartItems(ctx context.Context, cartID int64) ([]ListCartIt
 			&i.Note,
 			&i.ItemName,
 			&i.ItemPrice,
+			&i.ImageUrl,
 			&i.IsAvailable,
 		); err != nil {
 			return nil, err

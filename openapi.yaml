@@ -1,35 +1,137 @@
 openapi: "3.1.0"
 info:
   title: qr-dining API
-  version: "1.0.0"
+  version: "2.2.0"
   description: |
-    Realtime dine-in OS — session lifecycle, cart, orders, payments, assistance requests,
-    staff management, menu management, and WebSocket reconnect reconciliation.
+    Realtime, session-centric dine-in operating system plus its SaaS control plane.
+    Covers the guest dining loop (session lifecycle, shared cart, orders, payments, assistance,
+    snapshot reconnect), the staff operational surface (kitchen/waiter/admin), and the platform
+    governance layer (organizations, branches, plans, entitlements, feature flags, analytics,
+    themes, support console, billing, subscriptions, premium QR collateral).
 
-    **Auth**
-    - Guest endpoints: no auth required
-    - Staff endpoints: `Authorization: Bearer <token>` obtained from `POST /staff/auth`
-    - Participant-scoped endpoints: `X-Participant-ID: <int64>` header
+    ## Trust domains & auth
+    Every authenticated request uses `Authorization: Bearer <token>`. There are **three distinct,
+    non-interchangeable token types**, one per trust domain:
 
-    **Error Shape**
-    All non-2xx responses use the `APIError` schema: `{"code":"...", "message":"..."}`.
-    Frontend clients MUST key on `code`; `message` is human-readable and may change.
+    - **Public** — no auth (`/health`, menu read, QR resolve, tenant resolve, plans, webhooks).
+    - **Guest** (`GuestBearer`) — a stateless HMAC session token issued by `POST /sessions` /
+      `POST /sessions/{id}/join`. Enforcement is gated by the `AUTH_GUEST_CREDENTIALS_REQUIRED`
+      (R6) rollout flag; independent of that flag, a *present-but-invalid* token is always rejected
+      (401/403), never failed-open. `X-Participant-ID` is still sent on some guest mutations as a
+      **participant identifier, not a credential**.
+    - **Staff** (`StaffBearer`) — opaque token from `POST /staff/auth` (also accepted as an HttpOnly
+      cookie when `AUTH_STAFF_COOKIE_ENABLED`). Roles: `owner`, `manager`, `waiter`, `kitchen`.
+    - **Platform** (`PlatformBearer`) — a separate super-admin trust domain from `POST /platform/auth`
+      (+ `POST /platform/auth/mfa` when TOTP MFA is enrolled). **Staff/guest tokens are rejected on
+      `/platform/*`.** Platform RBAC: `super_admin` (bypass) > `support_admin` > `billing_admin` >
+      `read_only_auditor`.
+
+    ## Conventions
+    - **Error shape.** All non-2xx responses use `APIError`: `{"code":"...", "message":"..."}`.
+      Clients MUST key on the stable `code`; `message` is human-readable and may change.
+    - **Money** is serialized as a decimal **string** (e.g. `"12.50"`), never a float.
+    - **Shadow/inert surfaces.** Entitlements & feature flags are *resolve-only* (computed, not yet
+      enforced); org/branch suspend/activate flips a status column no operational path reads yet.
+      Such endpoints are annotated in their descriptions.
+    - No global `/api/v1` prefix — paths are root-relative.
 
 servers:
   - url: http://localhost:8080
     description: Local development
 
+# Public-by-default: most guest/menu/webhook/tenant endpoints require no auth. Authenticated
+# operations (guest/staff/platform) override this with their own `security` block. An empty
+# array means "no authentication required".
+security: []
+
 components:
   securitySchemes:
+    GuestBearer:
+      type: http
+      scheme: bearer
+      description: |
+        Guest session HMAC token (`guest_access_token`) returned by `POST /sessions` and
+        `POST /sessions/{id}/join`. Carries session/branch/table/participant/role + credential
+        version + expiry (default TTL 2h). Enforcement is gated by `AUTH_GUEST_CREDENTIALS_REQUIRED`
+        (R6); a present-but-invalid token is always rejected regardless of the flag.
     StaffBearer:
       type: http
       scheme: bearer
-      description: Staff token returned by POST /staff/auth
+      description: Staff token returned by `POST /staff/auth` (or HttpOnly cookie when `AUTH_STAFF_COOKIE_ENABLED`).
+    PlatformBearer:
+      type: http
+      scheme: bearer
+      description: |
+        Platform operator token returned by `POST /platform/auth` (+ `POST /platform/auth/mfa` when
+        MFA is enrolled). Separate trust domain — staff/guest tokens are rejected on `/platform/*`.
+        Per-operation RBAC roles are noted in each endpoint description.
     ParticipantID:
       type: apiKey
       in: header
       name: X-Participant-ID
-      description: Participant ID returned when joining or creating a session
+      description: |
+        Participant identifier (int64) returned when creating or joining a session. This is an
+        **identifier, not an auth credential** — the guest `Authorization: Bearer` token is the
+        credential. Sent on guest mutations to attribute the acting participant.
+
+  parameters:
+    BranchIdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Branch id
+    OrgIdPath:
+      name: org_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Organization id
+    BranchIdParam:
+      name: branch_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Branch id (platform path segment `:branch_id`)
+    IntIdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    FlagKeyPath:
+      name: key
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Feature-flag key
+    InvoiceIdPath:
+      name: invoice_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Invoice id
+    PeriodQuery:
+      name: period
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [daily, weekly, monthly]
+        default: weekly
+      description: Aggregation period
+    OrganizationIdQuery:
+      name: organization_id
+      in: query
+      required: false
+      schema:
+        type: integer
+      description: Optional org filter for cross-tenant analytics
 
   schemas:
     APIError:
@@ -47,29 +149,36 @@ components:
 
     Session:
       type: object
+      description: |
+        A table dining session. **The guest credential `session_token` is intentionally never
+        returned** — it is stripped from every guest-facing response by `guestSafeSession()`
+        (remediation F-8), independent of the R6 flag.
       properties:
         id:
           type: string
           format: uuid
+        session_number:
+          type: string
+          description: Human-readable operational reference
         branch_id:
           type: integer
         table_id:
           type: integer
         host_participant_id:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         status:
           type: string
-          enum: [active, closed, abandoned]
-        session_token:
-          type: string
+          description: 6-state lifecycle (migration 000023)
+          enum: [active, payment_pending, awaiting_reactivation, abandoned, expired, closed]
         created_at:
           type: string
           format: date-time
         closed_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
+        awaiting_reactivation_at:
+          type: [string, "null"]
+          format: date-time
 
     Participant:
       type: object
@@ -90,8 +199,7 @@ components:
           type: string
           format: date-time
         device_fingerprint:
-          type: string
-          nullable: true
+          type: [string, "null"]
 
     ModifierSnapshot:
       type: object
@@ -104,6 +212,29 @@ components:
         price_delta:
           type: number
           description: Price adjustment (positive = surcharge, negative = discount)
+
+    ItemModifier:
+      type: object
+      description: A configurable modifier attached to a menu item (menu/admin surface)
+      properties:
+        id:
+          type: integer
+        menu_item_id:
+          type: integer
+        name:
+          type: string
+        price_delta:
+          type: number
+        is_required:
+          type: boolean
+        modifier_group:
+          type: string
+          description: Modifiers sharing a group are presented together
+        single_select:
+          type: boolean
+          description: |
+            Group-wide flag — when set, the guest may pick only one option from this
+            `modifier_group` (the cart rejects more with 422 `MODIFIER_CONFLICT`).
 
     CartItem:
       type: object
@@ -268,9 +399,8 @@ components:
           type: string
           format: uuid
         order_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          nullable: true
         amount:
           type: string
         method:
@@ -283,15 +413,13 @@ components:
           type: string
           format: date-time
         bill_snapshot_id:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         branch_id:
           type: integer
         currency:
           type: string
         provider_payment_ref:
-          type: string
-          nullable: true
+          type: [string, "null"]
 
     Staff:
       type: object
@@ -320,10 +448,18 @@ components:
 
     SessionSnapshot:
       type: object
-      description: Full authoritative session state for WebSocket reconnect reconciliation
+      description: |
+        Full authoritative session state for WebSocket reconnect reconciliation. The embedded
+        `session` is guest-safe (no `session_token`, F-8). Reconcile semantics:
+        - if `snapshot_authoritative: true`, replace local state wholesale (no incremental basis,
+          or the requested gap could not be replayed contiguously);
+        - otherwise replay `missed_events` (contiguous from `last_sequence`) then reconcile.
+        The shared cart is NOT included here — refetch it via `GET /sessions/{id}/cart`.
       properties:
         session:
           $ref: "#/components/schemas/Session"
+        table_identifier:
+          type: string
         participants:
           type: array
           items:
@@ -336,6 +472,19 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssistanceRequest"
+        missed_events:
+          type: array
+          description: Contiguous events since `last_sequence`; omitted when authoritative
+          items:
+            type: object
+            additionalProperties: true
+        snapshot_authoritative:
+          type: boolean
+          description: When true, this snapshot is the whole truth — replace local state
+        session_ended:
+          type: boolean
+        close_reason:
+          type: string
         snapshot_at:
           type: string
           format: date-time
@@ -361,6 +510,242 @@ components:
         created_at:
           type: string
           format: date-time
+
+    Bill:
+      type: object
+      description: Itemized bill for a session. Money fields are numbers (₹); currency defaults to INR.
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        orders:
+          type: array
+          items:
+            type: object
+            properties:
+              order_id: { type: string, format: uuid }
+              order_number: { type: string }
+              placed_at: { type: string, format: date-time }
+              order_total: { type: number }
+              items:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name: { type: string }
+                    quantity: { type: integer }
+                    unit_price: { type: number }
+                    modifiers: { type: array, items: { type: string } }
+                    line_total: { type: number }
+        subtotal: { type: number }
+        tax_rate: { type: number }
+        tax_amount: { type: number }
+        service_charge_rate: { type: number }
+        service_charge: { type: number }
+        discount_amount: { type: number }
+        tip_amount: { type: number }
+        total: { type: number }
+        currency:
+          type: string
+          example: INR
+
+    ThemeConfig:
+      type: object
+      description: Resolved theme — a preset key plus allowlisted hex design tokens.
+      properties:
+        preset:
+          type: string
+          enum: [dark-luxury, modern-minimal, warm-cafe, vibrant]
+        tokens:
+          type: object
+          description: Map of allowlisted token key → hex colour (#RRGGBB or #RRGGBBAA)
+          additionalProperties:
+            type: string
+
+    CollateralConfig:
+      type: object
+      description: |
+        Branch-scoped premium QR print collateral config. Strictly validated — unknown JSON keys
+        are rejected (400). Consumes the theme for colour/typography; owns only the physical concern.
+      additionalProperties: false
+      properties:
+        format:
+          type: string
+          enum: [standing_card, table_tent, sticker, square_card, bulk_sheet]
+        showLogo: { type: boolean }
+        showBranch: { type: boolean }
+        showWifi: { type: boolean }
+        showFooter: { type: boolean }
+        welcomeMessage: { type: string, maxLength: 120 }
+        subtitle: { type: string, maxLength: 160 }
+        footerNote: { type: string, maxLength: 160 }
+        branchDisplay: { type: string, maxLength: 60 }
+        tagline: { type: string, maxLength: 120 }
+        wifiName: { type: string, maxLength: 64 }
+        wifiPassword: { type: string, maxLength: 64 }
+        instagram: { type: string, maxLength: 120 }
+        website: { type: string, maxLength: 200 }
+
+    FlagOverrideRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        reason:
+          type: string
+
+    FlagState:
+      type: object
+      description: Resolved feature-flag state (precedence branch > org > global > catalog default)
+      properties:
+        key:
+          type: string
+        enabled:
+          type: boolean
+        source:
+          type: string
+          enum: [branch_override, org_override, global_override, default]
+
+    WaiterPerformanceRow:
+      type: object
+      description: |
+        Per-staff front-of-house activity derived from existing operational data
+        (event_log, payments, staff_sessions). "sessions_handled" means distinct
+        sessions the staff member touched (served/settled/assisted) — there is
+        no waiter↔session assignment concept.
+      properties:
+        staff_id: { type: integer, format: int64 }
+        staff_name: { type: string }
+        staff_role: { type: string, enum: [owner, manager, waiter, kitchen] }
+        sessions_handled: { type: integer, format: int64 }
+        tables_served: { type: integer, format: int64 }
+        orders_assisted: { type: integer, format: int64 }
+        orders_served: { type: integer, format: int64 }
+        assistance_accepted: { type: integer, format: int64 }
+        assistance_resolved: { type: integer, format: int64 }
+        avg_response_seconds: { type: number, format: double }
+        payments_settled: { type: integer, format: int64 }
+        avg_settlement_seconds: { type: number, format: double }
+        login_count: { type: integer, format: int64 }
+        active_seconds: { type: number, format: double }
+
+    KitchenPerformanceRow:
+      type: object
+      description: Per-staff kitchen throughput, attributed to whoever marked the order ready (shared kitchen logins blur attribution).
+      properties:
+        staff_id: { type: integer, format: int64 }
+        staff_name: { type: string }
+        orders_completed: { type: integer, format: int64 }
+        avg_prep_seconds:
+          type: number
+          format: double
+          description: Mean preparing→ready duration; orders whose preparing event predates the window are excluded from the average.
+        peak_orders_per_hour: { type: integer, format: int64 }
+
+    StaffDailyActivityRow:
+      type: object
+      description: Manager utilization summary — one row per staff member per UTC day with activity.
+      properties:
+        staff_id: { type: integer, format: int64 }
+        staff_name: { type: string }
+        staff_role: { type: string }
+        day: { type: string, description: "YYYY-MM-DD (UTC)" }
+        event_count: { type: integer, format: int64 }
+        login_count: { type: integer, format: int64 }
+        active_seconds: { type: number, format: double }
+
+    BranchStaffPerformance:
+      type: object
+      description: Bundled staff-performance report (platform operator read).
+      properties:
+        branch_id: { type: integer, format: int64 }
+        period: { type: string }
+        waiters:
+          type: array
+          items: { $ref: "#/components/schemas/WaiterPerformanceRow" }
+        kitchen:
+          type: array
+          items: { $ref: "#/components/schemas/KitchenPerformanceRow" }
+        summary:
+          type: array
+          items: { $ref: "#/components/schemas/StaffDailyActivityRow" }
+
+    LoyaltyProgram:
+      type: object
+      description: Org-level earning rule — earn_rate_points per earn_rate_amount of spend (e.g. 1 point per ₹100).
+      properties:
+        organization_id: { type: integer, format: int64 }
+        is_active: { type: boolean }
+        earn_rate_points: { type: integer, format: int64 }
+        earn_rate_amount: { type: string, description: "Decimal string, e.g. \"100.00\"" }
+        configured:
+          type: boolean
+          description: false when no program row exists yet (defaults shown)
+
+    LoyaltyAccount:
+      type: object
+      properties:
+        account_id: { type: integer, format: int64 }
+        customer_id: { type: integer, format: int64 }
+        points_balance: { type: integer, format: int64 }
+        lifetime_points_earned: { type: integer, format: int64 }
+        lifetime_points_redeemed: { type: integer, format: int64 }
+        visit_count: { type: integer, format: int64 }
+        lifetime_spend: { type: string, description: Decimal string }
+
+    LoyaltyCustomerLookup:
+      type: object
+      properties:
+        customer_id: { type: integer, format: int64 }
+        display_name: { type: string }
+        phone_e164: { type: string }
+        account:
+          oneOf:
+            - $ref: "#/components/schemas/LoyaltyAccount"
+            - type: "null"
+          description: null when the customer has no loyalty activity yet
+
+    LoyaltyTransaction:
+      type: object
+      description: Append-only points-ledger row; points is signed (earn > 0, redeem < 0, adjustment either).
+      properties:
+        id: { type: integer, format: int64 }
+        type: { type: string, enum: [earn, redeem, adjustment] }
+        points: { type: integer, format: int64 }
+        amount: { type: string, description: "Spend that produced an earn (\"0\" otherwise)" }
+        payment_id: { type: integer, format: int64 }
+        session_id: { type: string, format: uuid }
+        performed_by_actor_type: { type: string, enum: [system, staff] }
+        performed_by_staff_id: { type: integer, format: int64 }
+        reason: { type: string }
+        created_at: { type: string, format: date-time }
+
+    LoyaltyAnalytics:
+      type: object
+      properties:
+        period: { type: string }
+        points_issued: { type: integer, format: int64 }
+        points_redeemed: { type: integer, format: int64 }
+        earn_count: { type: integer, format: int64 }
+        redeem_count: { type: integer, format: int64 }
+        active_customers: { type: integer, format: int64 }
+        total_accounts: { type: integer, format: int64 }
+        total_sessions: { type: integer, format: int64 }
+        loyalty_sessions: { type: integer, format: int64 }
+        top_customers:
+          type: array
+          items:
+            type: object
+            properties:
+              account_id: { type: integer, format: int64 }
+              customer_id: { type: integer, format: int64 }
+              display_name: { type: string }
+              phone_e164: { type: string }
+              points_balance: { type: integer, format: int64 }
+              lifetime_points_earned: { type: integer, format: int64 }
+              visit_count: { type: integer, format: int64 }
+              lifetime_spend: { type: string }
 
   responses:
     NotFound:
@@ -422,6 +807,80 @@ components:
           example:
             code: RATE_LIMITED
             message: rate limit exceeded
+    Conflict:
+      description: State conflict (e.g. invalid lifecycle transition, duplicate key)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: INVALID_TRANSITION
+            message: invalid state transition
+    ServiceUnavailable:
+      description: A required dependency is unconfigured or unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: MFA_NOT_CONFIGURED
+            message: MFA is not configured on this server
+    AnalyticsResult:
+      description: Analytics result (shape varies by endpoint; includes the requested period)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              period:
+                type: string
+                enum: [daily, weekly, monthly]
+            additionalProperties: true
+    AnalyticsForbidden:
+      description: Access denied, or analytics not available on the current plan
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: ANALYTICS_GATED
+            message: analytics is not available on your current plan
+    StaffAnalyticsForbidden:
+      description: Access denied (role), or the staff-performance gate (analytics.staff_performance entitlement + staff_performance_analytics flag) is off
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: STAFF_ANALYTICS_DISABLED
+            message: staff performance analytics is not enabled for this organization
+    LoyaltyForbidden:
+      description: Access denied (role), or the loyalty gate (loyalty.* entitlement + loyalty flag) is off
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/APIError"
+          example:
+            code: LOYALTY_DISABLED
+            message: loyalty is not enabled for this organization
+    SubscriptionResult:
+      description: The organization subscription after the operation
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              subscription:
+                type: object
+    InvoiceResult:
+      description: The invoice after the lifecycle transition
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              invoice:
+                type: object
 
 paths:
   # ── Infrastructure ────────────────────────────────────────────────────────
@@ -471,6 +930,10 @@ paths:
   /sessions:
     post:
       summary: Create a new dining session
+      description: |
+        Creates a session for a table and inserts the caller as the **host** participant.
+        Returns the guest credential (`guest_access_token`) used as the `GuestBearer` token on all
+        subsequent session calls. No auth required to call this endpoint.
       tags: [Sessions]
       requestBody:
         required: true
@@ -490,12 +953,15 @@ paths:
                   example: Alice
                 device_fingerprint:
                   type: string
+                phone_e164:
+                  type: string
+                  description: Optional E.164 phone; invalid values → 400 INVALID_PHONE
             example:
               table_id: 1
               display_name: Alice
       responses:
         "201":
-          description: Session created
+          description: Session created (caller is host)
           content:
             application/json:
               schema:
@@ -505,8 +971,17 @@ paths:
                     $ref: "#/components/schemas/Session"
                   participant:
                     $ref: "#/components/schemas/Participant"
+                  guest_access_token:
+                    type: string
+                    description: "Guest credential — use as the Authorization Bearer token on session calls"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "404":
+          description: Table not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
         "409":
           description: Table already has an active session
           content:
@@ -524,7 +999,10 @@ paths:
   /sessions/{id}:
     get:
       summary: Get session by ID
+      description: Guest-safe — the `session_token` credential is never returned (F-8).
       tags: [Sessions]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -541,15 +1019,23 @@ paths:
                 $ref: "#/components/schemas/Session"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
     delete:
       summary: Close a session (host only)
+      description: |
+        Closes the session; host only. The acting participant is identified by the
+        `X-Participant-ID` header (legacy) or the `GuestBearer` token. Frees the table and
+        revokes guest credentials.
       tags: [Sessions]
       security:
-        - ParticipantID: []
+        - GuestBearer: []
+          ParticipantID: []
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -562,6 +1048,12 @@ paths:
           description: Session closed
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          description: Missing, invalid, stale, or revoked guest credential
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
         "403":
           description: Requester is not the session host
           content:
@@ -573,15 +1065,6 @@ paths:
                 message: only the session host can close the session
         "404":
           $ref: "#/components/responses/NotFound"
-        "409":
-          description: Session already closed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/APIError"
-              example:
-                code: SESSION_CLOSED
-                message: session is already closed
 
   /sessions/{id}/join:
     post:
@@ -608,15 +1091,26 @@ paths:
                   maxLength: 50
                 device_fingerprint:
                   type: string
+                phone_e164:
+                  type: string
+                  description: Optional E.164 phone; invalid values → 400 INVALID_PHONE
             example:
               display_name: Bob
       responses:
         "201":
-          description: Joined session
+          description: Joined session — returns the new participant's guest credential
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Participant"
+                type: object
+                properties:
+                  session:
+                    $ref: "#/components/schemas/Session"
+                  participant:
+                    $ref: "#/components/schemas/Participant"
+                  guest_access_token:
+                    type: string
+                    description: Guest credential for this participant
         "400":
           $ref: "#/components/responses/ValidationError"
         "404":
@@ -631,14 +1125,15 @@ paths:
                 code: SESSION_CLOSED
                 message: session is already closed
 
-  /sessions/{id}/snapshot:
-    get:
-      summary: Full session state snapshot for WebSocket reconnect reconciliation
+  /sessions/{id}/reactivate:
+    post:
+      summary: Reactivate an awaiting_reactivation session
       description: |
-        Returns the full authoritative current state of the session.
-        Call this endpoint on WebSocket reconnect, diff local state against the snapshot,
-        then re-establish the WebSocket connection.
-      tags: [Sessions, WebSocket]
+        Transitions a session in `awaiting_reactivation` back to `active` so a returning guest can
+        resume ordering without a full refresh. Requires a credentialed member of the session.
+      tags: [Sessions]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -648,6 +1143,169 @@ paths:
             format: uuid
       responses:
         "200":
+          description: Session reactivated (guest-safe)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /sessions/{id}/force-close:
+    post:
+      summary: Staff force-close a session
+      description: |
+        Ends any session on the staff member's own branch — for a table that left
+        without paying, or where something happened the app never recorded.
+        Sessions otherwise end only by host action or the age-based stale cleaner.
+
+        Does everything the host close does (close, release the table, revoke every
+        participant and rotate their credential versions, clear presence, publish
+        `SESSION_CLOSED`) and additionally cancels any payment still in flight, so
+        nothing is stranded on a terminal session. Roles: manager, owner.
+        Branch-scoped off the session.
+      tags: [Sessions]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                  description: Why the session is being ended. Recorded in the audit log.
+      responses:
+        "200":
+          description: Session closed and the table released
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session:
+                    $ref: "#/components/schemas/Session"
+                  cancelled_payment_ids:
+                    type: array
+                    items:
+                      type: integer
+                      format: int64
+                    description: Non-terminal payments cancelled alongside the session.
+                  stranded_payment_ids:
+                    type: array
+                    items:
+                      type: integer
+                      format: int64
+                    description: >-
+                      Non-terminal payments the domain transition table refuses to move to
+                      `cancelled`. Reported, never force-written.
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Session is already terminal
+
+  /sessions/{id}/ws-ticket:
+    post:
+      summary: Issue an ephemeral WebSocket ticket
+      description: |
+        Exchanges the guest credential for a short-lived (~30s) single-use ticket consumed by
+        `GET /ws?ticket=…`. Requires a valid `GuestBearer` token belonging to this **active**
+        session. Rate limited: sensitive 60/min per IP + 12/min per session.
+      tags: [Sessions, WebSocket]
+      security:
+        - GuestBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Ticket issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket:
+                    type: string
+                  expires_in:
+                    type: integer
+                    example: 30
+        "401":
+          description: Missing/invalid/revoked guest credential
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "403":
+          description: Credential does not belong to this session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "409":
+          description: Session is not active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /sessions/{id}/snapshot:
+    get:
+      summary: Full session state snapshot for WebSocket reconnect reconciliation
+      description: |
+        Returns the full authoritative current state of the session. Call this on WebSocket
+        reconnect and either replay `missed_events` or replace local state when
+        `snapshot_authoritative` is true. The shared cart is fetched separately. Terminal sessions
+        remain readable for 60 minutes after close; afterward this returns 410.
+      tags: [Sessions, WebSocket]
+      security:
+        - GuestBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: last_sequence
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+          description: Highest event sequence the client already has; drives missed-event replay
+      responses:
+        "200":
           description: Full session snapshot
           content:
             application/json:
@@ -655,18 +1313,32 @@ paths:
                 $ref: "#/components/schemas/SessionSnapshot"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "410":
+          description: Terminal-session read window (60 min) has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: SESSION_ENDED
+                message: session read window expired
         "429":
           $ref: "#/components/responses/RateLimited"
 
   # ── Cart ──────────────────────────────────────────────────────────────────
   /sessions/{id}/cart:
     get:
-      summary: Get participant cart
+      summary: Get the shared session cart
+      description: One shared cart per session — all participants see the same items (`participant_id` is null on shared-cart rows).
       tags: [Cart]
       security:
-        - ParticipantID: []
+        - GuestBearer: []
+          ParticipantID: []
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -693,7 +1365,9 @@ paths:
       summary: Add item to cart
       tags: [Cart]
       security:
-        - ParticipantID: []
+        - GuestBearer: []
+          ParticipantID: []
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -740,21 +1414,25 @@ paths:
                 code: MENU_ITEM_NOT_FOUND
                 message: menu item not found
         "422":
-          description: Menu item unavailable
+          description: |
+            Menu item unavailable (`MENU_ITEM_UNAVAILABLE`), or more than one option was
+            selected from a single-select modifier group (`MODIFIER_CONFLICT`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIError"
               example:
-                code: MENU_ITEM_UNAVAILABLE
-                message: menu item is not available
+                code: MODIFIER_CONFLICT
+                message: Only one option may be chosen from this group.
 
   /sessions/{id}/cart/items/{item_id}:
     delete:
       summary: Remove item from cart
       tags: [Cart]
       security:
-        - ParticipantID: []
+        - GuestBearer: []
+          ParticipantID: []
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -787,9 +1465,12 @@ paths:
     post:
       summary: Place an order (idempotent)
       description: |
-        Places a new order for the session. If `idempotency_key` was already used,
-        returns the existing order with HTTP 201 (no error) — idempotent replay.
+        Places a new order for the session. **Host-gated** server-side — only the session host may
+        submit (an absent host is reassigned on-demand). Idempotent: a repeated `idempotency_key`
+        returns the original order with HTTP 201. Rate limited to 12/min per session.
       tags: [Orders]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -845,6 +1526,17 @@ paths:
                       $ref: "#/components/schemas/OrderItem"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller is not the session host
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: NOT_SESSION_HOST
+                message: only the session host can place orders
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -854,7 +1546,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/APIError"
         "422":
-          description: Menu item unavailable
+          description: Menu item unavailable or zero-quantity item
           content:
             application/json:
               schema:
@@ -862,6 +1554,8 @@ paths:
     get:
       summary: List all orders for a session
       tags: [Orders]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -928,7 +1622,10 @@ paths:
   /sessions/{id}/assist:
     post:
       summary: Request waiter assistance
+      description: Rate limited to 6/min per session.
       tags: [Assistance]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -1038,7 +1735,22 @@ paths:
   /sessions/{id}/payments:
     post:
       summary: Initiate a payment
+      description: |
+        **Host-gated** — only the session host may initiate. Freezes the cart (`payment_pending`)
+        and captures an immutable bill snapshot. Every accepted method — `cash`, `card`,
+        `card_manual`, `digital`, `upi` — is created `requires_staff_confirmation` and resolved by a
+        staff settle. `provider_pending` is NOT reachable from this endpoint; it remains a valid
+        payment status for provider-created payments resolved by webhook. No fake success — the
+        guest waits for a real `PAYMENT_COMPLETED`. Rate limited: sensitive 30/min per IP + 6/min
+        per session.
+
+        Initiation is idempotent at two levels, and both answer **200** rather than 201: replaying
+        the same `idempotency_key`, and initiating while the session already holds a non-terminal
+        payment (that payment is returned as-is). Clients must treat 200 and 201 alike and read the
+        payment from the body — only 201 means a new payment row was created.
       tags: [Payments]
+      security:
+        - GuestBearer: []
       parameters:
         - name: id
           in: path
@@ -1055,9 +1767,8 @@ paths:
               required: [amount, method, idempotency_key]
               properties:
                 order_id:
-                  type: string
+                  type: [string, "null"]
                   format: uuid
-                  nullable: true
                   description: Omit for session-level payments
                 amount:
                   type: number
@@ -1071,17 +1782,49 @@ paths:
                 provider_payment_ref:
                   type: string
                   description: Provider payment reference for externally created provider payments
+                promo_code:
+                  type: [string, "null"]
+                  description: |
+                    Optional promo code applied at the bill. Validated BEFORE any state mutation;
+                    an invalid code is rejected without freezing the cart or burning the idempotency
+                    key. The discount is folded into the immutable bill snapshot and the redemption is
+                    recorded against the payment. The idempotency hash includes the promo code, so
+                    changing the code on retry produces a fresh payment (regenerate the client key too).
+                phone_e164:
+                  type: [string, "null"]
+                  description: Guest phone in E.164 form. Required only when the promo enforces a per-guest limit (else `PROMO_PHONE_REQUIRED`).
       responses:
+        "200":
+          description: |
+            Existing payment returned, nothing created. Either the `idempotency_key` was already
+            used for this session and actor (the original payment is replayed), or the session
+            already had a non-terminal payment, which is returned instead of opening a second one.
+            The body is the same `Payment` schema as 201.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
         "201":
-          description: Payment initiated
+          description: Payment initiated (a new payment was created)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Payment"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller is not the session host
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: NOT_SESSION_HOST
+                message: only the session host can initiate payment
         "404":
-          description: Session not found
+          description: Session not found, or promo code not valid/active (`PROMO_NOT_FOUND`)
           content:
             application/json:
               schema:
@@ -1089,6 +1832,33 @@ paths:
               example:
                 code: SESSION_NOT_FOUND
                 message: session not found
+        "409":
+          description: |
+            An already-frozen cart / payment in progress no longer produces 409 — that case now
+            returns 200 with the existing payment. The remaining 409 paths are:
+            `IDEMPOTENCY_CONFLICT` (key reused with a different request body — note the hash
+            covers the promo code, so changing the code on retry must use a fresh key),
+            `IDEMPOTENCY_IN_PROGRESS` (a concurrent request holds the key),
+            `SESSION_CLOSED` (the session is in a state that can no longer take a payment), and
+            promo conflicts (`PROMO_EXHAUSTED`, `PROMO_ALREADY_USED`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "422":
+          description: |
+            `PAYMENT_AMOUNT_INVALID` — `amount` does not equal the authoritative bill total
+            (partial payment is not supported; the tolerance absorbs only sub-half-cent JSON
+            float representation). Or a promo present but not applicable:
+            `PROMO_PHONE_REQUIRED` (phone needed for a per-guest-limited promo) or
+            `MIN_ORDER_NOT_MET` (bill below the promo minimum).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: PAYMENT_AMOUNT_INVALID
+                message: payment amount must equal the full bill total
 
   /webhooks/payments/{provider}:
     post:
@@ -1144,7 +1914,7 @@ paths:
       summary: Staff-settle a manual payment
       tags: [Payments]
       security:
-        - StaffAuth: []
+        - StaffBearer: []
       parameters:
         - name: id
           in: path
@@ -1164,6 +1934,203 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "409":
           description: Payment is not awaiting staff confirmation or the bill snapshot is stale
+
+  /payments/{id}/cancel:
+    patch:
+      summary: Staff-cancel a payment request
+      description: |
+        Withdraws a payment request that never reached a terminal status, releasing
+        the session's `payment_pending` freeze so the table can order again. Valid
+        from `requested`, `provider_pending` and `requires_staff_confirmation` — the
+        statuses the domain transition table permits moving to `cancelled`.
+        Roles: waiter, manager, owner. Branch-scoped off the payment.
+        Publishes `PAYMENT_CANCELLED` to the session.
+      tags: [Payments]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                  description: Why the request is being withdrawn. Recorded in the audit log.
+      responses:
+        "200":
+          description: Payment cancelled; the session is released when no other payment is outstanding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Payment is in a status the transition table does not allow cancelling (already terminal)
+
+  /sessions/{id}/bill:
+    get:
+      summary: Get the itemized bill for a session
+      tags: [Payments]
+      security:
+        - GuestBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Itemized bill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bill"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /sessions/{id}/customer:
+    post:
+      summary: Link a customer (guest opt-in)
+      description: Optional post-payment opt-in linking a phone to the session for loyalty/CRM. Returns 404 FEATURE_DISABLED if the feature is off for the tenant.
+      tags: [Customers]
+      security:
+        - GuestBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  description: E.164 phone number
+                display_name:
+                  type: string
+      responses:
+        "200":
+          description: Customer linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: Invalid phone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: INVALID_PHONE
+                message: invalid phone number
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Session not found or customer opt-in feature disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /sessions/{id}/promos/validate:
+    post:
+      summary: Validate a promo code (preview)
+      description: Previews whether a promo code is currently valid for the session's branch, including the discount it would produce for the supplied order total. Promos with a per-phone usage cap require phone_e164.
+      tags: [Promos]
+      security:
+        - GuestBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                order_total:
+                  type: number
+                  description: Current bill total the discount is previewed against
+                phone_e164:
+                  type: string
+                  description: Guest phone in E.164; required when the promo tracks uses per phone
+      responses:
+        "200":
+          description: Promo is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  promo_id: { type: integer }
+                  discount_amount: { type: number }
+                  description: { type: string }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Promo or session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: PROMO_NOT_FOUND
+                message: This promo code isn't valid right now.
+        "409":
+          description: Promo exhausted or already used by this guest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "422":
+          description: Minimum order amount not met (MIN_ORDER_NOT_MET) or phone number required for this offer (PROMO_PHONE_REQUIRED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
 
   # ── Menu ──────────────────────────────────────────────────────────────────
   /branches/{id}/menu:
@@ -1188,6 +2155,62 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /branches/{id}/feature-flags:
+    get:
+      summary: Resolve product feature flags for a branch (public, cached)
+      description: |
+        Returns the resolved boolean state of product feature flags for the branch
+        (precedence branch > org > global > catalog default). Redis-cached. Separate from the
+        nine env strict-rollout flags. Tenant-guarded when `TENANCY_ORGANIZATIONS_ENABLED`.
+      tags: [Feature Flags]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: "Resolved flags as a map of key to enabled boolean"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  feature_flags:
+                    type: object
+                    additionalProperties:
+                      type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /branches/{id}/theme:
+    get:
+      summary: Resolve the theme for a branch (public)
+      description: |
+        Returns the structured theme (preset + tokens) used to brand the guest UI. Falls back
+        through structured `tenant_themes` → legacy `settings.theme` → `dark-luxury`.
+        Tenant-guarded when `TENANCY_ORGANIZATIONS_ENABLED`.
+      tags: [Themes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Resolved theme
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  theme:
+                    $ref: "#/components/schemas/ThemeConfig"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /tables/by-qr/{token}:
     get:
       summary: Resolve a QR code token to table metadata
@@ -1210,6 +2233,61 @@ paths:
               example:
                 code: SESSION_NOT_FOUND
                 message: table not found
+
+  # ── Tenancy & Plans (public) ──────────────────────────────────────────────
+  /tenants/by-slug/{slug}:
+    get:
+      summary: Resolve a restaurant by URL slug (bootstraps frontend tenant context)
+      tags: [Tenancy]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tenant context (includes additive structured theme)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  organization_id: { type: integer }
+                  name: { type: string }
+                  slug: { type: string }
+                  settings:
+                    type: object
+                    description: Legacy settings_json (unchanged, back-compat)
+                  theme:
+                    $ref: "#/components/schemas/ThemeConfig"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: TENANT_NOT_FOUND
+                message: restaurant not found
+
+  /plans:
+    get:
+      summary: List subscription plans (public)
+      tags: [Subscriptions]
+      responses:
+        "200":
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      type: object
 
   # ── Menu Management (staff) ───────────────────────────────────────────────
   /branches/{id}/menu/categories:
@@ -1288,6 +2366,20 @@ paths:
                   default: true
                 position:
                   type: integer
+                dietary_flags:
+                  type: array
+                  items:
+                    type: string
+                    enum: [vegetarian, vegan, jain, egg, non-veg]
+                item_badges:
+                  type: array
+                  items:
+                    type: string
+                    enum: [chef-special, bestseller, seasonal, new]
+                spice_level:
+                  type: integer
+                  minimum: 0
+                  maximum: 3
       responses:
         "201":
           description: Item created
@@ -1324,14 +2416,37 @@ paths:
               properties:
                 name:
                   type: string
+                  minLength: 1
+                  maxLength: 100
                 description:
                   type: string
                 price:
                   type: number
+                  minimum: 0
                 position:
                   type: integer
                 branch_id:
                   type: integer
+                dietary_flags:
+                  type: array
+                  items:
+                    type: string
+                    enum: [vegetarian, vegan, jain, egg, non-veg]
+                item_badges:
+                  type: array
+                  items:
+                    type: string
+                    enum: [chef-special, bestseller, seasonal, new]
+                spice_level:
+                  type: integer
+                  minimum: 0
+                  maximum: 3
+                category_id:
+                  type: [integer, "null"]
+                  description: Optional — move item to a different category
+                image_url:
+                  type: [string, "null"]
+                  description: Optional — set/update item image
       responses:
         "200":
           description: Item updated
@@ -1341,6 +2456,22 @@ paths:
                 $ref: "#/components/schemas/MenuItem"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Delete a menu item (owner/manager)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "204":
+          description: Item deleted
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1385,7 +2516,11 @@ paths:
   # ── Staff Auth ────────────────────────────────────────────────────────────
   /staff/auth:
     post:
-      summary: Authenticate staff with branch ID and PIN (10 RPM limit)
+      summary: Authenticate staff (10 RPM limit, fail-closed)
+      description: |
+        Authenticate with PIN plus either a numeric `branch_id` or a `branch_code`+`staff_code`.
+        When `AUTH_STAFF_CODE_REQUIRED` (R4) is on, `branch_code`+`staff_code` are required.
+        Repeated failures trigger a lockout (423).
       tags: [Staff]
       requestBody:
         required: true
@@ -1393,14 +2528,23 @@ paths:
           application/json:
             schema:
               type: object
-              required: [branch_id, pin]
+              required: [pin]
               properties:
                 branch_id:
                   type: integer
+                  description: Numeric branch id (legacy identifier path)
+                branch_code:
+                  type: string
+                  description: Branch code (required with staff_code under R4)
+                staff_code:
+                  type: string
+                  description: Per-staff code (required under R4)
                 pin:
                   type: string
                   minLength: 4
-                  maxLength: 6
+                  maxLength: 8
+                device_name:
+                  type: string
             example:
               branch_id: 1
               pin: "1234"
@@ -1422,11 +2566,58 @@ paths:
               example:
                 code: UNAUTHORIZED
                 message: invalid credentials
+        "423":
+          description: Locked out after too many failed attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: AUTH_LOCKED_OUT
+                message: too many failed attempts; try again later
         "429":
           $ref: "#/components/responses/RateLimited"
 
   # ── Staff Management ──────────────────────────────────────────────────────
   /branches/{id}/staff:
+    get:
+      summary: List the active staff roster (owner/manager)
+      description: Returns active staff for the branch **without PIN hashes**. Used by the admin Staff tab.
+      tags: [Staff]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Active staff roster
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  staff:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        branch_id: { type: integer }
+                        name: { type: string }
+                        role:
+                          type: string
+                          enum: [owner, manager, kitchen, waiter]
+                        staff_code: { type: string }
+                        is_active: { type: boolean }
+                        created_at: { type: string, format: date-time }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
       summary: Create a new staff member (owner only)
       tags: [Staff]
@@ -1453,6 +2644,9 @@ paths:
                 role:
                   type: string
                   enum: [owner, manager, kitchen, waiter]
+                staff_code:
+                  type: string
+                  description: Per-staff login code (used under R4 AUTH_STAFF_CODE_REQUIRED)
                 pin:
                   type: string
                   minLength: 4
@@ -1515,6 +2709,58 @@ paths:
                 message: current PIN is incorrect
         "403":
           $ref: "#/components/responses/Forbidden"
+
+  /staff/{id}/pin/reset:
+    post:
+      summary: Reset a staff member's PIN (manager/owner; forgotten-PIN path)
+      description: |
+        Manager/owner reset — **no `current_pin` required**. Rules: you cannot reset your own PIN
+        here (use `PATCH /staff/{id}/pin`); a manager may reset only waiter/kitchen; an owner may
+        reset anyone in the branch. The target's existing tokens are invalidated.
+      tags: [Staff]
+      security:
+        - StaffBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_pin]
+              properties:
+                new_pin:
+                  type: string
+                  minLength: 4
+                  maxLength: 8
+      responses:
+        "204":
+          description: PIN reset
+        "400":
+          description: Invalid request, or attempting to reset your own PIN via this path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller may not reset this target (e.g. a manager resetting an owner/manager)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "404":
+          description: Staff not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
 
   /staff/{id}/deactivate:
     patch:
@@ -1663,44 +2909,3298 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  # ── Staff: session / operational ──────────────────────────────────────────
+  /staff/logout:
+    post:
+      summary: Invalidate the current staff token
+      tags: [Staff]
+      security:
+        - StaffBearer: []
+      responses:
+        "204":
+          description: Logged out
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /branches/{id}/payments:
+    get:
+      summary: List pending payments for a branch (waiter settlement queue)
+      tags: [Staff Dashboard]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Pending payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Payment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/menu/full:
+    get:
+      summary: Full admin menu (includes unavailable items)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Admin menu
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuCategory"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/tables:
+    get:
+      summary: List tables for a branch
+      tags: [Tables]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Tables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      summary: Create a table
+      tags: [Tables]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier]
+              properties:
+                identifier:
+                  type: string
+                capacity:
+                  type: integer
+      responses:
+        "201":
+          description: Table created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Duplicate table identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /branches/{id}/collateral:
+    get:
+      summary: Get the branch's QR collateral config (staff)
+      description: Owner/manager. Reads the single shared `branch_collateral` row (same row the platform studio writes).
+      tags: [Collateral]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Collateral config + available formats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collateral:
+                    $ref: "#/components/schemas/CollateralConfig"
+                  formats:
+                    type: array
+                    items:
+                      type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      summary: Update the branch's QR collateral config (staff)
+      description: Owner/manager only. Strict validation — unknown keys / bad format / oversized text → 400.
+      tags: [Collateral]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollateralConfig"
+      responses:
+        "200":
+          description: Updated config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collateral:
+                    $ref: "#/components/schemas/CollateralConfig"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}:
+    get:
+      summary: Get branch detail (staff)
+      description: Includes `logo_url` and `restaurant_name` for collateral/branding, plus `restaurant_id` (for plan/subscription lookups without a tenant subdomain) and `customer_memory_enabled`.
+      tags: [Branches]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Branch detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  name: { type: string }
+                  organization_id: { type: integer }
+                  restaurant_id: { type: integer }
+                  branch_code: { type: string }
+                  status: { type: string }
+                  support_metadata: { type: object, additionalProperties: true }
+                  session_timeout_minutes: { type: integer }
+                  order_prefix: { type: string }
+                  theme: { type: string }
+                  tax_rate: { type: number }
+                  service_charge_rate: { type: number }
+                  include_tax_in_price: { type: boolean }
+                  customer_memory_enabled: { type: boolean }
+                  restaurant_name: { type: string }
+                  logo_url: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    patch:
+      summary: Update branch settings (owner/manager)
+      tags: [Branches]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_timeout_minutes: { type: integer }
+                logo_url: { type: string }
+                order_prefix: { type: string }
+                theme:
+                  type: string
+                  enum: [dark-luxury, modern-minimal]
+                  description: Legacy settings_json.theme write path (read path is theme-bridged)
+                tax_rate: { type: number }
+                service_charge_rate: { type: number }
+                include_tax_in_price: { type: boolean }
+                customer_memory_enabled:
+                  type: boolean
+                  description: Toggles the guest customer-memory (saved preferences) opt-in for this branch.
+      responses:
+        "200":
+          description: Updated branch
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/customers:
+    get:
+      summary: Search customers by phone prefix (staff)
+      tags: [Customers]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Partial phone prefix
+      responses:
+        "200":
+          description: Matching customers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customers:
+                    type: array
+                    items:
+                      type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/audit:
+    get:
+      summary: Branch-scoped audit log (staff)
+      tags: [Event Log]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Audit rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  audit_log:
+                    type: array
+                    items:
+                      type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /branches/{id}/analytics/top-items:
+    get:
+      summary: Top-selling items (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  /branches/{id}/analytics/busy-hours:
+    get:
+      summary: Busy-hours distribution (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  /branches/{id}/analytics/order-volume:
+    get:
+      summary: Order volume per day (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  # ── Staff: staff performance analytics (owner/manager; entitlement+flag gated) ──
+  /branches/{id}/analytics/staff/waiters:
+    get:
+      summary: Per-staff front-of-house performance (owner/manager)
+      description: |
+        Derived from existing operational data (event_log order/assistance events,
+        payment settlements, staff logins) — no new event capture. Gated by the
+        analytics.staff_performance entitlement AND the staff_performance_analytics
+        platform flag (both default off → 403 STAFF_ANALYTICS_DISABLED).
+      tags: [Staff Performance]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Per-staff rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  period: { type: string }
+                  waiters:
+                    type: array
+                    items: { $ref: "#/components/schemas/WaiterPerformanceRow" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/StaffAnalyticsForbidden" }
+
+  /branches/{id}/analytics/staff/kitchen:
+    get:
+      summary: Per-staff kitchen performance (owner/manager)
+      tags: [Staff Performance]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Per-staff kitchen rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  period: { type: string }
+                  kitchen:
+                    type: array
+                    items: { $ref: "#/components/schemas/KitchenPerformanceRow" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/StaffAnalyticsForbidden" }
+
+  /branches/{id}/analytics/staff/summary:
+    get:
+      summary: Per-staff daily activity summary (owner/manager)
+      tags: [Staff Performance]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Daily activity rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  period: { type: string }
+                  summary:
+                    type: array
+                    items: { $ref: "#/components/schemas/StaffDailyActivityRow" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/StaffAnalyticsForbidden" }
+
+  # ── Staff: customer loyalty (branch-scoped; entitlement+flag gated; ledger-only redemption) ──
+  /branches/{id}/analytics/loyalty:
+    get:
+      summary: Loyalty participation and points analytics (owner/manager)
+      description: Org-level loyalty analytics accessed via the branch scope. Gated by loyalty.enabled + the loyalty flag (403 LOYALTY_DISABLED when off).
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Loyalty analytics
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyAnalytics" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+
+  /branches/{id}/loyalty/program:
+    get:
+      summary: Get the org loyalty earning rule (owner/manager)
+      description: Returns defaults with configured=false when no program row exists yet.
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Loyalty program
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyProgram" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+    put:
+      summary: Upsert the org loyalty earning rule (owner/manager)
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [earn_rate_points, earn_rate_amount]
+              properties:
+                is_active: { type: boolean }
+                earn_rate_points: { type: integer, format: int64, minimum: 1 }
+                earn_rate_amount: { type: string, description: "Positive decimal string, e.g. \"100.00\"" }
+      responses:
+        "200":
+          description: Saved program
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyProgram" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+
+  /branches/{id}/loyalty/customers:
+    get:
+      summary: Look up a loyalty member by phone (staff; kitchen excluded)
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: phone
+          in: query
+          required: true
+          schema: { type: string }
+          description: Customer phone (E.164 or 10-digit Indian mobile)
+      responses:
+        "200":
+          description: Customer with optional loyalty account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyCustomerLookup" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /branches/{id}/loyalty/accounts/{account_id}/transactions:
+    get:
+      summary: Loyalty points ledger for an account (staff; kitchen excluded)
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: account_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: Ledger rows, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items: { $ref: "#/components/schemas/LoyaltyTransaction" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /branches/{id}/loyalty/accounts/{account_id}/redeem:
+    post:
+      summary: Record a points redemption (owner/manager/waiter)
+      description: |
+        LEDGER-ONLY — records a staff-witnessed points deduction; any discount is
+        applied off-system. Never touches bill/payment math. Additionally gated by
+        the loyalty.redeem entitlement. Concurrent redemptions are serialized; an
+        over-redemption returns 409 LOYALTY_INSUFFICIENT_POINTS.
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: account_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [points]
+              properties:
+                points: { type: integer, format: int64, minimum: 1 }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Updated account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyAccount" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Insufficient points
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: LOYALTY_INSUFFICIENT_POINTS
+                message: insufficient loyalty points
+
+  /branches/{id}/loyalty/accounts/{account_id}/adjust:
+    post:
+      summary: Record a manual points adjustment (owner/manager)
+      description: Signed correction gated by loyalty.manual_adjustment; reason required; balance floors at zero (409 when it would go negative).
+      tags: [Loyalty]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: account_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [points_delta, reason]
+              properties:
+                points_delta: { type: integer, format: int64, description: "Signed, non-zero" }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Updated account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyAccount" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/LoyaltyForbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Adjustment would take the balance below zero
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+              example:
+                code: LOYALTY_INSUFFICIENT_POINTS
+                message: insufficient loyalty points
+
+  # ── Staff: organization governance (staff-auth, feature-flagged) ────────────
+  /orgs/{org_id}:
+    get:
+      summary: Get organization (staff)
+      description: Requires org tenancy; org-owner scoped. Returns 404 FEATURE_DISABLED when TENANCY_ORGANIZATIONS_ENABLED is off.
+      tags: [Organizations]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Organization
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Update organization (staff, org owner)
+      tags: [Organizations]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Updated organization
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{org_id}/branches:
+    get:
+      summary: List branches in the organization (staff)
+      tags: [Organizations]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Branches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branches:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{org_id}/analytics/top-items:
+    get:
+      summary: Org-aggregated top items (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  /orgs/{org_id}/analytics/busy-hours:
+    get:
+      summary: Org-aggregated busy hours (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  /orgs/{org_id}/analytics/order-volume:
+    get:
+      summary: Org-aggregated order volume (staff, plan-gated)
+      tags: [Analytics]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200": { $ref: "#/components/responses/AnalyticsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/AnalyticsForbidden" }
+
+  /orgs/{org_id}/audit:
+    get:
+      summary: Org-scoped audit log (staff)
+      tags: [Event Log]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Audit rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  audit_log:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ── Staff: promos ───────────────────────────────────────────────────────────
+  /branches/{id}/promos:
+    get:
+      summary: List promos for a branch (staff)
+      tags: [Promos]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      responses:
+        "200":
+          description: Promos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    code: { type: string }
+                    type:
+                      type: string
+                      enum: [flat_amount, percentage]
+                    value: { type: number }
+                    min_order_amount: { type: number }
+                    max_uses: { type: [integer, "null"] }
+                    uses_per_phone: { type: integer }
+                    valid_from: { type: string, format: date-time }
+                    valid_until: { type: string, format: date-time }
+                    time_window_start:
+                      type: [string, "null"]
+                      description: 'Local start time as "HH:MM" (null when no daily window)'
+                    time_window_end:
+                      type: [string, "null"]
+                      description: 'Local end time as "HH:MM" (null when no daily window)'
+                    is_active: { type: boolean }
+                    description: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a promo (staff)
+      tags: [Promos]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, type, value, valid_from, valid_until]
+              properties:
+                code: { type: string }
+                type:
+                  type: string
+                  enum: [flat_amount, percentage]
+                value: { type: number }
+                min_order_amount: { type: number }
+                max_uses: { type: [integer, "null"] }
+                uses_per_phone: { type: integer, default: 1 }
+                valid_from: { type: string, format: date-time }
+                valid_until: { type: string, format: date-time }
+                time_window_start: { type: string, description: "HH:MM" }
+                time_window_end: { type: string, description: "HH:MM" }
+                description: { type: string }
+      responses:
+        "201":
+          description: Promo created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Duplicate promo code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /branches/{id}/promos/{promo_id}:
+    delete:
+      summary: Deactivate (soft-delete) a promo (staff)
+      tags: [Promos]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: promo_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Promo deactivated
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Staff: item-scoped menu admin ───────────────────────────────────────────
+  /menu/items/{id}/featured:
+    patch:
+      summary: Toggle item featured flag (owner/manager)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_featured, branch_id]
+              properties:
+                is_featured: { type: boolean }
+                featured_sort_order: { type: integer }
+                branch_id: { type: integer }
+      responses:
+        "204":
+          description: Featured flag updated
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /menu/items/{id}/modifiers:
+    post:
+      summary: Add a modifier to an item (owner/manager)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, branch_id]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                price_delta: { type: number }
+                is_required: { type: boolean }
+                modifier_group: { type: string }
+                single_select:
+                  type: boolean
+                  description: |
+                    Group-wide flag. A `(item, modifier_group)` group is single-select if ANY
+                    of its rows carries this flag; the guest may then choose only one option from
+                    that group (the cart rejects more with 422 `MODIFIER_CONFLICT`).
+                branch_id: { type: integer }
+      responses:
+        "201":
+          description: Modifier created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemModifier"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /menu/categories/{id}:
+    patch:
+      summary: Update a menu category (owner/manager)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, branch_id]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                position: { type: integer }
+                is_active: { type: boolean }
+                branch_id: { type: integer }
+      responses:
+        "200":
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      summary: Delete a menu category (owner/manager)
+      description: Returns 409 CATEGORY_NOT_EMPTY if the category still has items.
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "204":
+          description: Category deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Category not empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /menu/modifiers/{id}:
+    patch:
+      summary: Update an item modifier (owner/manager)
+      description: Edits a modifier in place. Setting `single_select` applies group-wide to the modifier's `(item, modifier_group)`.
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, branch_id]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                price_delta: { type: number }
+                is_required: { type: boolean }
+                modifier_group: { type: string }
+                single_select: { type: boolean }
+                branch_id: { type: integer }
+      responses:
+        "200":
+          description: Modifier updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemModifier"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      summary: Delete an item modifier (owner/manager)
+      tags: [Menu Management]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "204":
+          description: Modifier deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Staff: uploads, tables QR, subscription, customers ──────────────────────
+  /upload/menu-item-image:
+    post:
+      summary: Presign a menu-item image upload (staff)
+      description: Returns 503 if Cloudflare R2 image storage is not configured.
+      tags: [Uploads]
+      security:
+        - StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [item_id, content_type, file_size]
+              properties:
+                item_id: { type: integer }
+                content_type: { type: string }
+                file_size: { type: integer }
+      responses:
+        "200":
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_url: { type: string }
+                  public_url: { type: string }
+                  expires_in: { type: integer }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /upload/restaurant-logo:
+    post:
+      summary: Presign a restaurant-logo upload (staff)
+      description: Returns 503 if Cloudflare R2 image storage is not configured.
+      tags: [Uploads]
+      security:
+        - StaffBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_type, file_size]
+              properties:
+                content_type: { type: string }
+                file_size: { type: integer }
+      responses:
+        "200":
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_url: { type: string }
+                  public_url: { type: string }
+                  expires_in: { type: integer }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /tables/{id}/qr-refresh:
+    patch:
+      summary: Rotate a table's QR token (staff; branch ownership verified)
+      tags: [Tables]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: New QR token issued
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /restaurants/{id}/subscription:
+    get:
+      summary: Get the restaurant's subscription + plan features (staff)
+      tags: [Subscriptions]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: Subscription + features
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscription: { type: object }
+                  features: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /customers/{id}/history:
+    get:
+      summary: Customer order history (staff)
+      tags: [Customers]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: History
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  history:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /customers/{id}:
+    delete:
+      summary: Delete (erase) a customer (owner/manager)
+      tags: [Customers]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "204":
+          description: Customer deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ══ PLATFORM ════════════════════════════════════════════════════════════════
+  # Separate trust domain. Auth endpoints are public; everything else needs a
+  # PlatformBearer token. Per-operation platform RBAC roles are noted in descriptions
+  # (super_admin always bypasses).
+
+  # ── Platform: authentication & MFA ──────────────────────────────────────────
+  /platform/auth:
+    post:
+      summary: Authenticate a platform operator
+      description: |
+        Email + password. Returns a full session, or an MFA challenge (`mfa_required: true`) when the
+        operator has TOTP enrolled — complete it via `POST /platform/auth/mfa`. 10 RPM, fail-closed;
+        repeated failures lock out (423).
+      tags: [Platform Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                device_name: { type: string }
+      responses:
+        "200":
+          description: Session issued, or an MFA challenge
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    description: Full session
+                  - type: object
+                    properties:
+                      mfa_required: { type: boolean }
+                      mfa_challenge: { type: string }
+                      mfa_expires_at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "423":
+          description: Locked out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /platform/auth/mfa:
+    post:
+      summary: Complete an MFA login challenge
+      tags: [Platform Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfa_challenge, mfa_code]
+              properties:
+                mfa_challenge: { type: string }
+                mfa_code: { type: string, description: TOTP or recovery code }
+                device_name: { type: string }
+      responses:
+        "200":
+          description: Full platform session
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: Invalid challenge or code (MFA_INVALID_CODE)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /platform/auth/logout:
+    post:
+      summary: Invalidate the current platform token
+      tags: [Platform Auth]
+      security:
+        - PlatformBearer: []
+      responses:
+        "204":
+          description: Logged out
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /platform/mfa/enroll:
+    post:
+      summary: Begin TOTP MFA enrollment
+      description: Returns the secret + otpauth URI (shown once). 503 MFA_NOT_CONFIGURED if the server has no MFA encryption key.
+      tags: [Platform Auth]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Enrollment setup
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /platform/mfa/confirm:
+    post:
+      summary: Confirm TOTP enrollment with the first code
+      description: Returns recovery codes (shown once). 503 MFA_NOT_CONFIGURED when MFA is unavailable.
+      tags: [Platform Auth]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        "200":
+          description: Enrolled — recovery codes returned
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Invalid code (MFA_INVALID_CODE) or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /platform/mfa/disable:
+    post:
+      summary: Disable MFA (requires a current TOTP or recovery code)
+      tags: [Platform Auth]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        "204":
+          description: MFA disabled
+        "401":
+          description: Invalid code or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  # ── Platform: users ─────────────────────────────────────────────────────────
+  /platform/users:
+    get:
+      summary: List platform operators
+      description: Role read_only_auditor (super_admin bypass).
+      tags: [Platform Users]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/users/{id}:
+    get:
+      summary: Get a platform operator
+      tags: [Platform Users]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Platform: organizations ───────────────────────────────────────────────
+  /platform/organizations:
+    get:
+      summary: List organizations
+      description: Roles support_admin | billing_admin | read_only_auditor (super_admin bypass).
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Organizations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organizations:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create an organization (+ its restaurant)
+      description: super_admin only. Creates the org and its backing restaurant in one transaction.
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, restaurant_slug]
+              properties:
+                code: { type: string, minLength: 2, maxLength: 64 }
+                name: { type: string, minLength: 1, maxLength: 120 }
+                legal_name: { type: string }
+                primary_contact_email: { type: string, format: email }
+                settings: { type: object, description: Optional JSON object }
+                restaurant_slug: { type: string, minLength: 2, maxLength: 80 }
+                restaurant_name: { type: string, description: Defaults to name if empty }
+      responses:
+        "201":
+          description: Organization + restaurant created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization: { type: object }
+                  restaurant: { type: object }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/organizations/{org_id}:
+    get:
+      summary: Get an organization
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Organization
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Update an organization (super_admin)
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                legal_name: { type: string }
+                primary_contact_email: { type: string, format: email }
+                settings: { type: object }
+      responses:
+        "200":
+          description: Updated organization
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/branches:
+    get:
+      summary: List branches in an organization (platform)
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Branches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branches:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a branch (super_admin)
+      description: |
+        Creates a branch under the org's restaurant, optionally seeding `initial_tables` and an
+        `initial_owner` staff member, all in one transaction.
+      tags: [Branches]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+                address: { type: string }
+                timezone: { type: string, default: UTC }
+                branch_code: { type: string, description: Auto-generated if empty }
+                order_prefix: { type: string, default: OR }
+                initial_tables:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      identifier: { type: string }
+                      capacity: { type: integer, default: 4 }
+                initial_owner:
+                  type: object
+                  required: [name, staff_code, pin]
+                  properties:
+                    name: { type: string, minLength: 1, maxLength: 100 }
+                    staff_code: { type: string, minLength: 2, maxLength: 32 }
+                    pin: { type: string, minLength: 4, maxLength: 8 }
+      responses:
+        "201":
+          description: Branch (+ tables, initial owner) created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branch: { type: object }
+                  tables: { type: array, items: { type: object } }
+                  initial_owner: { type: [object, "null"] }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Platform: branches (read + onboarding) ──────────────────────────────────
+  /platform/branches/{branch_id}:
+    get:
+      summary: Get a branch (platform; includes restaurant name/slug/logo)
+      tags: [Branches]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200":
+          description: Branch detail
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/branches/{branch_id}/tables:
+    get:
+      summary: List a branch's tables (incl. QR tokens) for collateral generation
+      tags: [Tables]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200":
+          description: Tables
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tables:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Batch-create tables on a branch (super_admin, onboarding)
+      description: Provide an explicit `identifiers` list or a positive `count` (auto-named T{n}). Max 200 per request.
+      tags: [Tables]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                count: { type: integer, maximum: 200 }
+                capacity: { type: integer, default: 4 }
+                identifiers:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "201":
+          description: Tables created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tables:
+                    type: array
+                    items:
+                      type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Duplicate table identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  # ── Platform: organization & branch lifecycle (status-only, inert) ──────────
+  /platform/organizations/{org_id}/suspend:
+    post:
+      summary: Suspend an organization (super_admin)
+      description: Flips status to `suspended`. **Inert** — no operational path reads org status yet.
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200": { description: Organization (suspended), content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/activate:
+    post:
+      summary: Activate an organization (super_admin)
+      tags: [Organizations]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200": { description: Organization (active), content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/branches/{branch_id}/suspend:
+    post:
+      summary: Suspend a branch (super_admin)
+      description: Flips status to `suspended`. **Inert** — no operational path reads branch status yet.
+      tags: [Branches]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200": { description: Branch (suspended), content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/branches/{branch_id}/activate:
+    post:
+      summary: Activate a branch (super_admin)
+      tags: [Branches]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200": { description: Branch (active), content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Platform: plans & entitlements (resolve-only/shadow) ────────────────────
+  /platform/entitlements:
+    get:
+      summary: List the entitlement catalog (capabilities + limits)
+      description: |
+        Roles support_admin | billing_admin | read_only_auditor. Capability keys include
+        analytics.basic, analytics.advanced, custom.theme, multi_branch, advanced.audit,
+        support.priority, api.access; limit keys limit.branches/staff/tables (-1 = unlimited).
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entitlements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        kind: { type: string, enum: [capability, limit] }
+                        description: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/plans:
+    get:
+      summary: List plans with their entitlement defaults
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a plan (super_admin)
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, tier]
+              properties:
+                name: { type: string }
+                tier:
+                  type: string
+                  enum: [free, standard, premium]
+                price_monthly:
+                  type: string
+                  description: Numeric string; defaults to "0"
+                features:
+                  type: object
+      responses:
+        "201":
+          description: Plan created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: A plan for this tier already exists (PLAN_TIER_EXISTS)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/plans/{plan_id}:
+    patch:
+      summary: Update a plan's name/price/features (billing_admin)
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: plan_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                price_monthly: { type: string, description: Numeric string }
+                features: { type: object }
+      responses:
+        "200":
+          description: Updated plan
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/plans/{plan_id}/entitlements:
+    put:
+      summary: Replace a plan's entitlement defaults (super_admin)
+      description: Every key must exist in the entitlement catalog, else 400.
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: plan_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entitlements:
+                  type: array
+                  items:
+                    type: object
+                    required: [key]
+                    properties:
+                      key: { type: string }
+                      enabled: { type: boolean, default: true }
+                      limit_value: { type: [integer, "null"] }
+      responses:
+        "200":
+          description: Updated plan entitlements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan_id: { type: integer }
+                  entitlements: { type: array, items: { type: object } }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/entitlements:
+    get:
+      summary: Resolve effective entitlements for an organization
+      description: |
+        Precedence org override > org plan assignment → plan defaults > restaurant-subscription
+        bridge > free default. **Resolve-only** — not enforced on operational paths yet.
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Resolved entitlements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entitlements: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/plan:
+    put:
+      summary: Assign (or reassign) a plan to an organization (billing_admin)
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_id]
+              properties:
+                plan_id: { type: integer }
+                status:
+                  type: string
+                  enum: [trial, active, suspended, cancelled]
+                  default: active
+      responses:
+        "200":
+          description: Plan assigned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization_id: { type: integer }
+                  plan_id: { type: integer }
+                  status: { type: string }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/entitlements/{key}:
+    put:
+      summary: Set an org-level override for one entitlement key (super_admin)
+      tags: [Plans & Entitlements]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: [boolean, "null"] }
+                limit_value: { type: [integer, "null"] }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Override set
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Organization or entitlement key not found (ENTITLEMENT_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  # ── Platform: feature-flag targeting (resolve-only) ─────────────────────────
+  /platform/flags:
+    get:
+      summary: List the feature-flag catalog (with global overrides)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flags:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        name: { type: string }
+                        description: { type: string }
+                        default_enabled: { type: boolean }
+                        global_override: { type: [boolean, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a feature flag (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, name]
+              properties:
+                key: { type: string }
+                name: { type: string }
+                description: { type: string }
+                default_enabled: { type: boolean, default: false }
+      responses:
+        "201":
+          description: Flag created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: A flag with this key already exists (FLAG_EXISTS)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/flags/{key}:
+    patch:
+      summary: Update a flag's name/description/default (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/FlagKeyPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                default_enabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated flag
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Flag not found (FLAG_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/flags/{key}/global:
+    put:
+      summary: Set the global override for a flag (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/FlagKeyPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlagOverrideRequest"
+      responses:
+        "200":
+          description: Override set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flag_key: { type: string }
+                  scope: { type: string, example: global }
+                  enabled: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Flag not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+    delete:
+      summary: Clear the global override for a flag (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/FlagKeyPath"
+      responses:
+        "204":
+          description: Override cleared
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/organizations/{org_id}/flags:
+    get:
+      summary: Resolve flags for an organization
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Resolved flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization_id: { type: integer }
+                  flags:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FlagState"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/flags/{key}:
+    put:
+      summary: Set an org-level flag override (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/FlagKeyPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlagOverrideRequest"
+      responses:
+        "200":
+          description: Override set
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      summary: Clear an org-level flag override (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/FlagKeyPath"
+      responses:
+        "204":
+          description: Override cleared
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/branches/{branch_id}/flags:
+    get:
+      summary: Resolve flags for a branch
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200":
+          description: Resolved flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  branch_id: { type: integer }
+                  flags:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FlagState"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/branches/{branch_id}/flags/{key}:
+    put:
+      summary: Set a branch-level flag override (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+        - $ref: "#/components/parameters/FlagKeyPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlagOverrideRequest"
+      responses:
+        "200":
+          description: Override set
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      summary: Clear a branch-level flag override (super_admin)
+      tags: [Feature Flags]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+        - $ref: "#/components/parameters/FlagKeyPath"
+      responses:
+        "204":
+          description: Override cleared
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ── Platform: subscriptions (status recorded/audited, not enforced) ─────────
+  /platform/organizations/{org_id}/subscription:
+    get:
+      summary: Get an organization's subscription (or null)
+      description: Reads support_admin | billing_admin | read_only_auditor. **Status is recorded/audited, not enforced.**
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: "Subscription object, or subscription=null when none is set"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscription:
+                    type: [object, "null"]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/subscription/activate:
+    post:
+      summary: Activate (or create) the subscription (billing_admin)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plan_id: { type: [integer, "null"] }
+                expires_at: { type: [string, "null"], format: date-time }
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /platform/organizations/{org_id}/subscription/suspend:
+    post:
+      summary: Suspend the subscription (billing_admin)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No subscription exists (SUBSCRIPTION_NOT_FOUND) or org not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /platform/organizations/{org_id}/subscription/renew:
+    post:
+      summary: Renew the subscription / extend expiry (billing_admin)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expires_at: { type: [string, "null"], format: date-time }
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /platform/organizations/{org_id}/subscription/cancel:
+    post:
+      summary: Cancel the subscription (billing_admin)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /platform/organizations/{org_id}/subscription/extend-trial:
+    post:
+      summary: Create or extend a trial subscription (billing_admin)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trial_ends_at]
+              properties:
+                plan_id: { type: [integer, "null"] }
+                trial_ends_at: { type: string, format: date-time }
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /platform/organizations/{org_id}/subscription/plan:
+    post:
+      summary: Change the subscription plan (billing_admin; syncs the entitlement resolver)
+      tags: [Subscriptions]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_id]
+              properties:
+                plan_id: { type: integer }
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionResult" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ── Platform: billing profile, payments, invoices ───────────────────────────
+  /platform/organizations/{org_id}/billing-profile:
+    get:
+      summary: Get the org billing profile (empty defaults if unset)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Billing profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  billing_profile:
+                    type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      summary: Upsert the org billing profile (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                business_name: { type: string }
+                gst_number: { type: string }
+                tax_identifier: { type: string }
+                billing_email: { type: string }
+                billing_contact: { type: string }
+                billing_address: { type: string }
+                currency: { type: string }
+      responses:
+        "200":
+          description: Updated billing profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  billing_profile:
+                    type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/payments:
+    get:
+      summary: List recorded manual payments (billing bookkeeping)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Payments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payments:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Record a manual payment (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method, amount]
+              properties:
+                method:
+                  type: string
+                  enum: [upi, bank_transfer, cash, cheque, other]
+                amount: { type: string, description: Numeric string }
+                currency: { type: string }
+                reference_number: { type: string }
+                notes: { type: string }
+                received_at: { type: [string, "null"], format: date-time }
+                invoice_id: { type: [integer, "null"] }
+      responses:
+        "201":
+          description: Payment recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment:
+                    type: object
+        "400":
+          description: Invalid amount or method
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Organization or referenced invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/organizations/{org_id}/invoices:
+    get:
+      summary: List the org's invoices
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Invoices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoices:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Create a draft invoice (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: string, description: Numeric string }
+                currency: { type: string }
+                due_date: { type: [string, "null"], format: date-time }
+                notes: { type: string }
+      responses:
+        "201":
+          description: Draft invoice created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoice:
+                    type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/organizations/{org_id}/invoices/{invoice_id}:
+    get:
+      summary: Get an invoice
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/InvoiceIdPath"
+      responses:
+        "200":
+          description: Invoice
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoice:
+                    type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Invoice not found (INVOICE_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/organizations/{org_id}/invoices/{invoice_id}/issue:
+    post:
+      summary: Issue a draft invoice (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/InvoiceIdPath"
+      responses:
+        "200": { $ref: "#/components/responses/InvoiceResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "409":
+          description: Invalid invoice status transition (INVALID_TRANSITION)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/organizations/{org_id}/invoices/{invoice_id}/mark-paid:
+    post:
+      summary: Mark an issued invoice paid (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/InvoiceIdPath"
+      responses:
+        "200": { $ref: "#/components/responses/InvoiceResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "409":
+          description: Invalid invoice status transition (INVALID_TRANSITION)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/organizations/{org_id}/invoices/{invoice_id}/cancel:
+    post:
+      summary: Cancel a draft/issued invoice (billing_admin)
+      tags: [Billing]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+        - $ref: "#/components/parameters/InvoiceIdPath"
+      responses:
+        "200": { $ref: "#/components/responses/InvoiceResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "409":
+          description: Invalid invoice status transition (INVALID_TRANSITION)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  # ── Platform: enforcement observability (read-only) ─────────────────────────
+  /platform/observability/subscriptions:
+    get:
+      summary: Subscriptions that enforcement would affect (read-only)
+      tags: [Enforcement Observability]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Observability report
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/observability/entitlements:
+    get:
+      summary: Tenants over their resolved entitlement limits (read-only)
+      tags: [Enforcement Observability]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Observability report
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/observability/flags:
+    get:
+      summary: Feature-flag override usage and orphaned catalog flags (read-only)
+      tags: [Enforcement Observability]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Observability report
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ── Platform: cross-tenant analytics (Postgres aggregation) ─────────────────
+  /platform/analytics/usage:
+    get:
+      summary: Cross-tenant usage analytics
+      description: |
+        Sessions/orders/payments/participant-joins per period, active branches, active diners.
+        NOT entitlement-gated (operator surface). Optional `organization_id` filter.
+      tags: [Platform Analytics]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationIdQuery"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Usage report
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/analytics/revenue:
+    get:
+      summary: Cross-tenant revenue analytics (GMV from completed payments)
+      tags: [Platform Analytics]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationIdQuery"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Revenue report
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/analytics/health:
+    get:
+      summary: Cross-tenant health analytics (authz denials, webhook failures)
+      tags: [Platform Analytics]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationIdQuery"
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Health report
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/analytics/staff-performance:
+    get:
+      summary: Branch staff-performance report (operator read)
+      description: |
+        Bundled waiter/kitchen/summary staff-performance views for one branch.
+        Like the other platform analytics reads this is operator observability and
+        is NOT tenant-entitlement-gated; the tenant-facing
+        /branches/{id}/analytics/staff/* surface stays gated. Platform-audited.
+      tags: [Platform Analytics]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: branch_id
+          in: query
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: "#/components/parameters/PeriodQuery"
+      responses:
+        "200":
+          description: Staff performance report
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BranchStaffPerformance" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Platform: themes ─────────────────────────────────────────────────────
+  /platform/theme/presets:
+    get:
+      summary: List theme presets + the allowlisted custom-token keys
+      tags: [Themes]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Presets + allowed token keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  presets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        name: { type: string }
+                        description: { type: string }
+                  allowed_token_keys:
+                    type: array
+                    items:
+                      type: string
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/organizations/{org_id}/theme:
+    get:
+      summary: Get the resolved structured theme for an organization
+      tags: [Themes]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      responses:
+        "200":
+          description: Theme
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  theme:
+                    $ref: "#/components/schemas/ThemeConfig"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      summary: Set the structured theme for an organization (super_admin)
+      description: |
+        Preset is required and must exist (404 THEME_PRESET_NOT_FOUND). Custom `tokens` (hex-only,
+        allowlisted keys) require the org's `custom.theme` entitlement (403); invalid token key/value → 400.
+      tags: [Themes]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [preset]
+              properties:
+                preset:
+                  type: string
+                  enum: [dark-luxury, modern-minimal, warm-cafe, vibrant]
+                tokens:
+                  type: object
+                  additionalProperties:
+                    type: string
+                    description: Hex colour (#RRGGBB or #RRGGBBAA)
+      responses:
+        "200":
+          description: Theme set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  theme:
+                    $ref: "#/components/schemas/ThemeConfig"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Custom tokens require the custom.theme entitlement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "404":
+          description: Organization or preset not found (THEME_PRESET_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  # ── Platform: support console (read-only inspection + audited grants) ───────
+  /platform/support/search:
+    get:
+      summary: Search across tenants for support references
+      description: |
+        Roles support_admin | read_only_auditor. Searches 8 categories (orgs, branches, sessions,
+        orders, payments, customers, tables, participants). Every search writes an internal audit row.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching references
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /platform/sessions/{id}:
+    get:
+      summary: Inspect a session (read-only, sanitized)
+      description: |
+        Roles support_admin | read_only_auditor. Returns a **sanitized** aggregate (session, org,
+        branch, participants, orders, payments, assistance, lifecycle timeline). The guest credential
+        `session_token` and participant `device_fingerprint` are **omitted**. Emits a tenant-visible
+        critical-risk audit row (persisted only when AUDIT_LOG_V2_ENABLED).
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Sanitized session detail
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/orders/{id}:
+    get:
+      summary: Inspect an order (read-only, sanitized)
+      description: Roles support_admin | read_only_auditor. Money stringified; internal audit only.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Sanitized order detail
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/payments/{id}:
+    get:
+      summary: Inspect a payment (read-only, sanitized; includes bill snapshot + webhook history)
+      description: |
+        Roles support_admin | read_only_auditor. Money stringified. Emits a tenant-visible
+        critical-risk audit row (persisted only when AUDIT_LOG_V2_ENABLED).
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: Sanitized payment detail
+          content:
+            application/json:
+              schema:
+                type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /platform/support/sessions:
+    get:
+      summary: List support-session grants
+      description: Roles support_admin | read_only_auditor.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      responses:
+        "200":
+          description: Support sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  support_sessions:
+                    type: array
+                    items:
+                      type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create an audited support-session grant (support_admin)
+      description: |
+        Records a time-boxed support window for an org (optionally a branch). Reason 8–500 chars,
+        `expires_at` required and after start. Soft cap 4h → 422 SUPPORT_DURATION_EXCEEDS_SOFT_CAP;
+        hard cap 24h → 400. Emits a tenant-visible critical-risk audit row.
+        **Note:** the read endpoints above do not yet *require* an active grant — grants are recorded
+        but not enforced on reads.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organization_id, reason, expires_at]
+              properties:
+                organization_id: { type: integer }
+                branch_id: { type: [integer, "null"] }
+                reason: { type: string, minLength: 8, maxLength: 500 }
+                approved_by_platform_user_id: { type: [integer, "null"] }
+                starts_at: { type: [string, "null"], format: date-time }
+                expires_at: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Support session created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Validation error or exceeds 24h hard cap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+        "422":
+          description: Exceeds 4h soft cap (SUPPORT_DURATION_EXCEEDS_SOFT_CAP)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/support/sessions/{id}:
+    get:
+      summary: Get a support-session grant
+      description: Roles support_admin | read_only_auditor. Expired grants return 410 (treated as not-found to prevent enumeration). Emits a tenant-visible audit row.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "200":
+          description: Support session
+          content:
+            application/json:
+              schema:
+                type: object
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "410":
+          description: Support session expired (SUPPORT_SESSION_EXPIRED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
+
+  /platform/audit:
+    get:
+      summary: Query the platform-wide audit log
+      description: Role read_only_auditor. Supports filters incl. an optional `session_id`.
+      tags: [Support Console]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - name: session_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional filter to a single session's audit rows
+      responses:
+        "200":
+          description: Audit rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  audit:
+                    type: array
+                    items:
+                      type: object
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ── Platform: premium QR collateral ─────────────────────────────────────────
+  /platform/branches/{branch_id}/collateral:
+    get:
+      summary: Get a branch's QR collateral config (platform)
+      description: Reads support_admin | billing_admin | read_only_auditor. Same shared `branch_collateral` row the staff tab writes.
+      tags: [Collateral]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      responses:
+        "200":
+          description: Collateral config + available formats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collateral:
+                    $ref: "#/components/schemas/CollateralConfig"
+                  formats:
+                    type: array
+                    items:
+                      type: string
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      summary: Set a branch's QR collateral config (super_admin)
+      description: Strict validation — unknown JSON keys, bad format, or oversized text → 400 (INVALID_COLLATERAL_CONFIG).
+      tags: [Collateral]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollateralConfig"
+      responses:
+        "200":
+          description: Updated config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collateral:
+                    $ref: "#/components/schemas/CollateralConfig"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ── WebSocket ─────────────────────────────────────────────────────────────
   /ws:
     get:
       summary: Upgrade to WebSocket connection
       description: |
-        Establishes a WebSocket connection for realtime session events.
-        The response includes an `X-Reconnect-Endpoint` header pointing to
-        the snapshot URL for use on reconnect.
+        Establishes a WebSocket connection for realtime session events. Authenticate by passing a
+        `ticket` obtained from `POST /sessions/{id}/ws-ticket` (preferred). A legacy guest token is
+        still accepted in the handler until R5/R6 strict enforcement. Tickets are single-use and
+        short-lived (~30s).
 
-        **Query parameters** (required):
-        - `session_id` (UUID): The session to subscribe to
-        - `participant_id` (int64): The authenticated participant
-
-        **On reconnect:** call `GET /sessions/{id}/snapshot` to reconcile state,
-        then reconnect here to resume realtime updates.
+        **On reconnect:** call `GET /sessions/{id}/snapshot?last_sequence=N` to reconcile, then
+        reissue a ticket and reconnect here.
       tags: [WebSocket]
       parameters:
-        - name: session_id
+        - name: ticket
           in: query
           required: true
           schema:
             type: string
-            format: uuid
-        - name: participant_id
-          in: query
-          required: true
-          schema:
-            type: integer
+          description: Ephemeral WS ticket from POST /sessions/{id}/ws-ticket
       responses:
         "101":
           description: WebSocket upgrade successful
-          headers:
-            X-Reconnect-Endpoint:
-              schema:
-                type: string
-              description: URL of the snapshot endpoint for reconnect reconciliation
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -1731,3 +6231,45 @@ tags:
     description: Audit trail — session timeline and branch recent events
   - name: WebSocket
     description: Realtime event streaming
+  - name: Tenancy
+    description: Public tenant resolution used by the frontend to bootstrap context
+  - name: Promos
+    description: Promo validation (guest) and promo management (staff)
+  - name: Customers
+    description: Customer opt-in (guest) and customer history/erasure (staff)
+  - name: Branches
+    description: Branch detail/update (staff) and platform branch read/lifecycle
+  - name: Tables
+    description: Table management and QR token lifecycle
+  - name: Analytics
+    description: Branch- and org-scoped operational analytics (staff)
+  - name: Staff Performance
+    description: Per-staff performance analytics derived from existing operational events (owner/manager; analytics.staff_performance entitlement + staff_performance_analytics flag, both default off)
+  - name: Loyalty
+    description: Customer loyalty foundation — spend→points accrual, ledger-only redemption, manual adjustments (loyalty.* entitlements + loyalty flag, all default off)
+  - name: Uploads
+    description: Presigned image upload URLs (Cloudflare R2)
+  - name: Platform Auth
+    description: Platform operator authentication, MFA, and logout
+  - name: Platform Users
+    description: Platform operator directory (read-only)
+  - name: Organizations
+    description: Organization governance — CRUD and lifecycle (platform)
+  - name: Plans & Entitlements
+    description: Plan catalog, entitlement catalog, and org plan/entitlement assignment (resolve-only)
+  - name: Feature Flags
+    description: Product feature-flag catalog and global/org/branch targeting (resolve-only)
+  - name: Platform Analytics
+    description: Cross-tenant usage/revenue/health aggregation (platform)
+  - name: Enforcement Observability
+    description: Read-only views of where entitlement/flag/subscription enforcement would bite
+  - name: Themes
+    description: Structured theme presets and design tokens (platform write, public read)
+  - name: Support Console
+    description: Read-only operator inspection plus audited support-session grants
+  - name: Billing
+    description: Org billing profile, recorded payments, and invoice lifecycle (platform)
+  - name: Subscriptions
+    description: Plan subscription lifecycle (platform) and restaurant subscription read (staff)
+  - name: Collateral
+    description: Premium QR print collateral configuration (platform + staff, one shared row)

@@ -16,10 +16,10 @@ interface CreatePromoRequest {
 }
 
 export const promosApi = {
-  validate: (sessionId: string, code: string, guestToken?: string) =>
+  validate: (sessionId: string, code: string, orderTotal?: number, phoneE164?: string, guestToken?: string) =>
     api.post<ValidatePromoResponse>(
       `/sessions/${sessionId}/promos/validate`,
-      { code },
+      { code, order_total: orderTotal ?? 0, phone_e164: phoneE164 || undefined },
       { guestToken }
     ),
 
@@ -31,4 +31,10 @@ export const promosApi = {
 
   deactivate: (branchId: number, promoId: number, token: string) =>
     api.delete<void>(`/branches/${branchId}/promos/${promoId}`, { staffToken: token }),
+
+  activate: (branchId: number, promoId: number, token: string) =>
+    api.post<void>(`/branches/${branchId}/promos/${promoId}/activate`, {}, { staffToken: token }),
+
+  update: (branchId: number, promoId: number, data: CreatePromoRequest, token: string) =>
+    api.patch<Promo>(`/branches/${branchId}/promos/${promoId}`, data, { staffToken: token }),
 }

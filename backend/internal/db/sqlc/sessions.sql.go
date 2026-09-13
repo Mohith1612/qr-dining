@@ -102,10 +102,14 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 
 const getActiveSessionForTable = `-- name: GetActiveSessionForTable :one
 SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number, awaiting_reactivation_at FROM sessions
-WHERE table_id = $1 AND status = 'active'
+WHERE table_id = $1 AND status IN ('active', 'payment_pending', 'awaiting_reactivation')
+ORDER BY created_at DESC
 LIMIT 1
 `
 
+// Returns the table's in-progress session. Must match the non-terminal statuses
+// the one-active-per-table unique index blocks, so a QR scan of an occupied table
+// resolves the joinable session instead of falling through to a blocked create.
 func (q *Queries) GetActiveSessionForTable(ctx context.Context, tableID int64) (Session, error) {
 	row := q.db.QueryRow(ctx, getActiveSessionForTable, tableID)
 	var i Session
@@ -220,10 +224,14 @@ func (q *Queries) HasNonTerminalPaymentForSession(ctx context.Context, sessionID
 
 const listActiveSessionsForBranch = `-- name: ListActiveSessionsForBranch :many
 SELECT id, branch_id, table_id, host_participant_id, status, session_token, created_at, closed_at, warned_at, customer_id, session_business_date, visit_number, session_number, awaiting_reactivation_at FROM sessions
-WHERE branch_id = $1 AND status = 'active'
+WHERE branch_id = $1
+  AND status IN ('active', 'payment_pending', 'awaiting_reactivation')
 ORDER BY created_at DESC
 `
 
+// All live sessions for the branch, not just 'active': a payment_pending or
+// awaiting_reactivation session still occupies its table and is relevant to
+// staff, so the board reflects why a table reads occupied.
 func (q *Queries) ListActiveSessionsForBranch(ctx context.Context, branchID int64) ([]Session, error) {
 	rows, err := q.db.Query(ctx, listActiveSessionsForBranch, branchID)
 	if err != nil {
@@ -263,10 +271,18 @@ const listActiveSessionsForReactivationScan = `-- name: ListActiveSessionsForRea
 SELECT s.id, s.branch_id, s.table_id, b.organization_id
 FROM sessions s
 JOIN branches b ON b.id = s.branch_id
+JOIN session_participants sp ON sp.session_id = s.id
 WHERE s.status = 'active'
   AND s.created_at < $1::timestamptz
+GROUP BY s.id, s.branch_id, s.table_id, b.organization_id
+HAVING MAX(sp.last_seen_at) < $2::timestamptz
 ORDER BY s.created_at ASC
 `
+
+type ListActiveSessionsForReactivationScanParams struct {
+	CreatedBefore time.Time `json:"created_before"`
+	IdleBefore    time.Time `json:"idle_before"`
+}
 
 type ListActiveSessionsForReactivationScanRow struct {
 	ID             uuid.UUID `json:"id"`
@@ -275,11 +291,11 @@ type ListActiveSessionsForReactivationScanRow struct {
 	OrganizationID int64     `json:"organization_id"`
 }
 
-// Returns active sessions older than the grace floor — candidates for the
-// awaiting_reactivation transition. The worker still has to verify Redis
-// presence absence before transitioning.
-func (q *Queries) ListActiveSessionsForReactivationScan(ctx context.Context, dollar_1 time.Time) ([]ListActiveSessionsForReactivationScanRow, error) {
-	rows, err := q.db.Query(ctx, listActiveSessionsForReactivationScan, dollar_1)
+// Returns active sessions older than the creation grace whose most recent
+// durable participant heartbeat is older than the idle grace. The worker still
+// has to verify Redis presence absence before transitioning.
+func (q *Queries) ListActiveSessionsForReactivationScan(ctx context.Context, arg ListActiveSessionsForReactivationScanParams) ([]ListActiveSessionsForReactivationScanRow, error) {
+	rows, err := q.db.Query(ctx, listActiveSessionsForReactivationScan, arg.CreatedBefore, arg.IdleBefore)
 	if err != nil {
 		return nil, err
 	}
@@ -349,19 +365,25 @@ func (q *Queries) ListSessionsAwaitingReactivationExpired(ctx context.Context, d
 }
 
 const listSessionsExpiringSoon = `-- name: ListSessionsExpiringSoon :many
-SELECT s.id, s.branch_id, s.created_at, b.session_timeout_minutes
+SELECT s.id,
+       s.branch_id,
+       COALESCE(MAX(sp.last_seen_at), s.created_at) AS last_activity_at,
+       b.session_timeout_minutes
 FROM sessions s
 JOIN branches b ON b.id = s.branch_id
+LEFT JOIN session_participants sp ON sp.session_id = s.id
 WHERE s.status = 'active'
   AND s.warned_at IS NULL
-  AND s.created_at + (b.session_timeout_minutes || ' minutes')::interval
-      BETWEEN NOW() AND NOW() + INTERVAL '15 minutes'
+GROUP BY s.id, s.branch_id, s.created_at, b.session_timeout_minutes
+HAVING COALESCE(MAX(sp.last_seen_at), s.created_at)
+         + (b.session_timeout_minutes || ' minutes')::interval
+       BETWEEN NOW() AND NOW() + INTERVAL '15 minutes'
 `
 
 type ListSessionsExpiringSoonRow struct {
 	ID                    uuid.UUID `json:"id"`
 	BranchID              int64     `json:"branch_id"`
-	CreatedAt             time.Time `json:"created_at"`
+	LastActivityAt        time.Time `json:"last_activity_at"`
 	SessionTimeoutMinutes int16     `json:"session_timeout_minutes"`
 }
 
@@ -377,7 +399,7 @@ func (q *Queries) ListSessionsExpiringSoon(ctx context.Context) ([]ListSessionsE
 		if err := rows.Scan(
 			&i.ID,
 			&i.BranchID,
-			&i.CreatedAt,
+			&i.LastActivityAt,
 			&i.SessionTimeoutMinutes,
 		); err != nil {
 			return nil, err
@@ -422,11 +444,14 @@ func (q *Queries) NextSessionNumber(ctx context.Context, arg NextSessionNumberPa
 const reactivateSession = `-- name: ReactivateSession :one
 UPDATE sessions
 SET status = 'active',
-    awaiting_reactivation_at = NULL
+    awaiting_reactivation_at = NULL,
+    warned_at = NULL
 WHERE id = $1 AND status = 'awaiting_reactivation'
 RETURNING id
 `
 
+// warned_at is cleared so a recovered session can be warned again by the
+// expiry warner before its (unchanged) timeout.
 func (q *Queries) ReactivateSession(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, reactivateSession, id)
 	var id_2 uuid.UUID

@@ -11,4 +11,10 @@ export const tablesApi = {
 
   refreshQR: (tableId: number, staffToken: string) =>
     api.patch<Table>(`/tables/${tableId}/qr-refresh`, {}, { staffToken }),
+
+  update: (tableId: number, data: { identifier: string; capacity?: number }, staffToken: string) =>
+    api.patch<Table>(`/tables/${tableId}`, data, { staffToken }),
+
+  remove: (tableId: number, staffToken: string) =>
+    api.delete<void>(`/tables/${tableId}`, { staffToken }),
 }

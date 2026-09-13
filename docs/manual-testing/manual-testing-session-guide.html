@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manual session guide</title>
+  <link rel="stylesheet" href="manual-testing.css">
+</head>
+<body>
+<main>
+  <nav>
+    <a href="testing-dashboard.html">Dashboard</a>
+    <a href="how-to-use.html">Start and stop</a>
+    <a aria-current="page" href="manual-testing-session-guide.html">Session guide</a>
+    <a href="manual-testing-checklist.html">Checklist</a>
+    <a href="manual-testing-user-guide.html">Surfaces</a>
+    <a href="database-reference.html">Data reference</a>
+  </nav>
+
+  <h1>Cross-instance session guide</h1>
+  <p class="lede">A reproducible observation path. Record what happens; this page does not assert that the path passes.</p>
+
+  <ol>
+    <li><strong>Reset and capture the seed output.</strong> Run <code>./scripts/manual-testing-up.sh --reset</code>. The output supplies the current branch codes, PINs, IDs, and randomly generated table tokens. <span class="source"><code>scripts/manual-testing-up.sh:49-53</code>; <code>backend/scripts/seed.go:769-786</code></span></li>
+    <li><strong>Open a guest table on Frontend A.</strong> Use <code>http://localhost:3000/table/&lt;current-token&gt;</code>. The table page resolves the token before loading the guest surface. <span class="source"><code>frontend/app/(guest)/table/[token]/page.tsx:35-68</code></span></li>
+    <li><strong>Create the host session.</strong> The table flow calls session creation when there is no stored session for that table. <span class="source"><code>frontend/app/(guest)/table/[token]/page.tsx:70-112</code></span></li>
+    <li><strong>Join from Frontend B.</strong> Open the same current table token at <code>:3001</code>. The two frontends target different backend processes that share PostgreSQL and Redis. <span class="source"><code>scripts/manual-testing-up.sh:62-75,96-109</code></span></li>
+    <li><strong>Exercise the guest flow.</strong> Add items, place an order, request assistance, and open payment. The server registers the corresponding guest endpoints at session scope. <span class="source"><code>backend/internal/server/server.go:205-253</code></span></li>
+    <li><strong>Observe from staff.</strong> Sign in at <code>http://localhost:3001/staff/login</code> with current seed output, then inspect active orders, sessions, assistance, and payments. Those branch views are staff-authenticated routes. <span class="source"><code>backend/internal/server/server.go:272-279,379-408</code></span></li>
+    <li><strong>Confirm or cancel payment.</strong> Initiation enters <code>requires_staff_confirmation</code>; staff can settle or cancel through protected endpoints. <span class="source"><code>backend/internal/services/payment.go:759-773</code>; <code>backend/internal/server/server.go:384-392</code></span></li>
+    <li><strong>Record results.</strong> Use the <a href="manual-testing-checklist.html">checklist</a> and export it before resetting browser storage.</li>
+  </ol>
+
+  <p class="warning">Do not infer realtime correctness only from the final screen. Clients reconcile with a full session snapshot after reconnect, so record which browser received live changes and which recovered through reconciliation. <span class="source"><code>frontend/lib/ws/connection.ts:129-176</code>; <code>backend/internal/server/server.go:263-265</code></span></p>
+</main>
+</body>
+</html>

@@ -169,11 +169,15 @@ func TestReconcileSessionTablesAbandonsDuplicateActiveSessions(t *testing.T) {
 func insertTestActiveSession(t *testing.T, pool *pgxpool.Pool, branchID, tableID int64, label string) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
+	token := fmt.Sprintf("%s-%s", label, uuid.NewString())
+	// session_business_date / visit_number / session_number are NOT NULL with no
+	// default (the product's CreateSession always supplies them); supply unique
+	// values here so the raw test insert satisfies the schema.
 	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO sessions (branch_id, table_id, session_token, status)
-		 VALUES ($1, $2, $3, 'active')
+		`INSERT INTO sessions (branch_id, table_id, session_token, status, session_business_date, visit_number, session_number)
+		 VALUES ($1, $2, $3, 'active', CURRENT_DATE, 1, $4)
 		 RETURNING id`,
-		branchID, tableID, fmt.Sprintf("%s-%s", label, uuid.NewString()),
+		branchID, tableID, token, fmt.Sprintf("%s-%s", label, uuid.NewString()),
 	).Scan(&id); err != nil {
 		t.Fatalf("insert active session: %v", err)
 	}

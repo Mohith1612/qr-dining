@@ -24,6 +24,9 @@ WHERE ar.id = $1
 RETURNING ar.*;
 
 -- name: ListActiveAssistanceForBranch :many
+-- Assistance requests on the waiter board. Gated on a LIVE session (as the
+-- kitchen order board is) so a request whose table was abandoned or closed
+-- drops off instead of lingering after the guests have gone.
 SELECT
   ar.*,
   t.identifier AS table_identifier,
@@ -33,6 +36,7 @@ JOIN sessions s ON s.id = ar.session_id
 JOIN tables t ON t.id = ar.table_id
 WHERE t.branch_id = $1
   AND ar.status IN ('pending', 'acknowledged')
+  AND s.status IN ('active', 'payment_pending', 'awaiting_reactivation')
 ORDER BY ar.created_at ASC;
 
 -- name: ListAssistanceForSession :many

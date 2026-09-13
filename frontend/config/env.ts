@@ -6,4 +6,13 @@ export const env = {
   // In production, the tenant slug is extracted from the subdomain automatically.
   tenantSlug: process.env.NEXT_PUBLIC_TENANT_SLUG ?? null,
   baseDomain: process.env.NEXT_PUBLIC_BASE_DOMAIN ?? null,
+  // The public guest origin QR codes point at (the FRONTEND, not the API).
+  // Falls back to the current browser origin so local/dev QR codes resolve to
+  // whatever port the frontend is actually served on.
+  guestUrl: process.env.NEXT_PUBLIC_GUEST_URL ?? null,
+  posthogKey: process.env.NEXT_PUBLIC_POSTHOG_KEY ?? null,
+  posthogHost: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? null,
+  posthogEnv: process.env.NEXT_PUBLIC_POSTHOG_ENV ?? process.env.NEXT_PUBLIC_ENV ?? "development",
+  posthogReplay: process.env.NEXT_PUBLIC_POSTHOG_REPLAY === "1",
+  appVersion: process.env.NEXT_PUBLIC_COMMIT_SHA ?? null,
 } as const

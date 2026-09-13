@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Start and stop manual testing</title>
+  <link rel="stylesheet" href="manual-testing.css">
+</head>
+<body>
+<main>
+  <nav>
+    <a href="testing-dashboard.html">Dashboard</a>
+    <a aria-current="page" href="how-to-use.html">Start and stop</a>
+    <a href="manual-testing-session-guide.html">Session guide</a>
+    <a href="manual-testing-checklist.html">Checklist</a>
+    <a href="manual-testing-user-guide.html">Surfaces</a>
+    <a href="database-reference.html">Data reference</a>
+  </nav>
+
+  <h1>Start and stop</h1>
+  <p class="lede">Run these commands from the repository root.</p>
+
+  <h2>Start with fresh data</h2>
+  <pre>./scripts/manual-testing-up.sh --reset</pre>
+  <p><code>--reset</code> removes the manual-testing volumes, migrates, reseeds, builds two backend processes, and starts two frontend processes. The script prints the current staff credentials and QR tokens while seeding. <span class="source"><code>scripts/manual-testing-up.sh:32-75,96-124</code>; <code>backend/scripts/seed.go:769-786</code></span></p>
+
+  <h2>Start without reseeding</h2>
+  <pre>./scripts/manual-testing-up.sh</pre>
+  <p>Without <code>--reset</code>, the script starts the datastores and runs migrations but does not execute the seed program. <span class="source"><code>scripts/manual-testing-up.sh:32-53</code></span></p>
+
+  <h2>Use the stack</h2>
+  <p>Open <a href="testing-dashboard.html">the dashboard</a>. The stack exposes frontends at <code>:3000</code> and <code>:3001</code>, backends at <code>:8090</code> and <code>:8095</code>, PostgreSQL at <code>:25432</code>, and Redis at <code>:26379</code>. <span class="source"><code>scripts/manual-testing-up.sh:24-25,62-75,105-123</code>; <code>docker-compose.manual-testing.yml:29-68</code></span></p>
+  <p>The two app processes share the isolated database and Redis. The manual stack explicitly enables centralized authorization enforcement, while the application configuration default is false. <span class="source"><code>scripts/manual-testing-up.sh:24-25,64-75</code>; <code>backend/internal/config/config.go:253-263</code></span></p>
+
+  <h2>Logs</h2>
+  <pre>tail -f /tmp/qrapp-mtest-1.log
+tail -f /tmp/qrapp-mtest-2.log
+tail -f /tmp/frontend-a.log
+tail -f /tmp/frontend-b.log</pre>
+  <p>Those are the four output paths configured by the launcher. <span class="source"><code>scripts/manual-testing-up.sh:64-75,105-109,124</code></span></p>
+
+  <h2>Stop</h2>
+  <pre>./scripts/manual-testing-down.sh
+# or retain the isolated data volumes:
+./scripts/manual-testing-down.sh --keep-data</pre>
+  <p>The default removes the manual-testing volumes; <code>--keep-data</code> stops the datastores without deleting those volumes. <span class="source"><code>scripts/manual-testing-down.sh:21-27</code></span></p>
+
+  <p class="warning">The launcher terminates processes matching <code>next dev</code> and listeners on ports 3000/3001. Check those lines before running it on a workstation that has another Next.js development server. <span class="source"><code>scripts/manual-testing-up.sh:88-94</code>; <code>scripts/manual-testing-down.sh:14-19</code></span></p>
+</main>
+</body>
+</html>

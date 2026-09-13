@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Mohith1612/qr-dining/internal/config"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	goredis "github.com/redis/go-redis/v9"
 )
 
@@ -16,6 +17,16 @@ func NewClient(ctx context.Context, cfg config.RedisConfig) (*goredis.Client, er
 	}
 
 	client := goredis.NewClient(opts)
+	if cfg.OTelEnabled {
+		// WithDBStatement(false) is required, not cosmetic: session bearer tokens
+		// are used as Redis keys (staff:token:<token>, platform:token:<token>), and
+		// redisotel records the full command — key and value — in db.statement by
+		// default. Leaving it on exports live 8h tokens into the trace store.
+		if err := redisotel.InstrumentTracing(client, redisotel.WithDBStatement(false)); err != nil {
+			_ = client.Close()
+			return nil, fmt.Errorf("instrument redis tracing: %w", err)
+		}
+	}
 
 	if err := client.Ping(ctx).Err(); err != nil {
 		_ = client.Close()

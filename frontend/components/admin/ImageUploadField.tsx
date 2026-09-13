@@ -4,6 +4,7 @@ import { useRef, useState, useEffect } from "react"
 import { Camera, X } from "lucide-react"
 import { toast } from "sonner"
 import { uploadApi } from "@/lib/api/upload"
+import { ApiError } from "@/lib/api/client"
 import { useStaffStore } from "@/store/staff"
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"]
@@ -14,7 +15,14 @@ interface ImageUploadFieldProps {
   onUploaded: (publicUrl: string) => void
   onRemoved?: () => void
   uploadEndpoint: "menu-item" | "restaurant-logo"
-  itemId?: number // required when uploadEndpoint === "menu-item"
+  itemId?: number // required when uploadEndpoint === "menu-item" and not deferred
+  /**
+   * Deferred mode: the picked file is only previewed locally and handed to
+   * onFileSelected — no network call. Used on create forms where the upload
+   * target (item id) doesn't exist yet; the caller uploads after creation.
+   */
+  deferred?: boolean
+  onFileSelected?: (file: File) => void
 }
 
 export function ImageUploadField({
@@ -23,6 +31,8 @@ export function ImageUploadField({
   onRemoved,
   uploadEndpoint,
   itemId,
+  deferred = false,
+  onFileSelected,
 }: ImageUploadFieldProps) {
   const token = useStaffStore((s) => s.token)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -50,6 +60,13 @@ export function ImageUploadField({
 
     const localPreview = URL.createObjectURL(file)
     setPreviewUrl(localPreview)
+
+    if (deferred) {
+      // Hold the file for the caller; it uploads once the item exists.
+      onFileSelected?.(file)
+      return
+    }
+
     setUploading(true)
     setProgress(0)
 
@@ -81,6 +98,12 @@ export function ImageUploadField({
       setUploading(false)
       setPreviewUrl(currentUrl ?? null)
       if (err instanceof Error && err.name === "AbortError") return
+      // 503 = image hosting (R2) isn't configured on this deployment. Steer the
+      // operator to the manual image-URL field instead of a generic failure.
+      if (err instanceof ApiError && err.status === 503) {
+        toast.error("Image hosting isn't set up here — paste an image URL below instead.")
+        return
+      }
       toast.error("Upload failed — please try again")
     } finally {
       URL.revokeObjectURL(localPreview)

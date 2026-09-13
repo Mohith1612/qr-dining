@@ -18,10 +18,10 @@ import (
 // surface for supply-chain compromise on a credential primitive is zero.
 
 const (
-	totpStep         = 30 * time.Second
-	totpDigits       = 6
-	totpDriftSteps   = 1 // accept previous and next step to tolerate clock skew
-	totpSecretBytes  = 20
+	totpStep        = 30 * time.Second
+	totpDigits      = 6
+	totpDriftSteps  = 1 // accept previous and next step to tolerate clock skew
+	totpSecretBytes = 20
 )
 
 // GenerateTOTPSecret returns a base32-encoded secret suitable for storing and

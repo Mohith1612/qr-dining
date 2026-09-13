@@ -24,7 +24,7 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 
 		if _, ok := originSet[origin]; ok {
 			c.Header("Access-Control-Allow-Origin", origin)
-			c.Header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID, X-Participant-ID, X-Tenant-Slug")
 			// The frontend sends credentialed requests (credentials: "include") so the
 			// HttpOnly staff cookie can flow. With credentials mode the browser requires

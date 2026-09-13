@@ -38,8 +38,24 @@ func (r *Repos) ListActiveStaffForBranch(ctx context.Context, branchID int64) ([
 	return r.q.ListActiveStaffForBranch(ctx, branchID)
 }
 
+// ListStaffRosterForBranch returns active staff WITHOUT pin hashes (safe to
+// surface to the manager/owner staff list).
+func (r *Repos) ListStaffRosterForBranch(ctx context.Context, branchID int64) ([]sqlc.ListStaffRosterForBranchRow, error) {
+	return r.q.ListStaffRosterForBranch(ctx, branchID)
+}
+
 func (r *Repos) CreateStaff(ctx context.Context, p sqlc.CreateStaffParams) (sqlc.Staff, error) {
-	return r.q.CreateStaff(ctx, p)
+	staff, err := r.q.CreateStaff(ctx, p)
+	if err != nil {
+		// idx_staff_branch_staff_code_unique — the same translate-at-the-repo
+		// pattern as CreateTable/ErrDuplicateTableIdentifier, so callers never
+		// have to reason about pgconn error codes.
+		if isDuplicateError(err) {
+			return sqlc.Staff{}, domain.ErrDuplicateStaffCode
+		}
+		return sqlc.Staff{}, err
+	}
+	return staff, nil
 }
 
 func (r *Repos) UpdateStaffPIN(ctx context.Context, staffID int64, pinHash string) error {

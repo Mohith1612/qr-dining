@@ -1,0 +1,526 @@
+[e2e preflight] API_URL=http://localhost:8090 APP_URL=http://localhost:3000 platform_auth=super_admin
+
+Running 16 tests using 1 worker
+
+(node:2494502) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494502) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘   1 [desktop] › adversarial/X-05-brute-force-lockout.spec.ts:6:7 › X-05: Staff brute-force lockout › 10 wrong PINs trigger 429 with Retry-After (2.5s)
+(node:2494565) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494565) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘   2 [desktop] › adversarial/X-07-replay-attack-old-ws-ticket.spec.ts:6:7 › X-07: WS ticket replay attack — expired/used ticket rejected › ticket expires within 30 seconds and cannot be reused (527ms)
+(node:2494588) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494588) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘   3 [desktop] › audit/A-04-waiter-cannot-read-audit.spec.ts:6:7 › A-04: Waiter-role staff cannot read audit logs › GET branch audit with waiter token returns 403 (904ms)
+(node:2494652) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494652) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘   4 [desktop] › multidevice/M-04-second-device-joins.spec.ts:6:7 › M-04: Second device joins existing session › joining guest sees existing session state in snapshot (540ms)
+(node:2494664) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494664) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘   5 [desktop] › order/O-01-order-placement.spec.ts:7:7 › O-01: Order placement — happy path › guest places order and receives confirmed order with operational ID (528ms)
+(node:2494678) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494678) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘   6 [desktop] › platform/PT-01-support-session-read.spec.ts:6:7 › PT-01: Platform admin can read any session › platform admin fetches session details across orgs (524ms)
+(node:2494700) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494700) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘   7 [desktop] › platform/PT-04-org-provisioning.spec.ts:6:7 › PT-04: Organization provisioning by platform admin › platform admin creates org, branch, and table (35ms)
+(node:2494713) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494713) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘   8 [desktop] › realtime/R-01-ws-ticket-required.spec.ts:6:7 › R-01: WebSocket ticket authentication › ws-ticket endpoint requires valid guest token (511ms)
+(node:2494739) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494739) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘   9 [desktop] › realtime/R-01-ws-ticket-required.spec.ts:45:7 › R-01: WebSocket ticket authentication › ticket is single-use — second upgrade attempt fails (499ms)
+(node:2494790) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494790) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  10 [desktop] › realtime/R-03-ws-ticket-rate-limit.spec.ts:6:7 › R-03: WS ticket rate limiting › exceeding ticket rate limit returns 429 (534ms)
+(node:2494826) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494826) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  11 [desktop] › session/L-03-reconnect-awaiting-reactivation.spec.ts:6:7 › L-03: Reconnect during awaiting_reactivation › ws-ticket issuance succeeds on active session (530ms)
+(node:2494839) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494839) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  12 [desktop] › session/L-05-host-close-idempotent.spec.ts:6:7 › L-05: Host close is idempotent › DELETE session twice returns success both times (535ms)
+(node:2494863) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2494863) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  13 [desktop] › session/L-09-stale-browser-revisit.spec.ts:5:7 › L-09: Stale browser revisit after session closed › UI shows session-ended screen when storage has closed session (7.9s)
+(node:2495150) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2495150) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  14 [desktop] › staff/S-03-duplicate-staff-code-rejected.spec.ts:6:7 › S-03: Duplicate staff_code within branch rejected › creating two staff with the same staff_code returns 409 (920ms)
+(node:2495212) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2495212) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  15 [desktop] › tenancy/T-03-org-suspension.spec.ts:6:7 › T-03: Suspended org rejects new sessions › after org suspension, new session creation is rejected (546ms)
+(node:2495309) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2495309) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  16 [desktop] › tenancy/T-05-platform-admin-cross-org-read.spec.ts:6:7 › T-05: Platform admin can read across all orgs › platform admin reads org B session that org A staff cannot (513ms)
+
+
+  1) [desktop] › adversarial/X-05-brute-force-lockout.spec.ts:6:7 › X-05: Staff brute-force lockout › 10 wrong PINs trigger 429 with Retry-After 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoContain[2m([22m[32mexpected[39m[2m) // indexOf[22m
+
+    Expected value: [32m423[39m
+    Received array: [31m[429, 401][39m
+
+      25 |
+      26 |     // Should hit lockout at some point
+    > 27 |     expect([429, 401]).toContain(lastStatus)
+         |                        ^
+      28 |     // If 429, should have Retry-After header (checked on the last response)
+      29 |   })
+      30 | })
+        at /home/mohith/Development/projects/qr-dining/e2e/adversarial/X-05-brute-force-lockout.spec.ts:27:24
+
+    Error Context: artifacts/results/adversarial-X-05-brute-for-bede9-rigger-429-with-Retry-After-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/adversarial-X-05-brute-for-bede9-rigger-429-with-Retry-After-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/adversarial-X-05-brute-for-bede9-rigger-429-with-Retry-After-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [desktop] › adversarial/X-07-replay-attack-old-ws-ticket.spec.ts:6:7 › X-07: WS ticket replay attack — expired/used ticket rejected › ticket expires within 30 seconds and cannot be reused 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m200[39m
+    Received: [31m201[39m
+
+      19 |       body: JSON.stringify({}),
+      20 |     })
+    > 21 |     expect(ticketRes.status).toBe(200)
+         |                              ^
+      22 |     const { ticket, expires_in } = await ticketRes.json()
+      23 |     expect(expires_in).toBeLessThanOrEqual(30)
+      24 |
+        at /home/mohith/Development/projects/qr-dining/e2e/adversarial/X-07-replay-attack-old-ws-ticket.spec.ts:21:30
+
+    Error Context: artifacts/results/adversarial-X-07-replay-at-ba7cb-econds-and-cannot-be-reused-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/adversarial-X-07-replay-at-ba7cb-econds-and-cannot-be-reused-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/adversarial-X-07-replay-at-ba7cb-econds-and-cannot-be-reused-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [desktop] › audit/A-04-waiter-cannot-read-audit.spec.ts:6:7 › A-04: Waiter-role staff cannot read audit logs › GET branch audit with waiter token returns 403 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m403[39m
+    Received: [31m200[39m
+
+      10 |       headers: { "Authorization": `Bearer ${staff.token}` },
+      11 |     })
+    > 12 |     expect(res.status).toBe(403)
+         |                        ^
+      13 |   })
+      14 | })
+      15 |
+        at /home/mohith/Development/projects/qr-dining/e2e/audit/A-04-waiter-cannot-read-audit.spec.ts:12:24
+
+    Error Context: artifacts/results/audit-A-04-waiter-cannot-r-d92fe-th-waiter-token-returns-403-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/audit-A-04-waiter-cannot-r-d92fe-th-waiter-token-returns-403-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/audit-A-04-waiter-cannot-r-d92fe-th-waiter-token-returns-403-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) [desktop] › multidevice/M-04-second-device-joins.spec.ts:6:7 › M-04: Second device joins existing session › joining guest sees existing session state in snapshot 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m200[39m
+    Received: [31m201[39m
+
+      29 |       body: JSON.stringify({ display_name: "NewDevice" }),
+      30 |     })
+    > 31 |     expect(joinRes.status).toBe(200)
+         |                            ^
+      32 |     const { guest_access_token: newToken } = await joinRes.json()
+      33 |
+      34 |     // New device fetches snapshot — should see the session
+        at /home/mohith/Development/projects/qr-dining/e2e/multidevice/M-04-second-device-joins.spec.ts:31:28
+
+    Error Context: artifacts/results/multidevice-M-04-second-de-b250a-g-session-state-in-snapshot-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/multidevice-M-04-second-de-b250a-g-session-state-in-snapshot-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/multidevice-M-04-second-de-b250a-g-session-state-in-snapshot-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) [desktop] › order/O-01-order-placement.spec.ts:7:7 › O-01: Order placement — happy path › guest places order and receives confirmed order with operational ID 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeTruthy[2m()[22m
+
+    Received: [31mundefined[39m
+
+      24 |     expect([200, 201]).toContain(res.status)
+      25 |     const order = await res.json()
+    > 26 |     expect(order.id ?? order.order_id).toBeTruthy()
+         |                                        ^
+      27 |     expect(order.status ?? order.order_status).toBeDefined()
+      28 |   })
+      29 | })
+        at /home/mohith/Development/projects/qr-dining/e2e/order/O-01-order-placement.spec.ts:26:40
+
+    Error Context: artifacts/results/order-O-01-order-placement-e3a21-d-order-with-operational-ID-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/order-O-01-order-placement-e3a21-d-order-with-operational-ID-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/order-O-01-order-placement-e3a21-d-order-with-operational-ID-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) [desktop] › platform/PT-01-support-session-read.spec.ts:6:7 › PT-01: Platform admin can read any session › platform admin fetches session details across orgs 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m"4b3a8ff2-a88e-45a8-87c6-07c056bbf574"[39m
+    Received: [31mundefined[39m
+
+      16 |     if (res.status === 200) {
+      17 |       const data = await res.json()
+    > 18 |       expect(data.id).toBe(sessionId)
+         |                       ^
+      19 |     }
+      20 |   })
+      21 | })
+        at /home/mohith/Development/projects/qr-dining/e2e/platform/PT-01-support-session-read.spec.ts:18:23
+
+    Error Context: artifacts/results/platform-PT-01-support-ses-280c2-session-details-across-orgs-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/platform-PT-01-support-ses-280c2-session-details-across-orgs-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/platform-PT-01-support-ses-280c2-session-details-across-orgs-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  7) [desktop] › platform/PT-04-org-provisioning.spec.ts:6:7 › PT-04: Organization provisioning by platform admin › platform admin creates org, branch, and table 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoContain[2m([22m[32mexpected[39m[2m) // indexOf[22m
+
+    Expected value: [32m400[39m
+    Received array: [31m[200, 201][39m
+
+      16 |       body: JSON.stringify({ name: "PT04 Org", slug }),
+      17 |     })
+    > 18 |     expect([200, 201]).toContain(orgRes.status)
+         |                        ^
+      19 |     const org = await orgRes.json()
+      20 |     expect(org.id).toBeTruthy()
+      21 |
+        at /home/mohith/Development/projects/qr-dining/e2e/platform/PT-04-org-provisioning.spec.ts:18:24
+
+    Error Context: artifacts/results/platform-PT-04-org-provisi-ba0c4-reates-org-branch-and-table-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/platform-PT-04-org-provisi-ba0c4-reates-org-branch-and-table-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/platform-PT-04-org-provisi-ba0c4-reates-org-branch-and-table-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  8) [desktop] › realtime/R-01-ws-ticket-required.spec.ts:6:7 › R-01: WebSocket ticket authentication › ws-ticket endpoint requires valid guest token 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m200[39m
+    Received: [31m201[39m
+
+      19 |       body: JSON.stringify({ since: 0 }),
+      20 |     })
+    > 21 |     expect(validRes.status).toBe(200)
+         |                             ^
+      22 |     const { ticket } = await validRes.json()
+      23 |     expect(typeof ticket).toBe("string")
+      24 |
+        at /home/mohith/Development/projects/qr-dining/e2e/realtime/R-01-ws-ticket-required.spec.ts:21:29
+
+    Error Context: artifacts/results/realtime-R-01-ws-ticket-re-a7924--requires-valid-guest-token-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/realtime-R-01-ws-ticket-re-a7924--requires-valid-guest-token-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/realtime-R-01-ws-ticket-re-a7924--requires-valid-guest-token-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  9) [desktop] › realtime/R-01-ws-ticket-required.spec.ts:45:7 › R-01: WebSocket ticket authentication › ticket is single-use — second upgrade attempt fails 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m200[39m
+    Received: [31m201[39m
+
+      57 |       body: JSON.stringify({}),
+      58 |     })
+    > 59 |     expect(ticketRes.status).toBe(200)
+         |                              ^
+      60 |     const { ticket } = await ticketRes.json()
+      61 |
+      62 |     // WS upgrade with ticket (HTTP version check — actual WS upgrade needs WebSocket client)
+        at /home/mohith/Development/projects/qr-dining/e2e/realtime/R-01-ws-ticket-required.spec.ts:59:30
+
+    Error Context: artifacts/results/realtime-R-01-ws-ticket-re-3b3d3-econd-upgrade-attempt-fails-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/realtime-R-01-ws-ticket-re-3b3d3-econd-upgrade-attempt-fails-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/realtime-R-01-ws-ticket-re-3b3d3-econd-upgrade-attempt-fails-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  10) [desktop] › realtime/R-03-ws-ticket-rate-limit.spec.ts:6:7 › R-03: WS ticket rate limiting › exceeding ticket rate limit returns 429 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      30 |     // Either rate limiting is active (some 429s) or limit is higher (all 200s)
+      31 |     // The test passes either way — we're verifying the system doesn't crash under load
+    > 32 |     expect(statuses.every((s) => [200, 429].includes(s))).toBe(true)
+         |                                                           ^
+      33 |   })
+      34 | })
+      35 |
+        at /home/mohith/Development/projects/qr-dining/e2e/realtime/R-03-ws-ticket-rate-limit.spec.ts:32:59
+
+    Error Context: artifacts/results/realtime-R-03-ws-ticket-ra-2a516-cket-rate-limit-returns-429-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/realtime-R-03-ws-ticket-ra-2a516-cket-rate-limit-returns-429-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/realtime-R-03-ws-ticket-ra-2a516-cket-rate-limit-returns-429-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  11) [desktop] › session/L-03-reconnect-awaiting-reactivation.spec.ts:6:7 › L-03: Reconnect during awaiting_reactivation › ws-ticket issuance succeeds on active session 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m200[39m
+    Received: [31m201[39m
+
+      19 |       body: JSON.stringify({ since: 0 }),
+      20 |     })
+    > 21 |     expect(ticketRes.status).toBe(200)
+         |                              ^
+      22 |     const { ticket, expires_in } = await ticketRes.json()
+      23 |     expect(typeof ticket).toBe("string")
+      24 |     expect(ticket.length).toBeGreaterThan(10)
+        at /home/mohith/Development/projects/qr-dining/e2e/session/L-03-reconnect-awaiting-reactivation.spec.ts:21:30
+
+    Error Context: artifacts/results/session-L-03-reconnect-awa-41020--succeeds-on-active-session-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/session-L-03-reconnect-awa-41020--succeeds-on-active-session-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/session-L-03-reconnect-awa-41020--succeeds-on-active-session-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  12) [desktop] › session/L-05-host-close-idempotent.spec.ts:6:7 › L-05: Host close is idempotent › DELETE session twice returns success both times 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoContain[2m([22m[32mexpected[39m[2m) // indexOf[22m
+
+    Expected value: [32m401[39m
+    Received array: [31m[200, 204, 409, 410][39m
+
+      21 |     })
+      22 |     // Second close should be no-op 200/204 or 409/410 (session already closed)
+    > 23 |     expect([200, 204, 409, 410]).toContain(close2.status)
+         |                                  ^
+      24 |   })
+      25 | })
+      26 |
+        at /home/mohith/Development/projects/qr-dining/e2e/session/L-05-host-close-idempotent.spec.ts:23:34
+
+    Error Context: artifacts/results/session-L-05-host-close-id-30236--returns-success-both-times-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/session-L-05-host-close-id-30236--returns-success-both-times-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/session-L-05-host-close-id-30236--returns-success-both-times-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  13) [desktop] › session/L-09-stale-browser-revisit.spec.ts:5:7 › L-09: Stale browser revisit after session closed › UI shows session-ended screen when storage has closed session 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      36 |     const hasEndedText = await ended.isVisible().catch(() => false)
+      37 |
+    > 38 |     expect(isHome || hasEndedText).toBe(true)
+         |                                    ^
+      39 |   })
+      40 | })
+      41 |
+        at /home/mohith/Development/projects/qr-dining/e2e/session/L-09-stale-browser-revisit.spec.ts:38:36
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    artifacts/results/session-L-09-stale-browser-ec7ad--storage-has-closed-session-desktop/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    artifacts/results/session-L-09-stale-browser-ec7ad--storage-has-closed-session-desktop/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: artifacts/results/session-L-09-stale-browser-ec7ad--storage-has-closed-session-desktop/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/session-L-09-stale-browser-ec7ad--storage-has-closed-session-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/session-L-09-stale-browser-ec7ad--storage-has-closed-session-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  14) [desktop] › staff/S-03-duplicate-staff-code-rejected.spec.ts:6:7 › S-03: Duplicate staff_code within branch rejected › creating two staff with the same staff_code returns 409 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoContain[2m([22m[32mexpected[39m[2m) // indexOf[22m
+
+    Expected value: [32m500[39m
+    Received array: [31m[409, 422][39m
+
+      36 |       }),
+      37 |     })
+    > 38 |     expect([409, 422]).toContain(second.status)
+         |                        ^
+      39 |   })
+      40 | })
+      41 |
+        at /home/mohith/Development/projects/qr-dining/e2e/staff/S-03-duplicate-staff-code-rejected.spec.ts:38:24
+
+    Error Context: artifacts/results/staff-S-03-duplicate-staff-f7d03-same-staff-code-returns-409-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/staff-S-03-duplicate-staff-f7d03-same-staff-code-returns-409-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/staff-S-03-duplicate-staff-f7d03-same-staff-code-returns-409-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  15) [desktop] › tenancy/T-03-org-suspension.spec.ts:6:7 › T-03: Suspended org rejects new sessions › after org suspension, new session creation is rejected 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoContain[2m([22m[32mexpected[39m[2m) // indexOf[22m
+
+    Expected value: [32m201[39m
+    Received array: [31m[400, 403, 422, 503][39m
+
+      30 |       body: JSON.stringify({ table_id: table.id, display_name: "BlockedGuest" }),
+      31 |     })
+    > 32 |     expect([400, 403, 422, 503]).toContain(sessionRes.status)
+         |                                  ^
+      33 |   })
+      34 | })
+      35 |
+        at /home/mohith/Development/projects/qr-dining/e2e/tenancy/T-03-org-suspension.spec.ts:32:34
+
+    Error Context: artifacts/results/tenancy-T-03-org-suspensio-e6900-ession-creation-is-rejected-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/tenancy-T-03-org-suspensio-e6900-ession-creation-is-rejected-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/tenancy-T-03-org-suspensio-e6900-ession-creation-is-rejected-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  16) [desktop] › tenancy/T-05-platform-admin-cross-org-read.spec.ts:6:7 › T-05: Platform admin can read across all orgs › platform admin reads org B session that org A staff cannot 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m"14bfeceb-4653-4610-bcdd-f2d0842e84a6"[39m
+    Received: [31mundefined[39m
+
+      18 |     if (res.status === 200) {
+      19 |       const data = await res.json()
+    > 20 |       expect(data.id).toBe(sessionId)
+         |                       ^
+      21 |     }
+      22 |   })
+      23 | })
+        at /home/mohith/Development/projects/qr-dining/e2e/tenancy/T-05-platform-admin-cross-org-read.spec.ts:20:23
+
+    Error Context: artifacts/results/tenancy-T-05-platform-admi-47bf6-ion-that-org-A-staff-cannot-desktop/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    artifacts/results/tenancy-T-05-platform-admi-47bf6-ion-that-org-A-staff-cannot-desktop/trace.zip
+    Usage:
+
+        npx playwright show-trace artifacts/results/tenancy-T-05-platform-admi-47bf6-ion-that-org-A-staff-cannot-desktop/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  16 failed
+    [desktop] › adversarial/X-05-brute-force-lockout.spec.ts:6:7 › X-05: Staff brute-force lockout › 10 wrong PINs trigger 429 with Retry-After 
+    [desktop] › adversarial/X-07-replay-attack-old-ws-ticket.spec.ts:6:7 › X-07: WS ticket replay attack — expired/used ticket rejected › ticket expires within 30 seconds and cannot be reused 
+    [desktop] › audit/A-04-waiter-cannot-read-audit.spec.ts:6:7 › A-04: Waiter-role staff cannot read audit logs › GET branch audit with waiter token returns 403 
+    [desktop] › multidevice/M-04-second-device-joins.spec.ts:6:7 › M-04: Second device joins existing session › joining guest sees existing session state in snapshot 
+    [desktop] › order/O-01-order-placement.spec.ts:7:7 › O-01: Order placement — happy path › guest places order and receives confirmed order with operational ID 
+    [desktop] › platform/PT-01-support-session-read.spec.ts:6:7 › PT-01: Platform admin can read any session › platform admin fetches session details across orgs 
+    [desktop] › platform/PT-04-org-provisioning.spec.ts:6:7 › PT-04: Organization provisioning by platform admin › platform admin creates org, branch, and table 
+    [desktop] › realtime/R-01-ws-ticket-required.spec.ts:6:7 › R-01: WebSocket ticket authentication › ws-ticket endpoint requires valid guest token 
+    [desktop] › realtime/R-01-ws-ticket-required.spec.ts:45:7 › R-01: WebSocket ticket authentication › ticket is single-use — second upgrade attempt fails 
+    [desktop] › realtime/R-03-ws-ticket-rate-limit.spec.ts:6:7 › R-03: WS ticket rate limiting › exceeding ticket rate limit returns 429 
+    [desktop] › session/L-03-reconnect-awaiting-reactivation.spec.ts:6:7 › L-03: Reconnect during awaiting_reactivation › ws-ticket issuance succeeds on active session 
+    [desktop] › session/L-05-host-close-idempotent.spec.ts:6:7 › L-05: Host close is idempotent › DELETE session twice returns success both times 
+    [desktop] › session/L-09-stale-browser-revisit.spec.ts:5:7 › L-09: Stale browser revisit after session closed › UI shows session-ended screen when storage has closed session 
+    [desktop] › staff/S-03-duplicate-staff-code-rejected.spec.ts:6:7 › S-03: Duplicate staff_code within branch rejected › creating two staff with the same staff_code returns 409 
+    [desktop] › tenancy/T-03-org-suspension.spec.ts:6:7 › T-03: Suspended org rejects new sessions › after org suspension, new session creation is rejected 
+    [desktop] › tenancy/T-05-platform-admin-cross-org-read.spec.ts:6:7 › T-05: Platform admin can read across all orgs › platform admin reads org B session that org A staff cannot 

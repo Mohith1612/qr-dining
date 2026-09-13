@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
+# DEPRECATED — superseded by nightly-backup.sh + lib/storage.sh (provider
+# abstraction, manifest, retention, metrics). Kept only for ad-hoc uploads.
+#
 # backup_r2.sh — Upload a backup file to Cloudflare R2 (S3-compatible).
 # Run after backup.sh. Uses the AWS CLI with R2 endpoint configuration.
 #
 # Required env vars:
 #   R2_ENDPOINT    — https://<account_id>.r2.cloudflarestorage.com
-#   R2_BUCKET      — bucket name (e.g., qr-dining-backups)
+#   R2_BUCKET      — bucket name (always from env; bucket names are not permanent)
 #   R2_ACCESS_KEY  — R2 Access Key ID
 #   R2_SECRET_KEY  — R2 Secret Access Key
 #

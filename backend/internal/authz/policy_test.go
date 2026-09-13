@@ -193,6 +193,60 @@ func TestAuthorizeOrganizationScopeAndRoles(t *testing.T) {
 	}
 }
 
+// TestScopeViolationIsSetOnlyForTenantScopeDenials pins the flag that makes tenant
+// isolation independent of AUTHZ_CENTRAL_POLICY_ENFORCE. requireAuthorized enforces a
+// denial unconditionally when ScopeViolation is true, so mislabelling a role denial as a
+// scope violation would silently pull it out of the R3 shadow window, and failing to
+// label a real scope denial would reopen the cross-tenant bypass this test exists to
+// prevent.
+func TestScopeViolationIsSetOnlyForTenantScopeDenials(t *testing.T) {
+	a := NewAuthorizer()
+
+	// Cross-branch: same org, different branch.
+	crossBranch := a.Authorize(staff(sqlc.StaffRoleOwner, 11, 1), ActionMenuItemUpdate, MenuItemResource(1, 10, 1))
+	if crossBranch.Allowed || !crossBranch.ScopeViolation {
+		t.Fatalf("cross-branch: allowed=%v scope_violation=%v reason=%q; want denied scope violation",
+			crossBranch.Allowed, crossBranch.ScopeViolation, crossBranch.Reason)
+	}
+
+	// Cross-organization on an org-scoped action.
+	crossOrg := a.Authorize(staff(sqlc.StaffRoleOwner, 10, 2), ActionOrganizationUpdate, OrganizationResource(1))
+	if crossOrg.Allowed || !crossOrg.ScopeViolation {
+		t.Fatalf("cross-org: allowed=%v scope_violation=%v reason=%q; want denied scope violation",
+			crossOrg.Allowed, crossOrg.ScopeViolation, crossOrg.Reason)
+	}
+
+	// Role denial in the actor's own branch stays shadow-gated (not a scope violation).
+	roleDenied := a.Authorize(staff(sqlc.StaffRoleWaiter, 10, 1), ActionMenuItemUpdate, MenuItemResource(1, 10, 1))
+	if roleDenied.Allowed || roleDenied.ScopeViolation {
+		t.Fatalf("role denial: allowed=%v scope_violation=%v reason=%q; want denied WITHOUT scope violation",
+			roleDenied.Allowed, roleDenied.ScopeViolation, roleDenied.Reason)
+	}
+
+	// A permitted request carries no violation marker.
+	allowed := a.Authorize(staff(sqlc.StaffRoleOwner, 10, 1), ActionMenuItemUpdate, MenuItemResource(1, 10, 1))
+	if !allowed.Allowed || allowed.ScopeViolation {
+		t.Fatalf("allowed: allowed=%v scope_violation=%v; want allowed without scope violation",
+			allowed.Allowed, allowed.ScopeViolation)
+	}
+}
+
+// TestScopeViolationFailsClosedOnZeroScope guards Scope.SameBranch/SameOrganization's
+// zero-value behaviour: a resource or actor with an unresolved scope must deny, not
+// coincidentally match another zero.
+func TestScopeViolationFailsClosedOnZeroScope(t *testing.T) {
+	a := NewAuthorizer()
+	for name, actor := range map[string]Actor{
+		"zero actor branch": staff(sqlc.StaffRoleOwner, 0, 1),
+		"zero actor org":    staff(sqlc.StaffRoleOwner, 0, 0),
+	} {
+		d := a.Authorize(actor, ActionMenuItemUpdate, MenuItemResource(1, 0, 0))
+		if d.Allowed || !d.ScopeViolation {
+			t.Fatalf("%s: allowed=%v scope_violation=%v; want denied scope violation", name, d.Allowed, d.ScopeViolation)
+		}
+	}
+}
+
 func staff(role sqlc.StaffRole, branchID, orgID int64) Actor {
 	return Actor{Type: ActorTypeStaff, ID: 1, Role: role, Scope: Scope{BranchID: branchID, OrganizationID: orgID}}
 }

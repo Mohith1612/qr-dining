@@ -24,6 +24,53 @@ type StalledPaymentPending struct {
 	InitiatedAt    time.Time
 }
 
+// BillingReconciliationDiscrepancy is one exact-money mismatch found while
+// reconciling a settled session. Amounts remain decimal strings so no binary
+// floating-point conversion can weaken a NUMERIC(12,2) comparison.
+type BillingReconciliationDiscrepancy struct {
+	SessionID      uuid.UUID
+	OrganizationID int64
+	BranchID       int64
+	TableID        int64
+	BillSnapshotID int64
+	Comparison     string
+	ExpectedAmount string
+	ActualAmount   string
+	Difference     string
+	Currency       string
+	AlreadyAudited bool
+}
+
+// ListBillingReconciliationDiscrepancies is read-only. It observes completed
+// payment amounts without changing any financial or session state.
+func (r *Repos) ListBillingReconciliationDiscrepancies(ctx context.Context, windowStart, windowEnd time.Time) ([]BillingReconciliationDiscrepancy, error) {
+	rows, err := r.q.ListBillingReconciliationDiscrepancies(ctx, sqlc.ListBillingReconciliationDiscrepanciesParams{
+		WindowStart: windowStart,
+		WindowEnd:   windowEnd,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	findings := make([]BillingReconciliationDiscrepancy, 0, len(rows))
+	for _, row := range rows {
+		findings = append(findings, BillingReconciliationDiscrepancy{
+			SessionID:      row.SessionID,
+			OrganizationID: row.OrganizationID,
+			BranchID:       row.BranchID,
+			TableID:        row.TableID,
+			BillSnapshotID: row.BillSnapshotID.Int64,
+			Comparison:     row.Comparison,
+			ExpectedAmount: row.ExpectedAmount,
+			ActualAmount:   row.ActualAmount,
+			Difference:     row.Difference,
+			Currency:       row.Currency,
+			AlreadyAudited: row.AlreadyAudited,
+		})
+	}
+	return findings, nil
+}
+
 // ListPaymentPendingStalled returns payment_pending sessions whose oldest
 // non-terminal payment was initiated before olderThan. Read-only; used by the
 // alert-only escalation worker. Bounded to avoid a runaway sweep.
@@ -130,6 +177,12 @@ func (r *Repos) ListPaymentsForBranchByStatus(ctx context.Context, branchID int6
 	return r.q.ListPaymentsForBranchByStatus(ctx, sqlc.ListPaymentsForBranchByStatusParams{BranchID: branchID, Status: status})
 }
 
+// ListWebhookEventsByPayment returns the webhook events recorded against a payment,
+// oldest first — used by the read-only support console payment inspection view.
+func (r *Repos) ListWebhookEventsByPayment(ctx context.Context, paymentID int64) ([]sqlc.PaymentWebhookEvent, error) {
+	return r.q.ListWebhookEventsByPayment(ctx, pgtype.Int8{Int64: paymentID, Valid: true})
+}
+
 // InsertWebhookEvent inserts a new webhook event with ON CONFLICT DO NOTHING.
 // Returns (event, true) if inserted, (zero, false) if already existed (idempotent replay).
 func (r *Repos) InsertWebhookEvent(ctx context.Context, externalID, provider, eventType string, payload json.RawMessage, rawPayload string, headers json.RawMessage) (sqlc.PaymentWebhookEvent, bool, error) {
@@ -162,8 +215,11 @@ func (r *Repos) GetPaymentByProviderRef(ctx context.Context, provider, providerR
 	return pay, err
 }
 
-func (r *Repos) SumCompletedPaymentsForSession(ctx context.Context, sessionID uuid.UUID) (pgtype.Numeric, error) {
-	return r.q.SumCompletedPaymentsForSession(ctx, sessionID)
+func (r *Repos) SumCompletedPaymentsForBillSnapshot(ctx context.Context, sessionID uuid.UUID, billSnapshotID int64) (pgtype.Numeric, error) {
+	return r.q.SumCompletedPaymentsForBillSnapshot(ctx, sqlc.SumCompletedPaymentsForBillSnapshotParams{
+		SessionID:      sessionID,
+		BillSnapshotID: pgtype.Int8{Int64: billSnapshotID, Valid: true},
+	})
 }
 
 func (r *Repos) MarkWebhookProcessed(ctx context.Context, id, paymentID int64, errMsg string) error {

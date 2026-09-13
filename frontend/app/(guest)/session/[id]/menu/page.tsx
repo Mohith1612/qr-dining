@@ -11,10 +11,11 @@ import { MenuSkeleton } from "@/components/shared/LoadingSkeleton"
 import { BottomSheet } from "@/components/shared/BottomSheet"
 import { Vignette } from "@/components/shared/Vignette"
 import { FeaturedCarousel } from "@/components/shared/FeaturedCarousel"
-import { DietaryTag, BadgeTag, SpiceIndicator } from "@/components/shared/MetaTag"
-import { Minus, Plus, ChevronRight, Search } from "lucide-react"
+import { FloatingCart } from "@/components/shared/FloatingCart"
+import { BadgeTag, SpiceIndicator } from "@/components/shared/MetaTag"
+import { Minus, Plus, Search } from "lucide-react"
 import { toast } from "sonner"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { use } from "react"
 import { cn, groupBy } from "@/lib/utils"
 import { BeverageModifierGroup, isBeverageCategory } from "@/components/shared/BeverageModifierGrid"
@@ -22,6 +23,7 @@ import { SearchBar } from "@/components/shared/SearchBar"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { useFilteredMenu } from "@/hooks/useFilteredMenu"
 import type { MenuItem, ItemModifier, DietaryFlag, ItemBadge } from "@/types/api"
+import { track } from "@/lib/product-analytics/events"
 
 interface SheetState {
   item: MenuItem
@@ -45,84 +47,133 @@ function itemHue(id: number): number {
   return (id * 47 + 15) % 60 + 20
 }
 
+/** Classic Indian menu-card veg/non-veg mark: bordered square with a dot. */
+function VegMark({ flags }: { flags?: DietaryFlag[] | null }) {
+  if (!flags?.length) return null
+  const isVeg = flags.some((f) => f === "vegetarian" || f === "vegan" || f === "jain")
+  const isEgg = flags.includes("egg")
+  const color = flags.includes("non-veg") ? "#D0342C" : isEgg ? "#C89B3C" : isVeg ? "#1E8E3E" : null
+  if (!color) return null
+  return (
+    <span
+      aria-label={flags.includes("non-veg") ? "Non-vegetarian" : isEgg ? "Contains egg" : "Vegetarian"}
+      style={{
+        width: 15, height: 15, borderRadius: 3, flexShrink: 0,
+        border: `1.5px solid ${color}`,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />
+    </span>
+  )
+}
+
 function ItemRow({ item, qty, onTap }: ItemRowProps) {
   const [imgError, setImgError] = useState(false)
+  const customisable = (item.modifiers?.length ?? 0) > 0
+  const tap = () => item.is_available && onTap(item)
   return (
-    <button
-      onClick={() => item.is_available && onTap(item)}
-      disabled={!item.is_available}
-      className="press"
+    <div
       style={{
-        border: 0, background: "transparent", padding: "18px 0",
-        display: "flex", gap: 16, alignItems: "flex-start", textAlign: "left",
-        width: "100%", opacity: item.is_available ? 1 : 0.4,
+        padding: "20px 0 26px",
+        display: "flex", gap: 14, alignItems: "flex-start",
+        borderBottom: "1px dashed var(--line-2)",
+        opacity: item.is_available ? 1 : 0.4,
       }}
-      aria-disabled={!item.is_available}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span className="serif" style={{ fontSize: 20, fontWeight: 500, letterSpacing: "-0.015em", color: "var(--ink-1)", lineHeight: 1.15 }}>
-            {item.name}
-          </span>
-          <span className="leader" />
-          <span className="serif" style={{ fontSize: 17, color: "var(--accent)", fontWeight: 500, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-            {formatCurrency(item.price)}
-          </span>
-        </div>
-        {item.description && (
-          <div style={{ color: "var(--ink-3)", fontSize: 13, lineHeight: 1.6, marginTop: 5 }}>
-            {item.description}
-          </div>
-        )}
-        {(item.dietary_flags?.length || item.item_badges?.length || !!item.spice_level) ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-            {item.dietary_flags?.map((f) => <DietaryTag key={f} flag={f} />)}
-            {item.item_badges?.map((b) => <BadgeTag key={b} badge={b} />)}
+      {/* Left — identity, price, description */}
+      <div
+        role="button"
+        tabIndex={item.is_available ? 0 : -1}
+        onClick={tap}
+        onKeyDown={(e) => e.key === "Enter" && tap()}
+        style={{ flex: 1, minWidth: 0, cursor: item.is_available ? "pointer" : "default" }}
+        aria-disabled={!item.is_available}
+      >
+        {(item.dietary_flags?.length || !!item.spice_level) ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7 }}>
+            <VegMark flags={item.dietary_flags} />
             {item.spice_level ? <SpiceIndicator level={item.spice_level} /> : null}
           </div>
         ) : null}
+        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.015em", color: "var(--ink-1)", lineHeight: 1.25 }}>
+          {item.name}
+        </div>
+        {item.item_badges?.length ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 7 }}>
+            {item.item_badges.map((b) => <BadgeTag key={b} badge={b} />)}
+          </div>
+        ) : null}
+        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-1)", marginTop: 8, fontVariantNumeric: "tabular-nums" }}>
+          {formatCurrency(item.price)}
+        </div>
+        {item.description && (
+          <div style={{
+            color: "var(--ink-3)", fontSize: 13, lineHeight: 1.55, marginTop: 6,
+            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+          }}>
+            {item.description}
+          </div>
+        )}
         {!item.is_available && (
-          <div style={{ color: "var(--ink-4)", fontSize: 11, marginTop: 5, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+          <div style={{ color: "var(--ink-4)", fontSize: 11, marginTop: 6, letterSpacing: "0.05em", textTransform: "uppercase" }}>
             Not available
           </div>
         )}
       </div>
-      <div style={{ position: "relative", flexShrink: 0 }}>
-        {item.image_url && !imgError ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={item.image_url}
-            alt=""
-            aria-hidden
-            loading="lazy"
-            onError={() => setImgError(true)}
-            style={{
-              width: 66, height: 66, borderRadius: 12,
-              objectFit: "cover", flexShrink: 0,
-              outline: qty > 0 ? "2px solid var(--accent)" : "none",
-              outlineOffset: 2,
-            }}
-          />
-        ) : (
-          <Vignette hue={itemHue(item.id)} size={66} ring={qty > 0} />
-        )}
-        {qty > 0 && (
-          <span style={{
-            position: "absolute", bottom: -3, right: -3,
-            minWidth: 22, height: 22, borderRadius: 999, padding: "0 7px",
-            background: "var(--accent)", color: "var(--accent-ink)",
-            border: "2px solid var(--bg-base)",
-            display: "inline-flex", alignItems: "center", justifyContent: "center",
-            fontSize: 11, fontWeight: 700, letterSpacing: "-0.005em",
+
+      {/* Right — photo with the ADD pill riding its bottom edge */}
+      <div style={{ position: "relative", flexShrink: 0, width: 132, paddingBottom: customisable ? 34 : 18, textAlign: "center" }}>
+        <div role="button" tabIndex={-1} onClick={tap} style={{ cursor: item.is_available ? "pointer" : "default" }}>
+          {item.image_url && !imgError ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.image_url}
+              alt=""
+              aria-hidden
+              loading="lazy"
+              onError={() => setImgError(true)}
+              style={{ width: 132, height: 122, borderRadius: 16, objectFit: "cover", display: "block", boxShadow: "var(--shadow-1)" }}
+            />
+          ) : (
+            <div style={{
+              width: 132, height: 122, borderRadius: 16, background: "var(--bg-elev-2)",
+              display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-1)",
+            }}>
+              <Vignette hue={itemHue(item.id)} size={64} />
+            </div>
+          )}
+        </div>
+        <button
+          onClick={tap}
+          disabled={!item.is_available}
+          className="press"
+          aria-label={qty > 0 ? `${item.name} — ${qty} in cart, tap to adjust` : `Add ${item.name}`}
+          style={{
+            position: "absolute", left: "50%", transform: "translateX(-50%)",
+            bottom: customisable ? 14 : -2,
+            minWidth: 96, height: 36, padding: "0 14px",
+            borderRadius: 10,
+            background: qty > 0 ? "var(--accent)" : "var(--bg-elev-1)",
+            color: qty > 0 ? "var(--accent-ink)" : "var(--accent)",
+            border: "1px solid " + (qty > 0 ? "var(--accent)" : "var(--line-2)"),
+            boxShadow: "0 6px 16px -6px rgba(0,0,0,0.45)",
+            fontSize: 13.5, fontWeight: 800, letterSpacing: "0.08em",
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
+            cursor: item.is_available ? "pointer" : "default",
             fontVariantNumeric: "tabular-nums",
-            boxShadow: "0 4px 12px -4px rgba(0,0,0,0.5)",
-            animation: "pop 0.32s var(--ease-back)",
-          }}>
-            {qty}
+          }}
+        >
+          {qty > 0 ? `ADD · ${qty}` : "ADD"}
+          {qty === 0 && <Plus size={13} strokeWidth={3} aria-hidden />}
+        </button>
+        {customisable && (
+          <span style={{ position: "absolute", left: 0, right: 0, bottom: -6, fontSize: 11, color: "var(--ink-4)" }}>
+            customisable
           </span>
         )}
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -235,6 +286,7 @@ function FilterBar({ activeFilters, hasActiveFilters, onDietary, onBadge, onSpic
 export default function MenuPage({ params }: Props) {
   const { id: sessionId } = use(params)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const featured = useMenuStore((s) => s.featured)
   const categories = useMenuStore((s) => s.categories)
   const menuLoading = useMenuStore((s) => s.loading)
@@ -282,7 +334,7 @@ export default function MenuPage({ params }: Props) {
     if (categories.length > 0 && activeCatId === null) {
       setActiveCatId(categories[0].id)
     }
-  }, [categories.length, activeCatId])
+  }, [categories, activeCatId])
 
   useEffect(() => {
     const container = scrollContainerRef.current
@@ -307,7 +359,6 @@ export default function MenuPage({ params }: Props) {
     })
 
     return () => observerRef.current?.disconnect()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categories])
 
   useEffect(() => {
@@ -347,25 +398,60 @@ export default function MenuPage({ params }: Props) {
   }
 
   function openSheet(item: MenuItem, categoryName?: string) {
+    track("item_viewed", {
+      item_id: item.id,
+      item_name: item.name,
+      category_id: item.category_id,
+    })
     setSheet({ item, quantity: 1, selectedModifiers: [], note: "", isBeverage: isBeverageCategory(categoryName ?? "") })
   }
 
+  // Deep-link from the landing's specials/popular: ?item=<id> opens its sheet once.
+  const itemParam = searchParams.get("item")
+  useEffect(() => {
+    if (!itemParam || categories.length === 0) return
+    const targetId = Number(itemParam)
+    for (const cat of categories) {
+      const found = cat.items.find((i) => i.id === targetId)
+      if (found) { openSheet(found, cat.name); break }
+    }
+    router.replace(`/session/${sessionId}/menu`, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemParam, categories.length])
+
   function toggleModifier(id: number) {
-    setSheet((s) =>
-      s ? {
-        ...s,
-        selectedModifiers: s.selectedModifiers.includes(id)
-          ? s.selectedModifiers.filter((m) => m !== id)
-          : [...s.selectedModifiers, id],
-      } : s
-    )
+    setSheet((s) => {
+      if (!s) return s
+      if (s.selectedModifiers.includes(id)) {
+        return { ...s, selectedModifiers: s.selectedModifiers.filter((m) => m !== id) }
+      }
+      const mod = s.item.modifiers?.find((m) => m.id === id)
+      const group = mod?.modifier_group ?? ""
+      // Single-select: any modifier in this group flagged single_select makes
+      // the whole group exclusive — picking one clears its siblings.
+      const isSingleSelect =
+        !!group && (s.item.modifiers ?? []).some((m) => (m.modifier_group ?? "") === group && m.single_select)
+      const groupIds = isSingleSelect
+        ? new Set((s.item.modifiers ?? []).filter((m) => (m.modifier_group ?? "") === group).map((m) => m.id))
+        : new Set<number>()
+      const kept = s.selectedModifiers.filter((m) => !groupIds.has(m))
+      return { ...s, selectedModifiers: [...kept, id] }
+    })
   }
 
   async function handleAddToCart() {
     if (!sheet) return
     setAdding(true)
     try {
-      await addItem(sheet.item.id, sheet.quantity, sheet.selectedModifiers, sheet.note || undefined)
+      const added = await addItem(sheet.item.id, sheet.quantity, sheet.selectedModifiers, sheet.note || undefined)
+      if (!added) return
+      track("item_added", {
+        item_id: sheet.item.id,
+        item_name: sheet.item.name,
+        quantity: sheet.quantity,
+        unit_price: Number(sheet.item.price),
+        modifiers_count: sheet.selectedModifiers.length,
+      })
       toast.success(`${sheet.item.name} added`)
       setSheet(null)
     } catch (err) {
@@ -473,7 +559,7 @@ export default function MenuPage({ params }: Props) {
                     className={cn(
                       "press px-4 py-2.5 rounded-full border text-[13px] whitespace-nowrap transition-[background,color,border-color] duration-[var(--dur-fast)]",
                       active
-                        ? "font-semibold border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_0_0_1px_var(--accent),var(--shadow-1)]"
+                        ? "font-semibold border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] shadow-[var(--shadow-2)]"
                         : "font-medium border-[var(--line-2)] bg-[var(--bg-elev-1)] text-[var(--ink-2)] shadow-[var(--shadow-1)]"
                     )}
                   >
@@ -533,55 +619,25 @@ export default function MenuPage({ params }: Props) {
                 <hr className="rule" style={{ margin: 0 }} />
               </div>
               <div style={{ padding: "0 20px" }}>
-                {cat.items.map((item, i, arr) => (
-                  <div key={item.id}>
-                    <ItemRow item={item} qty={cartCountByItem[item.id] ?? 0} onTap={(item) => openSheet(item, cat.name)} />
-                    {i < arr.length - 1 && <hr className="rule" style={{ margin: 0 }} />}
-                  </div>
-                ))}
+                {/* Available dishes first; sold-out items sink to the bottom of the category. */}
+                {[...cat.items]
+                  .sort((a, b) => Number(a.is_available === false) - Number(b.is_available === false))
+                  .map((item) => (
+                    <ItemRow key={item.id} item={item} qty={cartCountByItem[item.id] ?? 0} onTap={(item) => openSheet(item, cat.name)} />
+                  ))}
               </div>
             </section>
           ))
         )}
       </div>
 
-      {/* Cart bar — fixed above bottom nav */}
-      {itemCount > 0 && (
-        <div style={{
-          position: "fixed",
-          bottom: "calc(84px + env(safe-area-inset-bottom))",
-          left: 0, right: 0,
-          zIndex: 20,
-          padding: "10px 16px 8px",
-          background: "color-mix(in srgb, var(--bg-base) 85%, transparent)",
-          backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-          borderTop: "1px solid var(--line-1)",
-          animation: "slideUp 0.32s var(--ease-out)",
-        }}>
-          <button
-            onClick={() => router.push(`/session/${sessionId}/cart`)}
-            className="press btn-primary"
-            style={{
-              width: "100%", height: 54, borderRadius: 16,
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "0 20px",
-            }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 10, fontSize: 14, fontWeight: 600 }}>
-              <span style={{
-                width: 24, height: 24, borderRadius: 999,
-                background: "rgba(0,0,0,0.2)", color: "inherit",
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                fontSize: 12, fontWeight: 700,
-              }}>{itemCount}</span>
-              View cart
-            </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600 }}>
-              {cartTotal > 0 ? formatCurrency(cartTotal) : ""} <ChevronRight style={{ width: 14, height: 14 }} aria-hidden />
-            </span>
-          </button>
-        </div>
-      )}
+      {/* Floating cart — glass pill above the bottom nav */}
+      <FloatingCart
+        itemCount={itemCount}
+        total={formatCurrency(cartTotal)}
+        onClick={() => router.push(`/session/${sessionId}/cart`)}
+        label="View Order"
+      />
 
       {/* Item bottom sheet */}
       <BottomSheet
@@ -590,13 +646,16 @@ export default function MenuPage({ params }: Props) {
         title={sheet?.item.name}
       >
         {sheet && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 22, paddingBottom: 8 }}>
-            {/* Atmospheric accent strip */}
-            <div style={{
-              height: 3, borderRadius: 2,
-              background: "linear-gradient(90deg, var(--accent), var(--accent-soft) 70%, transparent)",
-              marginTop: -4,
-            }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {/* Hero image */}
+            <div style={{ height: 168, borderRadius: "var(--rad-lg)", overflow: "hidden", background: "var(--bg-sunken)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: -2 }}>
+              {sheet.item.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={sheet.item.image_url} alt="" aria-hidden style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <Vignette hue={itemHue(sheet.item.id)} size={96} />
+              )}
+            </div>
 
             {sheet.item.description && (
               <p style={{ margin: 0, color: "var(--ink-2)", fontSize: 14, lineHeight: 1.65 }}>
@@ -606,7 +665,7 @@ export default function MenuPage({ params }: Props) {
 
             {/* Price + stepper */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span className="serif" style={{ fontSize: 30, fontWeight: 500, color: "var(--accent)", letterSpacing: "-0.015em" }}>
+              <span className="serif" style={{ fontSize: 26, fontWeight: 600, color: "var(--ink-1)", letterSpacing: "-0.02em" }}>
                 {formatCurrency(sheet.item.price)}
               </span>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -645,7 +704,12 @@ export default function MenuPage({ params }: Props) {
             {/* Modifiers */}
             {sheet.item.modifiers && sheet.item.modifiers.length > 0 && (
               <div>
-                <span className="eyebrow" style={{ display: "block", marginBottom: 10 }}>Customise</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <span className="eyebrow">Customise</span>
+                  {sheet.item.modifiers?.some((m) => m.is_required) && (
+                    <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#735B25", background: "#F3E7C8", padding: "2px 7px", borderRadius: "var(--rad-pill)" }}>Required</span>
+                  )}
+                </div>
                 {sheet.isBeverage ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
                     {Object.entries(groupBy(sheet.item.modifiers, (m) => m.modifier_group ?? "add-ons")).map(([group, mods]) => (
@@ -659,34 +723,64 @@ export default function MenuPage({ params }: Props) {
                     ))}
                   </div>
                 ) : (
-                  <div style={{ borderRadius: "var(--rad-lg)", overflow: "hidden", border: "1px solid var(--line-2)" }}>
-                    {sheet.item.modifiers.map((mod: ItemModifier, i: number) => (
-                      <label
-                        key={mod.id}
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "space-between",
-                          padding: "14px 16px", cursor: "default",
-                          borderTop: i > 0 ? "1px solid var(--line-1)" : "none",
-                          background: sheet.selectedModifiers.includes(mod.id) ? "var(--accent-soft)" : "transparent",
-                          transition: "background var(--dur-fast) var(--ease)",
-                        }}
-                      >
-                        <span style={{ fontSize: 14, color: "var(--ink-1)" }}>{mod.name}</span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          {mod.price_delta !== 0 && (
-                            <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
-                              +{formatCurrency(mod.price_delta)}
-                            </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    {Object.entries(groupBy(sheet.item.modifiers, (m) => m.modifier_group ?? "")).map(([group, mods]) => {
+                      // A group is exclusive (radio) when any of its modifiers
+                      // carries single_select — same rule toggleModifier and the
+                      // server (MODIFIER_CONFLICT) enforce.
+                      const singleSelect = !!group && mods.some((m) => m.single_select)
+                      return (
+                        <div key={group || "add-ons"}>
+                          {group && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                              <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+                                {group}
+                              </span>
+                              {singleSelect && (
+                                <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: "var(--rad-pill)" }}>
+                                  Pick one
+                                </span>
+                              )}
+                            </div>
                           )}
-                          <input
-                            type="checkbox"
-                            checked={sheet.selectedModifiers.includes(mod.id)}
-                            onChange={() => toggleModifier(mod.id)}
-                            style={{ width: 18, height: 18, accentColor: "var(--accent)" }}
-                          />
+                          <div style={{ borderRadius: "var(--rad-lg)", overflow: "hidden", border: "1px solid var(--line-2)" }}>
+                            {mods.map((mod: ItemModifier, i: number) => (
+                              <label
+                                key={mod.id}
+                                style={{
+                                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                                  padding: "14px 16px", cursor: "default",
+                                  borderTop: i > 0 ? "1px solid var(--line-1)" : "none",
+                                  background: sheet.selectedModifiers.includes(mod.id) ? "var(--accent-soft)" : "transparent",
+                                  transition: "background var(--dur-fast) var(--ease)",
+                                }}
+                              >
+                                <span style={{ fontSize: 14, color: "var(--ink-1)" }}>{mod.name}</span>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                  {mod.price_delta !== 0 && (
+                                    <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                                      +{formatCurrency(mod.price_delta)}
+                                    </span>
+                                  )}
+                                  <input
+                                    type={singleSelect ? "radio" : "checkbox"}
+                                    name={singleSelect ? `modifier-group-${group}` : undefined}
+                                    checked={sheet.selectedModifiers.includes(mod.id)}
+                                    // Radios don't fire change when the checked one is
+                                    // clicked again, so exclusive groups toggle on click
+                                    // (toggleModifier handles deselect + sibling clearing).
+                                    onChange={singleSelect ? undefined : () => toggleModifier(mod.id)}
+                                    onClick={singleSelect ? () => toggleModifier(mod.id) : undefined}
+                                    readOnly={singleSelect}
+                                    style={{ width: 18, height: 18, accentColor: "var(--accent)" }}
+                                  />
+                                </div>
+                              </label>
+                            ))}
+                          </div>
                         </div>
-                      </label>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -709,34 +803,43 @@ export default function MenuPage({ params }: Props) {
               />
             </div>
 
-            {/* CTA */}
-            <button
-              onClick={handleAddToCart}
-              disabled={adding || !requiredGroupsFulfilled}
-              className="press"
-              style={{
-                width: "100%", height: 54, borderRadius: 16,
-                background: adding || !requiredGroupsFulfilled
-                  ? "var(--bg-elev-3)"
-                  : "linear-gradient(180deg, var(--accent-strong), var(--accent))",
-                color: adding || !requiredGroupsFulfilled ? "var(--ink-3)" : "var(--accent-ink)",
-                fontSize: 16, fontWeight: 600,
-                border: adding || !requiredGroupsFulfilled ? "1px solid var(--line-2)" : "1px solid var(--accent)",
-                boxShadow: adding || !requiredGroupsFulfilled ? "none" : "var(--shadow-2), inset 0 1px 0 rgba(255,255,255,0.18)",
-                transition: "background var(--dur-fast) var(--ease)",
-              }}
-            >
-              {adding
-                ? "Adding…"
-                : `Add to order · ${formatCurrency(
+            {/* Sticky Add-to-Order footer */}
+            <div style={{
+              position: "sticky", bottom: -20,
+              marginLeft: -20, marginRight: -20, marginTop: 4,
+              padding: "12px 20px",
+              paddingBottom: "calc(16px + env(safe-area-inset-bottom))",
+              background: "var(--bg-overlay)",
+              backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+              borderTop: "1px solid var(--line-1)",
+            }}>
+              <button
+                onClick={handleAddToCart}
+                disabled={adding || !requiredGroupsFulfilled}
+                className="press"
+                style={{
+                  width: "100%", height: 54, borderRadius: "var(--rad-md)",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "0 20px",
+                  background: adding || !requiredGroupsFulfilled ? "var(--bg-sunken)" : "var(--accent)",
+                  color: adding || !requiredGroupsFulfilled ? "var(--ink-3)" : "var(--accent-ink)",
+                  fontSize: 15.5, fontWeight: 600, border: "none",
+                  boxShadow: adding || !requiredGroupsFulfilled ? "none" : "var(--shadow-2)",
+                  transition: "background var(--dur-fast) var(--ease)",
+                }}
+              >
+                <span>{adding ? "Adding…" : "Add to order"}</span>
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {formatCurrency(
                     (parseFloat(String(sheet.item.price)) +
                       sheet.selectedModifiers.reduce((sum, id) => {
                         const mod = sheet.item.modifiers?.find((m) => m.id === id)
                         return sum + (mod ? parseFloat(String(mod.price_delta)) : 0)
                       }, 0)) * sheet.quantity
-                  )}`
-              }
-            </button>
+                  )}
+                </span>
+              </button>
+            </div>
           </div>
         )}
       </BottomSheet>

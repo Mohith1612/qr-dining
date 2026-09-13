@@ -69,7 +69,10 @@ services:
     expose:
       - "8080"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      # Readiness probe: /readyz returns 503 when Postgres or Redis is unreachable,
+      # so the container is only "healthy" when it can actually serve. /health is the
+      # liveness endpoint (process alive). See backend/docker/Dockerfile.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/readyz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder, fetchSnapshot } from "../helpers/ap
 import crypto from "crypto"
 
 test.describe("P-07: Reconnect mid-payment — no duplicate payment", () => {
-  test("snapshot after payment initiation shows pending state without duplicate", async () => {
+  // VACUOUS(sig-7): claims reconnect behavior but uses HTTP requests only; passes when browser reconnection duplicates payment.
+  test.fixme("snapshot after payment initiation shows pending state without duplicate", async () => {
     const { table, menu } = await seedOrg("p07")
     const created = await createSession(table.id, "ReconnPay")
     const sessionId = created.session.id

@@ -48,10 +48,10 @@ func (r *Repos) UpsertSubscription(ctx context.Context, restaurantID, planID int
 
 // PlanFeatures is decoded from subscription_plans.features_json.
 type PlanFeatures struct {
-	MaxBranches  int  `json:"max_branches"`  // -1 = unlimited
-	MaxTables    int  `json:"max_tables"`    // -1 = unlimited
-	Analytics    bool `json:"analytics"`
-	MultiBranch  bool `json:"multi_branch"`
+	MaxBranches int  `json:"max_branches"` // -1 = unlimited
+	MaxTables   int  `json:"max_tables"`   // -1 = unlimited
+	Analytics   bool `json:"analytics"`
+	MultiBranch bool `json:"multi_branch"`
 }
 
 func DecodePlanFeatures(raw json.RawMessage) PlanFeatures {

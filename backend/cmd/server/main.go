@@ -36,6 +36,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// 3b. Tracing (no-op unless OTEL_ENABLED=true).
+	otelShutdown, err := observability.SetupTracing(ctx, cfg.OTel, logger)
+	if err != nil {
+		logger.Warn().Err(err).Msg("otel init failed; continuing without tracing")
+		otelShutdown = func(context.Context) error { return nil }
+	}
+
 	// 4. Connect to PostgreSQL.
 	db, err := dbPkg.NewPool(ctx, cfg.DB)
 	if err != nil {
@@ -64,6 +71,7 @@ func main() {
 	// 8. Initialize Redis helpers.
 	pubsub := redisPkg.NewPubSub(redisClient, logger, metrics)
 	presence := redisPkg.NewPresence(redisClient)
+	presence.SetHostAbsenceGrace(cfg.Presence.HostAbsenceGrace)
 
 	// 9. Initialize event publisher.
 	publisher := events.NewPublisher(pubsub, logger)
@@ -87,12 +95,14 @@ func main() {
 	// 14. Start background workers.
 	wq := &workerQuerier{repos: repos}
 	w := worker.New(db, wq, redisClient, publisher, presence, metrics, auditWriter, cfg.Worker.Region, logger)
+	w.SetSessionIdleGrace(cfg.Worker.SessionIdleGrace)
 	go w.RunStaleSessionCleaner(ctx, cfg.Worker.StaleSessionInterval)
 	go w.RunSessionExpiryWarner(ctx, 5*time.Minute)
 	go w.RunPresenceExpiry(ctx, cfg.Worker.PresenceExpiryInterval)
 	go w.RunSessionTableReconciler(ctx, cfg.Worker.SessionReconcileInterval)
 	go w.RunReactivationPipeline(ctx, cfg.Worker.PresenceExpiryInterval, cfg.Worker.SessionPresenceGrace, cfg.Worker.SessionReactivationWindow)
 	go w.RunPaymentPendingEscalation(ctx, cfg.Worker.PaymentPendingEscalationInterval, cfg.Worker.PaymentPendingWarnAfter, cfg.Worker.PaymentPendingCriticalAfter)
+	go w.RunBillingReconciliation(ctx, cfg.Worker.BillingReconciliationInterval)
 
 	// 14b. Poll DB pool stats every 30s and export to Prometheus.
 	go func() {
@@ -115,6 +125,12 @@ func main() {
 	// 15. Start HTTP server — blocks until shutdown.
 	if err := srv.Start(ctx); err != nil {
 		logger.Error().Err(err).Msg("server error")
+	}
+
+	otelCtx, cancelOTel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelOTel()
+	if err := otelShutdown(otelCtx); err != nil {
+		logger.Warn().Err(err).Msg("otel shutdown failed")
 	}
 
 	logger.Info().Msg("shutdown complete")

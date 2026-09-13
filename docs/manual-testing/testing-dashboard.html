@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR Dining manual-testing dashboard</title>
+  <link rel="stylesheet" href="manual-testing.css">
+</head>
+<body>
+<main>
+  <nav>
+    <a aria-current="page" href="testing-dashboard.html">Dashboard</a>
+    <a href="how-to-use.html">Start and stop</a>
+    <a href="manual-testing-session-guide.html">Session guide</a>
+    <a href="manual-testing-checklist.html">Checklist</a>
+    <a href="manual-testing-user-guide.html">Surfaces</a>
+    <a href="database-reference.html">Data reference</a>
+  </nav>
+
+  <h1>Manual-testing launchpad</h1>
+  <p class="lede">Local links for the isolated two-instance test stack. This page is a launcher, not evidence that any service or product behavior passed.</p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Frontend A</h2>
+      <p><a class="button primary" href="http://localhost:3000/staff/login" target="_blank" rel="noreferrer">Open :3000</a></p>
+      <p>Frontend A sends API and WebSocket traffic to backend <code>:8090</code>.</p>
+      <p class="source"><code>scripts/manual-testing-up.sh:105-107</code></p>
+    </section>
+    <section class="card">
+      <h2>Frontend B</h2>
+      <p><a class="button primary" href="http://localhost:3001/staff/login" target="_blank" rel="noreferrer">Open :3001</a></p>
+      <p>Frontend B is a synchronized copy that sends traffic to backend <code>:8095</code>.</p>
+      <p class="source"><code>scripts/manual-testing-up.sh:96-109</code></p>
+    </section>
+    <section class="card">
+      <h2>Readiness</h2>
+      <p><a class="button" href="http://localhost:8090/readyz" target="_blank" rel="noreferrer">App 1</a> <a class="button" href="http://localhost:8095/readyz" target="_blank" rel="noreferrer">App 2</a></p>
+      <p>The endpoint checks both PostgreSQL and Redis and returns <code>503</code> if either check fails.</p>
+      <p class="source"><code>backend/internal/handlers/health.go:26-54</code></p>
+    </section>
+  </div>
+
+  <h2>Choose the next tool</h2>
+  <div class="grid">
+    <section class="card"><h3>Start or reset</h3><p>Exact commands, isolation boundaries, log paths, and teardown behavior.</p><p><a href="how-to-use.html">Open instructions →</a></p></section>
+    <section class="card"><h3>Run a session</h3><p>A short cross-instance guest/staff path without hard-coded QR tokens.</p><p><a href="manual-testing-session-guide.html">Open session guide →</a></p></section>
+    <section class="card"><h3>Record observations</h3><p>A browser-local checklist with Markdown export.</p><p><a href="manual-testing-checklist.html">Open checklist →</a></p></section>
+  </div>
+
+  <p class="warning">Seeded QR tokens are randomly generated on reset; copy current values from the seed summary instead of using an old document. <span class="source"><code>backend/scripts/seed.go:769-794</code></span></p>
+</main>
+</body>
+</html>

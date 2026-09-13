@@ -4,7 +4,8 @@ import { seedOrg, createSession } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("R-05: Reconnect replays missed events", () => {
-  test("snapshot with last_sequence returns only newer events", async () => {
+  // VACUOUS(sig-2): returns when replay yields no events or no numeric sequence; passes when replay is broken.
+  test.fixme("snapshot with last_sequence returns only newer events", async () => {
     const { table, menu } = await seedOrg("r05")
     const created = await createSession(table.id, "ReplayUser")
     const sessionId = created.session.id

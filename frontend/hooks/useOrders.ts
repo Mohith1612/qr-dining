@@ -4,7 +4,7 @@ import { useOrdersStore } from "@/store/orders"
 import { ordersApi } from "@/lib/api/orders"
 import { generateIdempotencyKey } from "@/lib/idempotency"
 import { useSession } from "./useSession"
-import type { OrderItem } from "@/types/api"
+import type { Order, OrderItem } from "@/types/api"
 
 interface PlaceOrderItem {
   menu_item_id: number
@@ -22,22 +22,13 @@ export function useOrders() {
   )
 
   async function placeOrder(
-    items: PlaceOrderItem[],
-    promoCode?: string,
-    phoneE164?: string
-  ): Promise<{ order_items: OrderItem[] } | null> {
+    items: PlaceOrderItem[]
+  ): Promise<{ order: Order; order_items: OrderItem[] } | null> {
     if (!session) return null
     const guestToken = sessionStorage.getItem("guest_access_token")
     if (!guestToken) return null
     const key = generateIdempotencyKey()
-    const result = await ordersApi.place(
-      session.id,
-      guestToken,
-      key,
-      items,
-      promoCode,
-      phoneE164
-    )
+    const result = await ordersApi.place(session.id, guestToken, key, items)
     useOrdersStore.getState().addOrder(result.order)
     return result
   }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -33,10 +34,30 @@ type PaymentHandler struct {
 	paymentCfg  config.PaymentConfig
 	authz       *authz.Authorizer
 	audit       *audit.Writer
+	promoSvc    *services.PromoService
 }
 
-func NewPaymentHandler(svc *services.PaymentService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, paymentCfg config.PaymentConfig, authorizer *authz.Authorizer, auditWriter *audit.Writer) *PaymentHandler {
-	return &PaymentHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags, paymentCfg: paymentCfg, authz: authorizer, audit: auditWriter}
+func NewPaymentHandler(svc *services.PaymentService, repos *repository.Repos, guestTokens *auth.GuestTokenService, flags config.FeatureFlags, paymentCfg config.PaymentConfig, authorizer *authz.Authorizer, auditWriter *audit.Writer, promoSvc *services.PromoService) *PaymentHandler {
+	return &PaymentHandler{svc: svc, repos: repos, guestTokens: guestTokens, flags: flags, paymentCfg: paymentCfg, authz: authorizer, audit: auditWriter, promoSvc: promoSvc}
+}
+
+// respondPromoError maps promo validation failures to stable client codes
+// (shared by the order and payment surfaces).
+func respondPromoError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, domain.ErrPromoNotFound):
+		respondError(c, http.StatusNotFound, CodePromoNotFound, "This promo code isn't valid right now.")
+	case errors.Is(err, domain.ErrPromoPhoneRequired):
+		respondError(c, http.StatusUnprocessableEntity, CodePromoPhoneRequired, "Add your phone number to use this offer.")
+	case errors.Is(err, domain.ErrMinOrderNotMet):
+		respondError(c, http.StatusUnprocessableEntity, CodeMinOrderNotMet, err.Error())
+	case errors.Is(err, domain.ErrPromoExhausted):
+		respondError(c, http.StatusConflict, CodePromoExhausted, "This offer has been claimed by too many guests.")
+	case errors.Is(err, domain.ErrPromoAlreadyUsed):
+		respondError(c, http.StatusConflict, CodePromoAlreadyUsed, "You've already used this offer.")
+	default:
+		respondInternalError(c)
+	}
 }
 
 type initiatePaymentRequest struct {
@@ -46,6 +67,10 @@ type initiatePaymentRequest struct {
 	IdempotencyKey     string     `json:"idempotency_key" binding:"required"`
 	ProviderPaymentRef string     `json:"provider_payment_ref"`
 	ProviderOrderRef   string     `json:"provider_order_ref"`
+	// Promo applied at the bill (optional). PhoneE164 is required only when the
+	// promo enforces a per-guest limit.
+	PromoCode *string `json:"promo_code"`
+	PhoneE164 *string `json:"phone_e164"`
 }
 
 func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
@@ -84,32 +109,60 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		respondInternalError(c)
 		return
 	}
-	// Settlement bound: a payment may not exceed the authoritative bill total.
-	// There is no tip field in this flow, so any overage is an overpayment.
-	// epsilon absorbs float rounding in the computed total.
-	if req.Amount > bill.Total+0.01 {
-		respondError(c, http.StatusUnprocessableEntity, CodePaymentAmountInvalid,
-			"payment amount exceeds the bill total")
-		return
-	}
 	sess, err := h.repos.GetSessionByID(c.Request.Context(), sessionID)
 	if err != nil {
 		sessionError(c, err)
 		return
 	}
 
-	payment, err := h.svc.InitiatePayment(c.Request.Context(), services.InitiatePaymentRequest{
+	billInput := billSnapshotInputFromBill(bill)
+
+	// Apply a promo at the bill (optional). Validated here, BEFORE any
+	// idempotency key or session-state mutation, so a bad code can't freeze the
+	// session or burn the idempotency key. The discount is folded into the
+	// snapshot the service captures; the service re-validates and records the
+	// redemption under a row lock.
+	if req.PromoCode != nil && *req.PromoCode != "" {
+		pr, perr := h.promoSvc.ValidatePromo(c.Request.Context(), h.repos, services.ValidatePromoRequest{
+			BranchID:   sess.BranchID,
+			Code:       *req.PromoCode,
+			OrderTotal: bill.Total,
+			PhoneE164:  req.PhoneE164,
+		})
+		if perr != nil {
+			respondPromoError(c, perr)
+			return
+		}
+		billInput.DiscountAmount += pr.DiscountAmount
+		billInput.Total -= pr.DiscountAmount
+		if billInput.Total < 0 {
+			billInput.Total = 0
+		}
+	}
+
+	// Partial payment is not supported: the guest must acknowledge the full,
+	// authoritative discounted bill total. The tolerance only absorbs JSON
+	// floating-point representation below half a currency cent.
+	if math.Abs(req.Amount-billInput.Total) > 0.005 {
+		respondError(c, http.StatusUnprocessableEntity, CodePaymentAmountInvalid,
+			"payment amount must equal the full bill total")
+		return
+	}
+
+	result, err := h.svc.InitiatePaymentWithResult(c.Request.Context(), services.InitiatePaymentRequest{
 		SessionID:               sessionID,
 		BranchID:                sess.BranchID,
 		OrderID:                 req.OrderID,
 		Method:                  method,
-		Bill:                    billSnapshotInputFromBill(bill),
+		Bill:                    billInput,
 		StaffSettlementRequired: h.flags.PaymentStaffSettlementRequired,
 		IdempotencyKey:          req.IdempotencyKey,
 		ActorType:               "participant",
 		ActorID:                 participantID,
 		ProviderPaymentRef:      req.ProviderPaymentRef,
 		ProviderOrderRef:        req.ProviderOrderRef,
+		PromoCode:               req.PromoCode,
+		PromoPhone:              req.PhoneE164,
 	})
 	if err != nil {
 		switch {
@@ -130,7 +183,15 @@ func (h *PaymentHandler) InitiatePayment(c *gin.Context) {
 		}
 		return
 	}
-	c.JSON(http.StatusCreated, payment)
+	status := http.StatusOK
+	if result.Created {
+		status = http.StatusCreated
+	}
+	payment := result.Payment
+	c.JSON(status, payment)
+	if !result.Created {
+		return
+	}
 	h.audit.Record(c.Request.Context(), audit.AuditEvent{
 		SessionID:      sessionID,
 		ResourceType:   audit.ResourcePayment,
@@ -232,6 +293,9 @@ func (h *PaymentHandler) Settle(c *gin.Context) {
 	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionPaymentSettleStaff, resource) {
 		return
 	}
+	if !requireActorBranch(c, staffSession, payment.BranchID) {
+		return
+	}
 	updated, err := h.svc.SettlePaymentByStaff(c.Request.Context(), paymentID, staffSession.StaffID, staffSession.BranchID)
 	if err != nil {
 		switch {
@@ -255,6 +319,105 @@ func (h *PaymentHandler) Settle(c *gin.Context) {
 		ActorID:      strconv.FormatInt(staffSession.StaffID, 10),
 		Result:       audit.ResultSuccess,
 		RiskLevel:    audit.RiskMedium,
+	})
+}
+
+type cancelPaymentRequest struct {
+	Reason string `json:"reason"`
+}
+
+// Cancel withdraws a payment request that never reached a terminal status,
+// releasing the session's payment_pending freeze so the table can order again.
+// Waiters, managers and owners may do this — the same roles that may settle.
+//
+// Money-adjacent, so the acting staff member and a free-text reason are both
+// recorded. Cancelling an already-cancelled payment conflicts (409) rather than
+// silently repeating: see PaymentService.CancelPaymentByStaff.
+func (h *PaymentHandler) Cancel(c *gin.Context) {
+	paymentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondValidationError(c, "invalid payment id")
+		return
+	}
+	staffSession, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	var req cancelPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondValidationError(c, err.Error())
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		respondValidationError(c, "reason is required")
+		return
+	}
+	if len(reason) > maxRecoveryReasonLen {
+		respondValidationError(c, "reason is too long")
+		return
+	}
+
+	payment, err := h.svc.GetPayment(c.Request.Context(), paymentID)
+	if err != nil {
+		if errors.Is(err, domain.ErrPaymentNotFound) {
+			respondError(c, http.StatusNotFound, CodePaymentNotFound, err.Error())
+		} else {
+			respondInternalError(c)
+		}
+		return
+	}
+	actor, ok := staffActorForRequest(c, h.repos, staffSession)
+	if !ok {
+		return
+	}
+	// The branch comes from the payment row, never from the request.
+	orgID, ok := restaurantIDForBranch(c, h.repos, payment.BranchID)
+	if !ok {
+		return
+	}
+	resource := authz.PaymentResource(payment.ID, payment.BranchID, payment.SessionID, orgID)
+	if !requireAuthorized(c, h.repos, h.authz, h.audit, actor, authz.ActionPaymentCancelStaff, resource) {
+		return
+	}
+	if !requireActorBranch(c, staffSession, payment.BranchID) {
+		return
+	}
+	if !staffRoleIn(staffSession.Role, sqlc.StaffRoleOwner, sqlc.StaffRoleManager, sqlc.StaffRoleWaiter) {
+		respondError(c, http.StatusForbidden, CodeForbidden, "only waiters, managers and owners can cancel a payment")
+		return
+	}
+
+	updated, err := h.svc.CancelPaymentByStaff(c.Request.Context(), paymentID, staffSession.StaffID, staffSession.BranchID, reason)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrPaymentNotFound):
+			respondError(c, http.StatusNotFound, CodePaymentNotFound, err.Error())
+		case errors.Is(err, domain.ErrInvalidPaymentTransition):
+			respondError(c, http.StatusConflict, CodeInvalidPaymentTransition, err.Error())
+		default:
+			respondInternalError(c)
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, updated)
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		OrganizationID: orgID,
+		BranchID:       payment.BranchID,
+		SessionID:      payment.SessionID,
+		ResourceType:   audit.ResourcePayment,
+		ResourceID:     audit.IDStr(payment.ID),
+		Action:         audit.ActionPaymentCancel,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        strconv.FormatInt(staffSession.StaffID, 10),
+		Result:         audit.ResultSuccess,
+		RiskLevel:      audit.RiskHigh,
+		Metadata: map[string]any{
+			"reason":          reason,
+			"previous_status": string(payment.Status),
+		},
 	})
 }
 

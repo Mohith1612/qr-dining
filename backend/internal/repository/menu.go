@@ -209,17 +209,34 @@ func (r *Repos) CreateItemModifier(ctx context.Context, p sqlc.CreateItemModifie
 }
 
 func (r *Repos) CreateItemModifierScoped(ctx context.Context, p sqlc.CreateItemModifierParams, branchID int64) (sqlc.ItemModifier, error) {
-	row := r.db.QueryRow(ctx, `
-INSERT INTO item_modifiers (item_id, name, price_delta, is_required, modifier_group)
-SELECT $1, $3, $4, $5, $6
-FROM menu_items
-WHERE id = $1 AND branch_id = $2
-RETURNING id, item_id, name, price_delta, is_required, modifier_group
-`, p.ItemID, branchID, p.Name, p.PriceDelta, p.IsRequired, p.ModifierGroup)
-	var mod sqlc.ItemModifier
-	err := row.Scan(&mod.ID, &mod.ItemID, &mod.Name, &mod.PriceDelta, &mod.IsRequired, &mod.ModifierGroup)
+	mod, err := r.q.CreateItemModifierScoped(ctx, sqlc.CreateItemModifierScopedParams{
+		ItemID:        p.ItemID,
+		BranchID:      branchID,
+		Name:          p.Name,
+		PriceDelta:    p.PriceDelta,
+		IsRequired:    p.IsRequired,
+		ModifierGroup: p.ModifierGroup,
+		SingleSelect:  p.SingleSelect,
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return sqlc.ItemModifier{}, domain.ErrMenuItemNotFound
+	}
+	return mod, err
+}
+
+// UpdateItemModifierScoped edits an existing modifier, scoped to the branch.
+func (r *Repos) UpdateItemModifierScoped(ctx context.Context, modifierID, branchID int64, p sqlc.CreateItemModifierParams) (sqlc.ItemModifier, error) {
+	mod, err := r.q.UpdateItemModifierScoped(ctx, sqlc.UpdateItemModifierScopedParams{
+		ID:            modifierID,
+		BranchID:      branchID,
+		Name:          p.Name,
+		PriceDelta:    p.PriceDelta,
+		IsRequired:    p.IsRequired,
+		ModifierGroup: p.ModifierGroup,
+		SingleSelect:  p.SingleSelect,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.ItemModifier{}, domain.ErrModifierNotFound
 	}
 	return mod, err
 }
@@ -235,13 +252,13 @@ type ModifierWithItemBranch struct {
 
 func (r *Repos) GetModifierWithItemBranch(ctx context.Context, modifierID int64) (ModifierWithItemBranch, error) {
 	row := r.db.QueryRow(ctx, `
-SELECT im.id, im.item_id, im.name, im.price_delta, im.is_required, im.modifier_group, mi.branch_id
+SELECT im.id, im.item_id, im.name, im.price_delta, im.is_required, im.modifier_group, im.single_select, mi.branch_id
 FROM item_modifiers im
 JOIN menu_items mi ON mi.id = im.item_id
 WHERE im.id = $1
 `, modifierID)
 	var mod ModifierWithItemBranch
-	err := row.Scan(&mod.ID, &mod.ItemID, &mod.Name, &mod.PriceDelta, &mod.IsRequired, &mod.ModifierGroup, &mod.BranchID)
+	err := row.Scan(&mod.ID, &mod.ItemID, &mod.Name, &mod.PriceDelta, &mod.IsRequired, &mod.ModifierGroup, &mod.SingleSelect, &mod.BranchID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ModifierWithItemBranch{}, domain.ErrModifierNotFound
 	}

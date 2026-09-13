@@ -3,8 +3,8 @@
 import { ThemeProvider as NextThemesProvider } from "next-themes"
 
 const THEME_ATTRIBUTE = "data-theme"
-const DEFAULT_THEME = "dark-luxury"
-const THEMES = ["warm-cafe", "modern-minimal", "dark-luxury", "vibrant"] as const
+const DEFAULT_THEME = "serene"
+const THEMES = ["serene", "warm-cafe", "modern-minimal", "dark-luxury", "vibrant"] as const
 
 export type AppTheme = (typeof THEMES)[number]
 

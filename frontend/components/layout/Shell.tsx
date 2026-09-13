@@ -13,7 +13,7 @@ export function Shell({ children, nav, topBar, banner }: ShellProps) {
   return (
     <div
       className="flex flex-col h-svh overflow-hidden"
-      style={{ backgroundColor: "var(--bg-base)", color: "var(--ink-1)" }}
+      style={{ backgroundColor: "var(--bg-base)", color: "var(--ink-1)", fontFamily: "var(--font-body)" }}
     >
       {topBar}
       {banner}

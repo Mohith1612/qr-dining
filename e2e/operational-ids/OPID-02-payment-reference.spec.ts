@@ -4,7 +4,8 @@ import { seedOrg, createSession, placeOrder } from "../helpers/api"
 import crypto from "crypto"
 
 test.describe("OPID-02: Payment reference preserved through settlement", () => {
-  test("payment reference set on initiation is returned in bill", async () => {
+  // VACUOUS(sig-2): asserts the reference only on successful optional-field responses; passes when it is omitted.
+  test.fixme("payment reference set on initiation is returned in bill", async () => {
     const { table, menu } = await seedOrg("opid02")
     const created = await createSession(table.id, "PayRefGuest")
     const sessionId = created.session.id

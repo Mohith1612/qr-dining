@@ -1,0 +1,7 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+<BaseLayout title="Page not found | QR Dining" description="This page isn't on the menu." noindex={true}>
+  <section class="not-found"><div><p class="eyebrow">Lost table</p><h1>This page isn't on the menu.</h1><p>The link may have moved, or the QR code may belong to a table that is no longer active.</p><a class="button button-primary" href="/">Back to home</a></div></section>
+</BaseLayout>
+<style>.not-found{min-height:65svh;display:grid;place-items:center;padding:64px 24px;background:var(--glow-warm);text-align:center}.not-found>div{max-width:650px}.not-found h1{margin-bottom:20px}.not-found p:not(.eyebrow){margin:0 auto 28px;max-width:500px;color:var(--ink-2)}</style>

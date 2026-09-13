@@ -6,10 +6,21 @@ import (
 	"strings"
 
 	"github.com/Mohith1612/qr-dining/internal/auth"
+	"github.com/Mohith1612/qr-dining/internal/db/sqlc"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// guestSafeSession returns a copy of the session with the guest credential
+// (session_token) cleared. Guests authenticate with their HMAC guest_access_token
+// and never need session_token, so it must never be serialized to a guest. This is
+// permanent and independent of the AUTH_GUEST_CREDENTIALS_REQUIRED (R6) rollout flag.
+// sqlc.Session is a value type, so the cleared copy never touches the DB row.
+func guestSafeSession(s sqlc.Session) sqlc.Session {
+	s.SessionToken = ""
+	return s
+}
 
 func guestTokenFromHeader(c *gin.Context) string {
 	authHeader := c.GetHeader("Authorization")
@@ -39,6 +50,17 @@ func guestParticipantID(
 			respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential required")
 			return 0, false
 		}
+		// The legacy header is not authentication, but while the rollback path
+		// exists it must never allow a participant from another session to cross
+		// the trust boundary. Secure production config requires a signed token.
+		if legacyParticipantID != 0 {
+			participant, err := repos.GetSessionParticipantByID(c.Request.Context(), legacyParticipantID)
+			if err != nil || participant.SessionID != sessionID {
+				recordGuestTokenFailure("legacy_participant_mismatch")
+				respondError(c, http.StatusForbidden, CodeForbidden, "participant does not belong to this session")
+				return 0, false
+			}
+		}
 		return legacyParticipantID, true
 	}
 
@@ -65,14 +87,28 @@ func guestParticipantID(
 	}
 
 	participant, err := repos.GetSessionParticipantByID(c.Request.Context(), claims.ParticipantID)
-	if err != nil || participant.SessionID != sessionID || participant.CredentialVersion != claims.CredentialVersion {
+	if err != nil || participant.SessionID != sessionID {
+		// The token names a participant that isn't a member of this session.
 		recordGuestTokenFailure("stale_credential")
 		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential is no longer valid")
 		return 0, false
 	}
+	if participant.CredentialVersion != claims.CredentialVersion {
+		// The credential was rotated out from under this token. Closing a
+		// session rotates every participant's version, so this — not a 410 — is
+		// what a returning guest's stored token hits after the table is closed.
+		// Flagged terminal so the client shows the ended screen instead of
+		// looping on reconnect (L-09 / F-22). The code stays UNAUTHORIZED: it is
+		// part of the published contract.
+		recordGuestTokenFailure("stale_credential")
+		respondErrorWithReason(c, http.StatusUnauthorized, CodeUnauthorized, ReasonCredentialRevoked,
+			"guest credential is no longer valid")
+		return 0, false
+	}
 	if participant.RevokedAt.Valid {
 		recordGuestTokenFailure("revoked")
-		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "guest credential has been revoked")
+		respondErrorWithReason(c, http.StatusUnauthorized, CodeUnauthorized, ReasonCredentialRevoked,
+			"guest credential has been revoked")
 		return 0, false
 	}
 

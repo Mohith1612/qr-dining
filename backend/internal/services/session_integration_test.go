@@ -77,7 +77,7 @@ func TestCreateSession_AlreadyActive(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected ErrSessionAlreadyActive, got nil")
 	}
-	if !isErr(err, domain.ErrSessionAlreadyActive) {
+	if !errors.Is(err, domain.ErrSessionAlreadyActive) {
 		t.Errorf("expected ErrSessionAlreadyActive, got %v", err)
 	}
 }
@@ -113,7 +113,7 @@ func TestCreateSession_ConcurrentSingleActiveSession(t *testing.T) {
 			successes++
 			continue
 		}
-		if !isErr(err, domain.ErrSessionAlreadyActive) {
+		if !errors.Is(err, domain.ErrSessionAlreadyActive) {
 			t.Fatalf("unexpected CreateSession error: %v", err)
 		}
 	}

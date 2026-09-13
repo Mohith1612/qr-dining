@@ -41,3 +41,15 @@ SET
     updated_at = NOW()
 WHERE id = $1
 RETURNING *;
+
+-- name: UpdateOrganizationStatus :one
+UPDATE organizations
+SET status = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: UpdateBranchStatus :one
+UPDATE branches
+SET status = $2
+WHERE id = $1
+RETURNING *;

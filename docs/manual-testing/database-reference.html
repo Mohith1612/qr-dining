@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manual-testing data reference</title>
+  <link rel="stylesheet" href="manual-testing.css">
+</head>
+<body>
+<main>
+  <nav>
+    <a href="testing-dashboard.html">Dashboard</a>
+    <a href="how-to-use.html">Start and stop</a>
+    <a href="manual-testing-session-guide.html">Session guide</a>
+    <a href="manual-testing-checklist.html">Checklist</a>
+    <a href="manual-testing-user-guide.html">Surfaces</a>
+    <a aria-current="page" href="database-reference.html">Data reference</a>
+  </nav>
+
+  <h1>Test-data reference</h1>
+  <p class="lede">A map for manual inspection, not a substitute for migrations or generated queries.</p>
+
+  <table>
+    <thead><tr><th>Concern</th><th>Tables</th><th>Canonical source</th></tr></thead>
+    <tbody>
+      <tr><td>Tenant structure</td><td><code>organizations</code>, <code>restaurants</code>, <code>branches</code>, <code>tables</code></td><td><code>backend/migrations/000001_initial_schema.up.sql:21-64</code>; <code>backend/migrations/000017_organization_model.up.sql:1-68</code></td></tr>
+      <tr><td>Guest lifecycle</td><td><code>sessions</code>, <code>session_participants</code></td><td><code>backend/migrations/000001_initial_schema.up.sql:128-174</code>; <code>backend/migrations/000023_session_lifecycle_states.up.sql:1-20</code></td></tr>
+      <tr><td>Ordering</td><td><code>carts</code>, <code>cart_items</code>, <code>orders</code>, <code>order_items</code></td><td><code>backend/migrations/000001_initial_schema.up.sql:176-252</code></td></tr>
+      <tr><td>Money</td><td><code>payments</code>, <code>bill_snapshots</code></td><td><code>backend/migrations/000001_initial_schema.up.sql:274-292</code>; <code>backend/migrations/000021_payment_order_correctness.up.sql:48-83</code></td></tr>
+      <tr><td>Single active payment guard</td><td>Partial unique index on <code>payments(session_id)</code> for non-terminal statuses</td><td><code>backend/migrations/000040_one_non_terminal_payment_per_session.up.sql:1-29</code></td></tr>
+      <tr><td>Operational evidence</td><td><code>event_log</code>, <code>audit_log</code></td><td><code>backend/migrations/000002_event_log.up.sql:1-25</code>; <code>backend/migrations/000019_audit_log_v2.up.sql:41-89</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Connect to the isolated database</h2>
+  <pre>psql 'postgres://mtest:mtest_pass@localhost:25432/qrdining_mtest'</pre>
+  <p>The connection values come from the manual-testing compose file and launcher. <span class="source"><code>docker-compose.manual-testing.yml:29-40</code>; <code>scripts/manual-testing-up.sh:24</code></span></p>
+
+  <h2>Useful read-only checks</h2>
+  <pre>SELECT version, dirty FROM schema_migrations;
+SELECT id, table_id, status, last_activity_at FROM sessions ORDER BY id DESC LIMIT 20;
+SELECT id, session_id, status, amount, initiated_at FROM payments ORDER BY id DESC LIMIT 20;</pre>
+  <p>The migration tool reads <code>schema_migrations.version</code> and <code>dirty</code>; session timeout queries use <code>last_activity_at</code>; payments carry session, status, amount, and initiation timestamps. <span class="source"><code>backend/cmd/migrate/main.go:59-81</code>; <code>backend/sql/queries/sessions.sql:110-123</code>; <code>backend/sql/queries/payments.sql:3-23</code></span></p>
+
+  <p class="warning">Do not run a down migration as a recovery shortcut. The verified recovery documentation is <a href="../RECOVERY.md">RECOVERY.md</a>, including the migration-22 dirty-state procedure.</p>
+</main>
+</body>
+</html>

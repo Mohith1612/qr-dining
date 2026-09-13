@@ -7,7 +7,7 @@ function itemHue(id: number): number {
   return (id * 47 + 15) % 60 + 20
 }
 
-function FeaturedCard({ item, onSelect }: { item: MenuItem; onSelect: (i: MenuItem) => void }) {
+function FeaturedCard({ item, onSelect, eyebrow }: { item: MenuItem; onSelect: (i: MenuItem) => void; eyebrow: string }) {
   const [imgError, setImgError] = useState(false)
   return (
     <button
@@ -17,8 +17,8 @@ function FeaturedCard({ item, onSelect }: { item: MenuItem; onSelect: (i: MenuIt
         width: "min(72vw, 280px)",
         flexShrink: 0,
         scrollSnapAlign: "start",
-        borderRadius: 14,
-        background: "var(--bg-elev-2)",
+        borderRadius: "var(--rad-lg)",
+        background: "var(--bg-elev-1)",
         border: "1px solid var(--line-2)",
         padding: 0,
         overflow: "hidden",
@@ -60,13 +60,14 @@ function FeaturedCard({ item, onSelect }: { item: MenuItem; onSelect: (i: MenuIt
           className="eyebrow"
           style={{ marginBottom: 6, color: "var(--ink-4)" }}
         >
-          Chef&apos;s Selection
+          {eyebrow}
         </div>
         <div
           className="serif"
           style={{
             fontSize: 18,
-            fontWeight: 500,
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
             color: "var(--ink-1)",
             lineHeight: 1.25,
             marginBottom: 6,
@@ -92,26 +93,32 @@ function FeaturedCard({ item, onSelect }: { item: MenuItem; onSelect: (i: MenuIt
 interface Props {
   items: MenuItem[]
   onSelect: (item: MenuItem) => void
+  /** Header above the strip; pass null when the caller renders its own heading. */
+  heading?: string | null
+  /** Small label inside each card, e.g. "Chef's Selection". */
+  cardEyebrow?: string
 }
 
-export function FeaturedCarousel({ items, onSelect }: Props) {
+export function FeaturedCarousel({ items, onSelect, heading = "Featured", cardEyebrow = "Chef's Selection" }: Props) {
   if (items.length === 0) return null
 
   return (
-    <section aria-label="Featured dishes" style={{ paddingBottom: 8 }}>
-      <div
-        style={{
-          padding: "2px 20px 10px",
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-        }}
-      >
-        <span className="eyebrow" style={{ color: "var(--ink-3)" }}>Featured</span>
-        {items.length > 3 && (
-          <span style={{ fontSize: 12, color: "var(--ink-4)" }}>{items.length} dishes</span>
-        )}
-      </div>
+    <section aria-label={heading ?? cardEyebrow} style={{ paddingBottom: 8 }}>
+      {heading !== null && (
+        <div
+          style={{
+            padding: "2px 20px 10px",
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+          }}
+        >
+          <span className="eyebrow" style={{ color: "var(--ink-3)" }}>{heading}</span>
+          {items.length > 3 && (
+            <span style={{ fontSize: 12, color: "var(--ink-4)" }}>{items.length} dishes</span>
+          )}
+        </div>
+      )}
       <div
         className="hscroll presence"
         style={{
@@ -124,7 +131,7 @@ export function FeaturedCarousel({ items, onSelect }: Props) {
         }}
       >
         {items.map((item) => (
-          <FeaturedCard key={item.id} item={item} onSelect={onSelect} />
+          <FeaturedCard key={item.id} item={item} onSelect={onSelect} eyebrow={cardEyebrow} />
         ))}
       </div>
     </section>

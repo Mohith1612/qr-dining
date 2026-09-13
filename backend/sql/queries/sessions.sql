@@ -65,9 +65,12 @@ WHERE id = $1 AND status = 'active'
 RETURNING id;
 
 -- name: ReactivateSession :one
+-- warned_at is cleared so a recovered session can be warned again by the
+-- expiry warner before its (unchanged) timeout.
 UPDATE sessions
 SET status = 'active',
-    awaiting_reactivation_at = NULL
+    awaiting_reactivation_at = NULL,
+    warned_at = NULL
 WHERE id = $1 AND status = 'awaiting_reactivation'
 RETURNING id;
 
@@ -84,14 +87,17 @@ WHERE s.status = 'awaiting_reactivation'
 ORDER BY s.awaiting_reactivation_at ASC;
 
 -- name: ListActiveSessionsForReactivationScan :many
--- Returns active sessions older than the grace floor — candidates for the
--- awaiting_reactivation transition. The worker still has to verify Redis
--- presence absence before transitioning.
+-- Returns active sessions older than the creation grace whose most recent
+-- durable participant heartbeat is older than the idle grace. The worker still
+-- has to verify Redis presence absence before transitioning.
 SELECT s.id, s.branch_id, s.table_id, b.organization_id
 FROM sessions s
 JOIN branches b ON b.id = s.branch_id
+JOIN session_participants sp ON sp.session_id = s.id
 WHERE s.status = 'active'
-  AND s.created_at < $1::timestamptz
+  AND s.created_at < sqlc.arg(created_before)::timestamptz
+GROUP BY s.id, s.branch_id, s.table_id, b.organization_id
+HAVING MAX(sp.last_seen_at) < sqlc.arg(idle_before)::timestamptz
 ORDER BY s.created_at ASC;
 
 -- name: HasNonTerminalPaymentForSession :one
@@ -102,13 +108,19 @@ SELECT EXISTS (
 ) AS has_pending;
 
 -- name: ListSessionsExpiringSoon :many
-SELECT s.id, s.branch_id, s.created_at, b.session_timeout_minutes
+SELECT s.id,
+       s.branch_id,
+       COALESCE(MAX(sp.last_seen_at), s.created_at) AS last_activity_at,
+       b.session_timeout_minutes
 FROM sessions s
 JOIN branches b ON b.id = s.branch_id
+LEFT JOIN session_participants sp ON sp.session_id = s.id
 WHERE s.status = 'active'
   AND s.warned_at IS NULL
-  AND s.created_at + (b.session_timeout_minutes || ' minutes')::interval
-      BETWEEN NOW() AND NOW() + INTERVAL '15 minutes';
+GROUP BY s.id, s.branch_id, s.created_at, b.session_timeout_minutes
+HAVING COALESCE(MAX(sp.last_seen_at), s.created_at)
+         + (b.session_timeout_minutes || ' minutes')::interval
+       BETWEEN NOW() AND NOW() + INTERVAL '15 minutes';
 
 -- name: MarkSessionWarned :exec
 UPDATE sessions SET warned_at = NOW() WHERE id = $1 AND warned_at IS NULL;
@@ -119,11 +131,19 @@ SET status = 'abandoned', closed_at = NOW()
 WHERE id = $1 AND status = 'active';
 
 -- name: ListActiveSessionsForBranch :many
+-- All live sessions for the branch, not just 'active': a payment_pending or
+-- awaiting_reactivation session still occupies its table and is relevant to
+-- staff, so the board reflects why a table reads occupied.
 SELECT * FROM sessions
-WHERE branch_id = $1 AND status = 'active'
+WHERE branch_id = $1
+  AND status IN ('active', 'payment_pending', 'awaiting_reactivation')
 ORDER BY created_at DESC;
 
 -- name: GetActiveSessionForTable :one
+-- Returns the table's in-progress session. Must match the non-terminal statuses
+-- the one-active-per-table unique index blocks, so a QR scan of an occupied table
+-- resolves the joinable session instead of falling through to a blocked create.
 SELECT * FROM sessions
-WHERE table_id = $1 AND status = 'active'
+WHERE table_id = $1 AND status IN ('active', 'payment_pending', 'awaiting_reactivation')
+ORDER BY created_at DESC
 LIMIT 1;

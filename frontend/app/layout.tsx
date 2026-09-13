@@ -1,5 +1,13 @@
 import type { Metadata, Viewport } from "next"
-import { Geist, Geist_Mono, Cormorant_Garamond } from "next/font/google"
+import {
+  Geist,
+  Geist_Mono,
+  Cormorant_Garamond,
+  Hanken_Grotesk,
+  Inter_Tight,
+  Instrument_Serif,
+  JetBrains_Mono,
+} from "next/font/google"
 import "./globals.css"
 import "@/styles/themes.css"
 import { Providers } from "@/providers/Providers"
@@ -20,6 +28,29 @@ const cormorantGaramond = Cormorant_Garamond({
   weight: ["400", "500", "600"],
 })
 
+// Guest redesign (Serene Hospitality) body/display font.
+const hankenGrotesk = Hanken_Grotesk({
+  variable: "--font-hanken-grotesk",
+  subsets: ["latin"],
+})
+
+// Ops/platform redesign (Harmony) — UI, display, and numerics.
+const interTight = Inter_Tight({
+  variable: "--font-inter-tight",
+  subsets: ["latin"],
+})
+
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-instrument-serif",
+  subsets: ["latin"],
+  weight: ["400"],
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
+  subsets: ["latin"],
+})
+
 export const metadata: Metadata = {
   title: "QR Dining",
   description: "Dine together, order together",
@@ -37,7 +68,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} ${cormorantGaramond.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${cormorantGaramond.variable} ${hankenGrotesk.variable} ${interTight.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} antialiased`}>
         <Providers>
           <main>{children}</main>
         </Providers>

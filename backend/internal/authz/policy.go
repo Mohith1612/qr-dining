@@ -13,6 +13,11 @@ type Decision struct {
 	ActorScope    Scope
 	ResourceScope Scope
 	AuditHint     string
+	// ScopeViolation marks a denial caused by tenant scope (the actor's branch or
+	// organization does not own the resource) rather than by role policy. Cross-branch
+	// and cross-organization access is never legitimate traffic, so callers enforce
+	// these denials unconditionally instead of deferring to the rollout flag.
+	ScopeViolation bool
 }
 
 type Authorizer struct {
@@ -55,10 +60,12 @@ func (a *Authorizer) Authorize(actor Actor, action Action, resource Resource) De
 
 	if requiresSameBranch(action) && !actor.Scope.SameBranch(resource.Scope) {
 		decision.Reason = "actor branch does not match resource branch"
+		decision.ScopeViolation = true
 		return decision
 	}
 	if requiresSameOrganization(action) && !actor.Scope.SameOrganization(resource.Scope) {
 		decision.Reason = "actor organization does not match resource organization"
+		decision.ScopeViolation = true
 		return decision
 	}
 
@@ -85,10 +92,14 @@ func requiresSameBranch(action Action) bool {
 		ActionPromoCreate,
 		ActionPromoDeactivate,
 		ActionPaymentSettleStaff,
+		ActionPaymentCancelStaff,
+		ActionSessionForceClose,
 		ActionStaffCreate,
 		ActionStaffUpdateRole,
 		ActionStaffDeactivate,
 		ActionStaffPinUpdate,
+		ActionStaffPinReset,
+		ActionStaffListRead,
 		ActionBranchRead,
 		ActionBranchUpdateSettings,
 		ActionAuditReadBranch:
@@ -122,13 +133,25 @@ func roleAllowed(role sqlc.StaffRole, action Action) bool {
 		return role == sqlc.StaffRoleOwner
 	case ActionStaffPinUpdate:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager || role == sqlc.StaffRoleWaiter || role == sqlc.StaffRoleKitchen
+	case ActionStaffPinReset, ActionStaffListRead:
+		// Manager/owner can list staff and reset PINs (the forgotten-PIN path).
+		// The handler additionally restricts which targets a manager may reset.
+		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
 	case ActionBranchRead:
 		return role != ""
 	case ActionAuditReadBranch:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
-	case ActionPaymentSettleStaff:
-		// Waiters physically collect cash/card and confirm settlement.
+	case ActionPaymentSettleStaff, ActionPaymentCancelStaff:
+		// Waiters physically collect cash/card and confirm settlement. Cancelling
+		// a payment request is the same job in reverse — it withdraws the request
+		// and unfreezes the cart, leaving the bill unpaid and re-payable — so it
+		// carries no authority a waiter does not already have to settle.
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager || role == sqlc.StaffRoleWaiter
+	case ActionSessionForceClose:
+		// Narrower than payment cancellation: a force close can discard an unpaid
+		// bill and revoke every guest credential, so it sits with the other
+		// owner/manager writes rather than with waiter service actions.
+		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
 	case ActionBranchUpdateSettings, ActionOrganizationRead, ActionOrganizationUpdate:
 		return role == sqlc.StaffRoleOwner || role == sqlc.StaffRoleManager
 	default:

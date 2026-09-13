@@ -7,10 +7,10 @@ interface TagProps {
 
 const CONFIG: Record<TagVariant, { bg: string; fg: string; label: string }> = {
   veg:        { bg: "var(--ok-soft)",     fg: "var(--ok)",     label: "Vegetarian"  },
-  signature:  { bg: "var(--accent-soft)", fg: "var(--accent)", label: "Signature"   },
-  chef:       { bg: "var(--accent-soft)", fg: "var(--accent)", label: "Chef's pick" },
+  signature:  { bg: "#F3E7C8",            fg: "#735B25",       label: "Signature"   },
+  chef:       { bg: "#F3E7C8",            fg: "#735B25",       label: "Chef's pick" },
   slow:       { bg: "var(--info-soft)",   fg: "var(--info)",   label: "Slow-cooked" },
-  seasonal:   { bg: "var(--accent-soft)", fg: "var(--accent)", label: "Seasonal"    },
+  seasonal:   { bg: "#F3E7C8",            fg: "#735B25",       label: "Seasonal"    },
   "spice-1":  { bg: "var(--warn-soft)",   fg: "var(--warn)",   label: "Mild heat"   },
   "spice-2":  { bg: "var(--alert-soft)",  fg: "var(--alert)",  label: "Spiced"      },
 }

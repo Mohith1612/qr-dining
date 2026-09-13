@@ -30,9 +30,9 @@ func TestWSUpgradeWithTicketRejectsCredentialVersionMismatch(t *testing.T) {
 	ctx := context.Background()
 	var sessionID uuid.UUID
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO sessions (branch_id, table_id, session_token, status)
-		 VALUES ($1, $2, $3, 'active') RETURNING id`,
-		f.BranchID, f.TableID, uuid.NewString(),
+		`INSERT INTO sessions (branch_id, table_id, session_token, status, session_business_date, visit_number, session_number)
+		 VALUES ($1, $2, $3, 'active', CURRENT_DATE, 1, $4) RETURNING id`,
+		f.BranchID, f.TableID, uuid.NewString(), "ws-ticket-"+uuid.NewString(),
 	).Scan(&sessionID); err != nil {
 		t.Fatalf("insert session: %v", err)
 	}

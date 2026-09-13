@@ -2,6 +2,7 @@ import { api } from "./client"
 import type {
   StaffSession,
   Staff,
+  StaffRosterMember,
   StaffRole,
   Session,
   KitchenOrder,
@@ -11,6 +12,7 @@ import type {
   DietaryFlag,
   ItemBadge,
 } from "@/types/api"
+import type { CollateralConfig } from "@/types/collateral"
 
 export const staffApi = {
   auth: (branchCode: string, staffCode: string, pin: string) =>
@@ -43,6 +45,14 @@ export const staffApi = {
       { current_pin: currentPin, new_pin: newPin },
       { staffToken }
     ),
+
+  // Owner/manager forgotten-PIN reset (no current_pin). Manager may reset only
+  // waiter/kitchen; owner may reset anyone in branch; never self.
+  resetPin: (staffId: number, newPin: string, staffToken: string) =>
+    api.post<void>(`/staff/${staffId}/pin/reset`, { new_pin: newPin }, { staffToken }),
+
+  listStaff: (branchId: number, staffToken: string) =>
+    api.get<{ staff: StaffRosterMember[] }>(`/branches/${branchId}/staff`, { staffToken }),
 
   deactivate: (staffId: number, staffToken: string) =>
     api.patch<void>(`/staff/${staffId}/deactivate`, {}, { staffToken }),
@@ -78,6 +88,7 @@ export const staffApi = {
       dietary_flags?: DietaryFlag[]
       item_badges?: ItemBadge[]
       spice_level?: number
+      image_url?: string
     }
   ) =>
     api.post<MenuItem>(
@@ -89,7 +100,7 @@ export const staffApi = {
   updateMenuItem: (
     itemId: number,
     branchId: number,
-    data: { name: string; price: number; description?: string; position?: number; dietary_flags?: DietaryFlag[]; item_badges?: ItemBadge[]; spice_level?: number; category_id?: number },
+    data: { name: string; price: number; description?: string; position?: number; dietary_flags?: DietaryFlag[]; item_badges?: ItemBadge[]; spice_level?: number; category_id?: number; image_url?: string },
     staffToken: string
   ) =>
     api.patch<MenuItem>(`/menu/items/${itemId}`, { ...data, branch_id: branchId }, { staffToken }),
@@ -125,6 +136,7 @@ export const staffApi = {
       session_timeout_minutes?: number
       order_prefix?: string
       theme?: string
+      logo_url?: string
       tax_rate?: number
       service_charge_rate?: number
       include_tax_in_price?: boolean
@@ -136,7 +148,9 @@ export const staffApi = {
   getBranch: (branchId: number, staffToken: string) =>
     api.get<{
       id: number
+      name: string
       organization_id: number
+      restaurant_id: number
       branch_code: string
       status: string
       support_metadata: Record<string, unknown>
@@ -146,7 +160,19 @@ export const staffApi = {
       tax_rate: number
       service_charge_rate: number
       include_tax_in_price: boolean
+      customer_memory_enabled: boolean
+      restaurant_name: string
+      logo_url: string
     }>(`/branches/${branchId}`, { staffToken }),
+
+  getCollateral: (branchId: number, staffToken: string) =>
+    api.get<{ collateral: CollateralConfig; formats: string[] }>(
+      `/branches/${branchId}/collateral`,
+      { staffToken }
+    ),
+
+  setCollateral: (branchId: number, config: CollateralConfig, staffToken: string) =>
+    api.put<{ collateral: CollateralConfig }>(`/branches/${branchId}/collateral`, config, { staffToken }),
 
   getAdminMenu: (branchId: number, staffToken: string) =>
     api.get<{ branch_id: number; categories: MenuCategory[] }>(`/branches/${branchId}/menu/full`, { staffToken }),
@@ -168,10 +194,18 @@ export const staffApi = {
   addModifier: (
     itemId: number,
     branchId: number,
-    data: { name: string; price_delta: number; is_required: boolean; modifier_group: string },
+    data: { name: string; price_delta: number; is_required: boolean; modifier_group: string; single_select?: boolean },
     staffToken: string
   ) =>
     api.post<ItemModifier>(`/menu/items/${itemId}/modifiers`, { ...data, branch_id: branchId }, { staffToken }),
+
+  updateModifier: (
+    modifierId: number,
+    branchId: number,
+    data: { name: string; price_delta: number; is_required: boolean; modifier_group: string; single_select?: boolean },
+    staffToken: string
+  ) =>
+    api.patch<ItemModifier>(`/menu/modifiers/${modifierId}`, { ...data, branch_id: branchId }, { staffToken }),
 
   deleteModifier: (modifierId: number, branchId: number, staffToken: string) =>
     api.delete<void>(`/menu/modifiers/${modifierId}?branch_id=${branchId}`, { staffToken }),

@@ -44,7 +44,7 @@ function PlanCard({ plan }: { plan: Plan }) {
         style={isPopular ? { border: "2px solid var(--accent)" } : undefined}
       >
         <p className="eyebrow mb-2">{plan.tier}</p>
-        <h2 className="serif text-2xl font-medium text-[var(--ink-1)] mb-3">{plan.name}</h2>
+        <h2 className="serif text-2xl font-semibold tracking-tight text-[var(--ink-1)] mb-3">{plan.name}</h2>
 
         <div className="mb-5">
           <span className="serif text-4xl font-semibold text-[var(--ink-1)]">
@@ -101,12 +101,12 @@ export default async function PricingPage() {
   return (
     <div
       className="atmos min-h-screen bg-[var(--bg-base)] text-[var(--ink-1)]"
-      style={{ backgroundImage: "var(--glow-warm)" }}
+      style={{ backgroundImage: "var(--glow-warm)", fontFamily: "var(--font-body)" }}
     >
       <div className="max-w-[1100px] mx-auto px-6 py-14">
         <div className="mb-12">
           <p className="eyebrow mb-2.5">Pricing</p>
-          <h1 className="serif text-5xl font-medium text-[var(--ink-1)] mb-4 leading-[1.1]">
+          <h1 className="serif text-4xl sm:text-5xl font-semibold tracking-tight text-[var(--ink-1)] mb-4 leading-[1.1]">
             Hospitality, on every plate.
           </h1>
           <p className="text-[15px] text-[var(--ink-2)] max-w-[480px] leading-relaxed">

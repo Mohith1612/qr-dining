@@ -58,6 +58,9 @@ WHERE session_id = $1
 ORDER BY created_at DESC;
 
 -- name: ListActiveOrdersForBranch :many
+-- Orders on the kitchen/waiter boards. Gated on a LIVE session so an order whose
+-- table was abandoned or closed (guests gone) drops off the board instead of
+-- lingering as a stale ticket.
 SELECT
     o.*,
     t.identifier AS table_identifier
@@ -66,6 +69,7 @@ JOIN sessions s ON s.id = o.session_id
 JOIN tables t ON t.id = s.table_id
 WHERE o.branch_id = $1
   AND o.status IN ('pending', 'confirmed', 'preparing', 'ready')
+  AND s.status IN ('active', 'payment_pending', 'awaiting_reactivation')
 ORDER BY o.created_at ASC;
 
 -- name: ListActiveOrderItemsForBranch :many

@@ -1,0 +1,134 @@
+version: 2
+
+updates:
+  - package-ecosystem: "gomod"
+    directories:
+      - "/backend"
+      - "/scripts/chaos/wsflood"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      semver-patch-days: 3
+      semver-minor-days: 14
+      semver-major-days: 30
+    open-pull-requests-limit: 10
+    groups:
+      otel:
+        patterns:
+          - "go.opentelemetry.io/*"
+          - "github.com/exaring/otelpgx"
+          - "github.com/redis/go-redis/extra/redisotel/*"
+        update-types:
+          - "minor"
+          - "patch"
+      aws-sdk:
+        patterns:
+          - "github.com/aws/aws-sdk-go-v2*"
+        update-types:
+          - "minor"
+          - "patch"
+      go-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "go"
+
+  - package-ecosystem: "npm"
+    directories:
+      - "/frontend"
+      - "/marketing"
+      - "/e2e"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      semver-patch-days: 3
+      semver-minor-days: 14
+      semver-major-days: 30
+    open-pull-requests-limit: 10
+    versioning-strategy: "increase"
+    groups:
+      npm-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+      npm-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "javascript"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      semver-patch-days: 3
+      semver-minor-days: 14
+      semver-major-days: 30
+    open-pull-requests-limit: 5
+    groups:
+      gh-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "ci"
+
+  - package-ecosystem: "docker"
+    directory: "/backend/docker"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      semver-patch-days: 3
+      semver-minor-days: 14
+      semver-major-days: 30
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: "docker-compose"
+    directories:
+      - "/"
+      - "/deploy/vm"
+      - "/deploy/signoz"
+      - "/deploy/observability"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      semver-patch-days: 3
+      semver-minor-days: 14
+      semver-major-days: 30
+    open-pull-requests-limit: 5
+    groups:
+      compose-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "infrastructure"

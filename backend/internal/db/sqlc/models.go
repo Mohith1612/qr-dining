@@ -711,6 +711,14 @@ type Branch struct {
 	SupportMetadataJson   json.RawMessage `json:"support_metadata_json"`
 }
 
+type BranchCollateral struct {
+	BranchID                int64           `json:"branch_id"`
+	ConfigJson              json.RawMessage `json:"config_json"`
+	UpdatedByPlatformUserID pgtype.Int8     `json:"updated_by_platform_user_id"`
+	CreatedAt               time.Time       `json:"created_at"`
+	UpdatedAt               time.Time       `json:"updated_at"`
+}
+
 type Cart struct {
 	ID            int64       `json:"id"`
 	SessionID     uuid.UUID   `json:"session_id"`
@@ -736,6 +744,40 @@ type Customer struct {
 	LastSeenAt   time.Time          `json:"last_seen_at"`
 	VisitCount   int32              `json:"visit_count"`
 	CreatedAt    time.Time          `json:"created_at"`
+}
+
+type CustomerLoyaltyAccount struct {
+	ID                     int64          `json:"id"`
+	CustomerID             int64          `json:"customer_id"`
+	OrganizationID         int64          `json:"organization_id"`
+	PointsBalance          int64          `json:"points_balance"`
+	LifetimePointsEarned   int64          `json:"lifetime_points_earned"`
+	LifetimePointsRedeemed int64          `json:"lifetime_points_redeemed"`
+	VisitCount             int64          `json:"visit_count"`
+	LifetimeSpend          pgtype.Numeric `json:"lifetime_spend"`
+	CreatedAt              time.Time      `json:"created_at"`
+	UpdatedAt              time.Time      `json:"updated_at"`
+}
+
+type CustomerLoyaltyTransaction struct {
+	ID                   int64          `json:"id"`
+	AccountID            int64          `json:"account_id"`
+	Type                 string         `json:"type"`
+	Points               int64          `json:"points"`
+	Amount               pgtype.Numeric `json:"amount"`
+	PaymentID            pgtype.Int8    `json:"payment_id"`
+	SessionID            pgtype.UUID    `json:"session_id"`
+	PerformedByActorType string         `json:"performed_by_actor_type"`
+	PerformedByStaffID   pgtype.Int8    `json:"performed_by_staff_id"`
+	Reason               string         `json:"reason"`
+	CreatedAt            time.Time      `json:"created_at"`
+}
+
+type Entitlement struct {
+	Key         string    `json:"key"`
+	Kind        string    `json:"kind"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type EventLog struct {
@@ -771,6 +813,7 @@ type ItemModifier struct {
 	PriceDelta    pgtype.Numeric `json:"price_delta"`
 	IsRequired    bool           `json:"is_required"`
 	ModifierGroup string         `json:"modifier_group"`
+	SingleSelect  bool           `json:"single_select"`
 }
 
 type MenuCategory struct {
@@ -844,11 +887,46 @@ type Organization struct {
 	UpdatedAt           time.Time       `json:"updated_at"`
 }
 
+type OrganizationBillingProfile struct {
+	OrganizationID int64           `json:"organization_id"`
+	BusinessName   string          `json:"business_name"`
+	GstNumber      string          `json:"gst_number"`
+	TaxIdentifier  string          `json:"tax_identifier"`
+	BillingEmail   string          `json:"billing_email"`
+	BillingContact string          `json:"billing_contact"`
+	BillingAddress string          `json:"billing_address"`
+	Currency       string          `json:"currency"`
+	MetadataJson   json.RawMessage `json:"metadata_json"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+}
+
 type OrganizationBranchMembership struct {
 	ID             int64     `json:"id"`
 	OrganizationID int64     `json:"organization_id"`
 	BranchID       int64     `json:"branch_id"`
 	CreatedAt      time.Time `json:"created_at"`
+}
+
+type OrganizationEntitlementOverride struct {
+	OrganizationID          int64       `json:"organization_id"`
+	EntitlementKey          string      `json:"entitlement_key"`
+	Enabled                 pgtype.Bool `json:"enabled"`
+	LimitValue              pgtype.Int8 `json:"limit_value"`
+	Reason                  string      `json:"reason"`
+	CreatedByPlatformUserID pgtype.Int8 `json:"created_by_platform_user_id"`
+	CreatedAt               time.Time   `json:"created_at"`
+	UpdatedAt               time.Time   `json:"updated_at"`
+}
+
+type OrganizationLoyaltyProgram struct {
+	OrganizationID   int64          `json:"organization_id"`
+	IsActive         bool           `json:"is_active"`
+	EarnRatePoints   int64          `json:"earn_rate_points"`
+	EarnRateAmount   pgtype.Numeric `json:"earn_rate_amount"`
+	UpdatedByStaffID pgtype.Int8    `json:"updated_by_staff_id"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
 }
 
 type OrganizationMember struct {
@@ -860,6 +938,35 @@ type OrganizationMember struct {
 	InvitedByStaffID pgtype.Int8 `json:"invited_by_staff_id"`
 	CreatedAt        time.Time   `json:"created_at"`
 	UpdatedAt        time.Time   `json:"updated_at"`
+}
+
+type OrganizationPlanAssignment struct {
+	OrganizationID           int64       `json:"organization_id"`
+	PlanID                   int64       `json:"plan_id"`
+	Status                   string      `json:"status"`
+	AssignedByPlatformUserID pgtype.Int8 `json:"assigned_by_platform_user_id"`
+	CreatedAt                time.Time   `json:"created_at"`
+	UpdatedAt                time.Time   `json:"updated_at"`
+}
+
+type OrganizationSubscription struct {
+	ID                     int64              `json:"id"`
+	OrganizationID         int64              `json:"organization_id"`
+	PlanID                 int64              `json:"plan_id"`
+	Status                 string             `json:"status"`
+	ProviderType           string             `json:"provider_type"`
+	ProviderSubscriptionID string             `json:"provider_subscription_id"`
+	ProviderCustomerID     string             `json:"provider_customer_id"`
+	StartedAt              pgtype.Timestamptz `json:"started_at"`
+	TrialEndsAt            pgtype.Timestamptz `json:"trial_ends_at"`
+	ExpiresAt              pgtype.Timestamptz `json:"expires_at"`
+	RenewedAt              pgtype.Timestamptz `json:"renewed_at"`
+	CancelledAt            pgtype.Timestamptz `json:"cancelled_at"`
+	SuspendedAt            pgtype.Timestamptz `json:"suspended_at"`
+	CancellationReason     string             `json:"cancellation_reason"`
+	MetadataJson           json.RawMessage    `json:"metadata_json"`
+	CreatedAt              time.Time          `json:"created_at"`
+	UpdatedAt              time.Time          `json:"updated_at"`
 }
 
 type Payment struct {
@@ -909,6 +1016,15 @@ type PaymentWebhookEvent struct {
 	Headers         json.RawMessage    `json:"headers"`
 }
 
+type PlanEntitlement struct {
+	PlanID         int64       `json:"plan_id"`
+	EntitlementKey string      `json:"entitlement_key"`
+	Enabled        bool        `json:"enabled"`
+	LimitValue     pgtype.Int8 `json:"limit_value"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+}
+
 type PlatformAuditLog struct {
 	ID               int64           `json:"id"`
 	PlatformUserID   pgtype.Int8     `json:"platform_user_id"`
@@ -921,6 +1037,43 @@ type PlatformAuditLog struct {
 	RequestID        string          `json:"request_id"`
 	Payload          json.RawMessage `json:"payload"`
 	CreatedAt        time.Time       `json:"created_at"`
+}
+
+type PlatformFeatureFlag struct {
+	Key            string    `json:"key"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description"`
+	DefaultEnabled bool      `json:"default_enabled"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type PlatformFlagBranchOverride struct {
+	BranchID                int64       `json:"branch_id"`
+	FlagKey                 string      `json:"flag_key"`
+	Enabled                 bool        `json:"enabled"`
+	Reason                  string      `json:"reason"`
+	UpdatedByPlatformUserID pgtype.Int8 `json:"updated_by_platform_user_id"`
+	CreatedAt               time.Time   `json:"created_at"`
+	UpdatedAt               time.Time   `json:"updated_at"`
+}
+
+type PlatformFlagGlobalOverride struct {
+	FlagKey                 string      `json:"flag_key"`
+	Enabled                 bool        `json:"enabled"`
+	UpdatedByPlatformUserID pgtype.Int8 `json:"updated_by_platform_user_id"`
+	CreatedAt               time.Time   `json:"created_at"`
+	UpdatedAt               time.Time   `json:"updated_at"`
+}
+
+type PlatformFlagOrganizationOverride struct {
+	OrganizationID          int64       `json:"organization_id"`
+	FlagKey                 string      `json:"flag_key"`
+	Enabled                 bool        `json:"enabled"`
+	Reason                  string      `json:"reason"`
+	UpdatedByPlatformUserID pgtype.Int8 `json:"updated_by_platform_user_id"`
+	CreatedAt               time.Time   `json:"created_at"`
+	UpdatedAt               time.Time   `json:"updated_at"`
 }
 
 type PlatformMfaChallenge struct {
@@ -1008,9 +1161,10 @@ type Promo struct {
 type PromoRedemption struct {
 	ID         int64       `json:"id"`
 	PromoID    int64       `json:"promo_id"`
-	OrderID    uuid.UUID   `json:"order_id"`
+	OrderID    pgtype.UUID `json:"order_id"`
 	PhoneE164  pgtype.Text `json:"phone_e164"`
 	RedeemedAt time.Time   `json:"redeemed_at"`
+	PaymentID  pgtype.Int8 `json:"payment_id"`
 }
 
 type Restaurant struct {
@@ -1110,6 +1264,42 @@ type StaffSession struct {
 	RevokedAt    pgtype.Timestamptz `json:"revoked_at"`
 }
 
+type SubscriptionInvoice struct {
+	ID                      int64              `json:"id"`
+	OrganizationID          int64              `json:"organization_id"`
+	SubscriptionID          pgtype.Int8        `json:"subscription_id"`
+	InvoiceNumber           string             `json:"invoice_number"`
+	Status                  string             `json:"status"`
+	Amount                  pgtype.Numeric     `json:"amount"`
+	Currency                string             `json:"currency"`
+	IssueDate               pgtype.Timestamptz `json:"issue_date"`
+	DueDate                 pgtype.Timestamptz `json:"due_date"`
+	PaidAt                  pgtype.Timestamptz `json:"paid_at"`
+	Notes                   string             `json:"notes"`
+	MetadataJson            json.RawMessage    `json:"metadata_json"`
+	CreatedByPlatformUserID pgtype.Int8        `json:"created_by_platform_user_id"`
+	CreatedAt               time.Time          `json:"created_at"`
+	UpdatedAt               time.Time          `json:"updated_at"`
+}
+
+type SubscriptionPayment struct {
+	ID                       int64           `json:"id"`
+	OrganizationID           int64           `json:"organization_id"`
+	SubscriptionID           pgtype.Int8     `json:"subscription_id"`
+	InvoiceID                pgtype.Int8     `json:"invoice_id"`
+	ProviderType             string          `json:"provider_type"`
+	Method                   string          `json:"method"`
+	Amount                   pgtype.Numeric  `json:"amount"`
+	Currency                 string          `json:"currency"`
+	ReferenceNumber          string          `json:"reference_number"`
+	ProviderPaymentID        string          `json:"provider_payment_id"`
+	Notes                    string          `json:"notes"`
+	ReceivedAt               time.Time       `json:"received_at"`
+	RecordedByPlatformUserID pgtype.Int8     `json:"recorded_by_platform_user_id"`
+	MetadataJson             json.RawMessage `json:"metadata_json"`
+	CreatedAt                time.Time       `json:"created_at"`
+}
+
 type SubscriptionPlan struct {
 	ID           int64           `json:"id"`
 	Name         string          `json:"name"`
@@ -1127,4 +1317,20 @@ type Table struct {
 	QrCodeToken string      `json:"qr_code_token"`
 	Status      TableStatus `json:"status"`
 	CreatedAt   time.Time   `json:"created_at"`
+}
+
+type TenantTheme struct {
+	RestaurantID            int64           `json:"restaurant_id"`
+	Preset                  string          `json:"preset"`
+	TokensJson              json.RawMessage `json:"tokens_json"`
+	UpdatedByPlatformUserID pgtype.Int8     `json:"updated_by_platform_user_id"`
+	CreatedAt               time.Time       `json:"created_at"`
+	UpdatedAt               time.Time       `json:"updated_at"`
+}
+
+type ThemePreset struct {
+	Key         string    `json:"key"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
 }

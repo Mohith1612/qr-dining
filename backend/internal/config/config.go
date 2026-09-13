@@ -15,9 +15,11 @@ type Config struct {
 	DB           DBConfig
 	Redis        RedisConfig
 	Log          LogConfig
+	OTel         OTelConfig
 	CORS         CORSConfig
 	Auth         AuthConfig
 	Payment      PaymentConfig
+	Presence     PresenceConfig
 	Worker       WorkerConfig
 	R2           R2Config
 	FeatureFlags FeatureFlags
@@ -51,15 +53,24 @@ type DBConfig struct {
 	MinConns        int32
 	MaxConnLifetime time.Duration
 	MaxConnIdleTime time.Duration
+	OTelEnabled     bool
 }
 
 type RedisConfig struct {
-	URL string
+	URL         string
+	OTelEnabled bool
 }
 
 type LogConfig struct {
 	Level  string
 	Pretty bool
+}
+
+type OTelConfig struct {
+	Enabled           bool
+	ExporterEndpoint  string
+	ServiceName       string
+	TracesSampleRatio float64
 }
 
 type CORSConfig struct {
@@ -78,14 +89,24 @@ type PaymentConfig struct {
 	WebhookTimestampTolerance time.Duration
 }
 
+type PresenceConfig struct {
+	// HostAbsenceGrace is how long the current host must be absent before an
+	// automatic transfer is allowed.
+	HostAbsenceGrace time.Duration
+}
+
 type WorkerConfig struct {
 	StaleSessionInterval     time.Duration
 	PresenceExpiryInterval   time.Duration
 	SessionReconcileInterval time.Duration
 	Region                   string
 	// SessionPresenceGrace is how long a session may be without active
-	// presence before the worker considers it eligible for awaiting_reactivation.
+	// presence after creation before the worker considers it eligible for
+	// awaiting_reactivation.
 	SessionPresenceGrace time.Duration
+	// SessionIdleGrace is how old the newest durable participant heartbeat must
+	// be before an established session may enter awaiting_reactivation.
+	SessionIdleGrace time.Duration
 	// SessionReactivationWindow is how long a session stays in
 	// awaiting_reactivation before the worker abandons it.
 	SessionReactivationWindow time.Duration
@@ -93,6 +114,7 @@ type WorkerConfig struct {
 	PaymentPendingEscalationInterval time.Duration
 	PaymentPendingWarnAfter          time.Duration
 	PaymentPendingCriticalAfter      time.Duration
+	BillingReconciliationInterval    time.Duration
 }
 
 type FeatureFlags struct {
@@ -107,9 +129,26 @@ type FeatureFlags struct {
 	StrictBranchScopedMutations    bool
 }
 
+const (
+	// devGuestTokenSecret is the insecure development default for GUEST_TOKEN_SECRET.
+	// Release mode refuses to start while this value is in use.
+	devGuestTokenSecret = "dev-only-guest-token-secret"
+	// minGuestTokenSecretLen is the minimum acceptable HMAC secret length in release mode.
+	minGuestTokenSecretLen = 32
+	// minMFAEncryptionKeyLen mirrors services.mfaEncryptionKeyMinLen: a set-but-too-short
+	// key is a misconfiguration we refuse in release mode (empty is allowed — MFA fails closed).
+	minMFAEncryptionKeyLen = 16
+	// minWebhookSecretLen guards against trivially weak provider webhook secrets when set.
+	minWebhookSecretLen = 16
+)
+
 func Load() (*Config, error) {
-	// Load .env if present — no-op in production where env vars are injected directly.
-	_ = godotenv.Overload()
+	// Dotenv is a development convenience only. In release mode, injected
+	// environment variables are authoritative and a stray .env must never be
+	// allowed to override secrets or rollout flags.
+	if getenv("GIN_MODE", "release") != "release" {
+		_ = godotenv.Overload()
+	}
 
 	cfg := &Config{}
 
@@ -172,17 +211,31 @@ func Load() (*Config, error) {
 	cfg.Log.Level = getenv("LOG_LEVEL", "info")
 	cfg.Log.Pretty = getenv("LOG_PRETTY", "false") == "true"
 
+	// OpenTelemetry tracing (disabled by default and never required for boot).
+	cfg.OTel.Enabled = parseBool("OTEL_ENABLED", false)
+	cfg.OTel.ExporterEndpoint = getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")
+	cfg.OTel.ServiceName = getenv("OTEL_SERVICE_NAME", "qr-dining-backend")
+	cfg.OTel.TracesSampleRatio = parseFloat("OTEL_TRACES_SAMPLE_RATIO", 0.1)
+	if cfg.OTel.TracesSampleRatio < 0 {
+		cfg.OTel.TracesSampleRatio = 0
+	} else if cfg.OTel.TracesSampleRatio > 1 {
+		cfg.OTel.TracesSampleRatio = 1
+	}
+	cfg.DB.OTelEnabled = cfg.OTel.Enabled
+	cfg.Redis.OTelEnabled = cfg.OTel.Enabled
+
 	// CORS
 	cfg.CORS.AllowedOrigins = splitComma("CORS_ALLOWED_ORIGINS", "")
 
 	// Auth
-	cfg.Auth.GuestTokenSecret = getenv("GUEST_TOKEN_SECRET", "dev-only-guest-token-secret")
-	cfg.Auth.GuestTokenTTL = parseDuration("GUEST_TOKEN_TTL", 2*time.Hour)
+	cfg.Auth.GuestTokenSecret = getenv("GUEST_TOKEN_SECRET", devGuestTokenSecret)
+	cfg.Auth.GuestTokenTTL = parseDuration("GUEST_TOKEN_TTL", 12*time.Hour)
 	cfg.Auth.MFAEncryptionKey = getenv("MFA_ENCRYPTION_KEY", "")
 	cfg.Auth.StaffCookieEnable = parseBool("AUTH_STAFF_COOKIE_ENABLED", false)
 
 	cfg.Payment.WebhookSecrets = loadPaymentWebhookSecrets()
 	cfg.Payment.WebhookTimestampTolerance = parseDuration("PAYMENT_WEBHOOK_TIMESTAMP_TOLERANCE", 5*time.Minute)
+	cfg.Presence.HostAbsenceGrace = parseDuration("HOST_ABSENCE_GRACE", 3*time.Minute)
 
 	// Workers
 	cfg.Worker.StaleSessionInterval = parseDuration("STALE_SESSION_INTERVAL", 5*time.Minute)
@@ -190,20 +243,22 @@ func Load() (*Config, error) {
 	cfg.Worker.SessionReconcileInterval = parseDuration("SESSION_RECONCILE_INTERVAL", 5*time.Minute)
 	cfg.Worker.Region = getenv("WORKER_REGION", "default")
 	cfg.Worker.SessionPresenceGrace = parseDuration("SESSION_PRESENCE_GRACE", 60*time.Second)
+	cfg.Worker.SessionIdleGrace = parseDuration("SESSION_IDLE_GRACE", 5*time.Minute)
 	cfg.Worker.SessionReactivationWindow = parseDuration("SESSION_REACTIVATION_WINDOW", 5*time.Minute)
 	cfg.Worker.PaymentPendingEscalationInterval = parseDuration("PAYMENT_PENDING_ESCALATION_INTERVAL", time.Minute)
 	cfg.Worker.PaymentPendingWarnAfter = parseDuration("PAYMENT_PENDING_WARN_AFTER", 5*time.Minute)
 	cfg.Worker.PaymentPendingCriticalAfter = parseDuration("PAYMENT_PENDING_CRITICAL_AFTER", 15*time.Minute)
+	cfg.Worker.BillingReconciliationInterval = parseDuration("BILLING_RECONCILIATION_INTERVAL", 5*time.Minute)
 
 	// Rollout flags. Phase 0 only parses these flags; later phases decide where
 	// each flag gates strict enforcement.
-	cfg.FeatureFlags.AuthGuestCredentialsRequired = parseBool("AUTH_GUEST_CREDENTIALS_REQUIRED", false)
-	cfg.FeatureFlags.AuthStaffCodeRequired = parseBool("AUTH_STAFF_CODE_REQUIRED", false)
-	cfg.FeatureFlags.AuthStaffSessionDBRequired = parseBool("AUTH_STAFF_SESSION_DB_REQUIRED", false)
+	cfg.FeatureFlags.AuthGuestCredentialsRequired = parseBool("AUTH_GUEST_CREDENTIALS_REQUIRED", true)
+	cfg.FeatureFlags.AuthStaffCodeRequired = parseBool("AUTH_STAFF_CODE_REQUIRED", true)
+	cfg.FeatureFlags.AuthStaffSessionDBRequired = parseBool("AUTH_STAFF_SESSION_DB_REQUIRED", true)
 	cfg.FeatureFlags.AuthzCentralPolicyEnforce = parseBool("AUTHZ_CENTRAL_POLICY_ENFORCE", false)
 	cfg.FeatureFlags.TenancyOrganizationsEnabled = parseBool("TENANCY_ORGANIZATIONS_ENABLED", false)
 	cfg.FeatureFlags.AuditLogV2Enabled = parseBool("AUDIT_LOG_V2_ENABLED", false)
-	cfg.FeatureFlags.WSTicketAuthRequired = parseBool("WS_TICKET_AUTH_REQUIRED", false)
+	cfg.FeatureFlags.WSTicketAuthRequired = parseBool("WS_TICKET_AUTH_REQUIRED", true)
 	cfg.FeatureFlags.PaymentStaffSettlementRequired = parseBool("PAYMENT_STAFF_SETTLEMENT_REQUIRED", false)
 	cfg.FeatureFlags.StrictBranchScopedMutations = parseBool("STRICT_BRANCH_SCOPED_MUTATIONS", false)
 
@@ -228,15 +283,40 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
 
-	// Warn (non-fatal) when CORS origins are unconfigured in production.
-	if len(cfg.CORS.AllowedOrigins) == 0 && cfg.Server.GinMode == "release" {
-		fmt.Fprintf(os.Stderr, "warn: CORS_ALLOWED_ORIGINS is empty in release mode — all WebSocket origins will be accepted\n")
-	}
-	if cfg.Auth.GuestTokenSecret == "dev-only-guest-token-secret" && cfg.Server.GinMode == "release" {
-		fmt.Fprintf(os.Stderr, "warn: GUEST_TOKEN_SECRET is using the development default in release mode\n")
+	// In release mode, refuse to start on insecure secret/origin defaults. Non-release
+	// modes (debug/test) stay permissive so local development boots with defaults.
+	if cfg.Server.GinMode == "release" {
+		if err := cfg.validateReleaseSecurity(); err != nil {
+			return nil, fmt.Errorf("config security validation: %w", err)
+		}
 	}
 
 	return cfg, nil
+}
+
+// validateReleaseSecurity enforces production-safe secrets and origins. It is only
+// called when GIN_MODE=release. Every failure names the offending env var and how to
+// fix it, so a misconfigured deploy fails fast with an actionable message instead of
+// booting insecurely.
+func (c *Config) validateReleaseSecurity() error {
+	if c.Auth.GuestTokenSecret == devGuestTokenSecret {
+		return fmt.Errorf("GUEST_TOKEN_SECRET is the insecure development default in release mode — set GUEST_TOKEN_SECRET to a strong random value (>= %d chars, e.g. `openssl rand -hex 32`)", minGuestTokenSecretLen)
+	}
+	if len(c.Auth.GuestTokenSecret) < minGuestTokenSecretLen {
+		return fmt.Errorf("GUEST_TOKEN_SECRET is too short (%d chars) in release mode — use at least %d random chars (e.g. `openssl rand -hex 32`)", len(c.Auth.GuestTokenSecret), minGuestTokenSecretLen)
+	}
+	if len(c.CORS.AllowedOrigins) == 0 {
+		return fmt.Errorf("CORS_ALLOWED_ORIGINS is empty in release mode — set it to your frontend origin(s) (comma-separated); an empty list accepts all WebSocket origins")
+	}
+	if c.Auth.MFAEncryptionKey != "" && len(c.Auth.MFAEncryptionKey) < minMFAEncryptionKeyLen {
+		return fmt.Errorf("MFA_ENCRYPTION_KEY is set but too short (%d chars) — use at least %d chars, or unset it if platform MFA is unused", len(c.Auth.MFAEncryptionKey), minMFAEncryptionKeyLen)
+	}
+	for provider, secret := range c.Payment.WebhookSecrets {
+		if len(secret) < minWebhookSecretLen {
+			return fmt.Errorf("PAYMENT_WEBHOOK_SECRET_%s is too short (%d chars) in release mode — use at least %d chars", strings.ToUpper(provider), len(secret), minWebhookSecretLen)
+		}
+	}
+	return nil
 }
 
 func (c *Config) validate() error {
@@ -258,6 +338,12 @@ func (c *Config) validate() error {
 	}
 	if c.Server.ReadTimeout >= c.Server.WriteTimeout {
 		return fmt.Errorf("READ_TIMEOUT (%s) must be less than WRITE_TIMEOUT (%s)", c.Server.ReadTimeout, c.Server.WriteTimeout)
+	}
+	if c.Presence.HostAbsenceGrace <= 0 {
+		return fmt.Errorf("HOST_ABSENCE_GRACE must be > 0, got %s", c.Presence.HostAbsenceGrace)
+	}
+	if c.Worker.SessionIdleGrace <= 0 {
+		return fmt.Errorf("SESSION_IDLE_GRACE must be > 0, got %s", c.Worker.SessionIdleGrace)
 	}
 	return nil
 }
@@ -306,6 +392,19 @@ func parseDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func parseFloat(key string, fallback float64) float64 {
+	s := getenv(key, "")
+	if s == "" {
+		return fallback
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warn: invalid %s=%q: %v — using default %g\n", key, s, err, fallback)
+		return fallback
+	}
+	return v
 }
 
 func parseBool(key string, fallback bool) bool {

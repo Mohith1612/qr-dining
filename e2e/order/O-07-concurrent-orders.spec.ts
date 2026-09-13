@@ -3,8 +3,8 @@ import { API_URL } from "../playwright.config"
 import { seedOrg, createSession } from "../helpers/api"
 import crypto from "crypto"
 
-test.describe("O-07: Concurrent orders from multiple guests", () => {
-  test("two guests placing orders concurrently both succeed without corruption", async () => {
+test.describe("O-07: Host-only order placement", () => {
+  test("non-host order is rejected and the host order succeeds", async () => {
     const { table, menu } = await seedOrg("o07")
     const host = await createSession(table.id, "ConcurrentHost")
     const sessionId = host.session.id
@@ -15,6 +15,7 @@ test.describe("O-07: Concurrent orders from multiple guests", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ display_name: "ConcurrentGuest" }),
     })
+    expect(joinRes.status).toBe(201)
     const guestToken = (await joinRes.json()).guest_access_token
 
     const placeOrder = (token: string) =>
@@ -30,17 +31,18 @@ test.describe("O-07: Concurrent orders from multiple guests", () => {
         }),
       })
 
-    const [r1, r2] = await Promise.all([
-      placeOrder(hostToken),
-      placeOrder(guestToken),
-    ])
+    const nonHostOrder = await placeOrder(guestToken)
+    expect(nonHostOrder.status).toBe(403)
+    const denial = await nonHostOrder.json()
+    expect(denial.code).toBe("NOT_SESSION_HOST")
 
-    expect([200, 201]).toContain(r1.status)
-    expect([200, 201]).toContain(r2.status)
-
-    // Each order should have a distinct ID
-    const o1 = await r1.json()
-    const o2 = await r2.json()
-    expect(o1.id ?? o1.order_id).not.toEqual(o2.id ?? o2.order_id)
+    const hostOrder = await placeOrder(hostToken)
+    expect(hostOrder.status).toBe(201)
+    const result = await hostOrder.json() as {
+      order: { id: string; status: string; placed_by_participant_id: number }
+    }
+    expect(result.order.id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(result.order.status).toBe("pending")
+    expect(result.order.placed_by_participant_id).toBe(host.participant.id)
   })
 })

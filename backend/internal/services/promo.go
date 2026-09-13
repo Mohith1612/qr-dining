@@ -30,6 +30,11 @@ type ValidatePromoResult struct {
 	PromoID        int64
 	DiscountAmount float64
 	Description    string
+	// NormalizedPhone is the canonical form of the caller's phone, as used for
+	// the per-phone cap check. Callers that record a redemption MUST persist
+	// this value rather than the raw request string, or the cap check will
+	// never match what was stored.
+	NormalizedPhone *string
 }
 
 // ValidatePromo checks a promo code for validity and returns the discount. No DB writes.
@@ -42,6 +47,12 @@ func (s *PromoService) ValidatePromo(ctx context.Context, repos *repository.Repo
 	if req.PhoneE164 != nil {
 		normalized := promoNormalizePhone(*req.PhoneE164)
 		req.PhoneE164 = &normalized
+	}
+
+	// A per-phone usage limit is only enforceable with a phone. Refuse to apply
+	// such a promo without one so the limit can't be silently bypassed.
+	if promo.UsesPerPhone > 0 && req.PhoneE164 == nil {
+		return ValidatePromoResult{}, domain.ErrPromoPhoneRequired
 	}
 
 	// Check minimum order amount.
@@ -75,9 +86,10 @@ func (s *PromoService) ValidatePromo(ctx context.Context, repos *repository.Repo
 	}
 
 	return ValidatePromoResult{
-		PromoID:        promo.ID,
-		DiscountAmount: discount,
-		Description:    desc,
+		PromoID:         promo.ID,
+		DiscountAmount:  discount,
+		Description:     desc,
+		NormalizedPhone: req.PhoneE164,
 	}, nil
 }
 
@@ -85,22 +97,25 @@ func NormalizePromoPhone(phone string) string {
 	return promoNormalizePhone(phone)
 }
 
+// promoNormalizePhone reduces a phone to a single canonical form so the
+// per-phone redemption cap cannot be evaded by reformatting the same number.
+// It keeps digits only and always re-applies the leading "+", so every variant
+// of one number ("+919876543210", "+91 98765 43210", "(+91)9876543210",
+// "919876543210") collapses to the same string. Anchoring the "+" to index 0 —
+// as an earlier version did — is not sufficient: a leading "(" pushed the "+"
+// off index 0 and silently produced a second, cap-evading canonical form.
 func promoNormalizePhone(phone string) string {
-	phone = strings.TrimSpace(phone)
-	if phone == "" {
-		return phone
-	}
 	var b strings.Builder
-	for i, r := range phone {
-		if r == '+' && i == 0 {
-			b.WriteRune(r)
-			continue
-		}
+	for _, r := range phone {
 		if r >= '0' && r <= '9' {
 			b.WriteRune(r)
 		}
 	}
-	return b.String()
+	digits := b.String()
+	if digits == "" {
+		return ""
+	}
+	return "+" + digits
 }
 
 func computeDiscount(promo sqlc.Promo, orderTotal float64) float64 {
@@ -162,4 +177,39 @@ func (s *PromoService) ListPromosForBranch(ctx context.Context, branchID int64) 
 
 func (s *PromoService) DeactivatePromo(ctx context.Context, promoID, branchID int64) error {
 	return s.repos.DeactivatePromo(ctx, promoID, branchID)
+}
+
+func (s *PromoService) ActivatePromo(ctx context.Context, promoID, branchID int64) error {
+	return s.repos.ActivatePromo(ctx, promoID, branchID)
+}
+
+// UpdatePromoRequest mirrors CreatePromoRequest minus the immutable code/type.
+type UpdatePromoRequest struct {
+	PromoID         int64
+	BranchID        int64
+	Value           float64
+	MinOrderAmount  float64
+	MaxUses         *int32
+	UsesPerPhone    int32
+	ValidFrom       time.Time
+	ValidUntil      time.Time
+	TimeWindowStart *time.Duration
+	TimeWindowEnd   *time.Duration
+	Description     *string
+}
+
+func (s *PromoService) UpdatePromo(ctx context.Context, req UpdatePromoRequest) (sqlc.Promo, error) {
+	return s.repos.UpdatePromo(ctx, repository.UpdatePromoParams{
+		PromoID:         req.PromoID,
+		BranchID:        req.BranchID,
+		Value:           req.Value,
+		MinOrderAmount:  req.MinOrderAmount,
+		MaxUses:         req.MaxUses,
+		UsesPerPhone:    req.UsesPerPhone,
+		ValidFrom:       req.ValidFrom,
+		ValidUntil:      req.ValidUntil,
+		TimeWindowStart: req.TimeWindowStart,
+		TimeWindowEnd:   req.TimeWindowEnd,
+		Description:     req.Description,
+	})
 }

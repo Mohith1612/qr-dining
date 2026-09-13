@@ -1,0 +1,32 @@
+---
+import Wordmark from "./Wordmark.astro";
+import { site } from "../data/site";
+---
+<footer class="site-footer">
+  <div class="container footer-grid">
+    <div class="brand-column">
+      <Wordmark />
+      <p>The operating system for dine-in.</p>
+      <a href={`mailto:${site.email}`}>{site.email}</a>
+    </div>
+    <nav aria-label="Product links"><p>Product</p><a href="/product">Product</a><a href="/pricing">Pricing</a><a href="/demo">Request a demo</a></nav>
+    <nav aria-label="Company links"><p>Company</p><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href={site.appUrl}>Sign in</a></nav>
+  </div>
+  <div class="container footer-bottom"><span>© 2026 QR Dining</span><span>Made in India</span></div>
+</footer>
+
+<style>
+  .site-footer { padding:64px 0 24px; background:var(--sunken); border-top:1px solid var(--line-1); }
+  .footer-grid { display:grid; grid-template-columns:2fr 1fr 1fr; gap:56px; padding-bottom:64px; }
+  .brand-column p { margin:20px 0 4px; color:var(--ink-2); }
+  .brand-column a,.footer-grid nav a { color:var(--ink-2); text-decoration:none; }
+  .footer-grid nav { display:flex; flex-direction:column; align-items:flex-start; gap:10px; }
+  .footer-grid nav p { margin:0 0 4px; color:var(--ink); font-weight:600; }
+  .footer-grid a:hover { color:var(--gold); }
+  .footer-bottom { display:flex; justify-content:space-between; border-top:1px solid var(--line-1); padding-top:24px; color:var(--ink-2); font:12px "JetBrains Mono",monospace; }
+  @media(max-width:639px) {
+    .site-footer { padding-top:48px; }
+    .footer-grid { grid-template-columns:1fr; gap:36px; padding-bottom:48px; }
+    .footer-bottom { flex-direction:column; gap:8px; }
+  }
+</style>

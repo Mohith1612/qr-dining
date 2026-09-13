@@ -1,0 +1,56 @@
+# qr-dining — VM overlay for the observability stack.
+#
+# The base observability compose (deploy/observability/) defines its own bridge
+# network only; standalone, prometheus/blackbox cannot resolve the app. This
+# overlay joins them to the app's internal network so `app:8080` resolves, and
+# binds the Prometheus/Alertmanager UIs to localhost only (shared VM — reach
+# them via SSH tunnel, never the public interface).
+#
+# Layout on the VM (see docs/OPERATIONS.md):
+#   /opt/qr-dining/docker-compose.yml                          (deploy/vm/docker-compose.yml)
+#   /opt/qr-dining/observability/                              (copy of deploy/observability/)
+#   /opt/qr-dining/docker-compose.observability-vm.yml         (this file)
+#
+# Run everything as ONE compose project from /opt/qr-dining:
+#   docker compose -f docker-compose.yml \
+#                  -f observability/docker-compose.observability.yml \
+#                  -f docker-compose.observability-vm.yml up -d
+
+# WHY THE VOLUME PATHS ARE ABSOLUTE HERE
+#
+# The base observability compose uses relative bind mounts (`./prometheus.yml`).
+# With multiple `-f` files, Compose resolves relative paths against the PROJECT
+# directory — the first file's directory — not against the file that contains
+# them. Run from /opt/qr-dining as docs/OPERATIONS.md says, `./prometheus.yml`
+# therefore resolves to /opt/qr-dining/prometheus.yml, which does not exist, and
+# the container dies with "Are you trying to mount a directory onto a file".
+#
+# Re-declaring the mounts with `!override` and absolute paths fixes it without
+# touching the base file, which must keep its relative paths so the documented
+# local/staging invocation (run from the repo root) still works.
+services:
+  prometheus:
+    networks:
+      - observability
+      - qr-dining_internal
+    # `!override` replaces (not appends) the base port mapping. Requires
+    # docker compose v2.24+.
+    ports: !override
+      - "127.0.0.1:9090:9090"
+    volumes: !override
+      - /opt/qr-dining/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/qr-dining/observability/prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
+      - prometheus_data:/prometheus
+
+  alertmanager:
+    ports: !override
+      - "127.0.0.1:9093:9093"
+    volumes: !override
+      - /opt/qr-dining/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+
+  blackbox:
+    networks:
+      - observability
+      - qr-dining_internal
+    volumes: !override
+      - /opt/qr-dining/observability/blackbox.yml:/etc/blackbox/blackbox.yml:ro

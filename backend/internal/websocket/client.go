@@ -131,6 +131,10 @@ func (c *Client) readPump() {
 			continue
 		}
 		if env.Event == EventPing {
+			// The client PING (every 30s) doubles as the presence heartbeat —
+			// this is what keeps a live table from drifting into
+			// awaiting_reactivation while guests have the tab open.
+			c.hub.refreshPresence(c.sessionID, c.participantID)
 			pong, _ := json.Marshal(Envelope{Event: EventPong, SessionID: c.sessionID, Timestamp: time.Now().UTC()})
 			select {
 			case c.send <- pong:

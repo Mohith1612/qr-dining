@@ -2,8 +2,8 @@ import { test, expect } from "@playwright/test"
 import { API_URL } from "../playwright.config"
 import { seedOrg, createSession, fetchSnapshot } from "../helpers/api"
 
-test.describe("G-07: Incognito second guest — two distinct participants", () => {
-  test("two guests have separate identities and carts", async () => {
+test.describe("G-07: Incognito second guest shares the session cart", () => {
+  test("second participant sees items added by the first participant", async () => {
     const { table, menu } = await seedOrg("g07")
 
     // Host creates session
@@ -26,7 +26,7 @@ test.describe("G-07: Incognito second guest — two distinct participants", () =
     // Participants are distinct
     expect(hostParticipantId).not.toBe(guestBParticipantId)
 
-    // Host adds to their own cart
+    // One participant adds to the session's shared cart.
     const addHostRes = await fetch(`${API_URL}/sessions/${sessionId}/cart/items`, {
       method: "POST",
       headers: {
@@ -37,14 +37,17 @@ test.describe("G-07: Incognito second guest — two distinct participants", () =
     })
     expect(addHostRes.status).toBe(201)
 
-    // GuestB's cart should be empty (separate cart per participant)
+    // A different participant sees that same shared item.
     const guestBCart = await fetch(`${API_URL}/sessions/${sessionId}/cart`, {
       headers: { "Authorization": `Bearer ${guestBToken}` },
     })
     expect(guestBCart.status).toBe(200)
-    const guestBCartData = await guestBCart.json()
-    const guestBItems = guestBCartData.Items ?? guestBCartData.items ?? []
-    expect(guestBItems.length).toBe(0)
+    const guestBCartData = await guestBCart.json() as {
+      items: Array<{ menu_item_id: number; quantity: number }>
+    }
+    expect(guestBCartData.items).toHaveLength(1)
+    expect(guestBCartData.items[0].menu_item_id).toBe(menu.itemId)
+    expect(guestBCartData.items[0].quantity).toBe(2)
 
     // Snapshot shows both participants to host
     const snap = await fetchSnapshot(sessionId, hostToken)

@@ -1,0 +1,18 @@
+# qr-dining nightly backup — cron alternative to the systemd timer.
+# Install with:  sudo crontab -e   (or drop in /etc/cron.d/qr-dining-backup)
+#
+# Loads DATABASE_URL + provider creds from /etc/qr-dining/backup.env, runs at 02:30,
+# and appends output to a log.
+#
+# ALERTING, precisely: BackupFailed watches the Prometheus textfile metric
+# qr_dining_backup_last_run_status, which nightly-backup.sh writes itself via its
+# EXIT trap. NOTHING watches the marker file below — it is a breadcrumb for a human
+# reading the host, not a monitored signal. (An earlier version of this comment
+# claimed otherwise.)
+#
+# Blind spot worth knowing: if this shell cannot source the env file, or cron never
+# starts the script, no current-run status is written. BackupStaleEarlyWarning and
+# BackupTooOld cover that case from last-success age, provided the textfile volume
+# is scraped. See docs/OPERATIONS.md and docs/RECOVERY.md.
+
+30 2 * * * root set -a; . /etc/qr-dining/backup.env; set +a; /opt/qr-dining/backend/scripts/nightly-backup.sh >> /var/log/qr-dining-backup.log 2>&1 || touch /var/run/qr-dining-backup.failed

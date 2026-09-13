@@ -86,6 +86,25 @@ func (r *Repos) CreatePlatformBranch(ctx context.Context, p sqlc.CreatePlatformB
 	return r.q.CreatePlatformBranch(ctx, p)
 }
 
+// UpdatePlatformBranch edits a branch's identity fields. A duplicate branch_code
+// surfaces as domain.ErrDuplicateBranchCode for the handler to map to a 409.
+func (r *Repos) UpdatePlatformBranch(ctx context.Context, id int64, name, timezone, branchCode, orderPrefix string) (sqlc.Branch, error) {
+	b, err := r.q.UpdatePlatformBranch(ctx, sqlc.UpdatePlatformBranchParams{
+		ID:          id,
+		Name:        name,
+		Timezone:    timezone,
+		BranchCode:  branchCode,
+		OrderPrefix: orderPrefix,
+	})
+	if err != nil {
+		if isDuplicateError(err) {
+			return sqlc.Branch{}, domain.ErrDuplicateBranchCode
+		}
+		return sqlc.Branch{}, err
+	}
+	return b, nil
+}
+
 func (r *Repos) CreateOrganizationBranchMembership(ctx context.Context, organizationID, branchID int64) error {
 	return r.q.CreateOrganizationBranchMembership(ctx, sqlc.CreateOrganizationBranchMembershipParams{
 		OrganizationID: organizationID,

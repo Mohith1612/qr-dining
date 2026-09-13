@@ -2,12 +2,15 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useStaffStore } from "@/store/staff"
+import { track } from "@/lib/product-analytics/events"
 import { assistanceApi } from "@/lib/api/assistance"
 import { ordersApi } from "@/lib/api/orders"
 import { staffApi } from "@/lib/api/staff"
 import { paymentsApi } from "@/lib/api/payments"
 import { StatusBadge } from "@/components/shared/StatusBadge"
 import { EmptyState } from "@/components/shared/EmptyState"
+import { RecoveryActionSheet } from "@/components/staff/RecoveryActionSheet"
+import { canCancelPayment, isStaleRecoveryError, recoveryErrorMessage } from "@/lib/staff-recovery"
 import { relativeTime, formatCurrency } from "@/lib/format"
 import { CheckCircle, Loader2, UtensilsCrossed, BadgeIndianRupee, ConciergeBell } from "lucide-react"
 import { toast } from "sonner"
@@ -48,13 +51,14 @@ function TableChip({ label }: { label: string }) {
 }
 
 function ActionButton({
-  onClick, acting, label, tone, inkColor = "var(--accent-ink)",
+  onClick, acting, label, tone, inkColor = "var(--accent-ink)", outline = false,
 }: {
   onClick: () => void
   acting: boolean
   label: string
   tone: string
   inkColor?: string
+  outline?: boolean
 }) {
   return (
     <button
@@ -63,8 +67,10 @@ function ActionButton({
       className="press"
       style={{
         flex: 1, height: 40, minHeight: 40,
-        background: tone, color: inkColor,
-        border: "none", borderRadius: "var(--rad-md)",
+        background: outline ? "transparent" : tone,
+        color: outline ? tone : inkColor,
+        border: outline ? `1px solid ${tone}` : "none",
+        borderRadius: "var(--rad-md)",
         fontSize: 12, fontWeight: 600,
         cursor: acting ? "not-allowed" : "pointer",
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -116,11 +122,13 @@ function ServeCard({
 }
 
 function PaymentCard({
-  payment, onSettle, acting,
+  payment, onSettle, onCancel, acting, canCancel,
 }: {
   payment: PendingPayment
   onSettle: (id: number) => void
+  onCancel: (payment: PendingPayment) => void
   acting: boolean
+  canCancel: boolean
 }) {
   const tableLabel = payment.table_identifier || `Table ${payment.session_number}`
   return (
@@ -141,7 +149,15 @@ function PaymentCard({
 
       <div style={{ display: "flex", gap: 8 }}>
         <ActionButton onClick={() => onSettle(payment.id)} acting={acting} label="Confirm collected" tone="var(--warn)" inkColor="var(--accent-ink)" />
+        {canCancel && (
+          <ActionButton onClick={() => onCancel(payment)} acting={acting} label="Cancel request" tone="var(--ink-3)" outline />
+        )}
       </div>
+      {canCancel && (
+        <p style={{ fontSize: 11, color: "var(--ink-4)", margin: "8px 0 0", lineHeight: 1.4 }}>
+          Cancelling withdraws the bill request — the table unfreezes and can order again.
+        </p>
+      )}
     </div>
   )
 }
@@ -214,12 +230,14 @@ function QueueColumn({
 }
 
 export default function WaiterPage() {
-  const { branchId, token } = useStaffStore()
+  const { branchId, token, role } = useStaffStore()
   const [requests, setRequests] = useState<AssistanceRequest[]>([])
   const [readyOrders, setReadyOrders] = useState<KitchenOrder[]>([])
   const [payments, setPayments] = useState<PendingPayment[]>([])
   const [loading, setLoading] = useState(true)
   const [actingKey, setActingKey] = useState<string | null>(null)
+  const [cancelTarget, setCancelTarget] = useState<PendingPayment | null>(null)
+  const canCancel = canCancelPayment(role)
 
   const fetchAll = useCallback(async () => {
     if (!branchId || !token) return
@@ -245,6 +263,7 @@ export default function WaiterPage() {
     setActingKey(`serve:${orderId}`)
     try {
       await ordersApi.updateStatus(orderId, "served", token)
+      track("order_served", { order_id: orderId })
       setReadyOrders((prev) => prev.filter((o) => o.id !== orderId))
       toast.success("Marked served")
     } catch {
@@ -258,7 +277,15 @@ export default function WaiterPage() {
     if (!token) return
     setActingKey(`settle:${paymentId}`)
     try {
+      const payment = payments.find((item) => item.id === paymentId)
       await paymentsApi.settle(paymentId, token)
+      if (payment) {
+        track("payment_settled", {
+          session_id: payment.session_id,
+          method: payment.method,
+          amount: Number(payment.amount),
+        })
+      }
       setPayments((prev) => prev.filter((p) => p.id !== paymentId))
       toast.success("Payment confirmed")
     } catch {
@@ -268,10 +295,36 @@ export default function WaiterPage() {
     }
   }
 
+  // Withdraw a bill request the guest changed their mind about. The session
+  // unfreezes back to active server-side; the 8s poll above is what carries that
+  // to every other staff device, since the WebSocket hub is guest-only.
+  async function handleCancelPayment(payment: PendingPayment, reason: string) {
+    if (!token) return
+    try {
+      await paymentsApi.cancel(payment.id, reason, token)
+      track("payment_cancelled_by_staff", {
+        session_id: payment.session_id,
+        payment_id: payment.id,
+        role: role ?? "waiter",
+      })
+      setPayments((prev) => prev.filter((p) => p.id !== payment.id))
+      toast.success(`Bill request cancelled — ${payment.table_identifier || "the table"} can order again`)
+    } catch (err) {
+      toast.error(recoveryErrorMessage(err, "cancel-payment"))
+      if (isStaleRecoveryError(err)) {
+        // Our copy of this payment is out of date; the refetch settles it.
+        fetchAll()
+        return
+      }
+      throw err
+    }
+  }
+
   async function handleAssist(id: number, action: "ack" | "resolve") {
     if (!token) return
     setActingKey(`assist:${id}`)
     try {
+      const request = requests.find((item) => item.id === id)
       const updated =
         action === "ack"
           ? await assistanceApi.acknowledge(id, token)
@@ -281,6 +334,14 @@ export default function WaiterPage() {
           ? prev.filter((r) => r.id !== id)
           : prev.map((r) => (r.id === id ? { ...r, ...updated } : r))
       )
+      if (action === "ack" && request) {
+        const elapsed = Math.max(0, Math.round((Date.now() - new Date(request.created_at).getTime()) / 1000))
+        track("assistance_acknowledged", {
+          request_id: request.id,
+          assistance_type: request.type,
+          ...(Number.isFinite(elapsed) ? { seconds_to_ack: elapsed } : {}),
+        })
+      }
       toast.success(action === "ack" ? "On your way!" : "Resolved")
     } catch {
       toast.error("Action failed. Please try again.")
@@ -351,7 +412,14 @@ export default function WaiterPage() {
             emptyDescription="Cash/card collections to confirm appear here."
           >
             {payments.map((p) => (
-              <PaymentCard key={p.id} payment={p} onSettle={handleSettle} acting={actingKey === `settle:${p.id}`} />
+              <PaymentCard
+                key={p.id}
+                payment={p}
+                onSettle={handleSettle}
+                onCancel={setCancelTarget}
+                acting={actingKey === `settle:${p.id}`}
+                canCancel={canCancel}
+              />
             ))}
           </QueueColumn>
 
@@ -369,6 +437,23 @@ export default function WaiterPage() {
           </QueueColumn>
         </div>
       </div>
+
+      {cancelTarget && (
+        <RecoveryActionSheet
+          action="cancel-payment"
+          title={`Cancel bill request — ${cancelTarget.table_identifier || cancelTarget.session_number}`}
+          consequence={
+            <>
+              The guest&apos;s request to pay {formatCurrency(cancelTarget.amount)} is withdrawn.
+              Nothing is collected, the table unfreezes and they can order again — and ask for
+              the bill whenever they&apos;re ready.
+            </>
+          }
+          submitLabel="Cancel bill request"
+          onClose={() => setCancelTarget(null)}
+          onSubmit={(reason) => handleCancelPayment(cancelTarget, reason)}
+        />
+      )}
     </div>
   )
 }
