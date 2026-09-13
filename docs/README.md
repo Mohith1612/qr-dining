@@ -43,3 +43,4 @@ To inspect a removed report without restoring it to the working tree:
 ```bash
 git show docs-before-rebuild:path/to/file
 ```
+
