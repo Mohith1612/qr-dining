@@ -9,8 +9,9 @@
 > still believe you can fix the thing. This document answers a different question — "should we
 > still be doing this at all?" — for a reader who has already failed to fix it, at 20:00 on a
 > Friday, alone. It also contains a page written for restaurant staff rather than for an
-> engineer. Burying that as §18 of a 194-line engineering runbook would make it harder to find at
-> exactly the moment it is needed. RUNBOOKS.md §0 and §14 link here.
+> engineer. Burying it in an engineering runbook would make it harder to find at exactly the
+> moment it is needed. RUNBOOKS.md links here before its first incident step and from billing
+> discrepancy handling.
 
 ---
 
@@ -31,8 +32,8 @@ And the constraint that shapes everything here:
 > Down-migrations are unsafe across 16–24 and at 36, 38 and 39. Migration 22's up cannot be
 > re-applied to a populated `audit_log` at all — it aborts on the immutability trigger and leaves
 > `schema_migrations` dirty, which prevents the app from starting. Verified empirically on
-> 2026-09-12: [history/restore-verification-report-2026-09-12.md](history/restore-verification-report-2026-09-12.md)
-> Part 2. "Roll back the schema" is not a response you have. §4 is what you have instead.
+> 2026-09-12: [RECOVERY.md, Track F verification record](RECOVERY.md#track-f-verification-record).
+> "Roll back the schema" is not a response you have. §4 is what you have instead.
 
 ---
 
@@ -89,7 +90,7 @@ right afterwards. There is no amount of cross-tenant exposure that is acceptable
 entire purpose is to earn a reference customer.
 
 *Note on enforcement:* tenant scope denials are enforced unconditionally, independent of
-`AUTHZ_CENTRAL_POLICY_ENFORCE` (`handlers/authz.go:59`). R3 being false does **not** mean scope
+`AUTHZ_CENTRAL_POLICY_ENFORCE` (`backend/internal/handlers/authz.go:48-72`). R3 being false does **not** mean scope
 is unguarded. Role-policy denials are still shadow-only while R3 is off.
 
 ### A3 — A table cannot order or pay
@@ -132,8 +133,8 @@ about the record of what happened being gone. The restaurant's accounts depend o
 | **Decision window** | 10 minutes. |
 | **Signal** | `AppTargetDown`, `ReadyzProbeFailing` (both page at 1m), `AppUnavailableAbortThreshold` (10m). Good coverage. |
 
-*Why 10 minutes.* Restart recovery is ~12 seconds and migrations are idempotent
-([OPERATIONS.md §1](OPERATIONS.md#1-health-and-status)). Ten minutes is enough for one restart
+*Why 10 minutes.* Readiness checks both PostgreSQL and Redis independently
+([RUNBOOKS.md, First minute](RUNBOOKS.md#first-minute)). Ten minutes is enough for one restart
 and one diagnosis attempt by one person. If a restart did not fix it in ten minutes, the next
 step is a build or a restore, neither of which belongs in the middle of a service.
 
@@ -153,7 +154,7 @@ actual reliability, and it is not good enough to put in front of paying guests.
 
 *Why this is its own criterion.* A dirty migration is not a normal outage. The app refuses to
 start, and — if the wedge is at 22 — recovery requires **dropping the `audit_log` immutability
-trigger by hand on a live database** ([RUNBOOKS.md §8](RUNBOOKS.md#8-migration-rollback)). That
+trigger by hand on a live database** ([RUNBOOKS.md, Database failure](RUNBOOKS.md#database-outage-corruption-or-migration-failure)). That
 trades the tamper-evidence guarantee for uptime. `migrate force <version>` and `migrate version`
 exist for this (added 2026-09-12) and the procedure is regression-tested, but it is still a
 procedure you should perform at most once. Sixty minutes is roughly what it takes when done
@@ -183,11 +184,11 @@ is working.
 
 | Symptom | Why it is fine | Runbook |
 |---|---|---|
-| Redis down | Realtime degrades to snapshot reconciliation; HTTP keeps serving. Staff and platform logins are lost and must re-authenticate; rate limiting fails closed on sensitive routes. No data loss. | [§2](RUNBOOKS.md#2-redis-outage) |
-| Payments stuck in `payment_pending` | Alert-only **by design** — the system never auto-settles. A human settles or cancels through the staff UI. The frozen cart is the invariant working. | [§4](RUNBOOKS.md#4-stuck-payments) |
-| Webhook replay storm | Receipt is idempotent, the limiter fails closed. Contained. | [§5](RUNBOOKS.md#5-webhook-outage-or-replay-storm) |
-| "Table occupied but empty" | The stale-session cleaner and reconciler are self-healing. Wait one interval before intervening. Staff can force-close. | [§9](RUNBOOKS.md#9-stale-sessions--stranded-tables) |
-| `policy_shadow_mismatch_total` non-zero | R3 is off by design; this is the shadow gate measuring cutover risk, not a live denial. | [OPERATIONS.md §3](OPERATIONS.md#rollout-gate-alerts) |
+| Redis down | Readiness fails; realtime, authentication caches, presence, sensitive rate limits, and worker locks depend on Redis. Durable business data remains in PostgreSQL. | [Redis outage](RUNBOOKS.md#redis-outage) |
+| Payments stuck in `payment_pending` | Alert-only **by design** — the system never auto-settles. A human settles or cancels through the staff UI. The frozen cart is the invariant working. | [Stuck payment](RUNBOOKS.md#stuck-payment) |
+| Webhook replay storm | The receipt insert suppresses a repeated external event ID after signature verification. | [Payment webhook rejection or replay](RUNBOOKS.md#payment-webhook-rejection-or-replay) |
+| "Table occupied but empty" | The stale-session cleaner and reconciler have repair paths; staff can force-close. | [Stale session or occupied table](RUNBOOKS.md#stale-session-or-occupied-table) |
+| `policy_shadow_mismatch_total` non-zero | This is a shadow signal only in an environment where central role enforcement is off; the application default is false, while the manual stack enables it. | [SECURITY.md, environment-dependent enforcement](SECURITY.md#authorization-and-environment-dependent-enforcement) |
 | One guest's device misbehaving | Re-scan. Not A3 unless the table stays blocked past 15 minutes. |
 
 ---
@@ -247,10 +248,13 @@ This is the common case and it is calm.
 
 **If the backend is unhealthy** (A5, A6), the staff UI is the fallback, and if that is gone, paper:
 
-1. **Get the bill totals out.** Staff UI → branch active sessions. If the app is down, the
-   Support Console (`/platform/support`) is read-only and is the correct surface. If Postgres is
-   up but the app is not, the bill total is in `bill_snapshots` — that is a break-glass read
-   ([RUNBOOKS.md §13](RUNBOOKS.md#13-break-glass)), recorded before it is done.
+1. **Get the bill totals out.** Use the staff surface while the API is reachable. If the API is
+   down but Postgres is readable, use the recorded break-glass database read
+   ([RUNBOOKS.md, Break-glass database read](RUNBOOKS.md#break-glass-database-read)). A
+   `bill_snapshots` row exists only after payment initiation; otherwise calculate from the placed
+   order-item price snapshots. Record the read before doing it
+   (`backend/migrations/000001_initial_schema.up.sql:218-250`,
+   `backend/migrations/000021_payment_order_correctness.up.sql:48-64`).
 2. **Settle on paper.** The restaurant takes cash or UPI against the written total and keeps the
    slip. This is already how money moves in the pilot — the system records the settlement, it
    never moves the money.
@@ -274,7 +278,7 @@ cd /opt/qr-dining
 docker run --rm --network qr-dining_internal --env-file /opt/qr-dining/backup.env \
   -v /opt/qr-dining/repo/backend/scripts:/scripts:ro \
   postgres:17-alpine sh -c 'apk add --no-cache bash aws-cli >/dev/null && bash /scripts/nightly-backup.sh'
-# 2. Verify it landed and its sha256 matches the manifest (RECOVERY.md §2).
+# 2. Verify it landed and its sha256 matches the manifest (RECOVERY.md, Backup artifact and selection).
 # 3. Then, and only then:
 docker compose stop app
 ```
@@ -286,7 +290,7 @@ Keep the final dump for at least as long as the restaurant's accounting period.
 
 Export the day's sessions, orders and payments and reconcile against the till. Any discrepancy is
 an A1 finding regardless of what triggered the abort. Then write the post-incident report
-([RUNBOOKS.md §17](RUNBOOKS.md#17-post-incident)).
+([RUNBOOKS.md, After containment](RUNBOOKS.md#after-containment)).
 
 ---
 
@@ -303,8 +307,8 @@ Try in order. Stop at the first one that works.
 | 3 | **Revert the binary, not the schema** — pin the previous `IMAGE_TAG`, `docker compose up -d app` | A bad deploy, **when that deploy added no migration** | ~1 min | Yes *if and only if* the release spans no migration. **Confirm this before the pilot, not during an incident:** know which tag you are rolling back to and whether it crosses one. |
 | 4 | **Freeze writes** — `docker compose stop app` | You need the database to stop changing while you think | Instant | Yes, but the restaurant is on paper from this second. Guests see 502s. |
 | 5 | **Hotfix forward** | Nothing above applies | **≥1 hour** — one developer, arm64 build, no CI-gated path to a running container in minutes | Not a during-service option. During service the answer is paper. |
-| 6 | **Restore the database** ([RECOVERY.md §3b](RECOVERY.md#3b-production-restore-destructive--real-incident-only)) | Data corruption or bad mutation only | ~5 min mechanical; loses ≤24h | Only **into the same schema version the dump was taken at**. A dump older than the running binary's schema **cannot be replayed forward** — see §0. |
-| 7 | **Unwedge a dirty migration** — `migrate version`, `migrate force <v>`, then [RUNBOOKS.md §8](RUNBOOKS.md#8-migration-rollback) | A6 only | ~60 min | **Last resort.** Requires dropping `trg_audit_log_immutable`, replaying, and re-creating it. While the trigger is off, `audit_log` is writable and the tamper-evidence guarantee does not hold. Record that window in the incident report. |
+| 6 | **Restore the database** ([RECOVERY.md, Production restore](RECOVERY.md#production-restore)) | Data corruption or bad mutation only | ~5 min mechanical; loses ≤24h | Only **into the same schema version the dump was taken at**. A dump older than the running binary's schema **cannot be replayed forward** — see §0. |
+| 7 | **Unwedge a dirty migration** — `migrate version`, `migrate force <v>`, then [RECOVERY.md, version-22 wedge](RECOVERY.md#known-dirty-migration-wedge-at-version-22) | A6 only | ~60 min | **Last resort.** Requires dropping `trg_audit_log_immutable`, replaying, and re-creating it. While the trigger is off, `audit_log` is writable and the tamper-evidence guarantee does not hold. Record that window in the incident report. |
 | 8 | **Stop the pilot** | §1 says so | — | §4. |
 
 ### The rule that removes most of this
@@ -344,17 +348,17 @@ builds the signal. They are listed so that the detection plan is explicit rather
 
 ### Gaps in the signals that *do* exist
 
-- **`BackupFailed` now covers config errors too** — `nightly-backup.sh` reports through an `EXIT`
-  trap installed before any validation, so a missing env file pages rather than sitting silent
-  (finding R-3, fixed 2026-09-12). **A job that never runs at all still writes nothing**, which
-  `deploy/backup/README.md` flags as plausible since the rootless path uses a user crontab that
-  does not survive a VM rebuild. That gap is covered only by `BackupStaleEarlyWarning` (26h) and
-  `BackupTooOld` (36h) — so read the success timestamp directly, per §7.
+- **`BackupFailed` covers failures after the script starts** — `nightly-backup.sh` installs an
+  `EXIT` trap before validating `DATABASE_URL`, so its own validation and command failures write
+  failure status (`backend/scripts/nightly-backup.sh:27-85`). **A scheduler or wrapper failure
+  that never starts the script still writes nothing** (`deploy/backup/crontab.example:6-18`).
+  That gap is covered only by `BackupStaleEarlyWarning` (26h) and `BackupTooOld` (36h), provided
+  Prometheus receives the textfile series — so read the success timestamp directly, per §7.
 - **Backup metrics only reach Prometheus if `NODE_EXPORTER_TEXTFILE_DIR` points at the
   `qr-dining_backup_textfile` volume mountpoint.** If that wiring is missing, all four backup
-  alerts are silently dead ([OPERATIONS.md §5](OPERATIONS.md#5-backups-monitoring-side)).
-- **None of the page alerts reach a human until Alertmanager has a real receiver.** This is a
-  standing open SEV-1 ([OPERATIONS.md §3](OPERATIONS.md#delivery)). Until it is closed and
+  alerts are silently dead ([OPERATIONS.md, Backup and restore](OPERATIONS.md#backup-and-restore)).
+- **None of the page alerts reach a human until Alertmanager has a real receiver.** This is
+  not configured by the checked-in receiver ([OPERATIONS.md, Metrics and alerts](OPERATIONS.md#metrics-and-alerts)). Until it is closed and
   test-fired, **every "page" in this document is a page to nobody** and the real detection
   mechanism for all seven criteria is a phone call from the restaurant. See §7.
 
@@ -370,7 +374,7 @@ Nothing in this document works if these are not true. Check them, do not assume 
 - [ ] `NODE_EXPORTER_TEXTFILE_DIR` verified to be the `qr-dining_backup_textfile` mountpoint, and
       `qr_dining_backup_last_success_timestamp_seconds` confirmed visible in Prometheus.
 - [ ] One restore drill at real data volume, timed
-      ([RECOVERY.md §3a](RECOVERY.md#3a-drill--side-restore-non-destructive--also-the-quarterly-drill)).
+      ([RECOVERY.md, Rehearsed scratch restore](RECOVERY.md#rehearsed-scratch-restore)).
 - [ ] `backend/scripts/tests/backup-restore-test.sh` passes on the deployment host — it is the
       cheapest proof that the backup and restore path still behaves as this document assumes.
 - [ ] **The rollback target tag is known**, and whether it spans a migration is known.

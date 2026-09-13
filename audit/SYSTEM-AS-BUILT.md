@@ -1,5 +1,11 @@
 # System as built
 
+> **Historical pre-remediation checkpoint.** This file is retained as audit
+> input, not maintained system documentation. It predates migration 40's
+> non-terminal-payment uniqueness guard
+> (`backend/migrations/000040_one_non_terminal_payment_per_session.up.sql:1-29`).
+> Start at `docs/README.md`; do not use this file to infer current behavior.
+
 This describes the checked-out code and the final schema obtained by reading all 39 `backend/migrations/*.up.sql` files in filename order. It is not a report of a deployed database, a test run, or a review of defects. Source citations are repository-relative `file:line`; line numbers refer to this checkout. Sections 1–8 were completed from migrations, executable code, route registrations, and test assertions before the documentation comparison in section 9. A **contradiction** identifies different statements made by code, assertions, or documentation without recommending a change.
 
 The executable is a Go HTTP service with Gin handlers, service methods, SQL repositories, Postgres, Redis, and a WebSocket hub; a Next.js frontend keeps guest, staff, and platform state separately. The server wires these dependencies and registers the API; its process also starts the background workers. (`backend/internal/server/server.go:51`, `backend/cmd/server/main.go:94`, `frontend/store/staff.ts:17`, `frontend/store/platform.ts:28`.) Actual environment values, deployed migration history, external payment-provider configuration, and enabled rollout flags cannot be established from the source alone.
@@ -1891,9 +1897,9 @@ The document's implementation-task and sign-off lists are specifications, not ev
 
 | Documentation statement / source | As built / source |
 |---|---|
-| There is no event replay; event_log is not a replay stream. (`docs/reference/reconnect-guide.md:4`, `docs/reference/reconnect-guide.md:12`.) | event_log is separate, but session_events is a durable replay stream returned by snapshot and handled by frontend reconnect. (`backend/migrations/000020_realtime_session_hardening.up.sql:41`, `backend/internal/services/session.go:607`, `frontend/lib/ws/connection.ts:147`.) |
-| Snapshot requires no authentication; example reconnect uses session_id/participant_id query parameters. (`docs/reference/reconnect-guide.md:55`, `docs/reference/reconnect-guide.md:85`.) | Snapshot uses the guest helper, required by default; WebSocket requires a one-shot ticket by default. Legacy query access is flag-gated. (`backend/internal/handlers/snapshot.go:1`, `backend/internal/config/config.go:240`, `backend/internal/config/config.go:246`, `backend/internal/handlers/ws.go:33`.) |
-| snapshot_at identifies the exact moment state was captured; closed session snapshot remains available. (`docs/reference/reconnect-guide.md:67`, `docs/reference/reconnect-guide.md:105`.) | Snapshot comprises independent concurrent reads and gets a timestamp after them. Service terminal reads have a60m window; the HTTP guest helper may reject the revoked credential before reaching that service. (`backend/internal/services/session.go:571`, `backend/internal/services/session.go:584`, `backend/internal/services/session.go:634`, `backend/internal/handlers/guest_auth.go:89`.) |
+| There is no event replay; event_log is not a replay stream. (`docs-before-rebuild:docs/reference/reconnect-guide.md:4`, `docs-before-rebuild:docs/reference/reconnect-guide.md:12`.) | event_log is separate, but session_events is a durable replay stream returned by snapshot and handled by frontend reconnect. (`backend/migrations/000020_realtime_session_hardening.up.sql:41`, `backend/internal/services/session.go:607`, `frontend/lib/ws/connection.ts:147`.) |
+| Snapshot requires no authentication; example reconnect uses session_id/participant_id query parameters. (`docs-before-rebuild:docs/reference/reconnect-guide.md:55`, `docs-before-rebuild:docs/reference/reconnect-guide.md:85`.) | Snapshot uses the guest helper, required by default; WebSocket requires a one-shot ticket by default. Legacy query access is flag-gated. (`backend/internal/handlers/snapshot.go:1`, `backend/internal/config/config.go:240`, `backend/internal/config/config.go:246`, `backend/internal/handlers/ws.go:33`.) |
+| snapshot_at identifies the exact moment state was captured; closed session snapshot remains available. (`docs-before-rebuild:docs/reference/reconnect-guide.md:67`, `docs-before-rebuild:docs/reference/reconnect-guide.md:105`.) | Snapshot comprises independent concurrent reads and gets a timestamp after them. Service terminal reads have a60m window; the HTTP guest helper may reject the revoked credential before reaching that service. (`backend/internal/services/session.go:571`, `backend/internal/services/session.go:584`, `backend/internal/services/session.go:634`, `backend/internal/handlers/guest_auth.go:89`.) |
 
 ### 9.5 `docs/reference/session-lifecycle-state-machine.md`
 

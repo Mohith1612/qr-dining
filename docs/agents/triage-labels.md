@@ -1,8 +1,10 @@
-# Triage Labels
+# Intended triage labels
 
-The skills speak in terms of five canonical triage roles. This file maps those roles to the actual label strings used in this repo's issue tracker.
+The agent workflow uses five canonical triage roles. This file records the
+intended label strings; it is not evidence that every label is provisioned in
+GitHub. Run `gh label list --repo Mohith1612/qr-dining` before applying one.
 
-| Label in mattpocock/skills | Label in our tracker | Meaning                                  |
+| Workflow role | Intended label | Meaning                                  |
 | -------------------------- | -------------------- | ---------------------------------------- |
 | `needs-triage`             | `needs-triage`       | Maintainer needs to evaluate this issue  |
 | `needs-info`               | `needs-info`         | Waiting on reporter for more information |
@@ -10,6 +12,6 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 | `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
 | `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
-When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
-
-Edit the right-hand column to match whatever vocabulary you actually use.
+When a skill names a role, use the intended string only if it exists in the live
+tracker. Adding or renaming GitHub labels is an external repository change and is
+outside documentation-only work.

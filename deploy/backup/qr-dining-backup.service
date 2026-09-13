@@ -16,6 +16,7 @@ ExecStart=/opt/qr-dining/backend/scripts/nightly-backup.sh
 # qr_dining_backup_last_run_status that the script writes itself. (An earlier
 # version of this comment claimed the systemd collector was the path.)
 #
-# That metric is not written when the script exits at its DATABASE_URL guard, which
-# runs before the ERR trap is installed — see docs/OPERATIONS.md §5, finding R-3.
+# The script installs an EXIT trap before validating DATABASE_URL, so a started job
+# reports guard failures as well as command failures. A job that never starts is
+# detected only by the last-success age alerts; see docs/OPERATIONS.md.
 Nice=10

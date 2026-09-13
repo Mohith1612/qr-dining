@@ -32,7 +32,7 @@
 # only then start `app2` — two containers racing the same migrations against an
 # empty database is a risk worth not taking once:
 #   docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d app
-#   # wait for healthy, confirm schema v38, then:
+#   # wait for healthy, confirm schema v40, then:
 #   docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d
 # Migrations are idempotent, so later restarts can bring both up together.
 

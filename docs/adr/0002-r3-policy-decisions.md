@@ -2,11 +2,22 @@
 
 **Status:** Accepted · **Date:** 2026-05-29 · **Outcome:** all three decisions ratified existing behaviour, so no production behaviour change was required
 
-> **Read as a record, not as current state.** R3 (`AUTHZ_CENTRAL_POLICY_ENFORCE` + `STRICT_BRANCH_SCOPED_MUTATIONS`) is still **off**, gated on 48 hours of zero shadow mismatches — see [../OPERATIONS.md §4](../OPERATIONS.md#4-rollout-flags-the-enforcement-ladder).
+> **Current verification, 2026-09-13.** Read the rollout language below as the
+> original decision record, not a universal environment value. The code defaults
+> `AUTHZ_CENTRAL_POLICY_ENFORCE` to false, while the manual-testing stack enables
+> it (`backend/internal/config/config.go:253-263`;
+> `scripts/manual-testing-up.sh:62-75`). Current behavior is summarized in
+> [SECURITY.md](../SECURITY.md#authorization-and-environment-dependent-enforcement).
+> The three decisions remain in force: scope violations block independently of
+> the rollout flag (`backend/internal/handlers/authz.go:48-103`), revoked guest
+> credentials are rejected (`backend/internal/handlers/guest_auth.go:89-115`),
+> and organization audit reads require an owner/admin membership
+> (`backend/internal/handlers/audit_log.go:84-121`). The implementation narrative
+> below is the historical record from 2026-05-29; its source locations describe
+> that revision and must not be read as current line citations.
 
 
-> **Purpose.** This document closes the only *hard* blocker on rollout wave **R3**
-> (`master-system-context-v1.md` §11): the three policy-semantics questions that must be
+> **Purpose.** This document records the three policy-semantics questions that had to be
 > answered in writing before central-policy enforcement goes strict. It records the
 > finalized decisions, their rationale, the enforcement/rollout implications, and the
 > shadow-validation findings that gate the cutover.
@@ -27,13 +38,13 @@ R3 flips a **paired** flag set (both flip together, both reversible via `flag=fa
 restart, MTTR <5 min):
 
 - **`AUTHZ_CENTRAL_POLICY_ENFORCE`** toggles the central authorizer
-  (`NewEnforcingAuthorizer`, `internal/authz/policy.go:34`) via the `requireAuthorized`
-  helper (`internal/handlers/authz.go:47`):
+  (`NewEnforcingAuthorizer`, `backend/internal/authz/policy.go:39`) via the `requireAuthorized`
+  helper (`backend/internal/handlers/authz.go:48`):
   - **Shadow (current default):** a policy denial is logged (`LogAuthzDenied`), written to
     the audit trail with `ResultSuccess`, counted, and **allowed** to proceed.
   - **Strict:** a policy denial is counted and **blocked** with `403 FORBIDDEN`.
 - **`STRICT_BRANCH_SCOPED_MUTATIONS`** toggles `enforceBranchScopeFromBody`
-  (`internal/handlers/helpers.go:49-61`): a client-supplied body `branch_id` that mismatches
+  (`backend/internal/handlers/helpers.go:49-60`): a client-supplied body `branch_id` that mismatches
   the server-derived branch is **logged** (`legacy_identity_usage_total`) and accepted in
   shadow, and **rejected with 400** in strict. This is orthogonal to the central policy: it
   closes the legacy body-`branch_id` override path, while the authz flag closes role/scope
@@ -54,7 +65,7 @@ branch staff row. There is **no emergency override**.
 **Why this is already true (double-enforced).**
 - Staff identity is **branch-scoped**: a `staff` row belongs to one branch, and a staff
   session carries that single `BranchID` (`services/staff.go`). The authz actor's scope is
-  always anchored to `sess.BranchID` (`handlers/authz.go:25 staffActorForRequest`) — never
+  always anchored to `sess.BranchID` (`backend/internal/handlers/authz.go:26-36 staffActorForRequest`) — never
   org-wide.
 - **Handler layer:** branch-param mutations check `sess.BranchID != :id` → 403 *before* any
   policy evaluation (e.g. `handlers/staff.go`, `handlers/menu_admin.go`).
@@ -90,10 +101,10 @@ eviction is added.
 
 | Surface | Guard | Revoked result |
 |---|---|---|
-| Cart / order / assist / payment / billing / promo / customer / session get·join·reactivate | `guestParticipantID` revoked check (`handlers/guest_auth.go:73`) | **401** |
+| Cart / order / assist / payment / billing / promo / customer / session get·join·reactivate | `guestParticipantID` revoked check (`backend/internal/handlers/guest_auth.go:89-115`) | **401** |
 | Snapshot (`GET /sessions/:id/snapshot`) | via `requireGuestSession` → same guard | **401** |
-| WebSocket connect (token path) | `guestParticipantID` (`handlers/ws.go:59`) | **401** |
-| WebSocket connect (ticket path) | revoked check (`handlers/ws.go:126`) | **401** |
+| WebSocket connect (token path) | `guestParticipantID` (`backend/internal/handlers/ws.go:51-63`) | **401** |
+| WebSocket connect (ticket path) | revoked check (`backend/internal/handlers/ws.go:137-145`) | **401** |
 | WebSocket **already open** | none | **not force-evicted** (see residual) |
 
 **Revocation triggers.** Only `CloseSession` →
@@ -126,7 +137,7 @@ closed-session visibility.
 | Endpoint | Guard | Scope |
 |---|---|---|
 | `GET /branches/:id/audit` | `sess.BranchID == :id` + `requireAuthorized(ActionAuditReadBranch)` (owner/manager) | single branch (`audit_log.sql` `WHERE branch_id = …`) |
-| `GET /orgs/:org_id/audit` | `organization_members` role owner\|admin (`handlers/audit_log.go:85`) | **cross-branch, org-scoped** (`WHERE organization_id = …`, optional `branch_id`) |
+| `GET /orgs/:org_id/audit` | `organization_members` role owner\|admin (`backend/internal/handlers/audit_log.go:84-121`) | **cross-branch, org-scoped** (`WHERE organization_id = …`, optional `branch_id`) |
 | `GET /platform/audit` | platform auditor role (separate trust domain) | optionally unscoped (all orgs) |
 
 **Isolation.** Org and branch reads filter by `organization_id` / `branch_id`; no guarded
@@ -169,7 +180,7 @@ central policy:**
 
 - `CreateStaff` (`handlers/staff.go`) — inline `sess.BranchID` + owner-only.
 - `UpdateBranch` (`handlers/branches.go`) — inline `sess.BranchID` + owner/manager.
-- `GetOrgAuditLog` (`handlers/audit_log.go:85`) — inline `organization_members` owner/admin.
+- `GetOrgAuditLog` (`backend/internal/handlers/audit_log.go:84-121`) — inline `organization_members` owner/admin.
 
 Because these are already strict regardless of the flag, **flipping R3 is a no-op for them
 and they never emit `policy_shadow_mismatch_total`.** Operators MUST interpret the "48h zero

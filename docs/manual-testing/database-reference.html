@@ -1,193 +1,48 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QR Dining — Database Reference</title>
-<style>
-  :root{
-    --bg:#0e0b08;--panel:#1a1410;--panel2:#221a13;--line:#3a2e22;--ink:#f4ece0;--muted:#b6a994;--dim:#8c7d68;
-    --gold:#d8a94b;--gold2:#f0cf86;--green:#5fbf86;--blue:#6fa8d8;--red:#e07a5f;
-    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,#241a12,var(--bg) 55%);color:var(--ink);font:14.5px/1.6 var(--sans)}
-  a{color:var(--gold2)}
-  .wrap{max-width:1040px;margin:0 auto;padding:40px 24px 90px}
-  .kicker{font:600 12px/1 var(--sans);letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin-bottom:12px}
-  h1{font-size:30px;margin:0 0 8px}
-  .sub{color:var(--muted);max-width:720px}
-  .top a{margin-right:16px;font-size:13px}
-  .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:24px 0}
-  @media(max-width:720px){.stats{grid-template-columns:repeat(3,1fr)}}
-  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}
-  .stat b{display:block;font-size:24px;color:var(--gold2)}
-  .stat span{font-size:11px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
-  h2{font-size:18px;margin:40px 0 6px;padding-top:10px;border-top:1px solid var(--line);color:var(--gold2)}
-  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:8px 0}
-  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{color:var(--dim);font:600 11px var(--sans);letter-spacing:.08em;text-transform:uppercase}
-  td.t{font-family:var(--mono);font-size:12.5px;color:var(--gold2);white-space:nowrap}
-  code{font-family:var(--mono);font-size:12px;color:var(--gold2)}
-  .flow{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0}
-  .flow b{color:var(--ink)}
-  .chain{font-family:var(--mono);font-size:12.5px;color:var(--green);word-break:break-word}
-  .note{background:#1b130c;border:1px solid #4a3a1c;border-radius:10px;padding:12px 16px;color:var(--muted)}
-  .note b{color:var(--ink)}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manual-testing data reference</title>
+  <link rel="stylesheet" href="manual-testing.css">
 </head>
 <body>
-<div class="wrap">
-<div class="kicker">QR Dining · Certification</div>
-<h1>Database Reference</h1>
-<p class="sub">The live schema of the isolated testing database — for an engineer investigating issues during certification. Regenerated from <code>qrdining_mtest</code> at migration <b>v38</b> (adds promo-at-payment redemption, modifier single-select, serene preset). The beta database runs migration <b>v39</b>; v39 is a <i>data-only</i> backfill (canonicalises <code>promo_redemptions.phone_e164</code>) with no DDL, so every structure below still matches the deployed schema exactly — verified against the beta on 2026-08-04: 59 tables, 14 enums.</p>
-<p class="top"><a href="testing-dashboard.html">← Dashboard</a><a href="manual-testing-user-guide.html">User Guide</a><a href="manual-testing-checklist.html">Checklist →</a></p>
+<main>
+  <nav>
+    <a href="testing-dashboard.html">Dashboard</a>
+    <a href="how-to-use.html">Start and stop</a>
+    <a href="manual-testing-session-guide.html">Session guide</a>
+    <a href="manual-testing-checklist.html">Checklist</a>
+    <a href="manual-testing-user-guide.html">Surfaces</a>
+    <a aria-current="page" href="database-reference.html">Data reference</a>
+  </nav>
 
-<div class="stats">
-  <div class="stat"><b>59</b><span>tables</span></div>
-  <div class="stat"><b>166</b><span>indexes</span></div>
-  <div class="stat"><b>108</b><span>foreign keys</span></div>
-  <div class="stat"><b>94</b><span>unique</span></div>
-  <div class="stat"><b>25</b><span>check</span></div>
-  <div class="stat"><b>14</b><span>enums</span></div>
-</div>
-<p class="note"><b>Connect (beta):</b> <code>ssh appuser</code> then <code>docker exec -it qr_dining_postgres psql -U qrdining -d qrdining</code> — Postgres publishes no host port and sits on an internal docker network, so this is the only route in. <b>Connect (local manual-testing):</b> <code>docker exec -e PGPASSWORD=mtest_pass manual-testing-postgres psql -U mtest -d qrdining_mtest</code>. Authoritative source of truth is Postgres; Redis holds only ephemeral state (presence, tickets, rate limits, cache) and is reconstructible.</p>
+  <h1>Test-data reference</h1>
+  <p class="lede">A map for manual inspection, not a substitute for migrations or generated queries.</p>
 
-<h2>Tenancy &amp; Identity</h2>
-<table>
-  <tr><th>Table</th><th>Purpose</th></tr>
-  <tr><td class="t">organizations</td><td>Top of the tenancy tree; one per tenant (3 seeded). Owns restaurants.</td></tr>
-  <tr><td class="t">restaurants</td><td>Brand under an org (1:1 here). Carries <code>slug</code>, <code>settings_json</code> (legacy theme bridge).</td></tr>
-  <tr><td class="t">branches</td><td>Physical location; everything operational is branch-scoped. <code>branch_code</code>, <code>order_prefix</code>, <code>status</code>, <code>session_timeout_minutes</code>.</td></tr>
-  <tr><td class="t">organization_members</td><td>Staff↔org membership with role (owner). Defines the org owner.</td></tr>
-  <tr><td class="t">organization_branch_memberships</td><td>Staff scoping to specific branches within an org.</td></tr>
-  <tr><td class="t">staff</td><td>Branch staff (owner/manager/waiter/kitchen). <code>pin_hash</code> (bcrypt), <code>staff_code</code>, <code>token_version</code>, <code>pin_version</code>, <code>is_active</code>.</td></tr>
-  <tr><td class="t">staff_sessions</td><td>Opaque staff auth tokens (DB-backed when AUTH_STAFF_SESSION_DB_REQUIRED).</td></tr>
-  <tr><td class="t">platform_users</td><td>Platform trust domain. <code>email</code>, <code>password_hash</code> (bcrypt), <code>mfa_required</code> (4 seeded).</td></tr>
-  <tr><td class="t">platform_user_roles</td><td>super_admin / support_admin / billing_admin / read_only_auditor (CHECK-constrained).</td></tr>
-  <tr><td class="t">platform_sessions</td><td>Platform auth tokens.</td></tr>
-  <tr><td class="t">platform_user_mfa</td><td>AES-GCM-encrypted TOTP secret per platform user.</td></tr>
-  <tr><td class="t">platform_mfa_challenges</td><td>In-flight MFA challenges during login.</td></tr>
-  <tr><td class="t">platform_audit_log</td><td>Internal (platform-side) audit of operator activity.</td></tr>
-</table>
+  <table>
+    <thead><tr><th>Concern</th><th>Tables</th><th>Canonical source</th></tr></thead>
+    <tbody>
+      <tr><td>Tenant structure</td><td><code>organizations</code>, <code>restaurants</code>, <code>branches</code>, <code>tables</code></td><td><code>backend/migrations/000001_initial_schema.up.sql:21-64</code>; <code>backend/migrations/000017_organization_model.up.sql:1-68</code></td></tr>
+      <tr><td>Guest lifecycle</td><td><code>sessions</code>, <code>session_participants</code></td><td><code>backend/migrations/000001_initial_schema.up.sql:128-174</code>; <code>backend/migrations/000023_session_lifecycle_states.up.sql:1-20</code></td></tr>
+      <tr><td>Ordering</td><td><code>carts</code>, <code>cart_items</code>, <code>orders</code>, <code>order_items</code></td><td><code>backend/migrations/000001_initial_schema.up.sql:176-252</code></td></tr>
+      <tr><td>Money</td><td><code>payments</code>, <code>bill_snapshots</code></td><td><code>backend/migrations/000001_initial_schema.up.sql:274-292</code>; <code>backend/migrations/000021_payment_order_correctness.up.sql:48-83</code></td></tr>
+      <tr><td>Single active payment guard</td><td>Partial unique index on <code>payments(session_id)</code> for non-terminal statuses</td><td><code>backend/migrations/000040_one_non_terminal_payment_per_session.up.sql:1-29</code></td></tr>
+      <tr><td>Operational evidence</td><td><code>event_log</code>, <code>audit_log</code></td><td><code>backend/migrations/000002_event_log.up.sql:1-25</code>; <code>backend/migrations/000019_audit_log_v2.up.sql:41-89</code></td></tr>
+    </tbody>
+  </table>
 
-<h2>Session, Participants &amp; Realtime</h2>
-<table>
-  <tr><th>Table</th><th>Purpose</th></tr>
-  <tr><td class="t">sessions</td><td>The central entity. 6-state lifecycle; <code>session_business_date</code>, <code>visit_number</code>, <code>session_number</code> (unique per branch); deferred FK to host participant; readable 60 min after terminal.</td></tr>
-  <tr><td class="t">session_participants</td><td><code>is_host</code>, <code>last_seen_at</code>, <code>credential_version</code>, <code>revoked_at</code> (revocation predicate), optional <code>phone_e164</code>.</td></tr>
-  <tr><td class="t">session_sequences</td><td>Per-branch/day counter feeding <code>session_number</code> (the seed allocates from this so seeded refs never collide).</td></tr>
-  <tr><td class="t">session_events / event_log</td><td>Per-session event journal (sequence-ordered) for replay/snapshot reconciliation.</td></tr>
-</table>
+  <h2>Connect to the isolated database</h2>
+  <pre>psql 'postgres://mtest:mtest_pass@localhost:25432/qrdining_mtest'</pre>
+  <p>The connection values come from the manual-testing compose file and launcher. <span class="source"><code>docker-compose.manual-testing.yml:29-40</code>; <code>scripts/manual-testing-up.sh:24</code></span></p>
 
-<h2>Menu</h2>
-<table>
-  <tr><th>Table</th><th>Purpose</th></tr>
-  <tr><td class="t">menu_categories</td><td>Branch-scoped ordered categories.</td></tr>
-  <tr><td class="t">menu_items</td><td>Items with <code>price</code>, availability/featured flags, dietary/badge metadata.</td></tr>
-  <tr><td class="t">item_modifiers</td><td>Per-item modifiers with <code>price_delta</code>, <code>is_required</code>.</td></tr>
-</table>
+  <h2>Useful read-only checks</h2>
+  <pre>SELECT version, dirty FROM schema_migrations;
+SELECT id, table_id, status, last_activity_at FROM sessions ORDER BY id DESC LIMIT 20;
+SELECT id, session_id, status, amount, initiated_at FROM payments ORDER BY id DESC LIMIT 20;</pre>
+  <p>The migration tool reads <code>schema_migrations.version</code> and <code>dirty</code>; session timeout queries use <code>last_activity_at</code>; payments carry session, status, amount, and initiation timestamps. <span class="source"><code>backend/cmd/migrate/main.go:59-81</code>; <code>backend/sql/queries/sessions.sql:110-123</code>; <code>backend/sql/queries/payments.sql:3-23</code></span></p>
 
-<h2>Cart, Orders &amp; Assistance</h2>
-<table>
-  <tr><th>Table</th><th>Purpose</th></tr>
-  <tr><td class="t">carts / cart_items</td><td>One shared cart per session; backend-authoritative (not in snapshot, refetched on CART_UPDATED).</td></tr>
-  <tr><td class="t">orders</td><td>Host-placed. <code>status</code> (6-state), snapshotted <code>total_amount</code>, <code>order_operational_id</code> (unique), <code>order_business_date</code>.</td></tr>
-  <tr><td class="t">order_items</td><td>Snapshotted <code>unit_price</code> + <code>selected_modifiers_json</code> — menu price changes never alter placed orders.</td></tr>
-  <tr><td class="t">order_sequences</td><td>Per-branch/day counter feeding the order number.</td></tr>
-  <tr><td class="t">assistance_requests</td><td>waiter/bill/other; pending→acknowledged→resolved.</td></tr>
-</table>
-
-<h2>Payments &amp; Billing (operational)</h2>
-<table>
-  <tr><th>Table</th><th>Purpose</th></tr>
-  <tr><td class="t">payments</td><td>9-state <code>payment_status</code>, 5 methods. <code>payment_reference</code> (unique per branch), <code>settled_by_staff_id</code>, provider refs.</td></tr>
-  <tr><td class="t">payment_sequences</td><td>Per-branch/day counter feeding <code>payment_reference</code>.</td></tr>
-  <tr><td class="t">bill_snapshots</td><td>Immutable bill captured at payment initiation — the bill cannot change afterward.</td></tr>
-  <tr><td class="t">payment_webhook_events</td><td>Provider webhook dedup (signature + timestamp tolerance).</td></tr>
-</table>
-
-<h2>Customers &amp; Promos</h2>
-<table>
-  <tr><th>Table</th><th>Purpose</th></tr>
-  <tr><td class="t">customers</td><td>Opt-in customer identity (name/phone) linked to sessions.</td></tr>
-  <tr><td class="t">promos / promo_redemptions</td><td>flat_amount / percentage promos and their redemptions.</td></tr>
-  <tr><td class="t">organization_loyalty_programs</td><td>Org earning rule — <code>earn_rate_points</code> per <code>earn_rate_amount</code> of spend; <code>is_active</code> default false. (migration 000035; gated off by default)</td></tr>
-  <tr><td class="t">customer_loyalty_accounts</td><td>Org-scoped points balance per customer — <code>points_balance</code> (CHECK ≥0), lifetime earned/redeemed, <code>visit_count</code>, <code>lifetime_spend</code>. UNIQUE(customer, org).</td></tr>
-  <tr><td class="t">customer_loyalty_transactions</td><td>Append-only signed points ledger (earn/redeem/adjustment). Partial unique index on <code>payment_id WHERE type='earn'</code> = earn idempotency.</td></tr>
-  <tr><td class="t">tables</td><td>Physical tables; <code>qr_code_token</code> (unique, 64-hex), <code>status</code> (available/occupied/reserved), unique-active-session index.</td></tr>
-</table>
-
-<h2>Platform Governance — Plans, Entitlements, Subscriptions, Billing</h2>
-<table>
-  <tr><th>Table</th><th>Purpose</th></tr>
-  <tr><td class="t">subscription_plans</td><td>free / standard / premium (<code>plan_tier</code>), <code>features_json</code>.</td></tr>
-  <tr><td class="t">plan_entitlements</td><td>Per-plan capability/limit catalog (e.g. limit.branches, analytics.advanced, multi_branch).</td></tr>
-  <tr><td class="t">entitlements</td><td>Entitlement key registry.</td></tr>
-  <tr><td class="t">organization_subscriptions</td><td>Org subscription + status (trial/active/suspended/cancelled/expired/past_due), trial/expiry timestamps.</td></tr>
-  <tr><td class="t">organization_plan_assignments / organization_entitlement_overrides</td><td>Per-org plan assignment and entitlement overrides.</td></tr>
-  <tr><td class="t">restaurant_subscriptions</td><td>Legacy restaurant-level subscription (bridged by the resolver).</td></tr>
-  <tr><td class="t">organization_billing_profiles</td><td>GST, billing email/contact/address, currency (INR).</td></tr>
-  <tr><td class="t">subscription_invoices / subscription_payments</td><td>Billing invoices and their payments.</td></tr>
-</table>
-
-<h2>Feature Flags (platform targeting)</h2>
-<table>
-  <tr><th>Table</th><th>Purpose</th></tr>
-  <tr><td class="t">platform_feature_flags</td><td>Flag definitions (separate from the 9 env strict-rollout flags).</td></tr>
-  <tr><td class="t">platform_flag_global_overrides</td><td>Global resolution level.</td></tr>
-  <tr><td class="t">platform_flag_organization_overrides</td><td>Org-level targeting (overrides global).</td></tr>
-  <tr><td class="t">platform_flag_branch_overrides</td><td>Branch-level targeting (most specific). Resolve-only / shadow.</td></tr>
-</table>
-
-<h2>Themes, Collateral &amp; Support</h2>
-<table>
-  <tr><th>Table</th><th>Purpose</th></tr>
-  <tr><td class="t">tenant_themes</td><td>Restaurant-scoped <code>preset</code> + <code>tokens_json</code> — authoritative branding the guest UI adopts.</td></tr>
-  <tr><td class="t">theme_presets</td><td>Built-in preset catalog (serene [default], dark-luxury, modern-minimal, warm-cafe, vibrant).</td></tr>
-  <tr><td class="t">branch_collateral</td><td>Branch <code>config_json</code> (format, content toggles, WiFi, text). One shared row written by platform + staff. (migration 000033)</td></tr>
-  <tr><td class="t">platform_support_sessions</td><td>Support console sessions (read-only operator observability).</td></tr>
-</table>
-
-<h2>Audit &amp; Infrastructure</h2>
-<table>
-  <tr><th>Table</th><th>Purpose</th></tr>
-  <tr><td class="t">audit_log</td><td>Immutable tenant-visible audit trail. <b>Trigger <code>trg_audit_log_immutable</code></b> rejects UPDATE/DELETE. Written when AUDIT_LOG_V2_ENABLED (R1) is on.</td></tr>
-  <tr><td class="t">idempotency_keys</td><td>scope + actor + key + request_hash — dedup for mutating endpoints (orders, payments).</td></tr>
-  <tr><td class="t">schema_migrations</td><td>golang-migrate version tracker (currently <code>35</code>).</td></tr>
-</table>
-
-<h2>Enum Catalog (14)</h2>
-<table>
-  <tr><th>Enum</th><th>Members</th></tr>
-  <tr><td class="t">session_status</td><td>active · payment_pending · awaiting_reactivation · abandoned · expired · closed</td></tr>
-  <tr><td class="t">order_status</td><td>pending · confirmed · preparing · ready · served · cancelled</td></tr>
-  <tr><td class="t">payment_status</td><td>pending · requested · provider_pending · requires_staff_confirmation · completed · failed · refunded · cancelled · partially_refunded</td></tr>
-  <tr><td class="t">payment_method</td><td>cash · card · digital · card_manual · upi</td></tr>
-  <tr><td class="t">assistance_status</td><td>pending · acknowledged · resolved</td></tr>
-  <tr><td class="t">assistance_type</td><td>waiter · bill · other</td></tr>
-  <tr><td class="t">table_status</td><td>available · occupied · reserved</td></tr>
-  <tr><td class="t">staff_role</td><td>owner · manager · waiter · kitchen</td></tr>
-  <tr><td class="t">plan_tier</td><td>free · standard · premium</td></tr>
-  <tr><td class="t">promo_type</td><td>flat_amount · percentage</td></tr>
-  <tr><td class="t">audit_actor_type</td><td>platform_user · organization_user · staff · guest · system · webhook</td></tr>
-  <tr><td class="t">audit_result_type</td><td>success · failure · denied</td></tr>
-  <tr><td class="t">audit_risk_level</td><td>low · medium · high · critical</td></tr>
-  <tr><td class="t">audit_source_type</td><td>web · mobile · pwa · api · webhook · system</td></tr>
-</table>
-
-<h2>Lifecycle Flows</h2>
-<div class="flow"><b>Session</b><br><span class="chain">active → payment_pending → (settled) closed</span><br><span style="color:var(--muted);font-size:13px">Idle with no presence: active → awaiting_reactivation (≈60s grace) → abandoned (≈5m window). Reconnect within window re-activates via snapshot. A session with a non-terminal payment is never abandoned. Terminal states readable 60 min.</span></div>
-<div class="flow"><b>Order</b><br><span class="chain">pending → confirmed → preparing → ready → served</span> &nbsp;(or → cancelled)<br><span style="color:var(--muted);font-size:13px">Kitchen advances up to <code>ready</code>; only a waiter marks <code>served</code> (server-enforced). Items snapshot price.</span></div>
-<div class="flow"><b>Payment</b><br><span class="chain">pending → requested → {provider_pending → (webhook) | requires_staff_confirmation → (staff settle)} → completed</span><br><span style="color:var(--muted);font-size:13px">Initiation freezes the cart + captures <code>bill_snapshots</code>. Workers never fabricate settlement (alert-only escalation). Completion typically closes the session.</span></div>
-<div class="flow"><b>Subscription</b><br><span class="chain">trial → active → {suspended ↔ active} → cancelled / expired (past_due)</span><br><span style="color:var(--muted);font-size:13px">Org-level state machine; transitions recorded. Resolve-only today (not enforced on operational paths).</span></div>
-<div class="flow"><b>Theme</b><br><span class="chain">tenant_themes(preset+tokens) → guest UI adopts via [data-theme]</span><br><span style="color:var(--muted);font-size:13px">Structured tokens are authoritative; legacy <code>settings_json.theme</code> is bridged, not dropped.</span></div>
-<div class="flow"><b>Collateral</b><br><span class="chain">branch_collateral(config) + tenant_theme + branch metadata → rendered print formats</span><br><span style="color:var(--muted);font-size:13px">Collateral consumes the theme (no second branding system); platform &amp; staff write one shared row.</span></div>
-<div class="flow"><b>Support</b><br><span class="chain">search → inspect (sanitized) → audit (internal + tenant-visible critical)</span><br><span style="color:var(--muted);font-size:13px">Read-only; never exposes <code>session_token</code>/<code>device_fingerprint</code>; every deep read is audited.</span></div>
-
-<footer style="margin-top:48px;border-top:1px solid var(--line);padding-top:18px;color:var(--dim);font-size:12.5px">
-  Schema snapshot · structure valid at migration v38 and unchanged at v39 (data-only backfill) · 59 tables · 14 enums · 1 immutability trigger · verified against the beta database 2026-08-04.
-</footer>
-</div>
+  <p class="warning">Do not run a down migration as a recovery shortcut. The verified recovery documentation is <a href="../RECOVERY.md">RECOVERY.md</a>, including the migration-22 dirty-state procedure.</p>
+</main>
 </body>
 </html>

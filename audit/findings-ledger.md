@@ -7,7 +7,7 @@ else. Where a finding is listed as fixed on someone's say-so rather than a citat
 If the real v2 ledger surfaces, merge into it and delete this.
 
 > **ID collision — read before acting on any ID in this range.**
-> `docs/history/operational-correctness-audit.md` (2026-05-21) uses its own F-numbering that
+> `docs-before-rebuild:docs/history/operational-correctness-audit.md` (2026-05-21) uses its own F-numbering that
 > overlaps this one. Its **F-27 is "Theme Management Is an Ad Hoc JSON Setting"** — unrelated to
 > the F-27 below. An agent told to "close F-27" and left to locate it will find the wrong finding.
 > Always cite the ledger alongside the ID.

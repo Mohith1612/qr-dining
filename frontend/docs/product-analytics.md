@@ -1,55 +1,51 @@
 # Product analytics
 
-QR Dining uses PostHog Cloud EU for privacy-minimized product analytics. The browser SDK is a hard no-op during SSR and whenever either `NEXT_PUBLIC_POSTHOG_KEY` or `NEXT_PUBLIC_POSTHOG_HOST` is absent. Local and manual-testing environments should omit the key.
+Last verified against frontend source: 2026-09-13.
 
-## Architecture and environments
+This is an optional browser-side PostHog integration. It is a no-op during
+server rendering and whenever either the public key or host is absent
+(`frontend/lib/product-analytics/posthog.ts:5-14`,
+`frontend/config/env.ts:13-16`). The checked-in production environment file
+contains commented examples, not evidence that analytics is configured in any
+deployment (`frontend/.env.production.example:21-32`).
 
-`ProductAnalyticsProvider` initializes the SDK after hydration, captures sanitized pageviews, registers tenant context, manages staff/platform identity, and reports terminal WebSocket failures. All feature code calls the typed `track` function in `lib/product-analytics/events.ts`; direct `posthog-js` imports outside the analytics module are forbidden by ESLint.
+## Event boundary
 
-Use one EU organization and two projects:
+`EventPropsMap` is the exhaustive typed event/property contract, and `track`
+passes only that keyed shape to the client
+(`frontend/lib/product-analytics/events.ts:7-51`). ESLint prohibits direct
+`posthog-js` imports outside `lib/product-analytics`, so new call sites must use
+that boundary (`frontend/eslint.config.mjs:25-45`).
 
-| Deployment | Project | `NEXT_PUBLIC_POSTHOG_ENV` | Replay |
-|---|---|---|---|
-| Local/manual | none | none | off |
-| Deliberate analytics development | Dev | `development` | optional |
-| Internal beta | Production | `beta` | on |
-| GA | Production | `production` | off |
+The provider initializes after hydration, emits sanitized route-template
+pageviews, registers tenant context, identifies staff or platform users, resets
+identity when crossing trust domains, and records terminal WebSocket connection
+failure (`frontend/providers/ProductAnalyticsProvider.tsx:22-59,64-133`). Staff
+and platform distinct IDs are namespaced separately; guest session identifiers
+are session-scoped properties rather than identified people
+(`frontend/lib/product-analytics/identity.ts:6-17,40-57`).
 
-Required build variables are documented in `.env.production.example`. When configured, the CSP allows the ingest host. Replay additionally allows its asset host and `worker-src 'self' blob:`. Builds without analytics variables retain the original CSP directives.
+## Privacy controls implemented in code
 
-## Identity and context
+Autocapture, automatic pageviews, surveys, and feature-flag requests are off;
+Do Not Track is respected. Session recording is flag-controlled, masks every
+input and marked text, blocks `.ph-no-capture`, and does not capture canvas
+(`frontend/lib/product-analytics/posthog.ts:14-32`). Dynamic table/session path
+segments and query strings are removed from captured URLs
+(`frontend/lib/product-analytics/routes.ts:3-16,26-33`). The final event scrubber
+also removes keys matching token, phone, password, PIN, secret, fingerprint, or
+authorization, except PostHog's exact transport project key
+(`frontend/lib/product-analytics/scrub.ts:5-32`).
 
-Guests remain anonymous and never receive a person profile. Staff use `staff:{id}` with `role` and `branch_id`; platform operators use `platform:{id}` with `roles`. Logout and transitions from an identified surface into `/table/*` or `/session/*` call `posthog.reset()`.
+When configured, the CSP adds the analytics ingest host. It adds the replay
+asset host and `worker-src` only when replay is enabled
+(`frontend/next.config.ts:15-19,34-39,46-60`). The production prebuild check warns
+if a key lacks a host or replay is enabled with the `production` analytics
+environment (`frontend/scripts/check-prod-env.mjs:126-140`).
 
-Global super properties are `env`, `app_surface`, optional `app_version`, and, once known, `org_id`, `restaurant_slug`, and `branch_id`. Guest `session_id`, `participant_id`, `is_host`, and `table_id` are registered with `register_for_session` and removed when the session closes.
+## External state: unverified
 
-## Event catalog
-
-The normative property schema is `EventPropsMap` in `lib/product-analytics/events.ts`. The current catalog is:
-
-| Area | Events |
-|---|---|
-| Guest entry | `qr_resolved`, `qr_resolve_failed`, `session_created`, `session_joined` |
-| Menu/cart/order | `item_viewed`, `item_added`, `cart_item_removed`, `order_placed` |
-| Promo/payment | `promo_applied`, `promo_apply_failed`, `promo_removed`, `payment_initiated`, `payment_completed` |
-| Guest session | `assistance_requested`, `host_transferred`, `guest_optin_submitted`, `session_ended` |
-| Staff auth/workflow | `staff_login_succeeded`, `staff_login_failed`, `staff_logout`, `order_advanced`, `order_cancelled`, `order_served`, `payment_settled`, `assistance_acknowledged` |
-| Admin/product | `admin_tab_viewed`, `upsell_gate_viewed`, `collateral_saved`, `collateral_printed`, `collateral_exported` |
-| Platform auth | `platform_login_succeeded`, `platform_login_failed`, `platform_logout` |
-| Navigation/reliability | `$pageview`, `ws_connection_failed`, `app_error` |
-
-Events follow an action-site rule: capture once after the successful API response on the device that performed the action. WebSocket-derived capture is host-only and limited to `payment_completed` and `session_ended`. Order status WebSocket echoes and all other shared updates are not captured client-side.
-
-## Privacy controls
-
-Autocapture, automatic pageviews, surveys, and PostHog feature-flag requests are disabled. Pageviews use route templates such as `/table/:token` and `/session/:id/payment`; queries are removed. The `before_send` scrubber sanitizes URL properties and drops property keys matching token, phone, password, PIN, secret, fingerprint, or authorization. The sole exception is PostHog's exact project key in its required transport `token` field.
-
-Never add phone numbers, names, email addresses, auth/session tokens, device fingerprints, staff credentials, Wi-Fi passwords, query strings, or raw API/WS objects to event properties. Only the scalar properties declared in `EventPropsMap` are permitted. `app_error` includes a route template and a message truncated to 200 characters, never a stack or component state.
-
-Replay is beta-only. It masks every input, additionally masks marked guest identity and collateral content, blocks hidden collateral export nodes, and disables canvas capture. Real guest replay remains off in GA.
-
-Operational setup: enable “Discard client IP data” in both PostHog projects, sign the PostHog DPA, list PostHog EU as a subprocessor, and choose an event-retention target no longer than 12 months after beta. Erasure can use PostHog's person-and-events deletion API keyed by distinct ID.
-
-## Deferred work
-
-After Restaurant #1: tail the monotonic `session_events` outbox with the server SDK (`source: "server"`), design guest device distinct-ID mapping, then remove the two client WebSocket captures. Also deferred are an ingest proxy, groups, PostHog feature flags, guest-visible opt-out, production staff-only replay, and marketing-site analytics.
+This repository does not prove that a PostHog organization/project exists, that
+IP-discard or retention settings are configured, that a DPA was signed, or that
+any deployment is ingesting events. Verify those controls in the provider and
+record evidence before describing analytics as operational.

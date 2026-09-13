@@ -2,11 +2,19 @@
 
 **Status:** Accepted · **Date:** 2026-08-03 · **Implemented:** yes, gated on `OTEL_ENABLED` (default `false`)
 
-> **Read as a record, not as current state.** This ADR was written *before* the instrumentation existed, so it says "no OpenTelemetry anywhere in the codebase". OpenTelemetry is now implemented. The rollout runbook is [../signoz-rollout-runbook.md](../signoz-rollout-runbook.md); the code spec is archived at [../history/signoz-backend-instrumentation.md](../history/signoz-backend-instrumentation.md).
+> **Current verification, 2026-09-13.** Read the body as the original decision
+> record, not current state. OpenTelemetry is implemented and defaults off
+> (`backend/internal/config/config.go:214-225`; `backend/cmd/server/main.go:39-44`).
+> The checked-in deployment path is explicitly unverified in
+> [OPERATIONS.md](../OPERATIONS.md#metrics-and-alerts). The removed implementation
+> plan remains available with
+> `git show docs-before-rebuild:docs/history/signoz-backend-instrumentation.md`.
 
 
 Date: 2026-08-03 · Branch: `feature/signoz-observability` (off RC `feature/certification-fixes-ui-redesign` @ f0c7008)
-Companions: [../../deploy/signoz/README.md](../../deploy/signoz/README.md) (deployment) · [../history/signoz-backend-instrumentation.md](../history/signoz-backend-instrumentation.md) (code changes) · [../signoz-rollout-runbook.md](../signoz-rollout-runbook.md) (phased rollout) · [../OPERATIONS.md §3](../OPERATIONS.md#3-alerting) (the Prometheus stack, which stays authoritative)
+Current companions: [../../deploy/signoz/README.md](../../deploy/signoz/README.md)
+(deployment inputs) · [../OPERATIONS.md](../OPERATIONS.md) (verified operational
+boundaries and unverified procedures)
 
 ## Verdict
 

@@ -1,142 +1,131 @@
-# Security
+# Security model
 
-The security model as the code actually implements it. Verified against `feature/signoz-observability` @ `9865a48`.
+Last verified against code: 2026-09-13.
 
-Companions: [ARCHITECTURE.md](ARCHITECTURE.md) · [OPERATIONS.md](OPERATIONS.md) · item-level gate list in [reference/security-hardening-checklist.md](reference/security-hardening-checklist.md).
+The application has three separate authenticated identities: a guest participant,
+a restaurant staff member, and a platform operator. They have different token
+formats, stores, middleware, and scopes; a token from one class is not a token for
+another (`backend/internal/handlers/guest_auth.go:25-32`,
+`backend/internal/middleware/staff_auth.go:18-52`,
+`backend/internal/middleware/platform_auth.go:15-47`).
 
-> The checklist is the §-numbered contract that code comments cite (for example `internal/middleware/security_headers.go` cites §9). Its checkboxes lag its own Phase A/B status notes — treat the notes and this document as current, the checkboxes as historical.
+## Guest participant
 
----
+Create and join return an HMAC-SHA-256 guest access token whose claims bind the
+participant to session, branch, table, organization, role, credential version,
+audience, expiry, and a random token ID
+(`backend/internal/auth/guest.go:18-39,46-80,114-125`). Validation checks encoding,
+signature, audience, and expiry (`backend/internal/auth/guest.go:82-111`). Request
+authorization additionally checks session binding, participant binding, the
+current database credential version, and revocation
+(`backend/internal/handlers/guest_auth.go:67-115`).
 
-## 1. Threat model
+When `AUTH_GUEST_CREDENTIALS_REQUIRED=false`, the legacy participant identifier
+path remains available, but it checks that the participant belongs to the named
+session. When the flag is true, absence of the signed credential is rejected
+(`backend/internal/handlers/guest_auth.go:34-65`). The code default is true
+(`backend/internal/config/config.go:253-261`).
 
-Adversaries the system is designed against:
+Closing a session revokes its participants and increments their credential
+versions, invalidating earlier guest tokens without a token denylist
+(`backend/internal/repository/session.go:103-118`). A WebSocket ticket is consumed
+once from Redis and its tenant, session, participant, credential-version, and
+revocation claims are rechecked before upgrade
+(`backend/internal/handlers/ws.go:109-149`).
 
-- Unauthenticated actors hitting public routes — webhooks, QR resolution, snapshot reads.
-- Compromised or shared staff devices on branch Wi-Fi.
-- A guest who joins a session, captures local identifiers, and tries to act as another participant.
-- XSS or a hostile browser extension on a staff or guest device.
-- Replay of any observed HTTP request, including signed webhooks.
-- A connection that outlives the user's intent.
-- One branch reading another branch's data; one organization reaching another's.
-- An organization owner escalating to platform admin.
+## Restaurant staff
 
-## 2. Tenancy model
+Staff authentication supports the branch-code/staff-code/PIN flow. It resolves
+the branch and staff record, compares the stored bcrypt PIN hash, and applies a
+Redis-backed failure/lockout policy that fails closed when the lockout store is
+unavailable (`backend/internal/services/staff.go:26-55,115-176`). Successful auth
+requires active branch and organization, creates an eight-hour hashed-token row
+in PostgreSQL, and caches the session in Redis
+(`backend/internal/services/staff.go:179-230`).
 
-`organization → branch → table`, with sessions, staff, menus, promos and audit rows all branch- or org-scoped.
+The middleware accepts the same opaque token in an Authorization bearer header
+or the HttpOnly `qrd_staff_session` cookie
+(`backend/internal/middleware/staff_auth.go:12-22,65-77`). Each use validates the
+staff active state and token/PIN versions; strict mode additionally requires the
+matching active database session row
+(`backend/internal/services/staff.go:233-280`). The code default for strict DB
+session validation is true (`backend/internal/config/config.go:255-258`). PIN
+reset and staff deactivation revoke durable sessions and best-effort clear all
+cached tokens (`backend/internal/services/staff.go:336-395`).
 
-Enforcement is layered:
+Known gap: `POST /staff/logout` only expires the response cookie and does not
+revoke the durable or cached session, so the same bearer token remains usable
+until another revocation path or expiry (`backend/internal/handlers/staff.go:124-130`).
 
-1. **Tenant resolution middleware** establishes org/branch context from the request.
-2. **`branch_guard` middleware** verifies branch ownership on every branch-scoped route.
-3. **Per-handler checks** enforce role and ownership.
-4. **Redis keys are tenant-scoped in the key itself** (`org:{org_id}:branch:{branch_id}:session:{id}:…`), so a pub/sub fan-out cannot cross a tenant boundary even by accident.
+## Platform operator
 
-**Cross-organization and cross-branch reads and writes are denied regardless of rollout-flag state.** This was an audited blocker, fixed, and is now covered by regression tests in `backend/internal/handlers/authz_scope_integration_test.go`. Investigation: [../release-certification/authz-scope-investigation-2026-08-04.md](../release-certification/authz-scope-investigation-2026-08-04.md).
+Platform users use email/password, four platform roles, bcrypt cost 12, and
+eight-hour opaque tokens (`backend/internal/services/platform.go:22-30,82-110`).
+The lockout permits five failures per five minutes and locks for 30 minutes; a
+lockout-backend failure does not fail open
+(`backend/internal/services/platform.go:41-55,152-162`). If active MFA exists, a
+password-authenticated session is immediately revoked and replaced with an MFA
+challenge; only a completed second factor yields a usable session
+(`backend/internal/services/platform.go:113-142`).
 
-A legacy `restaurants` model still exists alongside `organizations`, kept alive until strict tenancy enforcement (wave R2/R3) is metric-proven. The additive-only migration rule protects it.
+Platform sessions are stored hashed in PostgreSQL and cached in Redis. Validation
+rechecks the active user, current roles, and database session; logout revokes both
+stores (`backend/internal/services/platform.go:180-253`). Platform middleware
+accepts only bearer transport (`backend/internal/middleware/platform_auth.go:15-46`).
+`super_admin` satisfies every platform role check
+(`backend/internal/services/platform.go:256-265`).
 
-## 3. Authentication — three trust domains
+## Authorization and environment-dependent enforcement
 
-Tokens from one domain are **rejected** by the other two. This separation is structural, not a policy check.
+The central staff policy checks tenant scope before role. Same-branch actions,
+same-organization actions, and role permissions are enumerated in one policy
+(`backend/internal/authz/policy.go:48-79,82-159`). Scope violations are always
+blocked. Role denials are blocked only when `AUTHZ_CENTRAL_POLICY_ENFORCE=true`;
+otherwise they are audited and metered but the central decision allows the
+request to continue (`backend/internal/handlers/authz.go:48-103`). Individual
+handlers and services may still enforce roles independently.
 
-### Guest
+There is no universal value for this flag:
 
-- HMAC-SHA256 signed token carrying `session_id`, `branch_id`, `table_id`, `org_id`, `participant_id`, `credential_version`, `jti`.
-- Secret from `GUEST_TOKEN_SECRET`. Release mode **refuses to start** on the dev default or a short value.
-- `GUEST_TOKEN_TTL` is `12h` for launch — deliberately long because no token-refresh flow exists yet.
-- The server derives the participant from the token and ignores client-supplied participant IDs under strict flags.
-- **Revocation:** every terminal session transition sets `session_participants.revoked_at` and bumps `credential_version`. The validator rejects revoked tokens, which is what prevents session resurrection.
+- the application default is `false`
+  (`backend/internal/config/config.go:253-263`);
+- the manual-testing stack explicitly starts both backends with `true`
+  (`scripts/manual-testing-up.sh:62-75`); and
+- deployment behavior is whatever its environment sets. The production example
+  currently shows `false` (`deploy/vm/.env.production.example:46-58`).
 
-Bespoke rather than a JWT library. Non-standard but sound; migrating would be cosmetic.
+Do not describe the policy as globally “enabled” or “disabled” without naming
+the environment.
 
-### Staff
+## Safe projections and credential stripping
 
-- `branch_code + staff_code + PIN`. **PIN alone is not accepted** — that ambiguity was an original deployment blocker.
-- PINs are bcrypt cost 12 (~100 ms per check) and are never logged. Rotation requires the current PIN and bumps `pin_version`, invalidating sessions across devices.
-- Durable `staff_sessions` table holds the token hash, version and expiry. Validation re-checks `is_active`, `pin_version` and `token_version` against the database on every request.
-- **Lockout:** 10 failures / 5 min per `(branch_id, staff_code)` → 15-minute lock. Returns HTTP 423 `AUTH_LOCKED_OUT` with `Retry-After`. Fails closed if Redis is unavailable.
-- Optional HttpOnly cookie transport behind `AUTH_STAFF_COOKIE_ENABLED`; middleware accepts cookie or Bearer. `POST /staff/logout` clears it.
-- `staff.login.success` / `staff.login.failed` are audited on every attempt.
+`sessions.session_token` is a stored guest credential and must not be serialized.
+The handler projection clears it from guest responses
+(`backend/internal/handlers/guest_auth.go:15-22`). Session creation returns that
+safe session beside the separate guest access token
+(`backend/internal/handlers/session.go:59-81`). The service uses a second safe
+projection before `SESSION_CREATED` is published or persisted
+(`backend/internal/services/session.go:68-96`). Snapshot responses clear it at
+the last serialization boundary (`backend/internal/handlers/snapshot.go:50-65`).
 
-### Platform
+Staff active-session results and force-close results also pass through safe
+projections; integration tests assert that neither body contains the stored token
+(`backend/internal/handlers/session_credential_leak_integration_test.go:40-89,91-132`,
+`backend/internal/services/session_close.go:17-31,73-80`).
 
-- Separate `platform_users` table, separate `/platform/auth`, separate middleware.
-- **TOTP MFA** (RFC 6238, dependency-free): AES-GCM-encrypted secret, bcrypt-hashed recovery codes, ephemeral 5-minute challenge. Requires `MFA_ENCRYPTION_KEY`; unset means MFA fails closed. An unconfigured key returns 503, not 500.
-- **Lockout:** 5 failures / 5 min per email → 30-minute lock.
-- Roles: `super_admin`, `support_admin`, `billing_admin`, `read_only_auditor`.
-- The first admin is created by the one-shot `bootstrap-admin` command, which refuses to overwrite an existing user, grants only `super_admin`, and marks MFA required.
+The pattern is deliberate: generated database structs contain storage-only
+fields, so a response, event, or log must map to an explicit safe projection at
+the boundary. Do not serialize a raw `sqlc.Session` from a new surface; the
+existing regression test explains why raw embedding leaked credentials
+(`backend/internal/handlers/session_credential_leak_integration_test.go:16-28`).
 
-## 4. Authorization
+## Secrets and exposure boundaries
 
-Per-handler role and ownership checks are the enforcing mechanism today. A central policy engine (`internal/authz/policy.go`) runs **in shadow** — it evaluates and records what it *would* decide, emitting mismatch metrics, without enforcing. Wave R3 flips it strict, gated on 48 hours of zero mismatches.
-
-Organization governance — entitlements, feature flags, lifecycle, billing — is likewise **resolve-only**. It is audited but enforces nothing, and billing charges nobody.
-
-## 5. Rate limiting
-
-Per-route-group budgets keyed by IP, session, participant or provider as appropriate. Notable limits: staff auth 10 RPM, general API 60 RPM, with tighter per-session caps on order placement, payment initiation, assistance requests and WS ticket issuance.
-
-The distinction that matters:
-
-- **`RateLimitSensitive` fails CLOSED** when Redis is unreachable — staff auth, platform auth, payment initiation, webhook receipt, WS ticket issuance. A datastore outage must not become a brute-force window.
-- Other routes **fail open** with a metric, so a Redis blip degrades rather than denies service.
-
-The limiter is a fixed-window counter. At a window boundary a burst of up to 2× the limit is theoretically possible — acceptable here, but do not treat the limit as a hard ceiling.
-
-## 6. Transport and browser hardening
-
-The backend serves JSON only and never renders HTML, so its CSP is API-shaped:
-
-```
-default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
-```
-
-plus `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, a restrictive `Permissions-Policy`, `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Resource-Policy: same-site`. HSTS is gated on `ENABLE_HSTS` — enable only where TLS terminates in front of the API, since in development the API is plain HTTP and HSTS would pin the browser to HTTPS for two years.
-
-The frontend is a separate origin and carries its own CSP from `next.config.ts`. `NEXT_PUBLIC_API_BASE` must exactly equal the API origin or that CSP blocks API and WebSocket calls.
-
-**CORS:** `CORS_ALLOWED_ORIGINS` is an explicit allowlist. Release mode refuses to start when it is empty — an empty list also disables the WebSocket origin allowlist, so the two failure modes are deliberately coupled.
-
-**Body size** is capped globally at 1 MB via `http.MaxBytesReader`.
-
-**Trusted proxies:** `SetTrustedProxies` failure is fatal. The server will not start with a misconfigured proxy list, because a wrong list silently makes every client IP the proxy's — which would break per-IP rate limiting invisibly.
-
-## 7. WebSocket
-
-- Upgrade requires a valid one-shot ticket (`WS_TICKET_AUTH_REQUIRED`, on for launch). Ticket issuance is itself rate-limited and fails closed.
-- Origin is validated against `CORS_ALLOWED_ORIGINS` in release mode.
-- Slow consumers are evicted rather than allowed to stall a room.
-- Client PINGs double as the presence heartbeat; there is no separate presence endpoint to abuse.
-
-## 8. Data protection
-
-- **`audit_log` is append-only**, enforced by a database trigger. An `UPDATE` attempt must fail — that is a post-restore verification step.
-- **Audit redaction** covers `signature`, `mfa`, `2fa`, `refresh_token`, `access_token`, `private_key`, `api_key`, `pan`, `csrf_token`, `otp`, `recovery_code`, and guest session tokens.
-- **SQL injection**: every query is sqlc-generated and parameterised. There is no raw string interpolation into SQL.
-- **Support reads are audited**, including a tenant-visible row for deep reads. Support console access is read-only by construction.
-
-## 9. Secrets
-
-- All secrets come from the environment. Nothing is in git — verified: no bucket name, domain or credential literal exists in any code path.
-- Release mode **ignores dotenv files**, so a stray `.env` cannot override an injected production value.
-- Release mode fails hard on a weak/missing `GUEST_TOKEN_SECRET`, empty `CORS_ALLOWED_ORIGINS`, or a malformed MFA/webhook secret.
-- Production secrets live in the password manager. `deploy/vm/.env.production.example` marks every generated value `__GENERATE__` (`openssl rand -base64 48`).
-- Backup credentials are a **separate scoped R2 token** from the upload credentials, and the two use different variable names on purpose.
-
-> **Beta caveat.** The beta environment uses one shared R2 credential pair and publishes tester credentials for its seeded demo tenants. That is intentional for a throwaway environment and must not carry into production.
-
-## 10. Vulnerability scanning
-
-- **`govulncheck`** gates every PR (`golang.org/x/vuln/cmd/govulncheck@v1.6.0`, source mode). It fails only when a vulnerable symbol is reachable from this module's call graph, so a required-but-uncalled vulnerable module does not block the build.
-- The scanner runs on the same `"1.26"` Go spec the release Dockerfile uses, so the scan matches the shipped artifact rather than the runner.
-- **Dependabot** is configured (`.github/dependabot.yml`); every PR is reviewed and merged manually, with no auto-merge. Policy: [dependency-upgrades.md](dependency-upgrades.md).
-
-> **Open:** the exact binary currently deployed to beta was built on Go 1.26.5 and an exact scan of it reports **nine reachable advisories**. That is a live release blocker tracked in [RELEASE.md §5](RELEASE.md#5-open-before-v10) — it is not covered by the PR gate, because the PR gate scans the source tree, not the deployed binary.
-
-## 11. Security testing
-
-- Cross-tenant denial paths are covered by integration tests (`-tags integration`), which run in CI.
-- Adversarial e2e specs live in `e2e/adversarial/` and `e2e/tenancy/` — but Playwright is **not executed in CI** ([TESTING.md §5](TESTING.md#5-what-ci-actually-runs)).
-- Chaos experiments exercise Redis loss, backend restart, nginx reload and webhook replay; manual only.
-- The most recent independent audit is archived at [../release-certification/archive/2026-08-04/independent-audit-2026-08-04.md](../release-certification/archive/2026-08-04/independent-audit-2026-08-04.md).
+Release-mode configuration requires guest and webhook secrets and validates
+minimum secret length (`backend/internal/config/config.go:286-319`). The metrics
+endpoint is public in the application router, while the production nginx config
+permits it only from internal Docker networks
+(`backend/internal/server/server.go:187-190`,
+`deploy/nginx/qr-dining.conf:65-72`). WebSocket origins are allowlisted when
+configured; an empty allowlist permits all origins and logs a warning
+(`backend/internal/websocket/hub.go:53-83`).

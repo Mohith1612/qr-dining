@@ -5,7 +5,8 @@ because an adversarial pass found two defects in it, and the same author re-chec
 work is how both got through the first time.
 
 Cite this file and `audit/findings-ledger.md` alongside any F-number: a second, unrelated
-F-numbering exists in `docs/history/operational-correctness-audit.md`.
+F-numbering is preserved at
+`docs-before-rebuild:docs/history/operational-correctness-audit.md`.
 
 ## Why this exists
 

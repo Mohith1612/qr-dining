@@ -1,9 +1,16 @@
 # Authorization Scope Bypass — Independent Investigation & Fix
 
 **Date:** 2026-08-04
-**Scope:** §2 of `release-certification/independent-audit-2026-08-04.md` ("BLOCKER — Cross-organization and cross-branch write bypass")
+**Scope:** §2 of the removed report retained at
+`docs-before-rebuild:release-certification/independent-audit-2026-08-04.md`
+("BLOCKER — Cross-organization and cross-branch write bypass")
 **Base commit:** `feature/signoz-observability` @ `ecfc3a6`
 **Verdict:** **VALID — FIXED**
+
+> This is retained historical evidence because
+> `backend/internal/handlers/authz_scope_integration_test.go:38` cites it. Its
+> pre-fix source locations and live-run results describe commit `ecfc3a6`, not
+> the current worktree; use `docs/SECURITY.md` for current behavior.
 
 **Isolation:** all live testing ran against a throwaway Postgres (`:15499`) and Redis
 (`:16399`) created for this investigation, with the backend on `:18499`. The protected
@@ -88,11 +95,11 @@ if !enforced {
 ```
 
 `Enforce()` returns `AUTHZ_CENTRAL_POLICY_ENFORCE`, which defaults to `false`
-(`internal/config/config.go:243`) and ships `false`
+(`backend/internal/config/config.go:258`) and ships `false`
 (`deploy/vm/.env.production.example:52`).
 
-The policy engine is correct — `internal/authz/policy.go:56-63` — and `Scope.SameBranch` /
-`SameOrganization` fail closed on a zero scope (`internal/authz/scope.go:11-17`).
+The policy engine is correct — `backend/internal/authz/policy.go:56-69` — and `Scope.SameBranch` /
+`SameOrganization` fail closed on a zero scope (`backend/internal/authz/scope.go:11-17`).
 
 The affected handlers pass the **resource's own** branch into the service call, e.g.
 `h.svc.ToggleAvailability(ctx, itemID, target.BranchID, ...)`, so the SQL scope is a
@@ -153,7 +160,7 @@ Collapsing both into one flag means the multi-tenancy boundary ships off by defa
 
 ### 4.2 Secondary — `GET /sessions/{id}/events` had no authorization at all
 
-`internal/handlers/event_log.go:22-36` (pre-fix) parsed the session UUID and returned the
+`backend/internal/handlers/event_log.go:22-36` (pre-fix) parsed the session UUID and returned the
 event log. It never called `middleware.GetStaffSession`, never called `requireAuthorized`.
 Any valid staff token from any organization read any session's timeline.
 
@@ -164,7 +171,7 @@ and re-run the matrix" would have produced a green-looking run with a hole still
 
 The audit credits `/branches/{id}/...` routes with "a second, independent per-handler
 ownership check". That is right, but it also implies `BranchTenantGuard` is doing work.
-It is not: `internal/middleware/branch_guard.go:21-25` returns early and does nothing
+It is not: `backend/internal/middleware/branch_guard.go:21-25` returns early and does nothing
 when no tenant is resolved from the request, which is the case whenever `BASE_DOMAIN` is
 unset — including every environment in this repo today. The 403s come entirely from
 per-handler `sess.BranchID != branchID` comparisons. Item-scoped routes simply never got
@@ -389,7 +396,7 @@ pass.
 - `TestScopeViolationFailsClosedOnZeroScope` — guards the zero-value semantics of
   `Scope.SameBranch` / `SameOrganization`.
 
-### Updated — `docs/manual-testing/audit-added-checks-2026-08-04.md`
+### Updated — `docs-before-rebuild:docs/manual-testing/audit-added-checks-2026-08-04.md`
 
 §8 rows 8.9–8.15 now carry a FIXED status note, and the verification instruction changed
 from "re-run with the flag on; every row must become 403" to "run **twice**, flag off and

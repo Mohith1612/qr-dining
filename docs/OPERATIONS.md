@@ -1,188 +1,150 @@
 # Operations
 
-Day-2 operation of a running QR Dining deployment.
+Last verified against code and deployment configuration: 2026-09-13. Deployment
+commands below are configuration-derived; this rebuild found no retained evidence
+that the complete production cutover or SigNoz path has been executed. Treat them
+as **unverified procedures** until an operator records a successful run.
 
-Companions: [DEPLOYMENT.md](DEPLOYMENT.md) (bring-up) · [RUNBOOKS.md](RUNBOOKS.md) (incidents) · [RECOVERY.md](RECOVERY.md) (backup/restore) · [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md) (when to stop the pilot) · [SECURITY.md](SECURITY.md).
+## Deployment shape
 
----
+The VM compose file defines one arm64 application image from GHCR, PostgreSQL 17,
+and Redis 7. PostgreSQL and Redis use an internal network; only the application
+joins the shared proxy network. All three services have memory limits, bounded
+JSON logs, persistent volumes, and health checks
+(`deploy/vm/docker-compose.yml:21-114`). Nginx proxies HTTP and WebSocket traffic
+to `app:8080`; `/metrics` is restricted to loopback and private Docker CIDRs
+(`deploy/nginx/qr-dining.conf:26-82`).
 
-## 1. Health and status
+The application image is built for `linux/arm64`; CI pushes only on main or tag
+events and emits SHA, version-tag, and default-branch `latest` tags
+(`.github/workflows/ci.yml:225-275`). Production compose accepts `IMAGE_TAG` and
+falls back to `latest` (`deploy/vm/docker-compose.yml:43-51`). Use an immutable
+SHA/version tag for a reviewed deployment; the example's `latest` value is not a
+release pin (`deploy/vm/.env.production.example:14-17`).
 
-| Check | How | Healthy looks like |
-|---|---|---|
-| Liveness | `curl -fsS https://api.<domain>/health` | 200 `{"status":"ok"}` |
-| Readiness | `curl -fsS https://api.<domain>/readyz` | 200 with `checks.postgres/redis: ok`; **503 = a datastore is down** |
-| Containers | `cd /opt/qr-dining && docker compose ps` | app/postgres/redis + observability all `healthy`/`running` |
-| App logs | `docker compose logs -f app` | structured zerolog; no `audit write failure`, no worker panics |
-| Metrics | SSH tunnel → `localhost:9090` (Prometheus), `:9093` (Alertmanager) | all targets UP |
-| Traces | SSH tunnel → `localhost:3301` (SigNoz), when `OTEL_ENABLED=true` | spans arriving for recent requests |
-
-`/readyz` is the authoritative datastore-outage signal. The Redis pub/sub gauge stays at 1 through a transient blip, so it is unreliable on its own — this was a real finding, not a theoretical one.
-
-The app self-heals aggressively: restart recovery is ~12s (migrations are idempotent), a Redis outage degrades realtime while HTTP keeps serving, and workers are lock-guarded and panic-isolated. Everything runs `restart: unless-stopped`.
-
-## 2. Deploying a new version
+### Unverified deploy procedure
 
 ```bash
 cd /opt/qr-dining
-vi .env                    # IMAGE_TAG=<tag>   pin tags; never `latest` in production
+# Set IMAGE_TAG in .env to the reviewed immutable tag.
 docker compose pull app
-docker compose up -d app   # ~12s recovery; guests reconcile via the snapshot endpoint
-curl -fsS https://api.<domain>/readyz
-docker compose logs app | grep -i migrat
+docker compose up -d
+docker compose ps
+curl -fsS http://localhost/readyz
 ```
 
-Rollback is the same procedure with the previous `IMAGE_TAG`.
+The compose file requires a root-only `.env`, uses it both for interpolation and
+the app environment, and expects the external `proxy` network to exist
+(`deploy/vm/docker-compose.yml:1-6,33-59`). The environment example enumerates
+the database, Redis, guest, MFA, CORS, rollout, upload, telemetry, and worker
+settings (`deploy/vm/.env.production.example:19-120`). Replace every placeholder;
+do not deploy that file verbatim.
 
-> **Binary rollback is the only rollback.** Additive-only is a *project rule for new migrations*,
-> not a property the existing schema has. Rolling the **schema** back is unsafe across migrations
-> 16–24 and at 36, 38 and 39, and migration 22 cannot even be re-applied to a populated
-> `audit_log` — it aborts and leaves `schema_migrations` dirty, which stops the app from starting.
-> Verified 2026-09-12; details and the last-resort recovery in
-> [RUNBOOKS.md §8](RUNBOOKS.md#8-migration-rollback).
->
-> Rolling the *binary* back across a migration is safe only when the release you are leaving added
-> no migration, or added a strictly additive one the old binary ignores. **Know which before you
-> need it**, not during an incident.
+The application exposes liveness, dependency readiness, and Prometheus metrics
+as `/health`, `/readyz`, and `/metrics`
+(`backend/internal/server/server.go:187-190`). Compose health uses `/readyz`
+(`deploy/vm/docker-compose.yml:64-71`). Verify at least the new image tag, healthy
+container state, clean schema version, and a representative guest/staff flow
+before ending the change window. The repository contains no executed production
+deployment report proving a stronger checklist.
 
-**During the pilot: no deploys during service hours.** Deploy before opening, with a verified
-backup taken first, and run one synthetic guest journey before the doors open. Every recovery path
-below a binary rollback costs ≥1 hour with one developer, which is not a mid-service option
-([PILOT-ABORT-CRITERIA.md §5](PILOT-ABORT-CRITERIA.md)).
+### Rollback
 
-Deploying an unmerged branch (what the beta runs) is [DEPLOYMENT.md §3b](DEPLOYMENT.md#3b-deploying-an-unmerged-branch-build-on-the-vm).
+Roll back the application by restoring the previous `IMAGE_TAG`, pulling it, and
+recreating `app`; the compose image reference is tag-controlled
+(`deploy/vm/docker-compose.yml:43-51`). Never roll the schema backward. Migrations
+16–24 and 36/38/39 destroy or fail to restore durable meaning; the verified list
+and recovery procedure are in [RECOVERY.md](RECOVERY.md).
 
-## 3. Alerting
+## Backup and restore
 
-### What exists
+The nightly job performs dump → checksum → upload → append-only manifest →
+retention and reports last status and last success through node_exporter textfile
+metrics (`backend/scripts/nightly-backup.sh:27-79,94-150`). Provider credentials
+and schedule installation are described in
+[deploy/backup/README.md](../deploy/backup/README.md). The Prometheus stack mounts
+the backup textfile volume into node_exporter
+(`deploy/observability/docker-compose.observability.yml:49-61`).
 
-| File | Role |
-|---|---|
-| `deploy/observability/prometheus.yml` | scrapes app `/metrics`, the `/readyz` blackbox probe and node-exporter; loads rules; forwards to Alertmanager |
-| `deploy/observability/prometheus-alerts.yml` | **31 alert rules**, `promtool`-clean (27 baseline + 4 backing the pilot abort criteria) |
-| `deploy/observability/alertmanager.yml` | routing + receivers |
-| `deploy/observability/blackbox.yml` | `/readyz` HTTP probe module |
-| `deploy/observability/grafana-dashboard.json` | importable dashboard (Grafana is not deployed) |
-| `backend/scripts/nightly-backup.sh` | emits `qr_dining_backup_*` textfile metrics |
+`BackupFailed` pages on a non-zero last-run status; `BackupTooOld` pages when the
+last-success series is absent or older than 36 hours
+(`deploy/observability/prometheus-alerts.yml:264-285`). Because the script installs
+an `EXIT` trap before configuration validation, missing `DATABASE_URL`, interrupts,
+and command failures report failure while preserving the prior success timestamp
+(`backend/scripts/nightly-backup.sh:27-85`).
 
-The app emits **43 metric collectors** covering HTTP, WebSocket, workers, escalations, cache, DB pool, audit failures, rate limits and tenant resolution.
+Selection, checksum verification, destructive restore, migration-22 recovery,
+measured Track F timings, and the forward-fix-only constraint are all in
+[RECOVERY.md](RECOVERY.md). Do not duplicate an abbreviated restore procedure in
+an incident note.
 
-### Severities
+## Metrics and alerts
 
-`severity=page` (14 rules — must wake a human) versus `ticket` (17 — next business day). An inhibit rule mutes `ticket` alerts while the same alertname is already paging.
+The optional observability compose adds pinned Prometheus, Alertmanager,
+blackbox-exporter, and node_exporter images. It must be merged with the app compose
+and does not work standalone (`deploy/observability/docker-compose.observability.yml:1-16,29-65`).
+Prometheus scrapes app metrics, readiness through blackbox, and node_exporter,
+loads the alert file, and sends firing alerts to Alertmanager
+(`deploy/observability/prometheus.yml:1-50`).
 
-The `qr-dining-pilot-abort` group exists so that each criterion in [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md) has an observable signal: `CrossTenantScopeDenial`, `AppUnavailableAbortThreshold`, `AuditWriteFailureAny`, `BackupStaleEarlyWarning`. Two criteria — a guest charged incorrectly, and a single table unable to order or pay — **have no possible signal today** and are human-detected; that is stated there rather than papered over with an aspirational rule.
+The application registers HTTP, database-pool, WebSocket, Redis, cache,
+idempotency, worker, audit, authz, presence, payment escalation, and billing
+reconciliation metrics (`backend/internal/observability/metrics.go:106-360`). The
+billing reconciliation worker populates its discrepancy gauges from two exact
+money comparisons without correcting financial state
+(`backend/internal/worker/worker.go:132-177`,
+`backend/sql/queries/payments.sql:123-258`).
 
-### The four that must always work
+Known monitoring limits:
 
-| Condition | Alert | Signal |
-|---|---|---|
-| App down | `AppTargetDown` | `up{job="qr-dining"} == 0` |
-| Database unavailable | `ReadyzProbeFailing` (+ `PostgresPoolExhausted`, `PostgresQueryErrors`) | `/readyz` 503, body names `postgres: unhealthy` |
-| Redis unavailable | `ReadyzProbeFailing` (+ `RedisPubSubDisconnected`) | `/readyz` 503, body names `redis: unhealthy` |
-| Backup failure | `BackupFailed`, `BackupTooOld` | `qr_dining_backup_last_run_status != 0`, or no success in >36h |
+- Alertmanager's receiver is a placeholder webhook URL, so notification delivery
+  is **not configured by the checked-in file**
+  (`deploy/observability/alertmanager.yml:17-38`).
+- `db_errors_total` is declared and registered
+  (`backend/internal/observability/metrics.go:169-174,338-360`), but this rebuild
+  found no increment call in current backend source. Treat alerts or runbooks
+  depending on that counter as **unverified/non-functional** until instrumentation
+  is added and exercised.
+- Cross-tenant denial alerts observe attempts that policy blocks; they cannot
+  prove that no wrongly allowed cross-tenant read occurred. The alert rule records
+  that blind spot (`deploy/observability/prometheus-alerts.yml:315-331`).
+- Backup silence is covered by the age alerts only if node_exporter and the
+  textfile volume are wired; the stack contains that mount, but this rebuild did
+  not execute a production scrape test
+  (`deploy/observability/docker-compose.observability.yml:49-61`,
+  `deploy/observability/prometheus-alerts.yml:264-285`).
 
-### Delivery
+OpenTelemetry is off by default, including database and Redis instrumentation
+(`backend/internal/config/config.go:214-225`). The production environment example
+also leaves it off (`deploy/vm/.env.production.example:91-95`). The SigNoz compose
+and rollout material is therefore an optional, unverified path—not evidence that
+production traces exist. The app and collector compose files do not share a
+network in their checked-in forms, so a separate, unverified overlay is required
+before the collector hostname can resolve from the app container
+(`deploy/vm/docker-compose.yml:33-59`,
+`deploy/signoz/docker-compose.signoz.yml:11-15,129-140`).
 
-One line changes it: the `&notify_url` anchor in `/opt/qr-dining/observability/alertmanager.yml`. Point it at a real webhook, then `docker compose restart alertmanager`. Both routes inherit it — `page` repeats hourly, `default` every 4 hours. Webhook is the default because one URL can target Slack, Teams, PagerDuty, Opsgenie or a relay; native receiver blocks are included commented out.
+## Operational workers
 
-Test-fire:
+The server starts seven worker loops at boot
+(`backend/cmd/server/main.go:95-105`). Their distributed lock uses Redis `SETNX`,
+and each invocation is panic-isolated
+(`backend/internal/worker/worker.go:645-670`). Inspect
+`background_worker_runs_total` and `background_worker_panics_total` before assuming
+a lifecycle loop ran (`backend/internal/observability/metrics.go:53-57,215-229`).
 
-```bash
-docker compose exec alertmanager amtool alert add TestPage severity=page \
-  --annotation=summary="drill"
-```
+Payment escalation is alert-only and points operators to staff settle/cancel or
+session force-close (`backend/internal/worker/worker.go:288-310`). Billing
+reconciliation is observation-only and writes only metrics/audit records
+(`backend/internal/worker/worker.go:319-353`). Presence expiry currently emits no
+participant-left event; it is a no-op hook because readers apply age filtering
+directly (`backend/internal/worker/worker.go:233-251`,
+`backend/internal/redis/presence.go:151-158`).
 
-The route and receiver have been verified end to end against a webhook sink. **Before go-live, set a real receiver and send one test alert through it** to confirm the credential and channel — this is an open SEV-1, see [RELEASE.md](RELEASE.md#5-open-before-v10).
+## Incident routing
 
-This is single-Prometheus / single-Alertmanager with no HA. Correct for a pilot; revisit for production scale.
-
-### Rollout-gate alerts
-
-`LegacyAuthzBypassPresent`, `LegacyIdentityUsagePresent`, `PolicyShadowMismatchPresent` and friends must read **zero** before a flag flip. They are the gate, not noise.
-
-## 4. Rollout flags (the enforcement ladder)
-
-All nine are explicit in `/opt/qr-dining/.env`. Never rely on application defaults for a production record.
-
-| Wave | Flag(s) | State |
-|---|---|---|
-| R1 | `AUDIT_LOG_V2_ENABLED` | **true — live and soaked. Never disable.** |
-| R2 | `TENANCY_ORGANIZATIONS_ENABLED` | false — needs org backfill + soak |
-| R3 | `AUTHZ_CENTRAL_POLICY_ENFORCE` + `STRICT_BRANCH_SCOPED_MUTATIONS` (pair) | false — 48h zero-mismatch shadow gate |
-| R4 | `AUTH_STAFF_CODE_REQUIRED` + `AUTH_STAFF_SESSION_DB_REQUIRED` (pair) | **true — launch baseline** |
-| R5 | `WS_TICKET_AUTH_REQUIRED` | **true — launch baseline** |
-| R6 | `AUTH_GUEST_CREDENTIALS_REQUIRED` | **true — launch baseline, `GUEST_TOKEN_TTL=12h`** |
-| R7 | `PAYMENT_STAFF_SETTLEMENT_REQUIRED` | false — needs webhook-replay CI proof |
-
-R4–R6 were activated together before traffic because there is no legacy client population — the only frontend already speaks all three protocols.
-
-**Change procedure:** confirm the wave's gate metrics read zero for the required window → edit `.env` → `docker compose up -d app` → watch the gate metrics. A rollback to a legacy auth path is time-bounded and supervised, never a steady-state posture. Rollback detail: [RUNBOOKS.md §6](RUNBOOKS.md#6-feature-flag-rollback).
-
-## 5. Backups (monitoring side)
-
-- Nightly 02:30. Verify cadence with `systemctl list-timers qr-dining-backup*`; last run with `journalctl -u qr-dining-backup -n 30`. The rootless containerized path (what the beta runs) uses an `appuser` crontab instead — see [../deploy/backup/README.md](../deploy/backup/README.md).
-- Prometheus: `qr_dining_backup_last_run_status` (0 = ok) and `qr_dining_backup_last_success_timestamp_seconds`. Alerts fire on failure or >36h staleness — **but only if** `NODE_EXPORTER_TEXTFILE_DIR` points at the `qr-dining_backup_textfile` volume mountpoint. If that wiring is missing the alerts are silently useless.
-- **A failing backup now reports itself on every exit path** — config errors included. `nightly-backup.sh` installs an `EXIT` trap before any validation, so a missing or unreadable env file sets `qr_dining_backup_last_run_status 1` and `BackupFailed` pages. (It previously exited at the `DATABASE_URL` guard without writing anything, leaving the metric on the last good run: finding R-3, fixed 2026-09-12 and covered by `backend/scripts/tests/backup-restore-test.sh`.)
-- **One blind spot remains and cannot be fixed inside the script: a job that never runs at all.** If cron or the timer does not fire, nothing writes any metric. That is plausible on the rootless path, where a user crontab does not survive a VM rebuild. `BackupTooOld` catches it at 36h and `BackupStaleEarlyWarning` at 26h — but **read `qr_dining_backup_last_success_timestamp_seconds` directly each morning** rather than trusting the absence of a page.
-- Run a restore drill within week 1 of go-live and quarterly after. Procedures: [RECOVERY.md](RECOVERY.md).
-
-## 6. Routine cadence
-
-**Daily (week 1, ~10 min).** Prometheus targets UP; no firing alerts; **read** `qr_dining_backup_last_success_timestamp_seconds` (do not infer freshness from the absence of an alert — see §5); `SELECT version, dirty FROM schema_migrations` reads the expected version with `dirty = false`; an `UPDATE` against `audit_log` still fails; `df -h` and `docker system df`; skim app logs for audit and worker errors.
-
-**Weekly.** Review payment-escalation events — every `PAYMENT_SETTLEMENT_STALLED` is a human follow-up. Check the Postgres volume growth curve (`audit_log` dominates). `docker image prune`. Spot-check one session lifecycle in the support console.
-
-**Before any flag flip.** The wave's gate alerts at zero for the required window.
-
-**Quarterly.** Restore drill ([RECOVERY.md §3a](RECOVERY.md#3a-drill--side-restore-non-destructive--also-the-quarterly-drill)), cold restart drill and network partition drill ([RUNBOOKS.md §15–16](RUNBOOKS.md)).
-
-## 7. Payment escalation
-
-`payment_pending` has a bound, and crossing it raises `PAYMENT_SETTLEMENT_STALLED` at warn/critical thresholds (defaults 1m/5m/15m).
-
-**It is alert-only, by design.** The system never auto-settles, auto-cancels or auto-refunds. A human resolves every stalled payment through the staff settlement endpoint. Never "fix" one by mutating state directly.
-
-## 8. Onboarding a restaurant
-
-The platform UI orchestrates this end-to-end at `/platform/onboarding` (super-admin only). Each wizard step maps to a backend action that writes a `platform_audit_log` row.
-
-**Before the call:** confirm the plan tier (free/standard/premium) and trial-vs-paid; collect restaurant name, desired slug, legal name, owner contact email; collect billing name, GST number, billing email.
-
-**In the wizard:** create the organization and its primary branch → create tables → create staff accounts (at minimum one owner, one kitchen, one waiter) → build the menu with categories, items, prices and availability → set theme/branding → generate QR collateral.
-
-**Go-live verification, with the restaurant, before the first real guest scans anything:**
-
-- [ ] Owner signs in with **branch code + staff code + PIN**.
-- [ ] Each role reaches its dashboard: Admin, Kitchen (`/staff/kitchen`), Waiter (`/staff/waiter`).
-- [ ] Menu categories and items exist with correct prices; toggling availability off makes the item disappear for guests live.
-- [ ] A guest device scans a real table QR and reaches the branded join screen.
-- [ ] Shared cart syncs live between two guest devices in one session.
-- [ ] An order reaches the kitchen display and moves through to served.
-- [ ] Assistance request reaches the waiter view.
-- [ ] Bill totals are correct; a cash settlement closes the session and frees the table.
-- [ ] Staff know that **billing is manual and outside the system**.
-
-## 9. Support surface
-
-Diagnose through the **read-only Support Console** (`/platform/support`) — never open a psql shell against production. It searches sessions, orders, payments, tables and participants, and shows sanitized detail plus the lifecycle timeline and audit trail. Every support read is itself audited; deep reads emit a tenant-visible row.
-
-RBAC: support reads need `support_admin` or `read_only_auditor`. Billing surfaces additionally need `billing_admin`.
-
-Escalation beyond the console: [RUNBOOKS.md](RUNBOOKS.md).
-
-## 10. Shared-VM etiquette
-
-qr-dining shares the VM with other projects (proxy, invoice, job-queue-system, sketchiple). Its services carry `mem_limit`s (app 1g / postgres 1g / redis 384m).
-
-Never edit `/opt/proxy` config except to add or update the `qr-dining.conf` vhost, and always `nginx -t` before `nginx -s reload`. The vhost uses **request-time DNS** (`resolver 127.0.0.11` plus a variable upstream) deliberately: it means qr-dining being down can never block another project's proxy reload. Preserve that property.
-
-## 11. Standing rules
-
-- **Never touch the development-host soak stack** (compose project `qr-dining`): no `down -v`, no restart without `AUDIT_LOG_V2_ENABLED=true`, no volume wipes.
-- **Billing is manual and outside the system.** The billing subsystem is shadow — do not charge anyone through it.
-- **Payment escalation is alert-only.** A human settles or cancels.
-- **No time-windowed promos** until the promo timezone behaviour is confirmed against the branch-local clock.
-- **Additive migrations only** — for *new* migrations. The existing schema is **not** rollback-safe (16–24, 36, 38, 39), so never plan around a schema rollback: [RUNBOOKS.md §8](RUNBOOKS.md#8-migration-rollback). The `audit_log` schema and trigger, the session transition table, bill snapshots and the loyalty ledger are never touched casually.
-- **No deploys during service hours** while the pilot is running.
-- **Never mutate `audit_log`.** It is trigger-protected; an attempt should fail, and that failure is a verification step, not a bug.
+Use [RUNBOOKS.md](RUNBOOKS.md) for symptom-specific containment and
+[PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md) for the stop clock. Use
+[RECOVERY.md](RECOVERY.md) only for data loss/corruption or a confirmed dirty
+migration; restoring a database for an application regression expands the blast
+radius without undoing the binary defect.
