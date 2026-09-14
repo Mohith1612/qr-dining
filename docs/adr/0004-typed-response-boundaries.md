@@ -14,6 +14,24 @@
 JSON keys or value types a handler emits. That is the same unchecked seam that let
 response casing and embedded credential fields drift from the API contract.
 
+The contract did not become stale during this audit. The audit exposed defects that
+were already present:
+
+- three of the four reachable `POST /sessions/{id}/orders` conflict codes were not
+  documented before `IDEMPOTENCY_IN_PROGRESS` was added
+  (`backend/internal/handlers/order.go:104-113`);
+- the logout summary claimed that the current staff token was invalidated while the
+  baseline handler only cleared its cookie (`backend/internal/handlers/staff.go:124-130`);
+- the order request schema required `branch_id` and `placed_by_participant_id` even
+  though the handler rejects clients that supply either field
+  (`backend/internal/handlers/order.go:68-71`).
+
+A gate limited to drift introduced by the current diff would have accepted every one
+of those defects. The value of whole-surface contract checks is therefore not merely
+keeping pace with the rate of change; it is making an incorrect contract discoverable
+at all. This argues for exhaustive automated checks where they are tractable. It does
+not, by itself, make a blanket conversion of every response map cost-effective.
+
 The often-quoted count of 82 `gin.H` responses is syntactic: those calls contain a
 literal `gin.H{...}` argument. Fifteen more pass a variable whose static type is
 `gin.H`, making the semantic count 97:
