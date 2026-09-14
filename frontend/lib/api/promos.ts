@@ -1,5 +1,5 @@
 import { api } from "./client"
-import type { Promo, ValidatePromoResponse } from "@/types/api"
+import type { Promo, RawPromo, ValidatePromoResponse } from "@/types/api"
 
 interface CreatePromoRequest {
   code: string
@@ -27,7 +27,7 @@ export const promosApi = {
     api.get<Promo[]>(`/branches/${branchId}/promos`, { staffToken: token }),
 
   create: (branchId: number, data: CreatePromoRequest, token: string) =>
-    api.post<Promo>(`/branches/${branchId}/promos`, data, { staffToken: token }),
+    api.post<RawPromo>(`/branches/${branchId}/promos`, data, { staffToken: token }),
 
   deactivate: (branchId: number, promoId: number, token: string) =>
     api.delete<void>(`/branches/${branchId}/promos/${promoId}`, { staffToken: token }),
@@ -36,5 +36,5 @@ export const promosApi = {
     api.post<void>(`/branches/${branchId}/promos/${promoId}/activate`, {}, { staffToken: token }),
 
   update: (branchId: number, promoId: number, data: CreatePromoRequest, token: string) =>
-    api.patch<Promo>(`/branches/${branchId}/promos/${promoId}`, data, { staffToken: token }),
+    api.patch<RawPromo>(`/branches/${branchId}/promos/${promoId}`, data, { staffToken: token }),
 }
