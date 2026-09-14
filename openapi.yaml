@@ -5129,6 +5129,14 @@ paths:
         "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: |
+            `ORGANIZATION_EXISTS` — the organization code or restaurant slug is already in use.
+            Derived from `backend/internal/handlers/platform.go:341-351`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
 
   /platform/organizations/{org_id}:
     get:
@@ -5252,6 +5260,15 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            `BRANCH_CONFLICT` — the branch code, an initial table identifier, or the initial
+            owner's staff code conflicts with an existing value. Derived from
+            `backend/internal/handlers/platform.go:515-570`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
 
   # ── Platform: branches (read + onboarding) ──────────────────────────────────
   /platform/branches/{branch_id}:
