@@ -5504,6 +5504,18 @@ export interface paths {
                 400: components["responses"]["ValidationError"];
                 401: components["responses"]["Unauthorized"];
                 403: components["responses"]["Forbidden"];
+                /**
+                 * @description `ORGANIZATION_EXISTS` — the organization code or restaurant slug is already in use.
+                 *     Derived from `backend/internal/handlers/platform.go:341-351`.
+                 */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["APIError"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -5684,6 +5696,19 @@ export interface paths {
                 401: components["responses"]["Unauthorized"];
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
+                /**
+                 * @description `BRANCH_CONFLICT` — the branch code, an initial table identifier, or the initial
+                 *     owner's staff code conflicts with an existing value. Derived from
+                 *     `backend/internal/handlers/platform.go:515-570`.
+                 */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["APIError"];
+                    };
+                };
             };
         };
         delete?: never;
