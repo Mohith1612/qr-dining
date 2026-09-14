@@ -161,6 +161,12 @@ func (s *PaymentService) initiatePayment(ctx context.Context, req InitiatePaymen
 		if !inserted {
 			existingKey, err := s.repos.GetIdempotencyKey(ctx, idemScope)
 			if err != nil {
+				// The row expired between the conflicting reservation and this
+				// read. Tell the caller to retry rather than guess: the retry
+				// reclaims the expired row and proceeds as a fresh request.
+				if errors.Is(err, pgx.ErrNoRows) {
+					return sqlc.Payment{}, domain.ErrIdempotencyInProgress
+				}
 				return sqlc.Payment{}, err
 			}
 			if existingKey.RequestHash != requestHash {

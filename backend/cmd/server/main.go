@@ -103,6 +103,7 @@ func main() {
 	go w.RunReactivationPipeline(ctx, cfg.Worker.PresenceExpiryInterval, cfg.Worker.SessionPresenceGrace, cfg.Worker.SessionReactivationWindow)
 	go w.RunPaymentPendingEscalation(ctx, cfg.Worker.PaymentPendingEscalationInterval, cfg.Worker.PaymentPendingWarnAfter, cfg.Worker.PaymentPendingCriticalAfter)
 	go w.RunBillingReconciliation(ctx, cfg.Worker.BillingReconciliationInterval)
+	go w.RunIdempotencyKeyReaper(ctx, cfg.Worker.IdempotencyReapInterval, worker.IdempotencyKeyRetention)
 
 	// 14b. Poll DB pool stats every 30s and export to Prometheus.
 	go func() {
