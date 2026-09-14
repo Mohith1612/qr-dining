@@ -1,12 +1,12 @@
 import { create } from "zustand"
-import type { CartItem } from "@/types/api"
+import type { CartViewItem } from "@/types/api-view"
 
 interface CartState {
-  items: CartItem[]
+  items: CartViewItem[]
   loading: boolean
 
-  setItems: (items: CartItem[]) => void
-  addItem: (item: CartItem) => void
+  setItems: (items: CartViewItem[]) => void
+  addItem: (item: CartViewItem) => void
   removeItem: (itemId: number) => void
   setLoading: (loading: boolean) => void
   clear: () => void

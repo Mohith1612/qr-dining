@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Vignette } from "@/components/shared/Vignette"
 import { formatCurrency } from "@/lib/format"
-import type { MenuItem } from "@/types/api"
+import type { MenuItemView as MenuItem } from "@/types/api-view"
 
 function itemHue(id: number): number {
   return (id * 47 + 15) % 60 + 20

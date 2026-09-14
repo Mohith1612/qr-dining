@@ -1,5 +1,6 @@
 import { create } from "zustand"
-import type { Session, Participant, Payment } from "@/types/api"
+import type { Participant, Payment } from "@/types/api"
+import type { SessionView as Session } from "@/types/api-view"
 
 interface SessionState {
   session: Session | null

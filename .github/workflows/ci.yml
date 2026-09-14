@@ -127,6 +127,24 @@ jobs:
       - name: Prove integration and credential guards ran
         run: ../scripts/ci/assert-go-tests-ran.sh "$RUNNER_TEMP/go-integration.json"
 
+  router-openapi-parity:
+    name: Router/OpenAPI Parity
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.8"
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Compare Gin registrations with OpenAPI paths and methods
+        run: go test ./internal/server -run '^TestRouterOpenAPIParity$' -count=1
+
   govulncheck:
     name: Go Vulnerability Scan
     runs-on: ubuntu-latest
@@ -171,6 +189,33 @@ jobs:
         run: |
           if ! git diff --exit-code internal/db/sqlc/; then
             echo "sqlc generated code is out of sync. Run 'go tool sqlc generate' and commit the result."
+            exit 1
+          fi
+
+  frontend-api-types-check:
+    name: Frontend API Type Drift Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Generate frontend API types
+        run: npm run generate:api
+
+      - name: Reject frontend API type drift
+        run: |
+          if ! git diff --exit-code types/api.ts; then
+            echo "Generated frontend API types are out of sync. Run 'npm run generate:api' in frontend/ and commit the result."
             exit 1
           fi
 

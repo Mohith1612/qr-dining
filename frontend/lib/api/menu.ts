@@ -1,10 +1,10 @@
 import { api } from "./client"
-import type { MenuCategory, MenuItem } from "@/types/api"
+import type { FullMenu } from "@/types/api"
 
 export const menuApi = {
   getMenu: (branchId: number) =>
-    api.get<{ branch_id: number; featured: MenuItem[]; categories: MenuCategory[] }>(`/branches/${branchId}/menu`)
-      .then(r => ({ featured: r.featured ?? [], categories: r.categories })),
+    api.get<FullMenu>(`/branches/${branchId}/menu`)
+      .then(r => ({ featured: r.featured, categories: r.categories })),
 
   resolveQrToken: (token: string) =>
     api.get<{ id: number; branch_id: number; identifier: string; session_id?: string; branch_theme?: string }>(`/tables/by-qr/${token}`)

@@ -3,7 +3,7 @@
 import { useCartStore } from "@/store/cart"
 import { cartApi } from "@/lib/api/cart"
 import { useSession } from "./useSession"
-import type { CartItem } from "@/types/api"
+import type { CartViewItem } from "@/types/api-view"
 
 export function useCart() {
   const items = useCartStore((s) => s.items)
@@ -22,7 +22,7 @@ export function useCart() {
     quantity: number,
     modifierIds?: number[],
     note?: string
-  ): Promise<CartItem | null> {
+  ): Promise<CartViewItem | null> {
     if (!session) return null
     const guestToken = sessionStorage.getItem("guest_access_token")
     if (!guestToken) return null

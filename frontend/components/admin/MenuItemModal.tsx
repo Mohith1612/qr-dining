@@ -10,7 +10,8 @@ import { BottomSheet } from "@/components/shared/BottomSheet"
 import { ImageUploadField } from "@/components/admin/ImageUploadField"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { MenuItem, MenuCategory, ItemModifier, DietaryFlag, ItemBadge } from "@/types/api"
+import type { MenuModifier as ItemModifier, DietaryFlag, ItemBadge } from "@/types/api"
+import type { MenuCategoryView as MenuCategory, MenuItemView as MenuItem } from "@/types/api-view"
 
 // ── Constants ────────────────────────────────────────────────────────────────
 

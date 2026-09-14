@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { ChevronDown, ChevronRight } from "lucide-react"
 import { formatCurrency } from "@/lib/format"
-import type { BillData, BillOrder } from "@/types/api"
+import type { Bill as BillData, BillOrder } from "@/types/api"
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 

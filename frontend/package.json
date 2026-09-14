@@ -10,6 +10,7 @@
     "build:cf": "node scripts/check-prod-env.mjs && opennextjs-cloudflare build",
     "preview:cf": "opennextjs-cloudflare preview",
     "deploy:cf": "node scripts/check-prod-env.mjs && opennextjs-cloudflare deploy",
+    "generate:api": "openapi-typescript ../openapi.yaml --root-types --root-types-no-schema-prefix --root-types-keep-casing --output types/api.ts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
   },
@@ -41,6 +42,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.18",
+    "openapi-typescript": "7.13.0",
     "shadcn": "^4.7.0",
     "tailwindcss": "^4",
     "typescript": "^5",

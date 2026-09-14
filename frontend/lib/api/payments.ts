@@ -1,5 +1,5 @@
 import { api } from "./client"
-import type { Payment, PendingPayment, PaymentMethod, BillData } from "@/types/api"
+import type { Payment, PendingPayment, PaymentMethod, Bill as BillData } from "@/types/api"
 
 export const paymentsApi = {
   initiate: (

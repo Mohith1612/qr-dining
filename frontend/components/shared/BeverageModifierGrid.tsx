@@ -2,7 +2,7 @@
 
 import { Flame, Snowflake } from "lucide-react"
 import { formatCurrency } from "@/lib/format"
-import type { ItemModifier } from "@/types/api"
+import type { MenuModifier as ItemModifier } from "@/types/api"
 
 export function isBeverageCategory(name: string): boolean {
   return /beverage|drink|coffee|tea|bar|juice|shake|smoothie|cocktail|mocktail/i.test(name)

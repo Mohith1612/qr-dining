@@ -1,5 +1,5 @@
 import { api } from "./client"
-import type { AssistanceRequest, AssistanceType } from "@/types/api"
+import type { ActiveAssistanceRequest, AssistanceRequest, AssistanceType } from "@/types/api"
 
 export const assistanceApi = {
   request: (
@@ -20,5 +20,5 @@ export const assistanceApi = {
     api.patch<AssistanceRequest>(`/assist/${id}/resolve`, {}, { staffToken }),
 
   getActive: (branchId: number, staffToken: string) =>
-    api.get<AssistanceRequest[]>(`/branches/${branchId}/assist/active`, { staffToken }),
+    api.get<ActiveAssistanceRequest[]>(`/branches/${branchId}/assist/active`, { staffToken }),
 }

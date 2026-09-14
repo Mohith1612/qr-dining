@@ -22,7 +22,8 @@ import { BeverageModifierGroup, isBeverageCategory } from "@/components/shared/B
 import { SearchBar } from "@/components/shared/SearchBar"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { useFilteredMenu } from "@/hooks/useFilteredMenu"
-import type { MenuItem, ItemModifier, DietaryFlag, ItemBadge } from "@/types/api"
+import type { MenuModifier as ItemModifier, DietaryFlag, ItemBadge } from "@/types/api"
+import type { MenuItemView as MenuItem } from "@/types/api-view"
 import { track } from "@/lib/product-analytics/events"
 
 interface SheetState {

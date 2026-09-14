@@ -19,7 +19,7 @@ import { formatCurrency, relativeTime } from "@/lib/format"
 import { RefreshCw, Loader2, Users } from "lucide-react"
 import { toast } from "sonner"
 import { track } from "@/lib/product-analytics/events"
-import type { Session, PendingPayment } from "@/types/api"
+import type { SessionWithTable as Session, PendingPayment } from "@/types/api"
 
 export function SessionsTab() {
   const { branchId, token, role } = useStaffStore()

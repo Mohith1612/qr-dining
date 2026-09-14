@@ -136,6 +136,7 @@ components:
   schemas:
     APIError:
       type: object
+      x-go-source: backend/internal/handlers/errors.go:11
       required: [code, message]
       properties:
         code:
@@ -146,13 +147,104 @@ components:
           type: string
           description: Human-readable error detail (may change)
           example: session not found
+        reason:
+          type: string
+          description: Optional discriminator used where the error code alone is insufficient
+
+    AssistanceType:
+      type: string
+      x-go-source: backend/internal/db/sqlc/models.go:61
+      enum: [waiter, bill, other]
+
+    AssistanceStatus:
+      type: string
+      x-go-source: backend/internal/db/sqlc/models.go:18
+      enum: [pending, acknowledged, resolved]
+
+    OrderStatus:
+      type: string
+      x-go-source: backend/internal/db/sqlc/models.go:283
+      enum: [pending, confirmed, preparing, ready, served, cancelled]
+
+    PaymentMethod:
+      type: string
+      x-go-source: backend/internal/db/sqlc/models.go:329
+      enum: [cash, card, digital, card_manual, upi]
+
+    PaymentStatus:
+      type: string
+      x-go-source: backend/internal/db/sqlc/models.go:374
+      enum: [pending, requested, provider_pending, requires_staff_confirmation, completed, failed, cancelled, refunded, partially_refunded]
+
+    StaffRole:
+      type: string
+      x-go-source: backend/internal/db/sqlc/models.go:554
+      enum: [owner, manager, waiter, kitchen]
+
+    DietaryFlag:
+      type: string
+      x-go-source: backend/internal/handlers/menu_admin.go:102
+      enum: [vegetarian, vegan, jain, egg, non-veg]
+
+    ItemBadge:
+      type: string
+      x-go-source: backend/internal/handlers/menu_admin.go:103
+      enum: [chef-special, bestseller, seasonal, new]
+
+    WebSocketEventType:
+      type: string
+      x-go-source: backend/internal/websocket/message.go:11
+      enum:
+        - SESSION_CREATED
+        - PARTICIPANT_JOINED
+        - PARTICIPANT_LEFT
+        - ITEM_ADDED
+        - ITEM_REMOVED
+        - CART_UPDATED
+        - ORDER_PLACED
+        - ORDER_CONFIRMED
+        - ORDER_PREPARING
+        - ORDER_READY
+        - ORDER_SERVED
+        - ORDER_CANCELLED
+        - ASSISTANCE_REQUESTED
+        - ASSISTANCE_ACKNOWLEDGED
+        - ASSISTANCE_RESOLVED
+        - PAYMENT_INITIATED
+        - PAYMENT_COMPLETED
+        - PAYMENT_CANCELLED
+        - PAYMENT_SETTLEMENT_STALLED
+        - SESSION_CLOSED
+        - SESSION_EXPIRING_SOON
+        - SESSION_REACTIVATED
+        - PROMO_APPLIED
+        - HOST_CHANGED
+        - MENU_ITEM_AVAILABILITY_CHANGED
+        - PING
+        - PONG
 
     Session:
       type: object
+      x-go-source: backend/internal/db/sqlc/models.go:1192
       description: |
         A table dining session. **The guest credential `session_token` is intentionally never
-        returned** — it is stripped from every guest-facing response by `guestSafeSession()`
-        (remediation F-8), independent of the R6 flag.
+        part of this public contract. The handlers clear it before returning this embedded sqlc
+        row. The current value-level scrubber still serializes an empty key; that live behavior
+        defect is intentionally not normalized into the public contract.
+      required:
+        - id
+        - branch_id
+        - table_id
+        - host_participant_id
+        - status
+        - created_at
+        - closed_at
+        - warned_at
+        - customer_id
+        - session_business_date
+        - visit_number
+        - session_number
+        - awaiting_reactivation_at
       properties:
         id:
           type: string
@@ -176,12 +268,45 @@ components:
         closed_at:
           type: [string, "null"]
           format: date-time
+        warned_at:
+          type: [string, "null"]
+          format: date-time
+        customer_id:
+          type: [integer, "null"]
+        session_business_date:
+          type: [string, "null"]
+          format: date
+        visit_number:
+          type: integer
         awaiting_reactivation_at:
           type: [string, "null"]
           format: date-time
 
+    SessionWithTable:
+      x-go-source: backend/internal/services/session.go:212
+      allOf:
+        - $ref: "#/components/schemas/Session"
+        - type: object
+          required: [table_identifier]
+          properties:
+            table_identifier:
+              type: string
+
     Participant:
       type: object
+      x-go-source: backend/internal/db/sqlc/models.go:1220
+      required:
+        - id
+        - session_id
+        - display_name
+        - device_fingerprint
+        - joined_at
+        - last_seen_at
+        - is_host
+        - credential_version
+        - revoked_at
+        - revoked_reason
+        - phone_e164
       properties:
         id:
           type: integer
@@ -199,11 +324,22 @@ components:
           type: string
           format: date-time
         device_fingerprint:
+          type: string
+        credential_version:
+          type: integer
+        revoked_at:
+          type: [string, "null"]
+          format: date-time
+        revoked_reason:
+          type: [string, "null"]
+        phone_e164:
           type: [string, "null"]
 
     ModifierSnapshot:
       type: object
+      x-go-source: backend/internal/services/cart.go:24
       description: Price-snapshotted modifier applied to a cart item or order item
+      required: [id, name, price_delta]
       properties:
         id:
           type: integer
@@ -213,13 +349,13 @@ components:
           type: number
           description: Price adjustment (positive = surcharge, negative = discount)
 
-    ItemModifier:
+    MenuModifier:
       type: object
+      x-go-source: backend/internal/services/menu.go:35
       description: A configurable modifier attached to a menu item (menu/admin surface)
+      required: [id, name, price_delta, is_required, modifier_group, single_select]
       properties:
         id:
-          type: integer
-        menu_item_id:
           type: integer
         name:
           type: string
@@ -236,33 +372,106 @@ components:
             Group-wide flag — when set, the guest may pick only one option from this
             `modifier_group` (the cart rejects more with 422 `MODIFIER_CONFLICT`).
 
+    ItemModifier:
+      type: object
+      x-go-source: backend/internal/db/sqlc/models.go:809
+      description: Modifier returned by the admin create and update endpoints
+      required: [id, item_id, name, price_delta, is_required, modifier_group, single_select]
+      properties:
+        id: { type: integer }
+        item_id: { type: integer }
+        name: { type: string }
+        price_delta: { type: number }
+        is_required: { type: boolean }
+        modifier_group: { type: string }
+        single_select: { type: boolean }
+
+    Cart:
+      type: object
+      x-go-source: backend/internal/db/sqlc/models.go:722
+      required: [id, session_id, participant_id]
+      properties:
+        id: { type: integer }
+        session_id: { type: string, format: uuid }
+        participant_id: { type: [integer, "null"] }
+
     CartItem:
       type: object
+      x-go-source: backend/internal/db/sqlc/models.go:728
+      required: [id, cart_id, menu_item_id, quantity, selected_modifiers_json, note]
       properties:
         id:
           type: integer
-        session_id:
-          type: string
-          format: uuid
-        participant_id:
+        cart_id:
           type: integer
         menu_item_id:
           type: integer
         quantity:
           type: integer
-        selected_modifiers:
+        selected_modifiers_json:
           type: array
           description: Modifier snapshots captured at add-to-cart time
           items:
             $ref: "#/components/schemas/ModifierSnapshot"
         note:
           type: string
-        added_at:
-          type: string
-          format: date-time
+
+    CartItemDetail:
+      type: object
+      x-go-source: backend/internal/db/sqlc/carts.sql.go:156
+      required:
+        - id
+        - cart_id
+        - menu_item_id
+        - quantity
+        - selected_modifiers_json
+        - note
+        - item_name
+        - item_price
+        - image_url
+        - is_available
+      properties:
+        id: { type: integer }
+        cart_id: { type: integer }
+        menu_item_id: { type: integer }
+        quantity: { type: integer }
+        selected_modifiers_json:
+          type: array
+          items: { $ref: "#/components/schemas/ModifierSnapshot" }
+        note: { type: string }
+        item_name: { type: string }
+        item_price: { type: number }
+        image_url: { type: [string, "null"] }
+        is_available: { type: boolean }
+
+    CartResponse:
+      type: object
+      x-go-source: backend/internal/services/cart.go:43
+      required: [cart, items]
+      properties:
+        cart: { $ref: "#/components/schemas/Cart" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CartItemDetail" }
 
     MenuItem:
       type: object
+      x-go-source: backend/internal/db/sqlc/models.go:827
+      required:
+        - id
+        - category_id
+        - branch_id
+        - name
+        - description
+        - price
+        - is_available
+        - position
+        - is_featured
+        - featured_sort_order
+        - dietary_flags
+        - item_badges
+        - spice_level
+        - image_url
       properties:
         id:
           type: integer
@@ -275,8 +484,8 @@ components:
         description:
           type: string
         price:
-          type: string
-          description: Decimal string e.g. "12.50"
+          type: number
+          description: JSON number serialized by pgtype.Numeric
         is_available:
           type: boolean
         position:
@@ -289,20 +498,33 @@ components:
         dietary_flags:
           type: array
           items:
-            type: string
-            enum: [vegetarian, vegan, jain, egg, non-veg]
+            $ref: "#/components/schemas/DietaryFlag"
         item_badges:
           type: array
           items:
-            type: string
-            enum: [chef-special, bestseller, seasonal, new]
+            $ref: "#/components/schemas/ItemBadge"
         spice_level:
           type: integer
           minimum: 0
           maximum: 3
+        image_url:
+          type: [string, "null"]
+
+    MenuItemWithModifiers:
+      x-go-source: backend/internal/services/menu.go:44
+      allOf:
+        - $ref: "#/components/schemas/MenuItem"
+        - type: object
+          required: [modifiers]
+          properties:
+            modifiers:
+              type: array
+              items: { $ref: "#/components/schemas/MenuModifier" }
 
     MenuCategory:
       type: object
+      x-go-source: backend/internal/db/sqlc/models.go:819
+      required: [id, branch_id, name, position, is_active]
       properties:
         id:
           type: integer
@@ -313,13 +535,52 @@ components:
         position:
           type: integer
           description: Display order of this category
-        items:
+        is_active:
+          type: boolean
+
+    MenuCategoryWithItems:
+      x-go-source: backend/internal/services/menu.go:49
+      allOf:
+        - $ref: "#/components/schemas/MenuCategory"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/MenuItemWithModifiers" }
+
+    FullMenu:
+      type: object
+      x-go-source: backend/internal/services/menu.go:54
+      required: [branch_id, featured, categories]
+      properties:
+        branch_id: { type: integer }
+        featured:
           type: array
-          items:
-            $ref: "#/components/schemas/MenuItem"
+          items: { $ref: "#/components/schemas/MenuItemWithModifiers" }
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/MenuCategoryWithItems" }
 
     Order:
       type: object
+      x-go-source: backend/internal/db/sqlc/models.go:844
+      required:
+        - id
+        - session_id
+        - branch_id
+        - placed_by_participant_id
+        - status
+        - idempotency_key
+        - total_amount
+        - created_at
+        - updated_at
+        - order_number
+        - promo_id
+        - discount_amount
+        - order_business_date
+        - order_number_display
+        - order_operational_id
       properties:
         id:
           type: string
@@ -330,13 +591,12 @@ components:
         branch_id:
           type: integer
         placed_by_participant_id:
-          type: integer
+          type: [integer, "null"]
         status:
-          type: string
-          enum: [pending, confirmed, preparing, ready, served, cancelled]
+          $ref: "#/components/schemas/OrderStatus"
         total_amount:
-          type: string
-          description: Decimal string
+          type: number
+          description: JSON number serialized by pgtype.Numeric
         idempotency_key:
           type: string
         created_at:
@@ -345,9 +605,17 @@ components:
         updated_at:
           type: string
           format: date-time
+        order_number: { type: [string, "null"] }
+        promo_id: { type: [integer, "null"] }
+        discount_amount: { type: number }
+        order_business_date: { type: [string, "null"], format: date }
+        order_number_display: { type: string }
+        order_operational_id: { type: string }
 
     OrderItem:
       type: object
+      x-go-source: backend/internal/db/sqlc/models.go:862
+      required: [id, order_id, menu_item_id, quantity, unit_price, selected_modifiers_json, note]
       properties:
         id:
           type: integer
@@ -359,8 +627,8 @@ components:
         quantity:
           type: integer
         unit_price:
-          type: string
-        selected_modifiers:
+          type: number
+        selected_modifiers_json:
           type: array
           description: Modifier snapshots captured at order placement time
           items:
@@ -368,8 +636,47 @@ components:
         note:
           type: string
 
+    PlaceOrderResult:
+      type: object
+      x-go-source: backend/internal/services/order.go:63
+      required: [order, order_items]
+      properties:
+        order: { $ref: "#/components/schemas/Order" }
+        order_items:
+          type: array
+          items: { $ref: "#/components/schemas/OrderItem" }
+
+    KitchenOrderItem:
+      type: object
+      x-go-source: backend/internal/services/order.go:385
+      required: [menu_item_id, name, quantity, modifiers, note]
+      properties:
+        menu_item_id: { type: integer }
+        name: { type: string }
+        quantity: { type: integer }
+        modifiers:
+          type: array
+          items: { $ref: "#/components/schemas/ModifierSnapshot" }
+        note: { type: string }
+
+    KitchenOrder:
+      x-go-source:
+        - backend/internal/db/sqlc/orders.sql.go:276
+        - backend/internal/services/order.go:396
+      allOf:
+        - $ref: "#/components/schemas/Order"
+        - type: object
+          required: [table_identifier, items]
+          properties:
+            table_identifier: { type: string }
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/KitchenOrderItem" }
+
     AssistanceRequest:
       type: object
+      x-go-source: backend/internal/db/sqlc/models.go:641
+      required: [id, session_id, table_id, participant_id, type, status, created_at, resolved_at]
       properties:
         id:
           type: integer
@@ -379,19 +686,55 @@ components:
         table_id:
           type: integer
         participant_id:
-          type: integer
+          type: [integer, "null"]
         type:
-          type: string
-          enum: [waiter, bill, other]
+          $ref: "#/components/schemas/AssistanceType"
         status:
-          type: string
-          enum: [pending, acknowledged, resolved]
+          $ref: "#/components/schemas/AssistanceStatus"
         created_at:
           type: string
           format: date-time
+        resolved_at:
+          type: [string, "null"]
+          format: date-time
+
+    ActiveAssistanceRequest:
+      x-go-source: backend/internal/db/sqlc/assistance.sql.go:84
+      allOf:
+        - $ref: "#/components/schemas/AssistanceRequest"
+        - type: object
+          required: [table_identifier, session_number]
+          properties:
+            table_identifier: { type: string }
+            session_number: { type: string }
 
     Payment:
       type: object
+      x-go-source: backend/internal/db/sqlc/models.go:972
+      required:
+        - id
+        - session_id
+        - order_id
+        - amount
+        - method
+        - status
+        - initiated_at
+        - completed_at
+        - subtotal
+        - tax_amount
+        - service_charge
+        - tip_amount
+        - bill_snapshot_id
+        - branch_id
+        - currency
+        - provider
+        - provider_payment_ref
+        - provider_order_ref
+        - settled_by_staff_id
+        - settled_at
+        - payment_business_date
+        - payment_sequence
+        - payment_reference
       properties:
         id:
           type: integer
@@ -402,16 +745,21 @@ components:
           type: [string, "null"]
           format: uuid
         amount:
-          type: string
+          type: number
         method:
-          type: string
-          enum: [cash, card, digital, card_manual, upi]
+          $ref: "#/components/schemas/PaymentMethod"
         status:
-          type: string
-          enum: [pending, requested, provider_pending, requires_staff_confirmation, completed, failed, cancelled, refunded, partially_refunded]
+          $ref: "#/components/schemas/PaymentStatus"
         initiated_at:
           type: string
           format: date-time
+        completed_at:
+          type: [string, "null"]
+          format: date-time
+        subtotal: { type: number }
+        tax_amount: { type: number }
+        service_charge: { type: number }
+        tip_amount: { type: number }
         bill_snapshot_id:
           type: [integer, "null"]
         branch_id:
@@ -420,9 +768,161 @@ components:
           type: string
         provider_payment_ref:
           type: [string, "null"]
+        provider: { type: [string, "null"] }
+        provider_order_ref: { type: [string, "null"] }
+        settled_by_staff_id: { type: [integer, "null"] }
+        settled_at: { type: [string, "null"], format: date-time }
+        payment_business_date: { type: [string, "null"], format: date }
+        payment_sequence: { type: integer }
+        payment_reference: { type: string }
+
+    PendingPayment:
+      x-go-source: backend/internal/db/sqlc/payments.sql.go:516
+      allOf:
+        - $ref: "#/components/schemas/Payment"
+        - type: object
+          required: [table_identifier, session_number]
+          properties:
+            table_identifier: { type: string }
+            session_number: { type: string }
+
+    Table:
+      type: object
+      x-go-source: backend/internal/handlers/tables.go:26
+      required: [id, branch_id, identifier, capacity, qr_code_token, status]
+      properties:
+        id: { type: integer }
+        branch_id: { type: integer }
+        identifier: { type: string }
+        capacity: { type: integer }
+        qr_code_token: { type: string }
+        status: { type: string, enum: [available, occupied, reserved] }
+
+    Customer:
+      type: object
+      x-go-source: backend/internal/services/customer.go:126
+      required: [id, phone_masked, display_name, visit_count, last_seen_at, opted_in]
+      properties:
+        id: { type: integer }
+        phone_masked: { type: string }
+        display_name: { type: string }
+        visit_count: { type: integer }
+        last_seen_at: { type: string }
+        opted_in: { type: boolean }
+
+    CustomerHistoryEntry:
+      type: object
+      x-go-source: backend/internal/services/customer.go:135
+      required: [session_id, created_at, closed_at, table_identifier, total_spent]
+      properties:
+        session_id: { type: string, format: uuid }
+        created_at: { type: string }
+        closed_at: { type: [string, "null"] }
+        table_identifier: { type: string }
+        total_spent: { type: string }
+
+    Promo:
+      type: object
+      x-go-source: backend/internal/handlers/promo.go:139
+      description: Promo list row with time-of-day fields normalized to HH:MM strings
+      required:
+        - id
+        - branch_id
+        - code
+        - type
+        - value
+        - min_order_amount
+        - max_uses
+        - uses_per_phone
+        - valid_from
+        - valid_until
+        - time_window_start
+        - time_window_end
+        - is_active
+        - description
+        - created_at
+        - redeemed_count
+      properties:
+        id: { type: integer }
+        branch_id: { type: integer }
+        code: { type: string }
+        type: { type: string, enum: [flat_amount, percentage] }
+        value: { type: number }
+        min_order_amount: { type: number }
+        max_uses: { type: [integer, "null"] }
+        uses_per_phone: { type: integer }
+        valid_from: { type: string, format: date-time }
+        valid_until: { type: string, format: date-time }
+        time_window_start: { type: [string, "null"], description: HH:MM when present }
+        time_window_end: { type: [string, "null"], description: HH:MM when present }
+        is_active: { type: boolean }
+        description: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        redeemed_count: { type: integer }
+
+    PGTime:
+      type: object
+      x-go-source: backend/internal/db/sqlc/models.go:1152
+      description: Current JSON encoding of pgtype.Time used by raw sqlc promo responses
+      required: [Microseconds, Valid]
+      properties:
+        Microseconds: { type: integer, format: int64 }
+        Valid: { type: boolean }
+
+    RawPromo:
+      type: object
+      x-go-source: backend/internal/db/sqlc/models.go:1141
+      description: Raw sqlc promo returned by create and update; unlike list, its time fields are pgtype.Time objects
+      required:
+        - id
+        - branch_id
+        - code
+        - type
+        - value
+        - min_order_amount
+        - max_uses
+        - uses_per_phone
+        - valid_from
+        - valid_until
+        - time_window_start
+        - time_window_end
+        - is_active
+        - description
+        - created_by
+        - created_at
+        - redeemed_count
+      properties:
+        id: { type: integer }
+        branch_id: { type: integer }
+        code: { type: string }
+        type: { type: string, enum: [flat_amount, percentage] }
+        value: { type: number }
+        min_order_amount: { type: number }
+        max_uses: { type: [integer, "null"] }
+        uses_per_phone: { type: integer }
+        valid_from: { type: string, format: date-time }
+        valid_until: { type: string, format: date-time }
+        time_window_start: { $ref: "#/components/schemas/PGTime" }
+        time_window_end: { $ref: "#/components/schemas/PGTime" }
+        is_active: { type: boolean }
+        description: { type: [string, "null"] }
+        created_by: { type: [integer, "null"] }
+        created_at: { type: string, format: date-time }
+        redeemed_count: { type: integer }
+
+    ValidatePromoResponse:
+      type: object
+      x-go-source: backend/internal/handlers/promo.go:93
+      required: [promo_id, discount_amount, description]
+      properties:
+        promo_id: { type: integer }
+        discount_amount: { type: number }
+        description: { type: string }
 
     Staff:
       type: object
+      x-go-source: backend/internal/handlers/staff.go:218
+      required: [id, branch_id, name, role, staff_code]
       properties:
         id:
           type: integer
@@ -431,23 +931,60 @@ components:
         name:
           type: string
         role:
+          $ref: "#/components/schemas/StaffRole"
+        staff_code:
           type: string
-          enum: [owner, manager, kitchen, waiter]
+
+    StaffRosterMember:
+      type: object
+      x-go-source: backend/internal/db/sqlc/staff.sql.go:330
+      required: [id, branch_id, name, role, staff_code, is_active, created_at]
+      properties:
+        id: { type: integer }
+        branch_id: { type: integer }
+        name: { type: string }
+        role: { $ref: "#/components/schemas/StaffRole" }
+        staff_code: { type: string }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
 
     StaffSession:
       type: object
+      x-go-source: backend/internal/services/staff.go:73
+      required:
+        - token
+        - session_token
+        - session_id
+        - staff_id
+        - branch_id
+        - organization_id
+        - role
+        - staff_code
+        - token_version
+        - pin_version
       properties:
+        token:
+          type: string
+        session_token:
+          type: string
+        session_id:
+          type: string
+          format: uuid
         staff_id:
           type: integer
         branch_id:
           type: integer
+        organization_id:
+          type: integer
         role:
-          type: string
-        token:
-          type: string
+          $ref: "#/components/schemas/StaffRole"
+        staff_code: { type: string }
+        token_version: { type: integer }
+        pin_version: { type: integer }
 
     SessionSnapshot:
       type: object
+      x-go-source: backend/internal/services/session.go:653
       description: |
         Full authoritative session state for WebSocket reconnect reconciliation. The embedded
         `session` is guest-safe (no `session_token`, F-8). Reconcile semantics:
@@ -455,6 +992,7 @@ components:
           or the requested gap could not be replayed contiguously);
         - otherwise replay `missed_events` (contiguous from `last_sequence`) then reconcile.
         The shared cart is NOT included here — refetch it via `GET /sessions/{id}/cart`.
+      required: [session, table_identifier, participants, orders, assistance, snapshot_at]
       properties:
         session:
           $ref: "#/components/schemas/Session"
@@ -476,8 +1014,7 @@ components:
           type: array
           description: Contiguous events since `last_sequence`; omitted when authoritative
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/WebSocketEnvelope"
         snapshot_authoritative:
           type: boolean
           description: When true, this snapshot is the whole truth — replace local state
@@ -489,31 +1026,97 @@ components:
           type: string
           format: date-time
 
+    WebSocketEnvelope:
+      type: object
+      x-go-source: backend/internal/websocket/message.go:66
+      required: [event_id, sequence, organization_id, branch_id, session_id, event, timestamp]
+      properties:
+        event_id: { type: string, format: uuid }
+        sequence: { type: integer, format: int64 }
+        organization_id: { type: integer, format: int64 }
+        branch_id: { type: integer, format: int64 }
+        session_id: { type: string, format: uuid }
+        event: { $ref: "#/components/schemas/WebSocketEventType" }
+        payload: {}
+        timestamp: { type: string, format: date-time }
+
+    ForceCloseResult:
+      type: object
+      x-go-source: backend/internal/services/session_close.go:24
+      required: [session, cancelled_payment_ids]
+      properties:
+        session: { $ref: "#/components/schemas/Session" }
+        cancelled_payment_ids:
+          type: [array, "null"]
+          items: { type: integer }
+        stranded_payment_ids:
+          type: array
+          items: { type: integer }
+
     EventLogEntry:
       type: object
+      x-go-source: backend/internal/db/sqlc/models.go:783
+      required: [id, session_id, branch_id, event_type, actor_type, actor_id, payload, created_at]
       properties:
         id:
           type: integer
         session_id:
-          type: string
+          type: [string, "null"]
           format: uuid
         branch_id:
-          type: integer
+          type: [integer, "null"]
         event_type:
           type: string
         actor_type:
           type: string
         actor_id:
-          type: integer
+          type: [string, "null"]
         payload:
-          type: object
+          description: Arbitrary JSON payload recorded by the event producer
         created_at:
           type: string
           format: date-time
 
+    BillItem:
+      type: object
+      x-go-source: backend/internal/handlers/billing.go:35
+      required: [name, quantity, unit_price, modifiers, line_total]
+      properties:
+        name: { type: string }
+        quantity: { type: integer }
+        unit_price: { type: number }
+        modifiers: { type: array, items: { type: string } }
+        line_total: { type: number }
+
+    BillOrder:
+      type: object
+      x-go-source: backend/internal/handlers/billing.go:44
+      required: [order_id, order_number, placed_at, items, order_total]
+      properties:
+        order_id: { type: string, format: uuid }
+        order_number: { type: string }
+        placed_at: { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/BillItem" }
+        order_total: { type: number }
+
     Bill:
       type: object
+      x-go-source: backend/internal/handlers/billing.go:53
       description: Itemized bill for a session. Money fields are numbers (₹); currency defaults to INR.
+      required:
+        - session_id
+        - orders
+        - subtotal
+        - tax_rate
+        - tax_amount
+        - service_charge_rate
+        - service_charge
+        - discount_amount
+        - tip_amount
+        - total
+        - currency
       properties:
         session_id:
           type: string
@@ -521,22 +1124,7 @@ components:
         orders:
           type: array
           items:
-            type: object
-            properties:
-              order_id: { type: string, format: uuid }
-              order_number: { type: string }
-              placed_at: { type: string, format: date-time }
-              order_total: { type: number }
-              items:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    name: { type: string }
-                    quantity: { type: integer }
-                    unit_price: { type: number }
-                    modifiers: { type: array, items: { type: string } }
-                    line_total: { type: number }
+            $ref: "#/components/schemas/BillOrder"
         subtotal: { type: number }
         tax_rate: { type: number }
         tax_amount: { type: number }
@@ -551,11 +1139,15 @@ components:
 
     ThemeConfig:
       type: object
+      x-go-source:
+        - backend/internal/services/theme.go:54
+        - backend/migrations/000038_serene_theme_preset.up.sql:5
       description: Resolved theme — a preset key plus allowlisted hex design tokens.
+      required: [preset, tokens]
       properties:
         preset:
           type: string
-          enum: [dark-luxury, modern-minimal, warm-cafe, vibrant]
+          enum: [serene, dark-luxury, modern-minimal, warm-cafe, vibrant]
         tokens:
           type: object
           description: Map of allowlisted token key → hex colour (#RRGGBB or #RRGGBBAA)
@@ -564,10 +1156,26 @@ components:
 
     CollateralConfig:
       type: object
+      x-go-source: backend/internal/services/collateral.go:53
       description: |
         Branch-scoped premium QR print collateral config. Strictly validated — unknown JSON keys
         are rejected (400). Consumes the theme for colour/typography; owns only the physical concern.
       additionalProperties: false
+      required:
+        - format
+        - showLogo
+        - showBranch
+        - showWifi
+        - showFooter
+        - welcomeMessage
+        - subtitle
+        - footerNote
+        - branchDisplay
+        - tagline
+        - wifiName
+        - wifiPassword
+        - instagram
+        - website
       properties:
         format:
           type: string
@@ -588,7 +1196,8 @@ components:
 
     FlagOverrideRequest:
       type: object
-      required: [enabled]
+      x-go-source: backend/internal/handlers/platform_flags.go:33
+      required: [enabled, reason]
       properties:
         enabled:
           type: boolean
@@ -597,7 +1206,9 @@ components:
 
     FlagState:
       type: object
+      x-go-source: backend/internal/services/flag.go:31
       description: Resolved feature-flag state (precedence branch > org > global > catalog default)
+      required: [key, enabled, source]
       properties:
         key:
           type: string
@@ -609,11 +1220,27 @@ components:
 
     WaiterPerformanceRow:
       type: object
+      x-go-source: backend/internal/services/staff_analytics.go:48
       description: |
         Per-staff front-of-house activity derived from existing operational data
         (event_log, payments, staff_sessions). "sessions_handled" means distinct
         sessions the staff member touched (served/settled/assisted) — there is
         no waiter↔session assignment concept.
+      required:
+        - staff_id
+        - staff_name
+        - staff_role
+        - sessions_handled
+        - tables_served
+        - orders_assisted
+        - orders_served
+        - assistance_accepted
+        - assistance_resolved
+        - avg_response_seconds
+        - payments_settled
+        - avg_settlement_seconds
+        - login_count
+        - active_seconds
       properties:
         staff_id: { type: integer, format: int64 }
         staff_name: { type: string }
@@ -632,7 +1259,9 @@ components:
 
     KitchenPerformanceRow:
       type: object
+      x-go-source: backend/internal/services/staff_analytics.go:67
       description: Per-staff kitchen throughput, attributed to whoever marked the order ready (shared kitchen logins blur attribution).
+      required: [staff_id, staff_name, orders_completed, avg_prep_seconds, peak_orders_per_hour]
       properties:
         staff_id: { type: integer, format: int64 }
         staff_name: { type: string }
@@ -645,7 +1274,9 @@ components:
 
     StaffDailyActivityRow:
       type: object
+      x-go-source: backend/internal/services/staff_analytics.go:77
       description: Manager utilization summary — one row per staff member per UTC day with activity.
+      required: [staff_id, staff_name, staff_role, day, event_count, login_count, active_seconds]
       properties:
         staff_id: { type: integer, format: int64 }
         staff_name: { type: string }
@@ -657,7 +1288,9 @@ components:
 
     BranchStaffPerformance:
       type: object
+      x-go-source: backend/internal/services/staff_analytics.go:88
       description: Bundled staff-performance report (platform operator read).
+      required: [branch_id, period, waiters, kitchen, summary]
       properties:
         branch_id: { type: integer, format: int64 }
         period: { type: string }
@@ -673,7 +1306,9 @@ components:
 
     LoyaltyProgram:
       type: object
+      x-go-source: backend/internal/services/loyalty.go:191
       description: Org-level earning rule — earn_rate_points per earn_rate_amount of spend (e.g. 1 point per ₹100).
+      required: [organization_id, is_active, earn_rate_points, earn_rate_amount, configured]
       properties:
         organization_id: { type: integer, format: int64 }
         is_active: { type: boolean }
@@ -685,6 +1320,15 @@ components:
 
     LoyaltyAccount:
       type: object
+      x-go-source: backend/internal/services/loyalty.go:248
+      required:
+        - account_id
+        - customer_id
+        - points_balance
+        - lifetime_points_earned
+        - lifetime_points_redeemed
+        - visit_count
+        - lifetime_spend
       properties:
         account_id: { type: integer, format: int64 }
         customer_id: { type: integer, format: int64 }
@@ -696,6 +1340,8 @@ components:
 
     LoyaltyCustomerLookup:
       type: object
+      x-go-source: backend/internal/services/loyalty.go:258
+      required: [customer_id, display_name, phone_e164, account]
       properties:
         customer_id: { type: integer, format: int64 }
         display_name: { type: string }
@@ -708,7 +1354,9 @@ components:
 
     LoyaltyTransaction:
       type: object
+      x-go-source: backend/internal/services/loyalty.go:265
       description: Append-only points-ledger row; points is signed (earn > 0, redeem < 0, adjustment either).
+      required: [id, type, points, amount, performed_by_actor_type, reason, created_at]
       properties:
         id: { type: integer, format: int64 }
         type: { type: string, enum: [earn, redeem, adjustment] }
@@ -721,8 +1369,42 @@ components:
         reason: { type: string }
         created_at: { type: string, format: date-time }
 
+    LoyaltyTopCustomer:
+      type: object
+      x-go-source: backend/internal/services/loyalty.go:473
+      required:
+        - account_id
+        - customer_id
+        - display_name
+        - phone_e164
+        - points_balance
+        - lifetime_points_earned
+        - visit_count
+        - lifetime_spend
+      properties:
+        account_id: { type: integer, format: int64 }
+        customer_id: { type: integer, format: int64 }
+        display_name: { type: string }
+        phone_e164: { type: string }
+        points_balance: { type: integer, format: int64 }
+        lifetime_points_earned: { type: integer, format: int64 }
+        visit_count: { type: integer, format: int64 }
+        lifetime_spend: { type: string }
+
     LoyaltyAnalytics:
       type: object
+      x-go-source: backend/internal/services/loyalty.go:484
+      required:
+        - period
+        - points_issued
+        - points_redeemed
+        - earn_count
+        - redeem_count
+        - active_customers
+        - total_accounts
+        - total_sessions
+        - loyalty_sessions
+        - top_customers
       properties:
         period: { type: string }
         points_issued: { type: integer, format: int64 }
@@ -736,16 +1418,7 @@ components:
         top_customers:
           type: array
           items:
-            type: object
-            properties:
-              account_id: { type: integer, format: int64 }
-              customer_id: { type: integer, format: int64 }
-              display_name: { type: string }
-              phone_e164: { type: string }
-              points_balance: { type: integer, format: int64 }
-              lifetime_points_earned: { type: integer, format: int64 }
-              visit_count: { type: integer, format: int64 }
-              lifetime_spend: { type: string }
+            $ref: "#/components/schemas/LoyaltyTopCustomer"
 
   responses:
     NotFound:
@@ -895,6 +1568,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [status]
                 properties:
                   status:
                     type: string
@@ -911,6 +1585,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [status]
                 properties:
                   status:
                     type: string
@@ -966,6 +1641,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [session, participant, guest_access_token]
                 properties:
                   session:
                     $ref: "#/components/schemas/Session"
@@ -1103,6 +1779,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [session, participant, guest_access_token]
                 properties:
                   session:
                     $ref: "#/components/schemas/Session"
@@ -1157,6 +1834,47 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /sessions/{id}/host:
+    post:
+      summary: Transfer session host
+      description: |
+        Implements invariant H2: only the current host may explicitly transfer the role, and the
+        target must be an active participant in the same session. Transfer is rejected while the
+        session is payment-locked. The operation is serialized with other host mutations.
+      tags: [Sessions]
+      security:
+        - GuestBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [participant_id]
+              properties:
+                participant_id: { type: integer }
+      responses:
+        "200":
+          description: Host transferred
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, host_participant_id]
+                properties:
+                  ok: { type: boolean, const: true }
+                  host_participant_id: { type: integer }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /sessions/{id}/force-close:
     post:
       summary: Staff force-close a session
@@ -1199,24 +1917,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  session:
-                    $ref: "#/components/schemas/Session"
-                  cancelled_payment_ids:
-                    type: array
-                    items:
-                      type: integer
-                      format: int64
-                    description: Non-terminal payments cancelled alongside the session.
-                  stranded_payment_ids:
-                    type: array
-                    items:
-                      type: integer
-                      format: int64
-                    description: >-
-                      Non-terminal payments the domain transition table refuses to move to
-                      `cancelled`. Reported, never force-written.
+                $ref: "#/components/schemas/ForceCloseResult"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -1352,9 +2053,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/CartItem"
+                $ref: "#/components/schemas/CartResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
         "429":
@@ -1484,12 +2183,15 @@ paths:
           application/json:
             schema:
               type: object
-              required: [branch_id, placed_by_participant_id, idempotency_key, items]
+              description: |
+                Client-supplied order fields. `branch_id` and `placed_by_participant_id` are
+                derived from the session and authenticated guest; the handler rejects either
+                field when supplied by a client.
+              x-go-source:
+                - backend/internal/handlers/order.go:35-41
+                - backend/internal/handlers/order.go:68-71
+              required: [idempotency_key, items]
               properties:
-                branch_id:
-                  type: integer
-                placed_by_participant_id:
-                  type: integer
                 idempotency_key:
                   type: string
                   description: Client-generated unique key; repeat submissions return the original order
@@ -1516,14 +2218,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  order:
-                    $ref: "#/components/schemas/Order"
-                  order_items:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/OrderItem"
+                $ref: "#/components/schemas/PlaceOrderResult"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -1540,7 +2235,12 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Session closed
+          description: |
+            `SESSION_CLOSED` (the session can no longer take an order),
+            `PAYMENT_IN_PROGRESS` (the cart is frozen by a non-terminal payment),
+            `IDEMPOTENCY_CONFLICT` (the key was reused with a different request body), or
+            `IDEMPOTENCY_IN_PROGRESS` (a concurrent request holds the key).
+            Derived from `backend/internal/handlers/order.go:104-113`.
           content:
             application/json:
               schema:
@@ -2044,6 +2744,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [ok]
                 properties:
                   ok:
                     type: boolean
@@ -2101,11 +2802,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  promo_id: { type: integer }
-                  discount_amount: { type: number }
-                  description: { type: string }
+                $ref: "#/components/schemas/ValidatePromoResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -2149,9 +2846,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/MenuCategory"
+                $ref: "#/components/schemas/FullMenu"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -2599,21 +3294,12 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [staff]
                 properties:
                   staff:
                     type: array
                     items:
-                      type: object
-                      properties:
-                        id: { type: integer }
-                        branch_id: { type: integer }
-                        name: { type: string }
-                        role:
-                          type: string
-                          enum: [owner, manager, kitchen, waiter]
-                        staff_code: { type: string }
-                        is_active: { type: boolean }
-                        created_at: { type: string, format: date-time }
+                      $ref: "#/components/schemas/StaffRosterMember"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2803,7 +3489,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Order"
+                  $ref: "#/components/schemas/KitchenOrder"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2829,7 +3515,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Session"
+                  $ref: "#/components/schemas/SessionWithTable"
 
   /branches/{id}/assist/active:
     get:
@@ -2851,7 +3537,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/AssistanceRequest"
+                  $ref: "#/components/schemas/ActiveAssistanceRequest"
 
   # ── Event Log ─────────────────────────────────────────────────────────────
   /sessions/{id}/events:
@@ -2921,6 +3607,8 @@ paths:
           description: Logged out
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /branches/{id}/payments:
     get:
@@ -2938,7 +3626,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Payment"
+                  $ref: "#/components/schemas/PendingPayment"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2958,9 +3646,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/MenuCategory"
+                $ref: "#/components/schemas/FullMenu"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2980,9 +3666,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
+                type: object
+                required: [tables]
+                properties:
+                  tables:
+                    type: array
+                    items: { $ref: "#/components/schemas/Table" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -3012,7 +3701,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/Table"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -3183,11 +3872,12 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [customers]
                 properties:
                   customers:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/Customer"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -3702,27 +4392,7 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
-                  properties:
-                    id: { type: integer }
-                    code: { type: string }
-                    type:
-                      type: string
-                      enum: [flat_amount, percentage]
-                    value: { type: number }
-                    min_order_amount: { type: number }
-                    max_uses: { type: [integer, "null"] }
-                    uses_per_phone: { type: integer }
-                    valid_from: { type: string, format: date-time }
-                    valid_until: { type: string, format: date-time }
-                    time_window_start:
-                      type: [string, "null"]
-                      description: 'Local start time as "HH:MM" (null when no daily window)'
-                    time_window_end:
-                      type: [string, "null"]
-                      description: 'Local end time as "HH:MM" (null when no daily window)'
-                    is_active: { type: boolean }
-                    description: { type: string }
+                  $ref: "#/components/schemas/Promo"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
     post:
@@ -3759,7 +4429,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/RawPromo"
         "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -3771,6 +4441,46 @@ paths:
                 $ref: "#/components/schemas/APIError"
 
   /branches/{id}/promos/{promo_id}:
+    patch:
+      summary: Update a promo (staff)
+      tags: [Promos]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: promo_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, type, value, valid_from, valid_until]
+              properties:
+                code: { type: string }
+                type: { type: string, enum: [flat_amount, percentage] }
+                value: { type: number }
+                min_order_amount: { type: number }
+                max_uses: { type: [integer, "null"] }
+                uses_per_phone: { type: integer }
+                valid_from: { type: string, format: date-time }
+                valid_until: { type: string, format: date-time }
+                time_window_start: { type: string, description: HH:MM }
+                time_window_end: { type: string, description: HH:MM }
+                description: { type: string }
+      responses:
+        "200":
+          description: Promo updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RawPromo" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
     delete:
       summary: Deactivate (soft-delete) a promo (staff)
       tags: [Promos]
@@ -3786,6 +4496,24 @@ paths:
       responses:
         "204":
           description: Promo deactivated
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /branches/{id}/promos/{promo_id}/activate:
+    post:
+      summary: Reactivate a promo (staff)
+      tags: [Promos]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdPath"
+        - name: promo_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Promo activated }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -4023,6 +4751,51 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
+  /tables/{id}:
+    patch:
+      summary: Rename a table or change its capacity (owner/manager)
+      tags: [Tables]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier]
+              properties:
+                identifier: { type: string, minLength: 1, maxLength: 50 }
+                capacity: { type: integer }
+      responses:
+        "200":
+          description: Table updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Table" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      summary: Delete an unused table (owner/manager)
+      description: Refuses to delete a table while a live session occupies it.
+      tags: [Tables]
+      security:
+        - StaffBearer: []
+      parameters:
+        - $ref: "#/components/parameters/IntIdPath"
+      responses:
+        "204": { description: Table deleted }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /tables/{id}/qr-refresh:
     patch:
       summary: Rotate a table's QR token (staff; branch ownership verified)
@@ -4037,7 +4810,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/Table"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -4079,11 +4852,12 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [history]
                 properties:
                   history:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/CustomerHistoryEntry"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -4365,6 +5139,14 @@ paths:
         "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: |
+            `ORGANIZATION_EXISTS` — the organization code or restaurant slug is already in use.
+            Derived from `backend/internal/handlers/platform.go:341-351`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
 
   /platform/organizations/{org_id}:
     get:
@@ -4488,6 +5270,15 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            `BRANCH_CONFLICT` — the branch code, an initial table identifier, or the initial
+            owner's staff code conflicts with an existing value. Derived from
+            `backend/internal/handlers/platform.go:515-570`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIError"
 
   # ── Platform: branches (read + onboarding) ──────────────────────────────────
   /platform/branches/{branch_id}:
@@ -4508,6 +5299,36 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Update a branch's identity and tenant logo (super_admin)
+      tags: [Branches]
+      security:
+        - PlatformBearer: []
+      parameters:
+        - $ref: "#/components/parameters/BranchIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                timezone: { type: string }
+                branch_code: { type: string }
+                order_prefix: { type: string }
+                logo_url: { type: string }
+      responses:
+        "200":
+          description: Updated branch detail
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /platform/branches/{branch_id}/tables:
     get:
