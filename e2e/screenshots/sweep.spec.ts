@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test"
+import type { Page } from "@playwright/test"
 import { BASE_URL, API_URL } from "../playwright.config"
 import { seedOrg, createSession, placeOrder, loginStaff } from "../helpers/api"
 import path from "path"
@@ -16,6 +17,29 @@ function viewportLabel(width: number): string {
   return "desktop"
 }
 
+/**
+ * Put the guest credentials on the app origin before opening a /session route.
+ *
+ * Without this the session layout's guard finds no credentials and does
+ * router.replace("/"), so every "guest" screenshot below was the landing page —
+ * on every browser, silently, because these are ARTIFACT specs with no
+ * assertions. It also raced: on WebKit the redirect landed while page.goto was
+ * still waiting for load, and goto threw "interrupted by another navigation".
+ */
+async function injectGuestCreds(
+  page: Page,
+  sessionId: string,
+  participantId: number,
+  token: string
+): Promise<void> {
+  await page.goto(`${BASE_URL}/`)
+  await page.evaluate(({ id, pid, tok }) => {
+    sessionStorage.setItem("session_id", id)
+    sessionStorage.setItem("participant_id", String(pid))
+    sessionStorage.setItem("guest_access_token", tok)
+  }, { id: sessionId, pid: participantId, tok: token })
+}
+
 test.describe("Screenshot sweep — all viewports and roles", () => {
   // ARTIFACT: produces screenshots; no assertion can fail on a broken UI. Not coverage.
   test("guest flow: QR landing → session → menu → cart → payment", async ({ page, viewport }) => {
@@ -29,6 +53,8 @@ test.describe("Screenshot sweep — all viewports and roles", () => {
     const { table, menu } = await seedOrg(`sweep-guest-${vp}-${Date.now()}`)
     const created = await createSession(table.id, "SweepGuest")
     const sessionId = created.session.id
+
+    await injectGuestCreds(page, sessionId, created.participant.id, created.guest_access_token)
 
     await page.goto(`${BASE_URL}/session/${sessionId}`)
     await page.waitForTimeout(1000)
@@ -84,6 +110,8 @@ test.describe("Screenshot sweep — all viewports and roles", () => {
     })
     expect(closeRes.status).toBe(200)
 
+    await injectGuestCreds(page, sessionId, created.participant.id, created.guest_access_token)
+
     await page.goto(`${BASE_URL}/session/${sessionId}`)
     await page.waitForTimeout(1500)
     await page.screenshot({ path: path.join(dir, "06-session-ended.png"), fullPage: true })
@@ -113,6 +141,8 @@ test.describe("Screenshot sweep — all viewports and roles", () => {
         idempotency_key: `sweep-${Date.now()}`,
       }),
     })
+
+    await injectGuestCreds(page, sessionId, created.participant.id, guestToken)
 
     await page.goto(`${BASE_URL}/session/${sessionId}/payment`)
     await page.waitForTimeout(1000)
