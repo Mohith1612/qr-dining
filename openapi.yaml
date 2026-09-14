@@ -2183,12 +2183,15 @@ paths:
           application/json:
             schema:
               type: object
-              required: [branch_id, placed_by_participant_id, idempotency_key, items]
+              description: |
+                Client-supplied order fields. `branch_id` and `placed_by_participant_id` are
+                derived from the session and authenticated guest; the handler rejects either
+                field when supplied by a client.
+              x-go-source:
+                - backend/internal/handlers/order.go:35-41
+                - backend/internal/handlers/order.go:68-71
+              required: [idempotency_key, items]
               properties:
-                branch_id:
-                  type: integer
-                placed_by_participant_id:
-                  type: integer
                 idempotency_key:
                   type: string
                   description: Client-generated unique key; repeat submissions return the original order
@@ -2232,7 +2235,12 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Session closed
+          description: |
+            `SESSION_CLOSED` (the session can no longer take an order),
+            `PAYMENT_IN_PROGRESS` (the cart is frozen by a non-terminal payment),
+            `IDEMPOTENCY_CONFLICT` (the key was reused with a different request body), or
+            `IDEMPOTENCY_IN_PROGRESS` (a concurrent request holds the key).
+            Derived from `backend/internal/handlers/order.go:104-113`.
           content:
             application/json:
               schema:
@@ -3599,6 +3607,8 @@ paths:
           description: Logged out
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /branches/{id}/payments:
     get:
