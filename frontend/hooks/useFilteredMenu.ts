@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import { useMenuStore } from "@/store/menu"
-import type { MenuItem } from "@/types/api"
+import type { MenuItemView as MenuItem } from "@/types/api-view"
 
 function matchesSearch(item: MenuItem, query: string): boolean {
   const q = query.toLowerCase().trim()

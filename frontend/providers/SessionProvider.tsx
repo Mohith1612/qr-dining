@@ -131,7 +131,7 @@ export function SessionProvider({ sessionId, participantId, children }: SessionP
   if (sessionClosed) return (
     <SessionEndedScreen
       paymentStatus={completedPayment ? "completed" : null}
-      totalAmount={completedPayment ? parseFloat(completedPayment.amount) : undefined}
+      totalAmount={completedPayment?.amount}
     />
   )
 

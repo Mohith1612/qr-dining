@@ -14,7 +14,8 @@ import { canCancelPayment, isStaleRecoveryError, recoveryErrorMessage } from "@/
 import { relativeTime, formatCurrency } from "@/lib/format"
 import { CheckCircle, Loader2, UtensilsCrossed, BadgeIndianRupee, ConciergeBell } from "lucide-react"
 import { toast } from "sonner"
-import type { AssistanceRequest, AssistanceType, KitchenOrder, PendingPayment, PaymentMethod } from "@/types/api"
+import type { AssistanceType, KitchenOrder, PendingPayment, PaymentMethod } from "@/types/api"
+import type { AssistanceRequestView as AssistanceRequest } from "@/types/api-view"
 
 const TYPE_LABEL: Record<AssistanceType, string> = {
   waiter: "Waiter needed",

@@ -1,5 +1,6 @@
 import { create } from "zustand"
-import type { MenuCategory, MenuItem, DietaryFlag, ItemBadge } from "@/types/api"
+import type { DietaryFlag, ItemBadge } from "@/types/api"
+import type { MenuCategoryView as MenuCategory, MenuItemView as MenuItem } from "@/types/api-view"
 
 interface ActiveFilters {
   dietary: DietaryFlag[]

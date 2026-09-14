@@ -13,7 +13,7 @@ import { Vignette } from "@/components/shared/Vignette"
 import { Trash2, ShoppingCart, ChevronRight, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { ApiError, friendlyErrorMessage } from "@/lib/api/client"
-import type { CartItem } from "@/types/api"
+import type { CartViewItem } from "@/types/api-view"
 import { track } from "@/lib/product-analytics/events"
 
 interface Props {
@@ -24,7 +24,7 @@ function itemHue(id: number): number {
   return (id * 47 + 15) % 60 + 20
 }
 
-function CartItemRow({ item, addedBy, onRemove }: { item: CartItem; addedBy?: string; onRemove: (id: number) => void }) {
+function CartItemRow({ item, onRemove }: { item: CartViewItem; onRemove: (id: number) => void }) {
   const [imgError, setImgError] = useState(false)
   const modifierTotal = item.selected_modifiers?.reduce((sum, m) => sum + m.price_delta, 0) ?? 0
   const unitPrice = (item.item_price ?? 0) + modifierTotal
@@ -69,9 +69,6 @@ function CartItemRow({ item, addedBy, onRemove }: { item: CartItem; addedBy?: st
         {item.note && (
           <p data-ph-mask style={{ fontSize: 12.5, fontStyle: "italic", color: "var(--ink-3)", marginTop: 2 }}>&quot;{item.note}&quot;</p>
         )}
-        {addedBy && (
-          <p data-ph-mask style={{ fontSize: 11.5, color: "var(--ink-4)", marginTop: 4 }}>Added by {addedBy}</p>
-        )}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, flexShrink: 0 }}>
@@ -102,7 +99,7 @@ export default function CartPage({ params }: Props) {
   const router = useRouter()
   const { items, loading, removeItem, refreshCart } = useCart()
   const { placeOrder } = useOrders()
-  const { participant, participants, isHost } = useSession()
+  const { participants, isHost } = useSession()
   const [placing, setPlacing] = useState(false)
 
   const hostName = participants.find((p) => p.is_host)?.display_name
@@ -111,13 +108,6 @@ export default function CartPage({ params }: Props) {
   // so the table is never stranded unable to order.
   const hasHost = participants.some((p) => p.is_host)
   const canSend = isHost || !hasHost
-
-  // Resolve who added each item for the shared-cart "Added by" line.
-  function addedByName(pid: number): string | undefined {
-    const p = participants.find((pp) => pp.id === pid)
-    if (!p) return undefined
-    return p.id === participant?.id ? "you" : p.display_name
-  }
 
   // Promo codes are entered at the bill (payment screen), not on the cart.
 
@@ -205,7 +195,7 @@ export default function CartPage({ params }: Props) {
         {/* Item list */}
         <div style={{ marginBottom: 18 }}>
           {items.map((item) => (
-            <CartItemRow key={item.id} item={item} addedBy={addedByName(item.participant_id)} onRemove={handleRemove} />
+            <CartItemRow key={item.id} item={item} onRemove={handleRemove} />
           ))}
         </div>
 

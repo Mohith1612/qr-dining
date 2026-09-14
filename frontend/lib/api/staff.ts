@@ -4,8 +4,9 @@ import type {
   Staff,
   StaffRosterMember,
   StaffRole,
-  Session,
+  SessionWithTable,
   KitchenOrder,
+  FullMenu,
   MenuCategory,
   MenuItem,
   ItemModifier,
@@ -58,7 +59,7 @@ export const staffApi = {
     api.patch<void>(`/staff/${staffId}/deactivate`, {}, { staffToken }),
 
   getActiveSessions: (branchId: number, staffToken: string) =>
-    api.get<Session[]>(`/branches/${branchId}/sessions/active`, { staffToken }),
+    api.get<SessionWithTable[]>(`/branches/${branchId}/sessions/active`, { staffToken }),
 
   getActiveOrders: (branchId: number, staffToken: string) =>
     api.get<KitchenOrder[]>(`/branches/${branchId}/orders/active`, { staffToken }),
@@ -175,7 +176,7 @@ export const staffApi = {
     api.put<{ collateral: CollateralConfig }>(`/branches/${branchId}/collateral`, config, { staffToken }),
 
   getAdminMenu: (branchId: number, staffToken: string) =>
-    api.get<{ branch_id: number; categories: MenuCategory[] }>(`/branches/${branchId}/menu/full`, { staffToken }),
+    api.get<FullMenu>(`/branches/${branchId}/menu/full`, { staffToken }),
 
   deleteMenuItem: (itemId: number, branchId: number, staffToken: string) =>
     api.delete<void>(`/menu/items/${itemId}?branch_id=${branchId}`, { staffToken }),

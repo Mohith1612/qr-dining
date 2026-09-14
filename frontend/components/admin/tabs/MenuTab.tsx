@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { formatCurrency } from "@/lib/format"
 import { Loader2, MoreVertical, ChevronDown, ChevronRight, Plus, Trash2, Edit2 } from "lucide-react"
 import { toast } from "sonner"
-import type { MenuCategory, MenuItem } from "@/types/api"
+import type { MenuCategoryView as MenuCategory, MenuItemView as MenuItem } from "@/types/api-view"
 import { MenuItemModal } from "@/components/admin/MenuItemModal"
 
 export function MenuTab() {
@@ -482,4 +482,3 @@ export function MenuTab() {
     </>
   )
 }
-

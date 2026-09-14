@@ -1,5 +1,6 @@
 import { create } from "zustand"
-import type { AssistanceRequest, AssistanceStatus } from "@/types/api"
+import type { AssistanceStatus } from "@/types/api"
+import type { AssistanceRequestView as AssistanceRequest } from "@/types/api-view"
 
 interface AssistanceState {
   requests: AssistanceRequest[]
