@@ -24,11 +24,15 @@ test.describe("L-09: Stale browser revisit after session closed", () => {
 
     // Should see session-ended screen (either "session has ended" or redirect to home)
     const ended = page.locator("text=/session has ended|ended|closed/i")
-    const redirectedHome = page.url().endsWith("/")
 
+    // Wait for whichever recovery the app chooses. The second branch used to be
+    // `page.waitForURL("/**")`, whose glob matches the URL the page is already
+    // on — so the race resolved instantly, neither branch was ever awaited, and
+    // the assertion below read whatever had happened to render in zero time.
+    // That passed on a warm Chromium and failed on the first cold WebKit run.
     await Promise.race([
       ended.waitFor({ timeout: 10_000 }),
-      page.waitForURL("/**", { timeout: 10_000 }),
+      page.waitForURL((url) => url.pathname === "/", { timeout: 10_000 }),
     ]).catch(() => {})
 
     const finalUrl = page.url()

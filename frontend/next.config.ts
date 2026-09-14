@@ -43,6 +43,27 @@ if (isDev) {
   connectSources.push("ws://localhost:*", "http://localhost:*");
 }
 
+// Is this deployment actually served over TLS? Two headers below are only
+// correct when it is: `upgrade-insecure-requests` and Strict-Transport-Security.
+//
+// NODE_ENV alone is not the right test. CI builds the frontend in production
+// mode and serves it over plain http://localhost, and so does any local
+// `next start`. Emitting `upgrade-insecure-requests` there rewrites every
+// http:// subresource and every ws:// socket to https/wss. WebKit obeys that
+// on localhost — the spec's upgrade algorithm has no localhost carve-out —
+// while Chromium exempts localhost, so the breakage is invisible on Chrome and
+// total on Safari: the app's own JS chunks fail the TLS handshake, nothing
+// hydrates, and the guest WebSocket never dials the right scheme.
+//
+// An http:// API base is the honest signal that there is no TLS in front of us,
+// and ALLOW_LOCALHOST_BUILD is what CI and local `next build` already set to say
+// "this is not a real deployment" (see scripts/check-prod-env.mjs). When neither
+// says otherwise we assume a real deployment and keep both headers.
+const isLocalBuild =
+  process.env.ALLOW_LOCALHOST_BUILD === "true" ||
+  process.env.NEXT_PUBLIC_ENV === "development";
+const servesOverTLS = !isDev && !isLocalBuild && !API_BASE.startsWith("http://");
+
 const csp = [
   "default-src 'self'",
   // Inline script directive is required by Next.js hydration today. Tracked
@@ -57,7 +78,8 @@ const csp = [
   "form-action 'self'",
   "object-src 'none'",
   ...(POSTHOG_REPLAY ? ["worker-src 'self' blob:"] : []),
-  "upgrade-insecure-requests",
+  // Only when we are actually behind TLS — see servesOverTLS above.
+  ...(servesOverTLS ? ["upgrade-insecure-requests"] : []),
 ].join("; ");
 
 const securityHeaders = [
@@ -69,7 +91,7 @@ const securityHeaders = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 
-if (!isDev) {
+if (servesOverTLS) {
   securityHeaders.push({
     key: "Strict-Transport-Security",
     value: "max-age=63072000; includeSubDomains; preload",

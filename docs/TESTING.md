@@ -74,6 +74,51 @@ CI currently does **not** execute the e2e cases. It installs dependencies and ru
 only `playwright test --list` (`.github/workflows/frontend-ci.yml:59-76`). A green
 CI workflow is therefore not an e2e pass.
 
+## Adding the mobile and tablet projects to CI
+
+All three projects pass at **75 passed / 59 skipped / 0 failed / 0 flaky** —
+the same counts, because every declaration is collected once per project. What
+the e2e job needs, beyond what it already does for desktop:
+
+1. **Install WebKit.** The job installs Chromium only. Change it to
+   `npx --prefix e2e playwright install --with-deps webkit chromium`. WebKit
+   needs `libavif16`, `libgav1-1` and `libyuv0` on top of Chromium's
+   dependencies; `--with-deps` installs them and needs root, which the GitHub
+   runner has. Without `libavif16` the browser will not launch at all — that
+   symptom is what the projects were misdiagnosed as for months, and it is not
+   what was actually wrong with them.
+2. **Keep the frontend off `upgrade-insecure-requests`.** The job builds in
+   production mode and serves over plain `http://localhost:3000`, so the CSP
+   directive must stay suppressed or WebKit rewrites the app's own chunks and
+   the guest WebSocket to `https`/`wss` and every browser-driven case fails.
+   The existing `ALLOW_LOCALHOST_BUILD: "true"` and
+   `NEXT_PUBLIC_API_BASE: http://localhost:8090` already satisfy the gate
+   (`frontend/next.config.ts:46-82`). If either is ever changed, assert it
+   directly: `curl -sSD - -o /dev/null http://localhost:3000/staff/login |
+   grep -i content-security-policy` must **not** contain
+   `upgrade-insecure-requests`.
+3. **Run and assert each project as its own step**, since the JSON report
+   carries one set of stats per invocation:
+
+   ```sh
+   PLAYWRIGHT_JSON_OUTPUT_NAME=artifacts/mobile-results.json \
+     npx --no-install playwright test --project=mobile --reporter=list,json
+   node scripts/ci/assert-playwright-results.mjs e2e/artifacts/mobile-results.json 75 59
+   ```
+
+   Repeat verbatim for `tablet`. Match the desktop steps' working directories:
+   the `playwright test` step runs with `working-directory: e2e`, the assertion
+   runs from the repository root. The assertion script already fails on any
+   non-zero failed or flaky count (`scripts/ci/assert-playwright-results.mjs:22-33`).
+
+Budget roughly 40s per project on a warm stack, before the `retries: 2` the
+config applies under CI (`e2e/playwright.config.ts:10`). Run the projects against
+the production build the job already produces, not `next dev`: under `next dev`
+on-demand recompilation delays the App Router's second navigation by one to two
+seconds, which races `page.goto` and makes `G-01` and the screenshot sweep flaky
+on WebKit. That race is a dev-server artefact — Chromium performs the identical
+double navigation, roughly eighty milliseconds apart in a production build.
+
 ## Vacuity census and quarantine
 
 The audit found tests that could remain green when the behavior in their titles

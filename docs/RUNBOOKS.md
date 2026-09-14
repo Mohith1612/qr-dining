@@ -90,6 +90,22 @@ gap, the snapshot marks itself authoritative so the client replaces local state
 (`backend/internal/services/session.go:759-779`). A restart of `app` is an
 unverified containment action; it does not repair durable event data.
 
+## iPhone guests see a broken page, Android guests do not
+
+If the guest app is reachable over plain `http://` — a LAN host, a reverse proxy
+with TLS switched off, or a QR batch that encoded `http://` — every Safari and
+iOS guest gets a blank or unstyled page while Chrome and Android guests are
+unaffected, because the app ships `upgrade-insecure-requests` whenever it
+believes it is behind TLS (`frontend/next.config.ts:46-82`) and WebKit honours
+that directive on any host, rewriting the app's own scripts and the guest
+WebSocket to `https`/`wss` against a port that speaks neither. Recognise it by
+the split: the table's iPhones fail and its Android phones work, and a Safari
+console shows TLS handshake errors on `/_next/static/*` rather than 404s. Before
+serving guests, `curl -sSD - -o /dev/null <guest-url>` and confirm the scheme is
+`https` and that `Content-Security-Policy` either omits `upgrade-insecure-requests`
+or the whole origin is genuinely on TLS; the paper fallback applies while it is
+not ([PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md)).
+
 ## Stuck payment
 
 A payment created by current initiation is
