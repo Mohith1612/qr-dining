@@ -123,6 +123,16 @@ func (r *Repos) TouchStaffSession(ctx context.Context, sessionID uuid.UUID) erro
 	return r.q.TouchStaffSession(ctx, sessionID)
 }
 
+// RevokeStaffSession revokes a single staff session — the logout granularity.
+// Use RevokeStaffSessionsForStaff only when every session must die (PIN reset,
+// deactivation).
+func (r *Repos) RevokeStaffSession(ctx context.Context, sessionID uuid.UUID, staffID int64) error {
+	return r.q.RevokeStaffSession(ctx, sqlc.RevokeStaffSessionParams{
+		ID:      sessionID,
+		StaffID: staffID,
+	})
+}
+
 func (r *Repos) RevokeStaffSessionsForStaff(ctx context.Context, staffID int64) error {
 	return r.q.RevokeStaffSessionsForStaff(ctx, staffID)
 }

@@ -121,10 +121,38 @@ func (h *StaffHandler) Authenticate(c *gin.Context) {
 	c.JSON(http.StatusOK, session)
 }
 
-// Logout invalidates the current staff session and clears the HttpOnly cookie
-// if one was set. Bearer-token-only clients can simply drop the token on the
-// frontend; the cookie path needs explicit clearing.
+// Logout revokes the session the caller presented — the durable staff_sessions
+// row, the Redis token and its entry in the per-staff token set — and clears
+// the HttpOnly cookie if one was set. Only this session: the same staff member
+// stays signed in on their other devices.
+//
+// Dropping the token client-side is not sufficient and never was. A bearer
+// client that keeps the token would otherwise keep full access for the rest of
+// the 8h staffTokenTTL, which on a shared restaurant tablet makes "log out"
+// meaningless.
 func (h *StaffHandler) Logout(c *gin.Context) {
+	session, ok := middleware.GetStaffSession(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, CodeUnauthorized, "staff authentication required")
+		return
+	}
+	// Absent only if StaffAuth did not run, which the 401 above already covers.
+	token, _ := middleware.GetStaffToken(c)
+	if err := h.svc.Logout(c.Request.Context(), session, token); err != nil {
+		respondInternalError(c)
+		return
+	}
+	h.audit.Record(c.Request.Context(), audit.AuditEvent{
+		BranchID:       session.BranchID,
+		OrganizationID: session.OrganizationID,
+		ResourceType:   audit.ResourceStaff,
+		ResourceID:     audit.IDStr(session.StaffID),
+		Action:         audit.ActionStaffLogout,
+		Result:         audit.ResultSuccess,
+		ActorType:      audit.ActorTypeStaff,
+		ActorID:        audit.IDStr(session.StaffID),
+		RiskLevel:      audit.RiskLow,
+	})
 	clearStaffCookie(c)
 	c.Status(http.StatusNoContent)
 }

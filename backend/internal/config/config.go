@@ -115,6 +115,9 @@ type WorkerConfig struct {
 	PaymentPendingWarnAfter          time.Duration
 	PaymentPendingCriticalAfter      time.Duration
 	BillingReconciliationInterval    time.Duration
+	// IdempotencyReapInterval is how often expired idempotency keys are swept.
+	// Retention is worker.IdempotencyKeyRetention; this only sets the cadence.
+	IdempotencyReapInterval time.Duration
 }
 
 type FeatureFlags struct {
@@ -249,6 +252,7 @@ func Load() (*Config, error) {
 	cfg.Worker.PaymentPendingWarnAfter = parseDuration("PAYMENT_PENDING_WARN_AFTER", 5*time.Minute)
 	cfg.Worker.PaymentPendingCriticalAfter = parseDuration("PAYMENT_PENDING_CRITICAL_AFTER", 15*time.Minute)
 	cfg.Worker.BillingReconciliationInterval = parseDuration("BILLING_RECONCILIATION_INTERVAL", 5*time.Minute)
+	cfg.Worker.IdempotencyReapInterval = parseDuration("IDEMPOTENCY_REAP_INTERVAL", time.Hour)
 
 	// Rollout flags. Phase 0 only parses these flags; later phases decide where
 	// each flag gates strict enforcement.

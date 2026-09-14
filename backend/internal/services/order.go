@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"github.com/Mohith1612/qr-dining/internal/observability"
 	"github.com/Mohith1612/qr-dining/internal/repository"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -122,6 +124,12 @@ func (s *OrderService) PlaceOrder(ctx context.Context, req PlaceOrderRequest) (P
 	if !inserted {
 		existingKey, err := s.repos.GetIdempotencyKey(ctx, idemScope)
 		if err != nil {
+			// The row expired between the conflicting reservation and this
+			// read. Tell the caller to retry rather than guess: the retry
+			// reclaims the expired row and proceeds as a fresh request.
+			if errors.Is(err, pgx.ErrNoRows) {
+				return PlaceOrderResult{}, domain.ErrIdempotencyInProgress
+			}
 			return PlaceOrderResult{}, err
 		}
 		if existingKey.RequestHash != requestHash {

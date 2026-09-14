@@ -127,3 +127,7 @@ func (w *workerQuerier) ListPaymentPendingStalled(ctx context.Context, olderThan
 func (w *workerQuerier) ListBillingReconciliationDiscrepancies(ctx context.Context, windowStart, windowEnd time.Time) ([]worker.BillingReconciliationDiscrepancy, error) {
 	return w.repos.ListBillingReconciliationDiscrepancies(ctx, windowStart, windowEnd)
 }
+
+func (w *workerQuerier) DeleteExpiredIdempotencyKeys(ctx context.Context, expiredBefore time.Time, limit int32) (int64, error) {
+	return w.repos.DeleteExpiredIdempotencyKeys(ctx, expiredBefore, limit)
+}

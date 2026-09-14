@@ -71,6 +71,7 @@ const (
 const (
 	ActionStaffLogin               = "staff.login"
 	ActionStaffLoginFailed         = "staff.login.failed"
+	ActionStaffLogout              = "staff.logout"
 	ActionStaffCreate              = "staff.create"
 	ActionStaffDeactivate          = "staff.deactivate"
 	ActionStaffPINReset            = "staff.pin.reset"

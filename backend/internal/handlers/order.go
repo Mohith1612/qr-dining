@@ -109,6 +109,8 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 			respondError(c, http.StatusUnprocessableEntity, CodeMenuItemUnavailable, err.Error())
 		case errors.Is(err, domain.ErrIdempotencyConflict):
 			respondError(c, http.StatusConflict, "IDEMPOTENCY_CONFLICT", err.Error())
+		case errors.Is(err, domain.ErrIdempotencyInProgress):
+			respondError(c, http.StatusConflict, "IDEMPOTENCY_IN_PROGRESS", err.Error())
 		case errors.Is(err, domain.ErrParticipantNotInSession):
 			respondError(c, http.StatusForbidden, CodeForbidden, err.Error())
 		case errors.Is(err, domain.ErrNotSessionHost):

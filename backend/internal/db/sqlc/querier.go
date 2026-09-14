@@ -38,6 +38,18 @@ type Querier interface {
 	CreateAssistanceRequest(ctx context.Context, arg CreateAssistanceRequestParams) (AssistanceRequest, error)
 	CreateBillSnapshot(ctx context.Context, arg CreateBillSnapshotParams) (BillSnapshot, error)
 	CreateFeatureFlag(ctx context.Context, arg CreateFeatureFlagParams) (PlatformFeatureFlag, error)
+	// Reserves a key for a request. Two outcomes, distinguished by whether a row
+	// comes back:
+	//
+	//   * no existing row, or an existing row that is already past expires_at —
+	//     the reservation succeeds and a row is returned. An expired row is
+	//     reclaimed in place (fresh request_hash and expires_at, status back to
+	//     pending, stale response pointer cleared) so it can never replay again.
+	//   * a live existing row — the DO UPDATE's WHERE is false, nothing is
+	//     returned, and the caller falls through to the replay path.
+	//
+	// Doing the expiry check inside ON CONFLICT rather than as a read-then-write
+	// leaves no window where two callers both believe they reserved the key.
 	CreateIdempotencyKey(ctx context.Context, arg CreateIdempotencyKeyParams) (IdempotencyKey, error)
 	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (SubscriptionInvoice, error)
 	CreateItemModifier(ctx context.Context, arg CreateItemModifierParams) (ItemModifier, error)
@@ -72,6 +84,11 @@ type Querier interface {
 	DeductLoyaltyPoints(ctx context.Context, arg DeductLoyaltyPointsParams) (CustomerLoyaltyAccount, error)
 	DeleteBranchFlagOverride(ctx context.Context, arg DeleteBranchFlagOverrideParams) error
 	DeleteCustomer(ctx context.Context, arg DeleteCustomerParams) error
+	// Reaps keys whose expiry passed longer ago than the retention grace period.
+	// Bounded by $2 so a single statement can never run long on a backlogged
+	// table; the worker loops batches within its run budget. Driven by
+	// idx_idempotency_keys_expires_at.
+	DeleteExpiredIdempotencyKeys(ctx context.Context, arg DeleteExpiredIdempotencyKeysParams) (int64, error)
 	DeleteGlobalFlagOverride(ctx context.Context, flagKey string) error
 	DeleteItemModifier(ctx context.Context, id int64) error
 	DeleteItemModifierScoped(ctx context.Context, arg DeleteItemModifierScopedParams) error
@@ -107,6 +124,9 @@ type Querier interface {
 	GetEntitlement(ctx context.Context, key string) (Entitlement, error)
 	GetEventsBySession(ctx context.Context, sessionID pgtype.UUID) ([]EventLog, error)
 	GetFeatureFlag(ctx context.Context, key string) (PlatformFeatureFlag, error)
+	// Expired keys are invisible to lookup. Without the expires_at predicate the
+	// recorded expiry was decoration and a key of any age replayed to its original
+	// resource.
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetInvoiceByID(ctx context.Context, id int64) (SubscriptionInvoice, error)
 	GetKitchenPeakThroughput(ctx context.Context, arg GetKitchenPeakThroughputParams) ([]GetKitchenPeakThroughputRow, error)
@@ -314,6 +334,9 @@ type Querier interface {
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
 	RevokeAllParticipants(ctx context.Context, arg RevokeAllParticipantsParams) error
 	RevokePlatformSession(ctx context.Context, arg RevokePlatformSessionParams) error
+	// Revokes one session. The staff_id predicate keeps a mismatched session id a
+	// no-op instead of revoking across staff members.
+	RevokeStaffSession(ctx context.Context, arg RevokeStaffSessionParams) error
 	RevokeStaffSessionsForStaff(ctx context.Context, staffID int64) error
 	SearchCustomersByPhone(ctx context.Context, arg SearchCustomersByPhoneParams) ([]Customer, error)
 	// Sets is_host = true for exactly the new host and false for everyone else in

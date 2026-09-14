@@ -280,6 +280,35 @@ func (s *StaffService) validateSessionState(ctx context.Context, token string, s
 	return nil
 }
 
+// Logout revokes exactly the session the caller presented: the durable
+// staff_sessions row, the Redis token, and that token's entry in the per-staff
+// token set. It deliberately does NOT use RevokeStaffSessionsForStaff — signing
+// off the floor tablet must leave the same person's terminal session alive.
+//
+// The durable revoke is the authoritative one and its failure is returned:
+// under AUTH_STAFF_SESSION_DB_REQUIRED (default true) the revoked row alone is
+// enough to fail validateSessionState, so a successful 204 must mean it landed.
+// Redis is ephemeral, so its failures are logged and the logout still succeeds
+// — the same posture as invalidateStaffTokens.
+func (s *StaffService) Logout(ctx context.Context, session StaffSession, token string) error {
+	if session.SessionID != uuid.Nil {
+		if err := s.repos.RevokeStaffSession(ctx, session.SessionID, session.StaffID); err != nil {
+			return fmt.Errorf("revoke staff session: %w", err)
+		}
+	}
+	if token == "" {
+		return nil
+	}
+	tokenKey := staffTokenPrefix + token
+	if err := s.cache.Invalidate(ctx, tokenKey); err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", session.StaffID).Msg("failed to delete staff token on logout; token stays cached until TTL")
+	}
+	if err := s.cache.SRem(ctx, staffTokenSetKey(session.StaffID), tokenKey); err != nil {
+		s.logger.Warn().Err(err).Int64("staff_id", session.StaffID).Msg("failed to untrack staff token on logout")
+	}
+	return nil
+}
+
 // CreateStaff creates a new staff member with a bcrypt-hashed PIN.
 // Only owners may create staff (enforced in handler via middleware).
 func (s *StaffService) CreateStaff(ctx context.Context, branchID int64, role sqlc.StaffRole, name, staffCode, pin string) (sqlc.Staff, error) {

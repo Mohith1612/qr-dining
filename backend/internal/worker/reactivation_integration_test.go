@@ -190,6 +190,10 @@ func (q *reactivationTestQuerier) ListBillingReconciliationDiscrepancies(context
 	return nil, nil
 }
 
+func (q *reactivationTestQuerier) DeleteExpiredIdempotencyKeys(context.Context, time.Time, int32) (int64, error) {
+	return 0, nil
+}
+
 func openWorkerTestRedis(t *testing.T) *goredis.Client {
 	t.Helper()
 	url := os.Getenv("TEST_REDIS_URL")

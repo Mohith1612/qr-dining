@@ -81,6 +81,7 @@ type Querier interface {
 	HasNonTerminalPayment(ctx context.Context, sessionID uuid.UUID) (bool, error)
 	ListPaymentPendingStalled(ctx context.Context, olderThan time.Time) ([]StalledPaymentPending, error)
 	ListBillingReconciliationDiscrepancies(ctx context.Context, windowStart, windowEnd time.Time) ([]BillingReconciliationDiscrepancy, error)
+	DeleteExpiredIdempotencyKeys(ctx context.Context, expiredBefore time.Time, limit int32) (int64, error)
 }
 
 // Worker runs lightweight background maintenance goroutines.
@@ -348,6 +349,89 @@ func (w *Worker) RunBillingReconciliation(ctx context.Context, interval time.Dur
 					w.metrics.WorkerRunsTotal.WithLabelValues("billing_reconciliation", "ok").Inc()
 				})
 			})
+		}
+	}
+}
+
+const (
+	// IdempotencyKeyRetention is how long a key is kept AFTER its expires_at
+	// has passed. Expiry is enforced on the lookup path, not here, so this
+	// window changes no request's outcome — it is purely operational: it keeps
+	// the row readable for a support engineer triaging "was I charged twice on
+	// Saturday?" across a weekend, while still bounding the table to roughly
+	// the 24h live window plus this grace.
+	IdempotencyKeyRetention = 7 * 24 * time.Hour
+
+	// idempotencyReapBatchSize bounds a single DELETE so no statement runs long
+	// against a backlogged table.
+	idempotencyReapBatchSize = 1000
+
+	// The run budget sits strictly below the lock TTL. runWithLock releases with
+	// a bare DEL and carries no fencing token, so a run that outlived its lock
+	// could delete a lock another instance had since acquired. Same constraint
+	// the billing reconciler documents.
+	idempotencyReapLockTTL   = 50 * time.Second
+	idempotencyReapRunBudget = 30 * time.Second
+)
+
+// RunIdempotencyKeyReaper bounds the growth of idempotency_keys, which nothing
+// swept before: every reservation made by the order and payment paths stayed in
+// the table forever. Uses idx_idempotency_keys_expires_at from migration
+// 000021, which was created for exactly this and then went unused.
+func (w *Worker) RunIdempotencyKeyReaper(ctx context.Context, interval, retention time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.runWithLock(ctx, "idempotency_key_reaper", idempotencyReapLockTTL, func() {
+				w.safeRun("idempotency_key_reaper", func() {
+					tickCtx, cancel := context.WithTimeout(ctx, idempotencyReapRunBudget)
+					defer cancel()
+					deleted, err := w.ReapIdempotencyKeys(tickCtx, retention)
+					if err != nil {
+						w.logger.Error().Err(err).Msg("reap expired idempotency keys")
+						w.metrics.WorkerRunsTotal.WithLabelValues("idempotency_key_reaper", "error").Inc()
+						return
+					}
+					if deleted > 0 {
+						w.logger.Info().Int64("deleted", deleted).Msg("reaped expired idempotency keys")
+					}
+					w.metrics.WorkerRunsTotal.WithLabelValues("idempotency_key_reaper", "ok").Inc()
+				})
+			})
+		}
+	}
+}
+
+// ReapIdempotencyKeys deletes, in bounded batches, every idempotency key whose
+// expiry passed more than retention ago, and reports how many it removed.
+// Exported so operators and integration tests can drive one deterministic pass.
+//
+// Strictly a janitor. An expired key already stops replaying at the lookup (see
+// sql/queries/idempotency.sql), so deleting its row changes no request's
+// outcome — which is what makes it safe to run on any schedule at all.
+func (w *Worker) ReapIdempotencyKeys(ctx context.Context, retention time.Duration) (int64, error) {
+	cutoff := time.Now().UTC().Add(-retention)
+	var total int64
+	for {
+		if ctx.Err() != nil {
+			// Budget spent mid-backlog. Keep what we removed; the next tick resumes.
+			return total, nil
+		}
+		deleted, err := w.queries.DeleteExpiredIdempotencyKeys(ctx, cutoff, idempotencyReapBatchSize)
+		if err != nil {
+			if ctx.Err() != nil {
+				return total, nil
+			}
+			return total, err
+		}
+		total += deleted
+		if deleted < idempotencyReapBatchSize {
+			return total, nil
 		}
 	}
 }
