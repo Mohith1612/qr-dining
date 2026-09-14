@@ -366,6 +366,23 @@ func (q *Queries) ListStaffRosterForBranch(ctx context.Context, branchID int64) 
 	return items, nil
 }
 
+const revokeStaffSession = `-- name: RevokeStaffSession :exec
+UPDATE staff_sessions SET revoked_at = NOW()
+WHERE id = $1 AND staff_id = $2 AND revoked_at IS NULL
+`
+
+type RevokeStaffSessionParams struct {
+	ID      uuid.UUID `json:"id"`
+	StaffID int64     `json:"staff_id"`
+}
+
+// Revokes one session. The staff_id predicate keeps a mismatched session id a
+// no-op instead of revoking across staff members.
+func (q *Queries) RevokeStaffSession(ctx context.Context, arg RevokeStaffSessionParams) error {
+	_, err := q.db.Exec(ctx, revokeStaffSession, arg.ID, arg.StaffID)
+	return err
+}
+
 const revokeStaffSessionsForStaff = `-- name: RevokeStaffSessionsForStaff :exec
 UPDATE staff_sessions SET revoked_at = NOW()
 WHERE staff_id = $1 AND revoked_at IS NULL

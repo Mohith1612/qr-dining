@@ -51,6 +51,12 @@ WHERE token_hash = $1
 -- name: TouchStaffSession :exec
 UPDATE staff_sessions SET last_seen_at = NOW() WHERE id = $1;
 
+-- Revokes one session. The staff_id predicate keeps a mismatched session id a
+-- no-op instead of revoking across staff members.
+-- name: RevokeStaffSession :exec
+UPDATE staff_sessions SET revoked_at = NOW()
+WHERE id = $1 AND staff_id = $2 AND revoked_at IS NULL;
+
 -- name: RevokeStaffSessionsForStaff :exec
 UPDATE staff_sessions SET revoked_at = NOW()
 WHERE staff_id = $1 AND revoked_at IS NULL;

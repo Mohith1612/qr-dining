@@ -11,6 +11,7 @@ import (
 
 const (
 	StaffSessionKey = "staff_session"
+	StaffTokenKey   = "staff_token"
 	StaffCookieName = "qrd_staff_session"
 	StaffCookiePath = "/"
 )
@@ -48,6 +49,7 @@ func StaffAuth(staffSvc *services.StaffService, logger zerolog.Logger) gin.Handl
 		}
 
 		c.Set(StaffSessionKey, session)
+		c.Set(StaffTokenKey, token)
 		c.Next()
 	}
 }
@@ -59,6 +61,17 @@ func GetStaffSession(c *gin.Context) (services.StaffSession, bool) {
 		return services.StaffSession{}, false
 	}
 	s, ok := v.(services.StaffSession)
+	return s, ok
+}
+
+// GetStaffToken retrieves the raw token the caller authenticated with. Logout
+// needs it to address the right Redis key; nothing else should.
+func GetStaffToken(c *gin.Context) (string, bool) {
+	v, exists := c.Get(StaffTokenKey)
+	if !exists {
+		return "", false
+	}
+	s, ok := v.(string)
 	return s, ok
 }
 

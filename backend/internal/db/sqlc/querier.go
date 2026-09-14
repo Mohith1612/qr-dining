@@ -314,6 +314,9 @@ type Querier interface {
 	RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error
 	RevokeAllParticipants(ctx context.Context, arg RevokeAllParticipantsParams) error
 	RevokePlatformSession(ctx context.Context, arg RevokePlatformSessionParams) error
+	// Revokes one session. The staff_id predicate keeps a mismatched session id a
+	// no-op instead of revoking across staff members.
+	RevokeStaffSession(ctx context.Context, arg RevokeStaffSessionParams) error
 	RevokeStaffSessionsForStaff(ctx context.Context, staffID int64) error
 	SearchCustomersByPhone(ctx context.Context, arg SearchCustomersByPhoneParams) ([]Customer, error)
 	// Sets is_host = true for exactly the new host and false for everyone else in

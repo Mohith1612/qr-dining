@@ -68,6 +68,13 @@ func (c *Cache) SAdd(ctx context.Context, key, member string, ttl time.Duration)
 	return err
 }
 
+// SRem removes a single member from a Redis Set, leaving the rest of the set
+// intact. Used to untrack one staff token on logout without disturbing that
+// staff member's other sessions.
+func (c *Cache) SRem(ctx context.Context, key, member string) error {
+	return c.client.SRem(ctx, key, member).Err()
+}
+
 // SMembers returns all members of a Redis Set. Returns nil slice on missing key.
 func (c *Cache) SMembers(ctx context.Context, key string) ([]string, error) {
 	return c.client.SMembers(ctx, key).Result()
