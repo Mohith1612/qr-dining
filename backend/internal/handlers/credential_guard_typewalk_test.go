@@ -10,7 +10,8 @@ package handlers
 // the types that reach a wire surface in this codebase, because at every one of
 // the three surfaces the static type is an empty interface:
 //
-//   - 82 of the 157 c.JSON calls pass gin.H, which is map[string]any. The
+//   - 97 of the 157 c.JSON calls pass gin.H, which is map[string]any. Of those,
+//     82 construct the map at the call site and 15 pass a gin.H variable. The
 //     element type is `any`; reflect.TypeOf gives you interface{} and stops.
 //   - Every publish entry point is `func(ctx, uuid.UUID, payload any)`
 //     (internal/events/events.go). Same wall.
