@@ -922,8 +922,6 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
-                        branch_id: number;
-                        placed_by_participant_id: number;
                         /** @description Client-generated unique key; repeat submissions return the original order */
                         idempotency_key: string;
                         items: {
@@ -963,7 +961,13 @@ export interface paths {
                     };
                 };
                 404: components["responses"]["NotFound"];
-                /** @description Session closed */
+                /**
+                 * @description `SESSION_CLOSED` (the session can no longer take an order),
+                 *     `PAYMENT_IN_PROGRESS` (the cart is frozen by a non-terminal payment),
+                 *     `IDEMPOTENCY_CONFLICT` (the key was reused with a different request body), or
+                 *     `IDEMPOTENCY_IN_PROGRESS` (a concurrent request holds the key).
+                 *     Derived from `backend/internal/handlers/order.go:104-113`.
+                 */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -2839,6 +2843,7 @@ export interface paths {
                     content?: never;
                 };
                 401: components["responses"]["Unauthorized"];
+                429: components["responses"]["RateLimited"];
             };
         };
         delete?: never;
