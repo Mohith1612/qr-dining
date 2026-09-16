@@ -53,7 +53,7 @@ Three outcomes, and it matters which one you are choosing:
 |---|---|
 | **Threshold** | **One** confirmed instance → FALLBACK for the rest of the service, root-cause within 24h. **A second independent instance**, or a first instance not root-caused within 24h → **ABORT**. |
 | **Decision window** | Immediate for the fallback. 24h for the abort decision. |
-| **Signal** | `billing_reconciliation_discrepancies{comparison}` (page at >0) plus one `billing.reconciliation.discrepancy` audit row naming the session and exact amounts. |
+| **Signal** | `billing_reconciliation_discrepancies{comparison}` (page at >0) plus one `billing.reconciliation.discrepancy` audit row naming the session and exact amounts. **This detects the system disagreeing with itself, not a guest being charged the wrong amount** — see §6, no-telemetry row 0. |
 
 *Why this threshold.* The pilot is cash/UPI-manual: staff read the total off the screen and
 collect money in the room. A wrong total is immediate, real financial harm to a guest or to the
@@ -322,6 +322,18 @@ window costs one morning; a mid-service migration failure costs a service and po
 
 ## 6. Telemetry per criterion
 
+**Delivery, as of 2026-09-16: alerts reach a phone.** Alertmanager routes
+`severity: page` to a Telegram receiver that notifies and `severity: ticket` to
+one that stays silent, both with `send_resolved: true`, and a permanently-firing
+`DeadMansSwitch` pings an external watchdog every two minutes so that the
+pipeline's own death is not mistaken for quiet
+([OPERATIONS.md, Alert delivery](OPERATIONS.md#alert-delivery)). Every row in the
+first table below now ends at a human.
+
+**What that did not change: the second table.** Delivery is the last hop. A
+criterion with no signal has nothing to deliver, and building a channel does not
+build a detector. Read both tables before assuming coverage.
+
 ### Criteria with a working signal
 
 | Criterion | Signal | Alert | Severity |
@@ -341,6 +353,7 @@ builds the signal. They are listed so that the detection plan is explicit rather
 
 | # | Criterion | Why no signal | How it is actually detected | To fix |
 |---|---|---|---|---|
+| 0 | **A1 — a guest is charged incorrectly (the half that reaches the guest)** | `BillingReconciliationDiscrepancy` compares the system against *itself*: snapshot vs. its bill-time order lines, collections vs. snapshot. If the app recorded ₹840 and the guest handed over ₹1,840, every comparison agrees and the gauge stays zero. The pilot is cash/UPI-manual, so the money never passes through anything the app can observe. | **The guest notices**, or the till does not reconcile at close. Neither is real time. | Nothing cheap, and nothing in software. The compensating control is §8's instruction to staff — *if a total looks wrong, stop and call before taking the money* — and the same-night till reconciliation in §4 step 4. |
 | 1 | **A3 — one table cannot order or pay** | App metrics are aggregate, none per-table. `active_sessions_total` is a count. 5xx on `/sessions/:id/orders` catches a systemic break, never one wedged table. | **Staff tell you**, by phone. The 15-minute window in A3 starts when they call, not when it broke. | A per-branch gauge of sessions with no state transition in N minutes. Needs code. |
 | 2 | **A2 — *successful* cross-tenant read** | `authz_denied_total` counts what policy **blocked**. A read the policy wrongly **allows** emits nothing. The 2026-08-04 bypass was exactly this shape. | Audit-log review after the fact, or a report. Not in real time. | Nothing cheap. Accept and compensate with A2's zero-tolerance threshold. |
 | 3 | **A6 — dirty migration** | `schema_migrations.dirty` is a table column, not a metric. `AppTargetDown` fires because the app will not start; nothing names the cause. | Read the app logs after the app fails to start, or run `migrate version`. | Export `schema_migrations.dirty` as a gauge at startup, or a node_exporter textfile check. Needs code or a cron. |
@@ -357,10 +370,16 @@ builds the signal. They are listed so that the detection plan is explicit rather
 - **Backup metrics only reach Prometheus if `NODE_EXPORTER_TEXTFILE_DIR` points at the
   `qr-dining_backup_textfile` volume mountpoint.** If that wiring is missing, all four backup
   alerts are silently dead ([OPERATIONS.md, Backup and restore](OPERATIONS.md#backup-and-restore)).
-- **None of the page alerts reach a human until Alertmanager has a real receiver.** This is
-  not configured by the checked-in receiver ([OPERATIONS.md, Metrics and alerts](OPERATIONS.md#metrics-and-alerts)). Until it is closed and
-  test-fired, **every "page" in this document is a page to nobody** and the real detection
-  mechanism for all seven criteria is a phone call from the restaurant. See §7.
+- **Delivery is one Telegram chat on one phone, and that phone is a single point of
+  failure.** A muted chat, a flat battery, or no signal in the dining room and every page in
+  this document is again a page to nobody — with the one exception of the dead man's switch,
+  which is delivered by an external service and therefore survives this VM. The compensating
+  control is unchanged and non-technical: the restaurant can call FALLBACK without reaching
+  anyone (§3).
+- **A silence is indistinguishable from a working pipeline.** `amtool silence add` during a
+  planned deploy is correct practice; an unexpired silence the next evening is silent failure.
+  `amtool silence query` is in the daily check in §7 for that reason
+  ([RUNBOOKS.md, Silencing alerts for planned work](RUNBOOKS.md#silencing-alerts-for-planned-work)).
 
 ---
 
@@ -368,9 +387,23 @@ builds the signal. They are listed so that the detection plan is explicit rather
 
 Nothing in this document works if these are not true. Check them, do not assume them.
 
-- [ ] **Alertmanager has a real receiver and one test alert has been delivered end to end.**
-      Until this is done, treat every criterion as human-detected only. (`amtool alert add
-      TestPage severity=page --annotation=summary="drill"`.)
+- [x] **Alertmanager has a real receiver and one test alert has been delivered end to end.**
+      Done 2026-09-16: Telegram receivers for page/ticket, verified by a hand-injected alert,
+      by a real `AppTargetDown` firing and resolving, and by confirming inhibition suppressed
+      its dependants ([OPERATIONS.md, Verifying delivery](OPERATIONS.md#verifying-delivery-end-to-end)).
+- [x] **The dead man's switch is wired and its failure mode has been tested.** Not that the
+      ping arrives — that proves nothing — but that **stopping Prometheus makes the external
+      watchdog report the check late**. Re-test this whenever the observability stack is
+      touched; it is the only check that cannot be verified by watching it succeed.
+- [ ] **The rule count Prometheus actually loaded matches the repo.** On 2026-09-16 the box
+      was evaluating 27 of 32 rules and the five pilot-abort alerts were simply absent — a
+      rule that was never loaded looks exactly like a rule that is not firing. `curl -s
+      localhost:9090/api/v1/rules` and count
+      ([OPERATIONS.md, Keeping the VM in step with the repo](OPERATIONS.md#keeping-the-vm-in-step-with-the-repo)).
+- [ ] **The operator's phone can actually receive the page**: the Telegram chat is unmuted,
+      notifications survive the phone's Do Not Disturb / focus mode at 20:00, and the watchdog's
+      own notification channel (healthchecks.io / UptimeRobot email or app) is on a *different*
+      path than Telegram. Check this on the handset that will be in the room, not on a desktop.
 - [ ] `NODE_EXPORTER_TEXTFILE_DIR` verified to be the `qr-dining_backup_textfile` mountpoint, and
       `qr_dining_backup_last_success_timestamp_seconds` confirmed visible in Prometheus.
 - [ ] One restore drill at real data volume, timed
@@ -393,7 +426,13 @@ Nothing in this document works if these are not true. Check them, do not assume 
 - [ ] `UPDATE audit_log SET action='x' WHERE id=(SELECT min(id) FROM audit_log);` fails. If it
       succeeds, that is A7.
 - [ ] `SELECT version, dirty FROM schema_migrations;` reads `40, false`.
-- [ ] No firing alerts; all Prometheus targets UP.
+- [ ] No firing alerts **other than `DeadMansSwitch`**, which fires permanently by design;
+      all Prometheus targets UP.
+- [ ] No leftover silences: `docker exec qr-dining-alertmanager-1 amtool
+      --alertmanager.url=http://localhost:9093 silence query` is empty. A silence from
+      yesterday's deploy and a working alert pipeline look identical from the outside.
+- [ ] The watchdog check reads "up" in healthchecks.io / UptimeRobot. If it is late, alerting
+      is down and nothing else on this list is trustworthy.
 
 ---
 

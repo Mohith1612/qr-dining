@@ -33,6 +33,11 @@ services:
       - --config.file=/etc/alertmanager/alertmanager.yml
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Telegram bot token + dead-man's-switch ping URL. NOT in git (.gitignore);
+      # created at deploy time — see docs/OPERATIONS.md, "Alert delivery".
+      # Alertmanager runs as uid 65534 (nobody), so the files must be
+      # world-readable (0444) in a traversable directory.
+      - ./secrets:/etc/alertmanager/secrets:ro
     ports:
       - "9093:9093"
     networks: [observability]

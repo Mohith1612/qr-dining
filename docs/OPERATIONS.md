@@ -97,9 +97,6 @@ money comparisons without correcting financial state
 
 Known monitoring limits:
 
-- Alertmanager's receiver is a placeholder webhook URL, so notification delivery
-  is **not configured by the checked-in file**
-  (`deploy/observability/alertmanager.yml:17-38`).
 - `db_errors_total` is declared and registered
   (`backend/internal/observability/metrics.go:169-174,338-360`), but this rebuild
   found no increment call in current backend source. Treat alerts or runbooks
@@ -123,6 +120,264 @@ network in their checked-in forms, so a separate, unverified overlay is required
 before the collector hostname can resolve from the app container
 (`deploy/vm/docker-compose.yml:33-59`,
 `deploy/signoz/docker-compose.signoz.yml:11-15,129-140`).
+
+## Alert delivery
+
+Alerting is only real once a firing rule reaches a phone. This section is the
+deploy-time half of `deploy/observability/alertmanager.yml`: the config in git
+carries the routing, the grouping and the inhibition, but **none of the secret
+material**, because that file is committed to a public repository with secret
+scanning and push protection enabled.
+
+### What goes where
+
+| Thing | Secret? | Lives in |
+|---|---|---|
+| Telegram bot token | **Yes** — anyone holding it can post as the bot | `/opt/qr-dining/secrets/alertmanager/telegram_token` |
+| Telegram chat id | No — addresses a chat, grants nothing | committed in `alertmanager.yml` |
+| Dead-man's-switch ping URL | **Yes** — it is a capability: holding it lets anyone keep the watchdog quiet forever | `/opt/qr-dining/secrets/alertmanager/healthchecks_url` |
+
+Alertmanager reads both at notify time via `bot_token_file` and `url_file`, so
+neither is ever in the image, the config, `docker inspect`, or the process
+environment. `deploy/observability/secrets/` is in `.gitignore`.
+
+### Creating the secrets on the VM
+
+Alertmanager runs as uid 65534 (`nobody`) and the VM has no passwordless sudo,
+so the files must be world-readable inside a traversable directory. They are
+opaque strings on a single-operator host; the protection that matters is that
+they are not in git.
+
+```bash
+install -d -m 0755 /opt/qr-dining/secrets/alertmanager
+
+# Telegram bot token from BotFather. printf, not echo: a trailing newline is
+# tolerated by Alertmanager but there is no reason to add one.
+printf '%s' '123456789:AA...' > /opt/qr-dining/secrets/alertmanager/telegram_token
+
+# Dead man's switch ping URL (healthchecks.io, or an UptimeRobot heartbeat URL).
+printf '%s' 'https://hc-ping.com/<uuid>' > /opt/qr-dining/secrets/alertmanager/healthchecks_url
+
+chmod 0444 /opt/qr-dining/secrets/alertmanager/*
+```
+
+Never `cat` these into a terminal that is being recorded, and never paste them
+into an issue, a PR, or a commit. If either leaks: revoke the bot token with
+BotFather `/revoke`, or delete and re-create the healthcheck to get a new URL.
+
+### Wiring the mount
+
+The mount is already declared — `./secrets:/etc/alertmanager/secrets:ro` in
+`deploy/observability/docker-compose.observability.yml` and, with the absolute
+path the multi-file VM invocation needs, in
+`deploy/vm/docker-compose.observability-vm.yml`. Applying a config change is:
+
+```bash
+cd /opt/qr-dining
+# 1. Sync the repo's observability config to the deployed copy.
+cp repo/deploy/observability/alertmanager.yml       observability/alertmanager.yml
+cp repo/deploy/observability/prometheus-alerts.yml  observability/prometheus-alerts.yml
+
+# 2. Validate BEFORE reloading. A bad config leaves the old one running, but a
+#    bad rules file makes Prometheus refuse to reload and you find out late.
+docker exec qr-dining-alertmanager-1 amtool check-config /etc/alertmanager/alertmanager.yml
+docker run --rm -v /opt/qr-dining/observability:/o:ro --entrypoint promtool \
+  prom/prometheus:v2.54.1 check rules /o/prometheus-alerts.yml
+
+# 3. Reload in place. Alertmanager needs a restart to re-read secret FILES that
+#    changed; a SIGHUP is enough for config-only edits.
+docker compose -f docker-compose.yml \
+               -f observability/docker-compose.observability.yml \
+               -f docker-compose.observability-vm.yml \
+               -f docker-compose.observability-beta.yml up -d alertmanager
+docker exec qr-dining-prometheus-1 kill -HUP 1
+```
+
+### Telegram
+
+One bot, one chat, one operator. Create the bot with
+[@BotFather](https://t.me/BotFather), then get the numeric chat id by sending
+the bot a message and reading
+`https://api.telegram.org/bot<TOKEN>/getUpdates` — `result[].message.chat.id`.
+Group chat ids are negative; supergroup ids start `-100`. A `@channelname`
+string will not work, `chat_id` must be numeric.
+
+Three Telegram receivers exist and they differ only in how loud they are:
+
+| Receiver | Marker | Phone behaviour | Cadence |
+|---|---|---|---|
+| `telegram-page` | 🔴 **PAGE** | notifies | 30s batch, repeats hourly while firing |
+| `telegram-ticket` | 🟡 ticket | **silent** (`disable_notifications`) | 2m batch, repeats every 12h |
+| `telegram-unrouted` | ⁉️ UNROUTED | notifies | should never fire — see below |
+
+`telegram-unrouted` is the root route's catch-all. Every rule today carries
+`severity: page` or `severity: ticket`; if a message arrives marked UNROUTED
+then a rule was added without a severity label and is being delivered by
+accident. Treat it as a config bug, not as an incident.
+
+All three set `send_resolved: true`. A channel where alerts fire and never
+visibly clear is a channel that gets muted within a week.
+
+### The dead man's switch
+
+Every other rule detects a problem by firing. That cannot cover the case where
+Prometheus stops evaluating, Alertmanager stops notifying, or the VM loses
+egress — because the result is silence, and silence is also what a healthy
+system looks like.
+
+`DeadMansSwitch` (`expr: vector(1)`) therefore fires permanently and is routed —
+by alertname, on the first route, so it can never fall through to Telegram — to
+a webhook receiver that POSTs to an external healthcheck every **2 minutes**.
+The operator never sees this alert. They hear about it from the watchdog, once,
+when the pings stop.
+
+Set up the external check to match the 2-minute ping:
+
+**healthchecks.io** — <https://healthchecks.io>, free tier. Create a check,
+set **Period = 6 minutes** and **Grace = 4 minutes**, and copy its ping URL
+(`https://hc-ping.com/<uuid>`) into the secret file above.
+
+**UptimeRobot** — <https://dashboard.uptimerobot.com>, "+ New monitor" →
+**Heartbeat**. Set the heartbeat interval to **6 minutes**; copy the generated
+heartbeat URL into the same secret file. Nothing in the Alertmanager config is
+provider-specific: the receiver POSTs to whatever URL the file contains.
+
+**The real detection window is about 14 minutes, not 10, and the reason is not
+obvious.** Measured on 2026-09-16:
+
+| Stage | Time | Why |
+|---|---|---|
+| Ping cadence | **2m30s** | `repeat_interval: 2m` on a `group_interval: 30s` tick. |
+| Pings continue after Prometheus dies | **≤4m, measured 77s** | Prometheus stamps `EndsAt = now + 4m` on every alert it delivers, so Alertmanager still holds a live `DeadMansSwitch` for up to four minutes after the last thing Prometheus ever sent, and keeps pinging on schedule the whole time. **This tail is not removable from the Alertmanager side.** Measured on 2026-09-16: Prometheus stopped 10:22:12Z, last ping 10:23:29Z, alert gone from Alertmanager by 10:33Z. |
+| healthchecks.io marks the check late | **+6m** (period) | Two missed pings. |
+| healthchecks.io notifies (down) | **+4m** (grace) | Four missed pings total before anyone is told. |
+| **Total** | **~11m measured, ~14m worst case** | The spread is the `EndsAt` tail. Budget for the worst case. |
+
+Period 6 / grace 4 tolerates two consecutive missed pings before the check even
+goes late, so a transient network blip on a small VM does not cry wolf. Tightening
+to period 4 / grace 2 would bring detection to ~10 minutes — matching abort
+criterion A5's window — at the cost of alarming after three missed pings instead
+of four. Either is defensible; what is not defensible is believing the number is
+10 when the four-minute `EndsAt` tail makes it 14.
+
+> **The watchdog notifies by EMAIL, on purpose. Do not route it through the
+> Telegram bot.**
+>
+> This is the one alert in the system whose delivery path must not share a
+> component with the thing it is watching. The switch exists to catch the case
+> where Prometheus, Alertmanager, the VM, or its network egress has died — and
+> every Telegram notification in this deployment depends on all four. Pointing
+> healthchecks.io at the bot would mean that the moment the pipeline breaks, the
+> alarm about the pipeline breaking travels through the broken pipeline. It
+> would appear to work in every test where you break something else, and fail
+> silently in the exact case it was built for.
+>
+> Email is not chosen because it is good — it is slower and easier to miss than
+> a push notification. It is chosen because it is **independent**. Any second
+> channel works (SMS, a push app, a different chat service) as long as nothing
+> on this VM is on its path. Configured 2026-09-16 as email-only for this
+> reason; if you later add a channel, add it alongside, and check the same
+> question first.
+
+`send_resolved` is **false** on this receiver and must stay false. If Prometheus
+dies, Alertmanager marks `DeadMansSwitch` resolved after `resolve_timeout` and
+would send one final notification — which on this receiver is a ping, arriving
+at exactly the moment the switch is supposed to trip.
+
+**Consequence to know:** `ALERTS{alertstate="firing"}` is never empty on this
+deployment. The daily pre-service check reads "no firing alerts *other than*
+`DeadMansSwitch`".
+
+### Keeping the VM in step with the repo
+
+**This bit the alerting rules and it will bite again.** On 2026-09-16 the
+deployed Prometheus was evaluating **27** of the repo's 32 rules. The entire
+`qr-dining-pilot-abort` group — the alerts for criteria A1, A2, A5 and A7 — had
+been in `main` since 2026-09-13 and did not exist on the box at all. Nothing
+failed, nothing logged, and every dashboard was green: an alert that was never
+loaded is indistinguishable from an alert that is not firing.
+
+There are two independent drift surfaces, and both were stale:
+
+1. `/opt/qr-dining/repo` is a git checkout that is pulled by hand. It was at
+   `b57f746` (2026-08-04) while `main` was six weeks further on.
+2. `/opt/qr-dining/observability/` is a **hand-copy** of `deploy/observability/`
+   from that checkout, which had then drifted from it as well. A copied file
+   carries no provenance — there is no command that answers "which commit is
+   this?".
+
+Check drift before every service that follows a deploy, and after any change to
+the observability stack:
+
+```bash
+cd /opt/qr-dining/repo && git fetch && git status -sb | head -1   # surface 1
+for f in alertmanager.yml prometheus.yml prometheus-alerts.yml; do   # surface 2
+  a=$(sha256sum deploy/observability/$f | cut -c1-12)
+  b=$(sha256sum /opt/qr-dining/observability/$f | cut -c1-12)
+  [ "$a" = "$b" ] && echo "SAME  $f" || echo "DRIFT $f repo=$a deployed=$b"
+done
+# And the only question that actually matters:
+curl -s localhost:9090/api/v1/rules \
+  | python3 -c 'import json,sys; print(sum(len(g["rules"]) for g in json.load(sys.stdin)["data"]["groups"]), "rules loaded")'
+```
+
+**Proposed fix, not yet applied** — delete surface 2 entirely by pointing the
+bind mounts in `deploy/vm/docker-compose.observability-vm.yml` at the checkout
+instead of the copy:
+
+```yaml
+    volumes: !override
+      - /opt/qr-dining/repo/deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+```
+
+Then `git pull` **is** the deploy, `git log -1` answers "what is running", and
+the surviving drift surface is a single checkout with a visible sha rather than
+an untracked copy with none. It is a two-line change and it is deliberately not
+bundled with the alerting work, because it changes what every observability
+container mounts and deserves its own deploy window. Until it lands, the shasum
+loop above is the control.
+
+### Verifying delivery end to end
+
+Config that looks right proves nothing. The full path is Prometheus evaluating →
+Alertmanager routing → Telegram delivering, and only the last hop is exercised
+by a hand-injected alert.
+
+```bash
+# Last hop only.
+docker exec qr-dining-alertmanager-1 amtool --alertmanager.url=http://localhost:9093 \
+  alert add TestPage severity=page '--annotation=summary=delivery drill'
+
+# Whole path. Stopping the SECOND app instance fires AppTargetDown without
+# taking the service down.
+docker compose ... stop app2        # 🔴 PAGE AppTargetDown within ~90s
+docker compose ... start app2       # 🟢 RESOLVED within ~2m
+
+# Dead man's switch, the half that matters: stopping Prometheus must make the
+# external check go late. Watching it succeed proves nothing.
+docker compose ... stop prometheus  # watchdog reports late ~6m, down ~10m
+docker compose ... start prometheus
+```
+
+Alertmanager logs nothing on a successful notification at its default log
+level, so "did it actually send?" is answered either by the counters —
+
+```bash
+docker exec qr-dining-alertmanager-1 wget -qO- http://localhost:9093/metrics \
+  | grep -E '^alertmanager_notifications_(total|failed_total)\{integration="(telegram|webhook)"' \
+  | grep -v ' 0$'
+```
+
+— or, when you want the actual receipt, by restarting it with `--log.level=debug`
+for the duration of a drill. That logs one
+`msg="Telegram message successfully published" message_id=… chat_id=…` per
+delivered message and one `receiver=deadmanswitch … msg="Notify success"` per
+dead-man's-switch ping. Put it back afterwards so the deployed command matches
+the committed compose file.
+
+To silence alerts for a planned deploy, see
+[RUNBOOKS.md, Silencing alerts for planned work](RUNBOOKS.md#silencing-alerts-for-planned-work).
+
 
 ## Operational workers
 

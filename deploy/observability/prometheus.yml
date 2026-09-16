@@ -34,8 +34,19 @@ scrape_configs:
     metrics_path: /probe
     params:
       module: [readyz_http_2xx]
+    #
+    # instance_name mirrors the label on the qr-dining job on purpose: it is the
+    # ONLY label the two jobs share, and Alertmanager needs it to join
+    # AppTargetDown (instance="app2:8080") to ReadyzProbeFailing
+    # (instance="http://app2:8080/readyz") when deciding what to inhibit.
+    # Without it the inhibition has to be global, and one instance going down
+    # silences the readiness page for the other — which on a two-instance
+    # deployment is exactly backwards.
     static_configs:
-      - targets: ["http://app:8080/readyz", "http://app2:8080/readyz"]
+      - targets: ["http://app:8080/readyz"]
+        labels: {instance_name: app-1}
+      - targets: ["http://app2:8080/readyz"]
+        labels: {instance_name: app-2}
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -49,3 +60,23 @@ scrape_configs:
   - job_name: node
     static_configs:
       - targets: ["node-exporter:9100"]
+
+  # The alerting pipeline watching itself. Everything above this line observes
+  # the application; nothing observed the two processes that carry the alerts.
+  #
+  # The dead man's switch covers TOTAL failure of either process (the pings
+  # stop). These two jobs cover the partial failures it cannot see: Telegram
+  # rejecting messages while Alertmanager is otherwise healthy, and a rule that
+  # errors on every evaluation while Prometheus keeps running. Both of those
+  # look exactly like "no alerts today".
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]
+
+  # Self-scrape. `up{job="prometheus"}` is trivially 1 and proves nothing — the
+  # point is prometheus_rule_evaluation_failures_total and
+  # prometheus_notifications_errors_total, i.e. "am I still evaluating rules,
+  # and are they still reaching Alertmanager".
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
