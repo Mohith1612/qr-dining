@@ -242,23 +242,30 @@ set **Period = 6 minutes** and **Grace = 4 minutes**, and copy its ping URL
 heartbeat URL into the same secret file. Nothing in the Alertmanager config is
 provider-specific: the receiver POSTs to whatever URL the file contains.
 
-**The real detection window is about 14 minutes, not 10, and the reason is not
-obvious.** Measured on 2026-09-16:
+**The real detection window is about 12 minutes, not 10, and the reason is not
+obvious.** Measured end to end on 2026-09-16 by stopping Prometheus and polling
+the healthchecks.io API:
 
-| Stage | Time | Why |
+| Stage | Time | Evidence / why |
 |---|---|---|
 | Ping cadence | **2m30s** | `repeat_interval: 2m` on a `group_interval: 30s` tick. |
-| Pings continue after Prometheus dies | **≤4m, measured 77s** | Prometheus stamps `EndsAt = now + 4m` on every alert it delivers, so Alertmanager still holds a live `DeadMansSwitch` for up to four minutes after the last thing Prometheus ever sent, and keeps pinging on schedule the whole time. **This tail is not removable from the Alertmanager side.** Measured on 2026-09-16: Prometheus stopped 10:22:12Z, last ping 10:23:29Z, alert gone from Alertmanager by 10:33Z. |
-| healthchecks.io marks the check late | **+6m** (period) | Two missed pings. |
-| healthchecks.io notifies (down) | **+4m** (grace) | Four missed pings total before anyone is told. |
-| **Total** | **~11m measured, ~14m worst case** | The spread is the `EndsAt` tail. Budget for the worst case. |
+| Pings continue after Prometheus dies | **132s** (bounded by 4m) | Prometheus stamps `EndsAt = now + 4m` on every alert it delivers, so Alertmanager still holds a live, unexpired `DeadMansSwitch` and keeps pinging on schedule after Prometheus is already gone. **This tail is not removable from the Alertmanager side** — it is how Prometheus says "assume this is still true unless I tell you otherwise". Prometheus stopped `10:53:52Z`, final ping `10:56:04Z`. |
+| Check goes late | **+6m** (`timeout: 360`) | `10:56:04Z` → `11:02:04Z`. Two missed pings. Note the API reports this state as `status: "grace"`, not `"late"`. |
+| Check goes down, operator is emailed | **+4m** (`grace: 240`) | Flip recorded at `11:06:04Z`, exactly `last_ping + 600s`. |
+| **Total: Prometheus dies → operator is told** | **12m 12s** | `10:53:52Z` → `11:06:04Z`. |
+
+Worst case is ~14 minutes, when the `EndsAt` tail runs its full four minutes
+instead of the 132s measured here. **Budget for 14, not 12, and neither is 10.**
 
 Period 6 / grace 4 tolerates two consecutive missed pings before the check even
-goes late, so a transient network blip on a small VM does not cry wolf. Tightening
-to period 4 / grace 2 would bring detection to ~10 minutes — matching abort
-criterion A5's window — at the cost of alarming after three missed pings instead
-of four. Either is defensible; what is not defensible is believing the number is
-10 when the four-minute `EndsAt` tail makes it 14.
+goes late, so a transient network blip on a small VM does not cry wolf.
+Tightening to period 4 / grace 2 would bring detection to roughly 8-10 minutes —
+closer to abort criterion A5's window — at the cost of alarming after three
+missed pings instead of four. Either is defensible; what is not defensible is
+believing the number is 10 when the tail makes it 12 to 14.
+
+Recovery is fast and needs no intervention: Prometheus restarted `11:07:01Z`,
+first ping `11:08:19Z`, check back up on that ping.
 
 > **The watchdog notifies by EMAIL, on purpose. Do not route it through the
 > Telegram bot.**
@@ -355,8 +362,15 @@ docker compose ... start app2       # 🟢 RESOLVED within ~2m
 
 # Dead man's switch, the half that matters: stopping Prometheus must make the
 # external check go late. Watching it succeed proves nothing.
-docker compose ... stop prometheus  # watchdog reports late ~6m, down ~10m
-docker compose ... start prometheus
+docker compose ... stop prometheus   # "grace" at ~6m after the last ping, down at ~10m
+docker compose ... start prometheus  # back up on the first ping, no intervention
+
+# Confirm from healthchecks.io rather than from inference. A read-only API key
+# is enough, and /flips/ answers the question retroactively — you do not have to
+# be watching at the moment it trips.
+curl -s -H "X-Api-Key: $HC_READONLY_KEY" https://healthchecks.io/api/v1/checks/
+curl -s -H "X-Api-Key: $HC_READONLY_KEY" \
+  https://healthchecks.io/api/v1/checks/<unique_key>/flips/
 ```
 
 Alertmanager logs nothing on a successful notification at its default log

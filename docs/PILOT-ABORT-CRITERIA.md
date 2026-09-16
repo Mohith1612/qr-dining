@@ -325,10 +325,12 @@ window costs one morning; a mid-service migration failure costs a service and po
 **Delivery, as of 2026-09-16: alerts reach a phone.** Alertmanager routes
 `severity: page` to a Telegram receiver that notifies and `severity: ticket` to
 one that stays silent, both with `send_resolved: true`, and a permanently-firing
-`DeadMansSwitch` pings an external watchdog every two minutes so that the
-pipeline's own death is not mistaken for quiet
+`DeadMansSwitch` pings an external watchdog every 2m30s so that the pipeline's
+own death is not mistaken for quiet
 ([OPERATIONS.md, Alert delivery](OPERATIONS.md#alert-delivery)). Every row in the
-first table below now ends at a human.
+first table below now ends at a human, and a pipeline that stops carrying them
+reaches the operator by email — a path with nothing on this VM in it — in about
+12 minutes, 14 worst case.
 
 **What that did not change: the second table.** Delivery is the last hop. A
 criterion with no signal has nothing to deliver, and building a channel does not
@@ -393,8 +395,11 @@ Nothing in this document works if these are not true. Check them, do not assume 
       its dependants ([OPERATIONS.md, Verifying delivery](OPERATIONS.md#verifying-delivery-end-to-end)).
 - [x] **The dead man's switch is wired and its failure mode has been tested.** Not that the
       ping arrives — that proves nothing — but that **stopping Prometheus makes the external
-      watchdog report the check late**. Re-test this whenever the observability stack is
-      touched; it is the only check that cannot be verified by watching it succeed.
+      watchdog report the check late**. Verified 2026-09-16: Prometheus stopped `10:53:52Z`,
+      last ping `10:56:04Z`, healthchecks.io `status: "grace"` at `11:02:04Z`, down flip at
+      `11:06:04Z`, recovery on the first ping after restart. Both the down and the recovery
+      email arrived. **Re-test this whenever the observability stack is touched** — it is the
+      only check in this document that cannot be verified by watching it succeed.
 - [ ] **The rule count Prometheus actually loaded matches the repo.** On 2026-09-16 the box
       was evaluating 27 of 32 rules and the five pilot-abort alerts were simply absent — a
       rule that was never loaded looks exactly like a rule that is not firing. `curl -s
