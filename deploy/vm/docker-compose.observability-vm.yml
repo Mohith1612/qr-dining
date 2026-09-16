@@ -7,13 +7,14 @@
 # them via SSH tunnel, never the public interface).
 #
 # Layout on the VM (see docs/OPERATIONS.md):
-#   /opt/qr-dining/docker-compose.yml                          (deploy/vm/docker-compose.yml)
-#   /opt/qr-dining/observability/                              (copy of deploy/observability/)
-#   /opt/qr-dining/docker-compose.observability-vm.yml         (this file)
+#   /opt/qr-dining/docker-compose.yml                   (deploy/vm/docker-compose.yml)
+#   /opt/qr-dining/repo/                                git checkout, ON main
+#   /opt/qr-dining/docker-compose.observability-vm.yml  (this file)
+#   /opt/qr-dining/secrets/alertmanager/                NOT in git, created at deploy time
 #
 # Run everything as ONE compose project from /opt/qr-dining:
 #   docker compose -f docker-compose.yml \
-#                  -f observability/docker-compose.observability.yml \
+#                  -f repo/deploy/observability/docker-compose.observability.yml \
 #                  -f docker-compose.observability-vm.yml up -d
 
 # WHY THE VOLUME PATHS ARE ABSOLUTE HERE
@@ -28,6 +29,25 @@
 # Re-declaring the mounts with `!override` and absolute paths fixes it without
 # touching the base file, which must keep its relative paths so the documented
 # local/staging invocation (run from the repo root) still works.
+
+# WHY THEY POINT AT THE GIT CHECKOUT AND NOT AT A COPY
+#
+# They used to point at /opt/qr-dining/observability/, a hand-copy of
+# deploy/observability/. On 2026-09-16 that copy was found to be running 27 of
+# the repo's 32 alert rules: the whole qr-dining-pilot-abort group — the alerts
+# for criteria A1, A2, A5 and A7 — had been on main since 2026-09-13 and did not
+# exist on the box. Nothing failed and nothing logged, because a rule that was
+# never loaded looks exactly like a rule that is not firing.
+#
+# Mounting the checkout deletes that whole class of bug. `git pull` IS the
+# deploy, and `git log -1` answers "what config is running", which a copied file
+# can never answer.
+#
+# THE FAILURE MODE THIS CREATES — read docs/OPERATIONS.md, "The new hazard".
+# The running config is now whatever the checkout's working tree says. A stray
+# `git checkout`, a rebase, or a bisect in /opt/qr-dining/repo silently changes
+# what these containers will load on their next reload. Keep that checkout on
+# main and treat it as production state, not as a scratch clone.
 services:
   prometheus:
     networks:
@@ -38,16 +58,18 @@ services:
     ports: !override
       - "127.0.0.1:9090:9090"
     volumes: !override
-      - /opt/qr-dining/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - /opt/qr-dining/observability/prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
+      - /opt/qr-dining/repo/deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/qr-dining/repo/deploy/observability/prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
       - prometheus_data:/prometheus
 
   alertmanager:
     ports: !override
       - "127.0.0.1:9093:9093"
     volumes: !override
-      - /opt/qr-dining/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-      # Secret material, never in git: telegram_token + healthchecks_url.
+      - /opt/qr-dining/repo/deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Secret material, never in git: telegram_token + healthchecks_url. This
+      # one path stays OUTSIDE the checkout on purpose — it is the only mount
+      # here that must not be version-controlled.
       # docs/OPERATIONS.md, "Alert delivery", is the creation procedure.
       - /opt/qr-dining/secrets/alertmanager:/etc/alertmanager/secrets:ro
 
@@ -56,4 +78,4 @@ services:
       - observability
       - qr-dining_internal
     volumes: !override
-      - /opt/qr-dining/observability/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+      - /opt/qr-dining/repo/deploy/observability/blackbox.yml:/etc/blackbox/blackbox.yml:ro

@@ -167,31 +167,82 @@ BotFather `/revoke`, or delete and re-create the healthcheck to get a new URL.
 
 ### Wiring the mount
 
-The mount is already declared — `./secrets:/etc/alertmanager/secrets:ro` in
-`deploy/observability/docker-compose.observability.yml` and, with the absolute
-path the multi-file VM invocation needs, in
-`deploy/vm/docker-compose.observability-vm.yml`. Applying a config change is:
+Since 2026-09-16 the observability containers bind-mount their config **directly
+from the git checkout** at `/opt/qr-dining/repo/deploy/observability/`. There is
+no deployed copy to keep in step, so applying a config change is a pull and a
+reload:
+
+```bash
+cd /opt/qr-dining/repo
+git pull --ff-only                       # this IS the deploy
+
+# Validate BEFORE reloading. A bad Alertmanager config leaves the old one
+# running, but a bad rules file makes Prometheus refuse to reload — and you find
+# out later, from an alert that never arrives.
+docker exec qr-dining-alertmanager-1 amtool check-config /etc/alertmanager/alertmanager.yml
+docker run --rm -v /opt/qr-dining/repo/deploy/observability:/o:ro \
+  --entrypoint promtool prom/prometheus:v2.54.1 check rules /o/prometheus-alerts.yml
+
+# Reload in place. SIGHUP is enough for config-only edits.
+docker exec qr-dining-alertmanager-1 kill -HUP 1
+docker exec qr-dining-prometheus-1   kill -HUP 1
+
+# Confirm the reload actually took, rather than assuming it did.
+curl -s localhost:9090/api/v1/rules \
+  | python3 -c 'import json,sys; print(sum(len(g["rules"]) for g in json.load(sys.stdin)["data"]["groups"]), "rules loaded")'
+```
+
+A **restart** rather than a SIGHUP is needed only when a secret *file* changed —
+Alertmanager reads `bot_token_file` / `url_file` at notify time, but a changed
+mount needs the container recreated:
 
 ```bash
 cd /opt/qr-dining
-# 1. Sync the repo's observability config to the deployed copy.
-cp repo/deploy/observability/alertmanager.yml       observability/alertmanager.yml
-cp repo/deploy/observability/prometheus-alerts.yml  observability/prometheus-alerts.yml
-
-# 2. Validate BEFORE reloading. A bad config leaves the old one running, but a
-#    bad rules file makes Prometheus refuse to reload and you find out late.
-docker exec qr-dining-alertmanager-1 amtool check-config /etc/alertmanager/alertmanager.yml
-docker run --rm -v /opt/qr-dining/observability:/o:ro --entrypoint promtool \
-  prom/prometheus:v2.54.1 check rules /o/prometheus-alerts.yml
-
-# 3. Reload in place. Alertmanager needs a restart to re-read secret FILES that
-#    changed; a SIGHUP is enough for config-only edits.
 docker compose -f docker-compose.yml \
-               -f observability/docker-compose.observability.yml \
-               -f docker-compose.observability-vm.yml \
-               -f docker-compose.observability-beta.yml up -d alertmanager
-docker exec qr-dining-prometheus-1 kill -HUP 1
+               -f repo/deploy/observability/docker-compose.observability.yml \
+               -f docker-compose.observability-vm.yml up -d alertmanager
 ```
+
+### The new hazard: the checkout is now production state
+
+**Mounting the checkout removed one failure mode and created a smaller one. Know
+which one you now have.**
+
+The running observability config is whatever the working tree at
+`/opt/qr-dining/repo` currently says. That means an ordinary, entirely innocent
+git command in that directory silently changes what Prometheus and Alertmanager
+will load on their next reload — and, because a reload can be triggered by a
+container restart you did not perform (a VM reboot, `restart: unless-stopped`
+after an OOM), it can take effect at a moment nobody chose:
+
+- `git checkout <branch>` or `git switch` — swaps every rule file at once.
+- `git rebase`, `git bisect`, `git stash` — same, transiently, and `bisect`
+  leaves you on a detached HEAD from months ago.
+- A dirty working tree from editing a file in place to "just test something".
+
+None of these produce a warning, and `docker ps` stays green throughout.
+
+**The rules:**
+
+1. **`/opt/qr-dining/repo` is production state, not a scratch clone.** Do not
+   experiment in it. Clone somewhere else.
+2. **It stays on `main`.** Anything else is a deploy of unreviewed config.
+3. **Check it before service**, as part of the daily list — this is one line and
+   it is the whole guard:
+
+   ```bash
+   cd /opt/qr-dining/repo && git status -sb | head -1 && git log -1 --format='%h %s'
+   ```
+
+   Expect `## main...origin/main` with no divergence. A branch name that is not
+   `main`, a `+N/-N` divergence, or a detached HEAD all mean the running alert
+   config is not the reviewed one.
+
+This trade is deliberate. The old failure mode was silent, undetectable and had
+already happened — three days with five abort-criterion alerts absent and every
+dashboard green. The new one is loud to anyone who looks, reversible with one
+`git checkout main`, and caught by a one-line check. But it is real, and it is
+new, so it is written down here rather than left to be discovered.
 
 ### Telegram
 
@@ -297,52 +348,53 @@ deployment. The daily pre-service check reads "no firing alerts *other than*
 
 ### Keeping the VM in step with the repo
 
-**This bit the alerting rules and it will bite again.** On 2026-09-16 the
-deployed Prometheus was evaluating **27** of the repo's 32 rules. The entire
-`qr-dining-pilot-abort` group — the alerts for criteria A1, A2, A5 and A7 — had
-been in `main` since 2026-09-13 and did not exist on the box at all. Nothing
-failed, nothing logged, and every dashboard was green: an alert that was never
-loaded is indistinguishable from an alert that is not firing.
+**This bit the alerting rules, and "stale checkout" understates what was wrong.**
 
-There are two independent drift surfaces, and both were stale:
+On 2026-09-16 the deployed Prometheus was evaluating **27** of the repo's 32
+rules. The entire `qr-dining-pilot-abort` group — the alerts for criteria A1,
+A2, A5 and A7 — had been on `main` since 2026-09-13 and did not exist on the box
+at all. Nothing failed, nothing logged, every dashboard was green: **a rule that
+was never loaded is indistinguishable from a rule that is not firing.** Three
+days, five abort-criterion alerts, silent.
 
-1. `/opt/qr-dining/repo` is a git checkout that is pulled by hand. It was at
-   `b57f746` (2026-08-04) while `main` was six weeks further on.
-2. `/opt/qr-dining/observability/` is a **hand-copy** of `deploy/observability/`
-   from that checkout, which had then drifted from it as well. A copied file
-   carries no provenance — there is no command that answers "which commit is
-   this?".
+There were three drift surfaces, and all three were bad:
 
-Check drift before every service that follows a deploy, and after any change to
-the observability stack:
+1. **`/opt/qr-dining/repo` was checked out on `feature/signoz-observability`** —
+   not on `main`, and not even on a branch that still existed: `git ls-remote
+   --heads origin feature/signoz-observability` returned nothing. The box was
+   tracking a deleted ref. This is the one that makes "stale" the wrong word;
+   the checkout was not behind `main`, it was pointed somewhere else. (Verified
+   recoverable before moving it: `git rev-list --count origin/main..HEAD`
+   returned `0`, so the branch held nothing that was not already on `main`.)
+2. That checkout was **254 commits** behind `origin/main`.
+3. `/opt/qr-dining/observability/` was a **hand-copy** of `deploy/observability/`
+   which had then drifted from even that stale checkout. A copied file carries no
+   provenance — there is no command that answers "which commit is this?".
+
+**Surface 3 is now gone.** The containers bind-mount the checkout directly
+(`deploy/vm/docker-compose.observability-vm.yml`), so there is no copy left to
+drift. `git pull` is the deploy and `git log -1` answers what is running. That
+change created a new, smaller hazard in exchange — see
+[The new hazard](#the-new-hazard-the-checkout-is-now-production-state) above,
+and do not skip it.
+
+**Surfaces 1 and 2 remain**, because a checkout can still be on the wrong branch
+or behind. They are covered by the daily one-liner in "The new hazard" and by
+this check, which is worth running after any deploy or observability change:
 
 ```bash
-cd /opt/qr-dining/repo && git fetch && git status -sb | head -1   # surface 1
-for f in alertmanager.yml prometheus.yml prometheus-alerts.yml; do   # surface 2
-  a=$(sha256sum deploy/observability/$f | cut -c1-12)
-  b=$(sha256sum /opt/qr-dining/observability/$f | cut -c1-12)
-  [ "$a" = "$b" ] && echo "SAME  $f" || echo "DRIFT $f repo=$a deployed=$b"
-done
-# And the only question that actually matters:
+cd /opt/qr-dining/repo
+git fetch -q origin && git status -sb | head -1     # expect: ## main...origin/main
+
+# The question that actually matters — does the running process agree with git?
+echo -n "repo says:   "; grep -c '      - alert:' deploy/observability/prometheus-alerts.yml
 curl -s localhost:9090/api/v1/rules \
-  | python3 -c 'import json,sys; print(sum(len(g["rules"]) for g in json.load(sys.stdin)["data"]["groups"]), "rules loaded")'
+  | python3 -c 'import json,sys; print("loaded:     ", sum(len(g["rules"]) for g in json.load(sys.stdin)["data"]["groups"]))'
 ```
 
-**Proposed fix, not yet applied** — delete surface 2 entirely by pointing the
-bind mounts in `deploy/vm/docker-compose.observability-vm.yml` at the checkout
-instead of the copy:
-
-```yaml
-    volumes: !override
-      - /opt/qr-dining/repo/deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-```
-
-Then `git pull` **is** the deploy, `git log -1` answers "what is running", and
-the surviving drift surface is a single checkout with a visible sha rather than
-an untracked copy with none. It is a two-line change and it is deliberately not
-bundled with the alerting work, because it changes what every observability
-container mounts and deserves its own deploy window. Until it lands, the shasum
-loop above is the control.
+Those two numbers disagreeing is the exact signature of the 2026-09-16 incident.
+**Read the number. Do not infer health from the absence of an alert** — the
+absence of an alert is what this failure looks like.
 
 ### Verifying delivery end to end
 
