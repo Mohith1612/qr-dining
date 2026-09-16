@@ -130,7 +130,7 @@ This operation replaces the target database. `restore.sh` uses `--clean`,
    production audit data.
 
 6. Start the application, then require `/readyz` to succeed. The route is wired
-   separately from `/health` (`backend/internal/server/server.go:187-190`).
+   separately from `/health` (`backend/internal/server/server.go:187-197`).
 
 ## Known dirty-migration wedge at version 22
 

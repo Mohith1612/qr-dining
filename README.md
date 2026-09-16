@@ -8,7 +8,7 @@ place its order or initiate payment
 `backend/internal/services/order.go:95-108`,
 `backend/internal/services/payment.go:128-146`). Restaurant staff and platform
 operators use separate authenticated surfaces
-(`backend/internal/server/server.go:272-485`).
+(`backend/internal/server/server.go:279-492`).
 
 Start with [the documentation index](docs/README.md). It identifies the audience
 and verification date for each maintained document. [Architecture](docs/ARCHITECTURE.md)

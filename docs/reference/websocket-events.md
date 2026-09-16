@@ -2,7 +2,7 @@
 
 Last verified against code: 2026-09-13.
 
-The endpoint is `GET /ws` (`backend/internal/server/server.go:484-485`). The standard
+The endpoint is `GET /ws` (`backend/internal/server/server.go:491-492`). The standard
 JSON envelope contains `event_id`, per-session `sequence`, organization and branch
 scope, `session_id`, event name, optional `payload`, and timestamp
 (`backend/internal/websocket/message.go:63-93`). Events are persisted before Redis

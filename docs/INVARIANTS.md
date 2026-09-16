@@ -107,7 +107,7 @@ so it has no effect on this behavior (`backend/internal/handlers/payment.go:152-
 
 **P6 — waiter, manager, or owner may cancel an outstanding payment and release
 the frozen session. Holds.** The route is registered
-(`backend/internal/server/server.go:379-392`); authorization checks the payment's
+(`backend/internal/server/server.go:386-399`); authorization checks the payment's
 branch and roles before calling the service
 (`backend/internal/handlers/payment.go:369-430`). The service applies the payment
 transition table, tries to release `payment_pending`, publishes the result, and
@@ -153,7 +153,7 @@ invalid phone to a generic error
 **T3 — emergency closure of live sessions is separate from suspension. Holds.**
 The tenant gate is entry-only (`backend/internal/services/tenant_status.go:49-51`),
 while force-close is a separate staff route
-(`backend/internal/server/server.go:387-392`).
+(`backend/internal/server/server.go:394-399`).
 
 ## Known implementation gaps adjacent to these invariants
 

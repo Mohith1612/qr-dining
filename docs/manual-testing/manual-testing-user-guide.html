@@ -34,7 +34,7 @@
     <section class="card">
       <h2>Platform</h2>
       <p>Entry is <code>/platform/login</code>. The protected API covers organizations, branches, billing, flags, analytics, themes, and support inspection.</p>
-      <p class="source"><code>frontend/app/(platform)/platform/login/page.tsx:1-162</code>; <code>backend/internal/server/server.go:281-377</code></p>
+      <p class="source"><code>frontend/app/(platform)/platform/login/page.tsx:1-162</code>; <code>backend/internal/server/server.go:288-384</code></p>
     </section>
   </div>
 
@@ -46,7 +46,7 @@
       <tr><td>Payment amount</td><td>An amount below the current total is rejected with HTTP 422.</td><td><code>backend/internal/handlers/payment.go:105-149</code></td></tr>
       <tr><td>Host absence</td><td>Host promotion uses a three-minute grace and requires the acting participant to be present.</td><td><code>backend/internal/redis/presence.go:13-18</code>; <code>backend/internal/services/session.go:318-359,399-440</code></td></tr>
       <tr><td>Tenant suspension</td><td>Organization and branch status gate QR resolution, session creation, and joining.</td><td><code>backend/internal/services/menu.go:98-112</code>; <code>backend/internal/services/session.go:99-115,567-596</code></td></tr>
-      <tr><td>Staff recovery</td><td>Protected routes allow payment cancellation and forced session closure.</td><td><code>backend/internal/server/server.go:379-392</code></td></tr>
+      <tr><td>Staff recovery</td><td>Protected routes allow payment cancellation and forced session closure.</td><td><code>backend/internal/server/server.go:386-399</code></td></tr>
     </tbody>
   </table>
 

@@ -52,17 +52,17 @@ The router is the source of truth for this summary.
 
 | Identity | Surface | Enforcement |
 |---|---|---|
-| None | `/health`, `/readyz`, `/metrics` | No authentication or API rate-limit middleware (`backend/internal/server/server.go:187-190`). |
-| Guest participant | Session create/join/read/close/reactivate/host transfer; cart; order; assistance; bill/payment; snapshot; customer and promo actions | Public group is rate-limited; action handlers recover participant identity and host-only services enforce authority (`backend/internal/server/server.go:192-264`, `backend/internal/services/session.go:318-359`). |
-| Public | Branch menu/flags/theme, QR resolve, tenant resolution, plans, payment webhook | Public group plus branch tenant guard where registered; payment initiation and webhook add sensitive limits (`backend/internal/server/server.go:235-270`). |
-| Staff | Order/payment/assistance mutation; recovery; branch operations, menu, tables, staff, analytics, loyalty, promos, audit and customer data | Staff middleware applies to the group; resource handlers add branch, role, and central-policy checks (`backend/internal/server/server.go:379-485`). |
-| Platform | Tenant lifecycle, support, audit, plans, billing records, flags, analytics and themes | Platform token middleware protects the entire `/platform` group; staff tokens are a different validator (`backend/internal/server/server.go:281-377`, `backend/internal/middleware/platform_auth.go:15-46`). |
+| None | `/health`, `/readyz`, `/metrics` | No authentication or API rate-limit middleware; each registered for `GET` and `HEAD` so uptime monitors probing with `HEAD` are not answered 404 (`backend/internal/server/server.go:187-197`). |
+| Guest participant | Session create/join/read/close/reactivate/host transfer; cart; order; assistance; bill/payment; snapshot; customer and promo actions | Public group is rate-limited; action handlers recover participant identity and host-only services enforce authority (`backend/internal/server/server.go:199-271`, `backend/internal/services/session.go:318-359`). |
+| Public | Branch menu/flags/theme, QR resolve, tenant resolution, plans, payment webhook | Public group plus branch tenant guard where registered; payment initiation and webhook add sensitive limits (`backend/internal/server/server.go:242-277`). |
+| Staff | Order/payment/assistance mutation; recovery; branch operations, menu, tables, staff, analytics, loyalty, promos, audit and customer data | Staff middleware applies to the group; resource handlers add branch, role, and central-policy checks (`backend/internal/server/server.go:386-492`). |
+| Platform | Tenant lifecycle, support, audit, plans, billing records, flags, analytics and themes | Platform token middleware protects the entire `/platform` group; staff tokens are a different validator (`backend/internal/server/server.go:288-384`, `backend/internal/middleware/platform_auth.go:15-46`). |
 
 `POST /staff/auth`, `POST /platform/auth`, and `POST /platform/auth/mfa` are
 separately sensitive-rate-limited authentication endpoints
-(`backend/internal/server/server.go:272-279`). WebSockets upgrade at `/ws`; the
+(`backend/internal/server/server.go:279-286`). WebSockets upgrade at `/ws`; the
 ticket path validates session, organization, branch, participant, credential
-version, and revocation before upgrade (`backend/internal/server/server.go:484-485`,
+version, and revocation before upgrade (`backend/internal/server/server.go:491-492`,
 `backend/internal/handlers/ws.go:109-149`).
 
 ## State machines

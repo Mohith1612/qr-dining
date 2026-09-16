@@ -185,9 +185,16 @@ func New(
 	// ── Routes ───────────────────────────────────────────────────────────────
 
 	// Infrastructure — no auth, no rate limit.
-	r.GET("/health", health.Health)
-	r.GET("/readyz", health.Readiness)
-	r.GET("/metrics", gin.WrapH(promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{})))
+	//
+	// HEAD as well as GET: Gin does not derive HEAD from a GET registration,
+	// and uptime monitors default to HEAD (UptimeRobot recommends it). A
+	// GET-only probe endpoint answers those monitors with 404, which reads as
+	// an outage while the service is healthy. net/http suppresses the response
+	// body on HEAD, so the same handler serves both correctly.
+	probeMethods := []string{http.MethodGet, http.MethodHead}
+	r.Match(probeMethods, "/health", health.Health)
+	r.Match(probeMethods, "/readyz", health.Readiness)
+	r.Match(probeMethods, "/metrics", gin.WrapH(promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{})))
 
 	// Public API — rate limited.
 	api := r.Group("/")

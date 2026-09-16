@@ -1573,6 +1573,16 @@ paths:
                   status:
                     type: string
                     example: ok
+    head:
+      summary: Liveness probe, headers only
+      description: >-
+        Identical status codes and headers to GET, with no response body.
+        Registered because uptime monitors default to HEAD; a GET-only probe
+        endpoint answers them 404 and reads as a false outage.
+      tags: [Infrastructure]
+      responses:
+        "200":
+          description: Server is alive
 
   /readyz:
     get:
@@ -1592,10 +1602,31 @@ paths:
                     example: ready
         "503":
           description: One or more dependencies unhealthy
+    head:
+      summary: Readiness probe, headers only
+      description: >-
+        Identical status codes and headers to GET, with no response body.
+        Registered because uptime monitors default to HEAD; a GET-only probe
+        endpoint answers them 404 and reads as a false outage.
+      tags: [Infrastructure]
+      responses:
+        "200":
+          description: All dependencies healthy
+        "503":
+          description: One or more dependencies unhealthy
 
   /metrics:
     get:
       summary: Prometheus metrics endpoint
+      tags: [Infrastructure]
+      responses:
+        "200":
+          description: Prometheus text format metrics
+    head:
+      summary: Prometheus metrics endpoint, headers only
+      description: >-
+        Identical status codes and headers to GET, with no response body.
+        Registered so HEAD probes against /metrics are not answered 404.
       tags: [Infrastructure]
       responses:
         "200":

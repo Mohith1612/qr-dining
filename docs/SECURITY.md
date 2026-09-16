@@ -125,7 +125,7 @@ Release-mode configuration requires guest and webhook secrets and validates
 minimum secret length (`backend/internal/config/config.go:286-319`). The metrics
 endpoint is public in the application router, while the production nginx config
 permits it only from internal Docker networks
-(`backend/internal/server/server.go:187-190`,
+(`backend/internal/server/server.go:187-197`,
 `deploy/nginx/qr-dining.conf:65-72`). WebSocket origins are allowlisted when
 configured; an empty allowlist permits all origins and logs a warning
 (`backend/internal/websocket/hub.go:53-83`).

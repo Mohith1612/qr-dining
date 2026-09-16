@@ -163,7 +163,7 @@ flow (`audit/e2e-vacuity-census.md:90-107`). Seven webhook signature/timestamp
 checks are enabled because the public webhook route and its signature boundary
 exist regardless of settlement integration
 (`audit/e2e-vacuity-census.md:90-113`,
-`backend/internal/server/server.go:235-247`).
+`backend/internal/server/server.go:242-254`).
 
 ## Historical identifier trap
 
