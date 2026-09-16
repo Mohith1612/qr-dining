@@ -400,6 +400,10 @@ Nothing in this document works if these are not true. Check them, do not assume 
       `11:06:04Z`, recovery on the first ping after restart. Both the down and the recovery
       email arrived. **Re-test this whenever the observability stack is touched** — it is the
       only check in this document that cannot be verified by watching it succeed.
+- [ ] **`/opt/qr-dining/repo` is on `main` and not diverged** (`git status -sb | head -1`).
+      The observability containers bind-mount their config straight out of that checkout, so
+      its branch *is* the running alert configuration
+      ([OPERATIONS.md, The new hazard](OPERATIONS.md#the-new-hazard-the-checkout-is-now-production-state)).
 - [ ] **The rule count Prometheus actually loaded matches the repo.** On 2026-09-16 the box
       was evaluating 27 of 32 rules and the five pilot-abort alerts were simply absent — a
       rule that was never loaded looks exactly like a rule that is not firing. `curl -s
@@ -433,6 +437,14 @@ Nothing in this document works if these are not true. Check them, do not assume 
 - [ ] `SELECT version, dirty FROM schema_migrations;` reads `40, false`.
 - [ ] No firing alerts **other than `DeadMansSwitch`**, which fires permanently by design;
       all Prometheus targets UP.
+
+      > As of 2026-09-16 the soak deployment also has a standing
+      > `PaymentPendingEscalationCritical` for a genuinely wedged session — a non-terminal
+      > payment holding its table. **That is not noise and must not be silenced.** It is
+      > precisely what the alert is for, and it is the alert an earlier, over-broad inhibit
+      > rule was found to be hiding. Clear it by settling or cancelling the payment through
+      > the staff UI ([RUNBOOKS.md, Stuck payment](RUNBOOKS.md#stuck-payment)); the alert
+      > resolves itself once the session can close.
 - [ ] No leftover silences: `docker exec qr-dining-alertmanager-1 amtool
       --alertmanager.url=http://localhost:9093 silence query` is empty. A silence from
       yesterday's deploy and a working alert pipeline look identical from the outside.
