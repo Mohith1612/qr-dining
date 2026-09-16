@@ -1,66 +1,288 @@
 # Alertmanager configuration for qr-dining.
 #
-# GO-LIVE: change exactly ONE line — the &notify_url anchor in the `default`
-# receiver below. Both receivers alias it, so pointing it at a real webhook
-# (Slack relay, Teams, PagerDuty relay, etc.) activates all routing. Severity
-# ("page" vs "ticket") is carried in the webhook payload; the page route only
-# differs in repeat cadence. Native Slack/email/PagerDuty examples remain
-# commented below if a native integration is ever preferred over a webhook.
+# The audience is ONE person, on call, with a phone. Everything below is sized
+# for that: one message per alert name, a glanceable severity marker, and a
+# repeat cadence slow enough that the channel does not get muted.
 #
-# `page` severity → urgent receiver (short repeat); everything else → default.
+# ---------------------------------------------------------------------------
+# SECRETS — this file is committed to a PUBLIC repository.
+#
+# The Telegram bot token and the dead-man's-switch ping URL are BOTH
+# capabilities: anyone holding them can post as the bot / silence the watchdog.
+# Neither may appear here. They are read at notify time from files mounted at
+# /etc/alertmanager/secrets/ (see docs/OPERATIONS.md, "Alert delivery"):
+#
+#   /etc/alertmanager/secrets/telegram_token     <- bot token, no trailing newline needed
+#   /etc/alertmanager/secrets/healthchecks_url   <- ping URL for the dead man's switch
+#
+# The chat_id below is NOT a secret — it addresses a chat but grants nothing
+# without the token — so it is committed, which keeps the deploy-time secret
+# material down to two opaque strings.
+# ---------------------------------------------------------------------------
 
 global:
   resolve_timeout: 5m
 
+# ---------------------------------------------------------------------------
+# ROUTING
+#
+# group_by [alertname, severity]
+#   One Telegram message per alert NAME. The message title is then the thing
+#   you need to read, and multi-instance firings (app-1 + app-2) collapse into
+#   one message instead of two. Grouping more coarsely (by severity alone)
+#   would mix unrelated problems into one wall of text; grouping more finely
+#   (by instance) doubles every message on the two-instance deployment.
+#
+# Intervals, and why:
+#   page   group_wait 30s   — both app instances are scraped inside one 15s
+#                             evaluation cycle, so 30s is enough to batch them
+#                             into a single message. On rules that already have
+#                             a `for:` of 1m or more this is a rounding error.
+#          group_interval 5m
+#          repeat_interval 1h — an unresolved page re-pings hourly. A pilot
+#                             service is ~4h, so a page that is never fixed
+#                             costs at most 4 messages: loud enough to not be
+#                             forgotten, quiet enough to not be muted.
+#
+#   ticket group_wait 2m    — nothing here is urgent; batch harder.
+#          group_interval 10m
+#          repeat_interval 12h — "next business hours" by definition. The old
+#                             4h repeat would have fired three times during a
+#                             single service for something nobody should act
+#                             on until morning. That is how channels get muted.
+#
+#   dead man's switch: see the deadmanswitch route below.
+# ---------------------------------------------------------------------------
+
 route:
-  receiver: default
+  # Catch-all. Nothing should land here — every rule in prometheus-alerts.yml
+  # carries severity=page or severity=ticket. If a message arrives tagged
+  # UNROUTED, a rule was added without a severity label and its routing is an
+  # accident. Loud on purpose.
+  receiver: telegram-unrouted
   group_by: ["alertname", "severity"]
   group_wait: 30s
   group_interval: 5m
-  repeat_interval: 4h
+  repeat_interval: 12h
+
   routes:
+    # 1. The dead man's switch. Matched FIRST and by alertname so it can never
+    #    fall through to a Telegram receiver — the operator must never see this
+    #    alert succeed. It is only ever heard from by its absence.
+    - matchers:
+        - alertname = "DeadMansSwitch"
+      receiver: deadmanswitch
+      group_by: ["alertname"]
+      group_wait: 0s
+      # group_interval must be SHORTER than repeat_interval, not equal to it.
+      # Alertmanager only re-evaluates "is it time to repeat?" on a
+      # group_interval tick, so setting both to 2m made the check land exactly
+      # on its own boundary, miss, and fire on the next tick instead: measured
+      # 4-minute cadence from a configuration that reads as 2 minutes
+      # (09:55:04, 09:59:04, 10:03:04, 10:07:04 on 2026-09-16). A 30s tick makes
+      # repeat_interval mean what it says.
+      group_interval: 30s
+      repeat_interval: 2m
+      continue: false
+
+    # 2. Pages — wake someone.
     - matchers:
         - severity = "page"
-      receiver: urgent
+      receiver: telegram-page
+      group_wait: 30s
+      group_interval: 5m
       repeat_interval: 1h
 
+    # 3. Tickets — next business hours.
+    - matchers:
+        - severity = "ticket"
+      receiver: telegram-ticket
+      group_wait: 2m
+      group_interval: 10m
+      repeat_interval: 12h
+
+# ---------------------------------------------------------------------------
+# RECEIVERS
+#
+# parse_mode HTML with every interpolated field piped through `html`, because
+# alert text legitimately contains characters Telegram's HTML parser treats as
+# markup — "5xx rate above 5%", "No successful backup in >36h". An unescaped
+# ">" makes Telegram reject the whole message with a 400 and the page is lost
+# silently. Escape first, then format.
+# ---------------------------------------------------------------------------
+
 receivers:
-  - name: default
-    webhook_configs:
-      # >>> THE go-live line. Replace with the real notification endpoint. <<<
-      # (This is a placeholder, not a human receiver — see docs/OPERATIONS.md.)
-      - url: &notify_url "http://CHANGEME-notify-endpoint:5001/alerts"
+  # --- PAGE ------------------------------------------------------------------
+  - name: telegram-page
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/secrets/telegram_token
+        chat_id: 5488346548
+        parse_mode: HTML
+        # send_resolved is the whole reason this channel stays trusted: an
+        # alert that fires and never visibly clears teaches you to ignore it.
         send_resolved: true
+        message: |-
+          {{ if eq .Status "firing" }}🔴 <b>PAGE</b>{{ else }}🟢 <b>RESOLVED</b> (page){{ end }}
+          {{ range .Alerts }}<b>{{ .Labels.alertname | html }}</b>
+          {{ .Annotations.summary | html }}{{ if .Labels.instance }}
+          <code>{{ .Labels.instance | html }}</code>{{ end }}{{ if .Annotations.runbook_url }}
+          {{ .Annotations.runbook_url }}{{ end }}
+          {{ end }}
 
-  - name: urgent
-    webhook_configs:
-      - url: *notify_url
+  # --- TICKET ----------------------------------------------------------------
+  - name: telegram-ticket
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/secrets/telegram_token
+        chat_id: 5488346548
+        parse_mode: HTML
         send_resolved: true
+        # disable_notification: a ticket lands in the channel without buzzing
+        # the phone. The distinction a page makes at 20:00 in a dining room is
+        # the phone vibrating or not.
+        disable_notifications: true
+        message: |-
+          {{ if eq .Status "firing" }}🟡 <b>ticket</b>{{ else }}⚪️ <b>resolved</b> (ticket){{ end }}
+          {{ range .Alerts }}<b>{{ .Labels.alertname | html }}</b>
+          {{ .Annotations.summary | html }}{{ if .Annotations.runbook_url }}
+          {{ .Annotations.runbook_url }}{{ end }}
+          {{ end }}
 
-    # --- Native Slack (uncomment and use instead of webhook_configs) ---
-    # slack_configs:
-    #   - api_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
-    #     channel: "#qr-dining-alerts"
-    #     send_resolved: true
-    #     title: '{{ .CommonAnnotations.summary }}'
-    #     text: '{{ range .Alerts }}{{ .Annotations.description }}{{ "\n" }}{{ end }}'
+  # --- UNROUTED (config bug) -------------------------------------------------
+  - name: telegram-unrouted
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/secrets/telegram_token
+        chat_id: 5488346548
+        parse_mode: HTML
+        send_resolved: true
+        message: |-
+          ⁉️ <b>UNROUTED ALERT</b> — a rule fired with no severity=page/ticket label.
+          {{ range .Alerts }}<b>{{ .Labels.alertname | html }}</b> severity=<code>{{ .Labels.severity | html }}</code>
+          {{ .Annotations.summary | html }}
+          {{ end }}
 
-    # --- Native email ---
-    # email_configs:
-    #   - to: "oncall@yourdomain.com"
-    #     from: "alerts@yourdomain.com"
-    #     smarthost: "smtp.yourprovider.com:587"
-    #     auth_username: "alerts@yourdomain.com"
-    #     auth_password: "CHANGE_ME"
-    #     send_resolved: true
+  # --- DEAD MAN'S SWITCH -----------------------------------------------------
+  #
+  # DeadMansSwitch fires permanently (expr: vector(1)). Every 2 minutes this
+  # receiver POSTs to a healthchecks.io ping URL. Silence from Prometheus,
+  # Alertmanager, the VM, or its network egress all look identical from here:
+  # the pings stop, and healthchecks.io — which runs somewhere this VM cannot
+  # take down with it — pages the operator instead.
+  #
+  # send_resolved MUST stay false. If Prometheus dies, Alertmanager marks
+  # DeadMansSwitch resolved after resolve_timeout and would send ONE more
+  # notification — a ping — which would reset the healthchecks timer at the
+  # exact moment the switch is supposed to trip. With send_resolved: false the
+  # pings simply stop, which is the entire point.
+  - name: deadmanswitch
+    webhook_configs:
+      - url_file: /etc/alertmanager/secrets/healthchecks_url
+        send_resolved: false
+        max_alerts: 1
 
-    # --- Native PagerDuty ---
-    # pagerduty_configs:
-    #   - routing_key: "CHANGE_ME"
-    #     send_resolved: true
+# ---------------------------------------------------------------------------
+# INHIBITION
+#
+# Postgres or Redis going away makes roughly a dozen of the 32 rules fire
+# within the same two minutes. Each inhibit rule below names a parent that
+# already tells the operator everything the children would.
+#
+# NEVER a target of any rule below, and each for a stated reason:
+#   BillingReconciliationDiscrepancy (A1)  — money
+#   CrossTenantScopeDenial           (A2)  — disclosure
+#   AuditWriteFailureAny             (A7)  — an unrecoverable gap in the record
+#   AppUnavailableAbortThreshold     (A5)  — it fires at 10 minutes and is the
+#       "stop debugging, go to paper" clock. Suppressing it under AppTargetDown,
+#       which by definition is always firing when it trips, would delete the
+#       only message in the system that says a documented threshold was crossed.
+#   PaymentPendingEscalationCritical       — business state, not a symptom: a
+#       table cannot free until a human settles or cancels. Infrastructure being
+#       unhealthy does not make that less true, and it is the nearest thing the
+#       system has to a signal for criterion A3.
+#   BackgroundWorkerPanic                  — as likely to be the cause as the
+#       consequence.
+#   DeadMansSwitch                         — by construction.
+#
+# Targets are matched by explicit alertname regex, not by a generic
+# "page suppresses ticket". A generic rule keyed on `instance` silently
+# suppresses across unrelated subsystems whenever two alerts happen to share a
+# missing label — e.g. an A1 billing page swallowing a backup warning, since
+# both lose `instance` to sum()/absent(). Over-suppression is the failure mode
+# that gets somebody hurt, so every suppression here is enumerated.
+# ---------------------------------------------------------------------------
 
-# Suppress lower-severity noise for an alert that is already paging.
 inhibit_rules:
-  - source_matchers: [severity = "page"]
-    target_matchers: [severity = "ticket"]
-    equal: ["alertname"]
+  # 1. This instance is not being scraped, so the blackbox probe against the
+  #    same instance is telling you the same fact a second time.
+  #
+  #    SCOPED BY instance_name, and that scoping is load-bearing. This is a
+  #    two-instance deployment. A live test on 2026-09-16 stopped app-2 while
+  #    app-1 served normally, and a globally-scoped version of this rule
+  #    suppressed a PaymentPendingEscalationCritical page — a genuine, unrelated,
+  #    actionable alert about a wedged table on the HEALTHY instance. The join
+  #    label exists for this (prometheus.yml, qr-dining-readyz job).
+  - source_matchers:
+      - alertname = "AppTargetDown"
+    target_matchers:
+      - alertname = "ReadyzProbeFailing"
+    equal: ["instance_name"]
+
+  # 2. /readyz is 503: Postgres or Redis is unreachable and the app cannot
+  #    serve. This is the authoritative dependency-outage page (Phase D F-1) and
+  #    its JSON body names which datastore. Everything below is that one
+  #    datastore observed from a different angle, which is why this is the rule
+  #    that actually collapses the storm.
+  #
+  #    Global (`equal` omitted) ON PURPOSE, and unlike rule 1 that is correct
+  #    here: both app instances share one Postgres and one Redis, so a
+  #    datastore outage genuinely affects every instance at once. There is no
+  #    "other healthy instance" for this rule to wrongly silence.
+  - source_matchers:
+      - alertname = "ReadyzProbeFailing"
+    target_matchers:
+      - alertname =~ "HighServerErrorRate|PostgresPoolExhausted|PostgresQueryErrors|RedisPubSubDisconnected|RedisPubSubReconnectStorm|RateLimiterUnavailable|StaleSessionCleanerStalled|ReactivationPipelineStalled|WSAbusiveCloses|WSInboundDropSpike|WSClientEvictionSpike|WSReconnectStorm|WSTicketConsumeFailures|GuestTokenValidationFailures|AuthzDeniedSpike|TenantResolutionFailures|WebhookReplaySpike"
+
+  # 3. Postgres pool exhausted. Query errors and the 5xx rate follow from it;
+  #    the pool is the actionable fact.
+  - source_matchers:
+      - alertname = "PostgresPoolExhausted"
+    target_matchers:
+      - alertname =~ "PostgresQueryErrors|HighServerErrorRate"
+
+  # 4. Redis pub/sub is down, i.e. Redis is unreachable from the subscriber. The
+  #    reconnect storm and the WebSocket churn are the same event downstream.
+  #
+  #    RateLimiterUnavailable is deliberately NOT suppressed here: it means
+  #    guests are being handed 503s on staff-auth / payment / webhook surfaces,
+  #    a different impact from "realtime is degraded", and the parent message
+  #    does not say it.
+  - source_matchers:
+      - alertname = "RedisPubSubDisconnected"
+    target_matchers:
+      - alertname =~ "RedisPubSubReconnectStorm|WSReconnectStorm|WSClientEvictionSpike|WSTicketConsumeFailures"
+
+  # 5. A worker panicked. The stalled-loop tickets are how that panic looks
+  #    fifteen minutes later.
+  - source_matchers:
+      - alertname = "BackgroundWorkerPanic"
+    target_matchers:
+      - alertname =~ "StaleSessionCleanerStalled|ReactivationPipelineStalled"
+
+  # 6. AuditWriteFailureAny (abort criterion A7, fires on the first failure)
+  #    always precedes AuditWriteFailures (sustained rate on the same counter).
+  #    Keep the criterion, drop the duplicate.
+  #
+  #    Note that AuditWriteFailures is suppressed ONLY by A7's own alert and
+  #    never by an infrastructure parent. Postgres being down is a plausible
+  #    cause of audit writes failing, and an audit gap is not less real for
+  #    having an explanation.
+  - source_matchers:
+      - alertname = "AuditWriteFailureAny"
+    target_matchers:
+      - alertname = "AuditWriteFailures"
+
+  # 7. Backups: 36h-stale and last-run-failed are both pages and both facts
+  #    worth having. The 26h early warning is a strict subset of either.
+  - source_matchers:
+      - alertname =~ "BackupTooOld|BackupFailed"
+    target_matchers:
+      - alertname = "BackupStaleEarlyWarning"

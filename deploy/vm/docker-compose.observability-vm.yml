@@ -47,6 +47,9 @@ services:
       - "127.0.0.1:9093:9093"
     volumes: !override
       - /opt/qr-dining/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Secret material, never in git: telegram_token + healthchecks_url.
+      # docs/OPERATIONS.md, "Alert delivery", is the creation procedure.
+      - /opt/qr-dining/secrets/alertmanager:/etc/alertmanager/secrets:ro
 
   blackbox:
     networks:

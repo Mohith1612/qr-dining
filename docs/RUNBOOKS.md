@@ -228,6 +228,53 @@ it emits a gauge and immutable audit evidence
 [PILOT-ABORT-CRITERIA.md](PILOT-ABORT-CRITERIA.md); do not “fix” the row before the
 evidence and affected session are recorded.
 
+## Silencing alerts for planned work
+
+**Alerts go to Telegram now** ([OPERATIONS.md, Alert delivery](OPERATIONS.md#alert-delivery)).
+A deploy, a restart, or a backup re-run fires real pages, and a channel that
+cries wolf during planned work is a channel that gets muted before the night it
+matters.
+
+The rule that removes most of this is still
+[no deploys during service hours](PILOT-ABORT-CRITERIA.md#5-recovery-paths--forward-fix-only).
+When you must, silence first — narrowly, and with an expiry.
+
+`amtool` ships inside the Alertmanager image, so there is nothing to install:
+
+```bash
+AM='docker exec qr-dining-alertmanager-1 amtool --alertmanager.url=http://localhost:9093'
+
+# Planned app restart: silence the availability pages for 20 minutes.
+# --duration is MANDATORY discipline. A silence without an expiry is how a
+# pilot ends up with alerting that was switched off three weeks ago.
+$AM silence add \
+  'alertname=~"AppTargetDown|ReadyzProbeFailing|AppUnavailableAbortThreshold|HighServerErrorRate"' \
+  --duration=20m \
+  --author="$(whoami)" \
+  --comment="planned deploy IMAGE_TAG=<tag>"
+
+# Everything currently silenced, with time remaining.
+$AM silence query
+
+# Ended early because the deploy finished early — do this, do not wait it out.
+$AM silence expire <silence-id>
+```
+
+Rules for using this:
+
+- **Never silence by `severity=page`.** That covers the billing-discrepancy
+  page (A1), the cross-tenant page (A2) and the audit-failure page (A7) — the
+  three things a deploy window is least entitled to hide. Silence by
+  `alertname`, listing exactly what the planned work will trip.
+- **Never silence `DeadMansSwitch`.** It is routed to the external watchdog,
+  not to you; silencing it stops the pings and the watchdog pages anyway, which
+  is the one alarm you cannot answer by looking at Telegram.
+- **Shorter than you think.** A 20-minute silence that you re-add is safer than
+  a two-hour one you forget.
+- **Check `silence query` before opening**, as part of the daily pre-service
+  check. An unexpired silence and a working alert pipeline are
+  indistinguishable from the outside.
+
 ## After containment
 
 Preserve logs, metrics, request IDs, audit rows, the deployed image tag, and any
