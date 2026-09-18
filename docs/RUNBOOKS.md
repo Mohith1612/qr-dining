@@ -17,11 +17,18 @@ Legacy command output may say “RUNBOOKS.md §8”; that pointer means
    pilot criteria (`deploy/observability/prometheus-alerts.yml:287-368`).
 2. Query `/health` and `/readyz`. Health proves only that the process responds;
    readiness pings both PostgreSQL and Redis and names either failed dependency
-   in its JSON response (`backend/internal/handlers/health.go:21-55`).
-3. Record the deployed `IMAGE_TAG`, container state, first symptom, and first
+   in its JSON response (`backend/internal/handlers/health.go:21-55`). Both
+   answer `GET` and `HEAD` (`backend/internal/server/server.go:187-197`).
+3. **If the page came from an external uptime monitor and `/readyz` answers 200
+   by hand, suspect the monitor before the service.** Check the exact URL and
+   method it probes: a wrong path 404s on every method, and there is no
+   `/healthz` in this deployment. One such misconfiguration produced a 6-hour
+   outage report against a healthy service; see
+   [External uptime monitors](OPERATIONS.md#external-uptime-monitors).
+4. Record the deployed `IMAGE_TAG`, container state, first symptom, and first
    relevant metric before changing anything. The app image is selected by
    `IMAGE_TAG` (`deploy/vm/docker-compose.yml:43-51`).
-4. Prefer a previous application image for deploy regressions. Never use schema
+5. Prefer a previous application image for deploy regressions. Never use schema
    rollback; see [RECOVERY.md](RECOVERY.md).
 
 ## Authentication or authorization denials
@@ -121,7 +128,7 @@ Use governed staff routes, never direct SQL:
 - manager/owner terminal recovery: `POST /sessions/:id/force-close`.
 
 All three are registered staff routes
-(`backend/internal/server/server.go:379-392`). Cancellation derives branch from
+(`backend/internal/server/server.go:386-399`). Cancellation derives branch from
 the payment and records the reason
 (`backend/internal/services/payment.go:651-691`). Force-close derives branch from
 the session, requires manager/owner plus a reason, closes first, and reports
@@ -139,7 +146,7 @@ session to return to `active` only when no non-terminal payment remains
 
 The webhook is public and sensitive-rate-limited. Before parsing its JSON, the
 handler verifies the configured provider secret, timestamp tolerance, and HMAC;
-invalid verification returns 401 (`backend/internal/server/server.go:235-247`,
+invalid verification returns 401 (`backend/internal/server/server.go:242-254`,
 `backend/internal/handlers/payment.go:208-239`). A verified event is inserted by
 external event ID with conflict suppression; a repeated ID returns success
 without applying the payment again (`backend/internal/services/payment.go:464-477`,
@@ -174,7 +181,7 @@ owner can use the audited force-close route
 Suspension is entry-only: it blocks QR resolution, session creation, and join,
 while existing sessions continue (`backend/internal/services/tenant_status.go:33-78`).
 It is not an emergency stop. Force-closing a live session is a separate staff
-operation (`backend/internal/server/server.go:387-392`).
+operation (`backend/internal/server/server.go:394-399`).
 
 Backend suspension errors are distinct 403 codes, but the current QR frontend
 collapses resolve into an invalid/expired message and create/join into a generic

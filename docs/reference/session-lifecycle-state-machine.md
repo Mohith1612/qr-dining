@@ -28,7 +28,7 @@ and promotes only a present active participant
 A suspended/archived tenant blocks only entry (QR, create, join); it does not
 transition live sessions (`backend/internal/services/tenant_status.go:33-78`). Staff
 force-close is the explicit emergency/recovery action
-(`backend/internal/server/server.go:387-392`).
+(`backend/internal/server/server.go:394-399`).
 
 Terminal snapshots are readable for 60 minutes, marked `session_ended`, and then
 return the terminal-read expiry error

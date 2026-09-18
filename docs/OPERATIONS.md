@@ -42,7 +42,9 @@ do not deploy that file verbatim.
 
 The application exposes liveness, dependency readiness, and Prometheus metrics
 as `/health`, `/readyz`, and `/metrics`
-(`backend/internal/server/server.go:187-190`). Compose health uses `/readyz`
+(`backend/internal/server/server.go:187-197`). All three answer both `GET` and
+`HEAD`; see [External uptime monitors](#external-uptime-monitors) for why that
+matters. Compose health uses `/readyz`
 (`deploy/vm/docker-compose.yml:64-71`). Verify at least the new image tag, healthy
 container state, clean schema version, and a representative guest/staff flow
 before ending the change window. The repository contains no executed production
@@ -345,6 +347,35 @@ at exactly the moment the switch is supposed to trip.
 **Consequence to know:** `ALERTS{alertstate="firing"}` is never empty on this
 deployment. The daily pre-service check reads "no firing alerts *other than*
 `DeadMansSwitch`".
+
+### External uptime monitors
+
+The dead man's switch above is a **push**: this VM tells a third party it is
+alive, and silence is the alarm. It cannot tell you the service is unreachable
+from the outside — if the VM is up and the ingress is broken, the pings keep
+arriving. An external HTTP monitor is the complement, and it is the only signal
+that sees what a guest's phone sees.
+
+Point it at **`/readyz`**, not `/health`. Liveness only proves the process
+answers; readiness pings PostgreSQL and Redis and fails closed with 503 when
+either is gone (`backend/internal/handlers/health.go:26-55`). A monitor on
+`/health` stays green through a total database outage.
+
+**Either `GET` or `HEAD` is correct.** Both are registered on all three
+infrastructure endpoints (`backend/internal/server/server.go:187-197`). This is
+worth stating because it was not always true, and the failure was expensive:
+
+> Until this was fixed, `/health`, `/readyz` and `/metrics` were registered with
+> `r.GET` only. Gin does not derive a `HEAD` route from a `GET` registration, so
+> `HEAD` returned **404** on every probe endpoint. UptimeRobot defaults to
+> `HEAD` — it is that tool's recommended method, since it skips the response
+> body — and a monitor configured that way reported a **6-hour outage against a
+> healthy service**. `Router/OpenAPI Parity` now holds both methods in place:
+> dropping either the route or its `openapi.yaml` entry fails the build.
+
+**There is no `/healthz`.** It has never existed in this repo and 404s on every
+method, `GET` included. If a monitor is pointed there, repoint it — the fix
+above does not help, because the path is wrong rather than the method.
 
 ### Keeping the VM in step with the repo
 

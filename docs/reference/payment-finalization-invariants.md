@@ -33,7 +33,7 @@ comments reference its narrow concurrency contract.
 7. **Machines do not repair money.** Payment escalation and billing reconciliation
    are observation-only for financial/session state
    (`backend/internal/worker/worker.go:288-310,319-353`). Staff use settle,
-   cancel, or force-close (`backend/internal/server/server.go:379-392`).
+   cancel, or force-close (`backend/internal/server/server.go:386-399`).
 
 Known adjacent defect: payment and order idempotency rows record expiry, but lookup
 ignores it and no reaper query exists

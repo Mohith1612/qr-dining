@@ -39,7 +39,28 @@ export interface paths {
         post?: never;
         delete?: never;
         options?: never;
-        head?: never;
+        /**
+         * Liveness probe, headers only
+         * @description Identical status codes and headers to GET, with no response body. Registered because uptime monitors default to HEAD; a GET-only probe endpoint answers them 404 and reads as a false outage.
+         */
+        head: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Server is alive */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         patch?: never;
         trace?: never;
     };
@@ -85,7 +106,35 @@ export interface paths {
         post?: never;
         delete?: never;
         options?: never;
-        head?: never;
+        /**
+         * Readiness probe, headers only
+         * @description Identical status codes and headers to GET, with no response body. Registered because uptime monitors default to HEAD; a GET-only probe endpoint answers them 404 and reads as a false outage.
+         */
+        head: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description All dependencies healthy */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description One or more dependencies unhealthy */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         patch?: never;
         trace?: never;
     };
@@ -119,7 +168,28 @@ export interface paths {
         post?: never;
         delete?: never;
         options?: never;
-        head?: never;
+        /**
+         * Prometheus metrics endpoint, headers only
+         * @description Identical status codes and headers to GET, with no response body. Registered so HEAD probes against /metrics are not answered 404.
+         */
+        head: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Prometheus text format metrics */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         patch?: never;
         trace?: never;
     };
