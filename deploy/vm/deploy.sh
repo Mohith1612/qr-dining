@@ -72,14 +72,16 @@ if [[ "${QRD_DEPLOY_REEXEC:-}" != "1" ]]; then
     export QRD_DEPLOY_REEXEC=1 QRD_DEPLOY_SELF_COPY="$_self_copy"
     exec bash "$_self_copy" "$@"
 fi
-[[ -n "${QRD_DEPLOY_SELF_COPY:-}" ]] && trap 'rm -f -- "$QRD_DEPLOY_SELF_COPY"' EXIT
+if [[ -n "${QRD_DEPLOY_SELF_COPY:-}" ]]; then
+    trap 'rm -f -- "$QRD_DEPLOY_SELF_COPY"' EXIT
+fi
 
 # ---------------------------------------------------------------------------
 # Configuration. /opt/qr-dining/deploy.env may override any of it; see
 # deploy/vm/deploy.env.example.
 # ---------------------------------------------------------------------------
 PROJECT_DIR="${QRD_PROJECT_DIR:-/opt/qr-dining}"
-[[ -r "$PROJECT_DIR/deploy.env" ]] && . "$PROJECT_DIR/deploy.env"
+if [[ -r "$PROJECT_DIR/deploy.env" ]]; then . "$PROJECT_DIR/deploy.env"; fi
 
 REPO_DIR="${QRD_REPO_DIR:-$PROJECT_DIR/repo}"
 STATE_DIR="${QRD_STATE_DIR:-$PROJECT_DIR/deploy-state}"
@@ -107,6 +109,14 @@ HEALTH_INTERVAL="${QRD_HEALTH_INTERVAL:-3}"
 TELEGRAM_TOKEN_FILE="${QRD_TELEGRAM_TOKEN_FILE:-$PROJECT_DIR/secrets/alertmanager/telegram_token}"
 TELEGRAM_CHAT_ID="${QRD_TELEGRAM_CHAT_ID:-5488346548}"
 
+# How long a repeating condition stays quiet after it has been reported once.
+# The agent polls every two minutes and a blocked or broken main stays blocked
+# until a human acts, so without this a single pending migration would send 30
+# identical messages an hour. Alertmanager's own repeat_interval for a page is
+# 1h and for a ticket 12h, chosen so the channel does not get muted; a deploy
+# that is waiting on a human is closer to the latter.
+NOTIFY_REPEAT_SECONDS="${QRD_NOTIFY_REPEAT_SECONDS:-21600}"  # 6h
+
 COMPOSE_FILES=(
     -f "$REPO_DIR/deploy/vm/docker-compose.yml"
     -f "$REPO_DIR/deploy/vm/docker-compose.beta.yml"
@@ -119,6 +129,7 @@ OBS_COMPOSE_FILES=(
 
 MODE="" ARG="" DRY_RUN=0
 NOTIFY_SENT=0
+TARGET_SHA=""
 
 # ---------------------------------------------------------------------------
 # Output. Everything the script decides goes to stdout with a timestamp; cron
@@ -128,6 +139,36 @@ log()  { printf '%s  %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
 step() { printf '\n%s  == %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
 
 html_escape() { python3 -c 'import html,sys; sys.stdout.write(html.escape(sys.stdin.read()))'; }
+
+# notify_once <dedup-key> <emoji> <title> <body>
+#
+# For conditions that persist across polls: pending migrations, a red main, an
+# unreachable API. Sends once, then stays quiet for NOTIFY_REPEAT_SECONDS unless
+# the key changes — and the key always carries the target SHA, so a NEW bad
+# commit is never suppressed by an older one. Transitions that happen once
+# (deployed, rolled back) use notify() and are never suppressed.
+notify_once() {
+    local key="$1"; shift
+    local marker; marker="$STATE_DIR/notified-$(printf '%s' "$key" | tr -c 'A-Za-z0-9._-' '_')"
+    if [[ -f "$marker" ]]; then
+        local age=$(( $(date +%s) - $(stat -c %Y "$marker") ))
+        if (( age < NOTIFY_REPEAT_SECONDS )); then
+            NOTIFY_SENT=1
+            log "(report suppressed: '$key' already reported ${age}s ago; repeats after ${NOTIFY_REPEAT_SECONDS}s)"
+            return 0
+        fi
+    fi
+    (( DRY_RUN )) || : > "$marker"
+    notify "$@"
+}
+
+# Clear suppression markers once the condition they describe is gone, so the
+# NEXT occurrence is reported immediately rather than swallowed by a stale one.
+notify_reset() {
+    if (( ! DRY_RUN )); then
+        rm -f -- "$STATE_DIR"/notified-*
+    fi
+}
 
 # notify <emoji> <title> <body>
 notify() {
@@ -156,12 +197,18 @@ $(printf '%s' "$body" | html_escape)"
     fi
 }
 
+# die reports through notify_once keyed on the target SHA plus the first line of
+# the message. A condition that will still be true in two minutes — a red main,
+# an unreachable API, a dirty schema — must not page on every tick.
 die() {
     log "FATAL: $*"
-    (( NOTIFY_SENT )) || notify "🚨" "qr-dining deploy ERROR" "$*
+    if (( ! NOTIFY_SENT )); then
+        notify_once "fail-${TARGET_SHA:-none}-$(printf '%s' "$*" | head -c 60)" \
+            "🚨" "qr-dining deploy ERROR" "$*
 
 host: $(hostname)
 log:  $PROJECT_DIR/deploy.log"
+    fi
     exit 1
 }
 
@@ -343,11 +390,19 @@ migration_preflight() {
     local db_row; db_row="$(db_schema_version)"
     log "schema_migrations says: ${db_row:-<empty>}"
 
-    set +e
-    out="$(docker run --rm --network "$INTERNAL_NET" --env-file "$ENV_FILE" \
-            --entrypoint /app/migrate "$image" pending 2>&1)"
-    rc=$?
-    set -e
+    # `if`, not `set +e`: a non-zero exit is the EXPECTED answer here (10 means
+    # migrations are pending), and `set +e` does NOT suppress the ERR trap —
+    # bash still fires it on a failed assignment-from-command-substitution. When
+    # this was written with set +e, one pending migration produced three Telegram
+    # messages: two spurious "deploy CRASHED" pages from the trap (one inside the
+    # command substitution's subshell, one outside) and then the real one.
+    # Commands in an `if` condition are exempt from both.
+    if out="$(docker run --rm --network "$INTERNAL_NET" --env-file "$ENV_FILE" \
+                --entrypoint /app/migrate "$image" pending 2>&1)"; then
+        rc=0
+    else
+        rc=$?
+    fi
     printf '%s\n' "$out" | sed 's/^/    migrate: /'
 
     if (( rc == 125 )) || grep -q 'no such file or directory' <<<"$out"; then
@@ -641,7 +696,9 @@ if [[ "$MODE" == "status" ]]; then print_status; exit 0; fi
 exec 9>"$STATE_DIR/deploy.lock"
 flock -n 9 || { log "another deploy is running; exiting"; exit 0; }
 
-step "qr-dining deploy ($MODE${ARG:+ $ARG}${DRY_RUN:+, DRY RUN}) on $(hostname)"
+DRY_LABEL=""
+if (( DRY_RUN )); then DRY_LABEL=", DRY RUN"; fi
+step "qr-dining deploy ($MODE${ARG:+ $ARG}$DRY_LABEL) on $(hostname)"
 
 # What is serving right now. Read from the running containers, not from a state
 # file: a state file can drift from reality, and this value is the rollback
@@ -658,7 +715,7 @@ for entry in "${INSTANCES[@]}"; do
     log "  before: $c = $(container_image_ref "$c")"
 done
 
-TARGET_SHA="" IMAGE="" TAG=""
+IMAGE="" TAG=""
 
 case "$MODE" in
     rollback)
@@ -734,7 +791,8 @@ if (( PENDING_COUNT > 0 )); then
         (( DRY_RUN )) || rm -f "$TOKEN"
         APPROVED_MIGRATIONS=1
     else
-        notify "⛔" "qr-dining deploy BLOCKED — migrations pending" \
+        notify_once "blocked-migrations-$TAG" \
+            "⛔" "qr-dining deploy BLOCKED — migrations pending" \
 "$IMAGE would apply $PENDING_COUNT migration(s) at boot: $PENDING_LIST
 database is at: $(db_schema_version)
 
@@ -829,8 +887,19 @@ fi
 step "Deployed"
 print_status | sed 's/^/    /'
 
+# Whatever was being suppressed is over.
+notify_reset
+
+SUBJECT=""
+if [[ -n "$TARGET_SHA" ]]; then SUBJECT="$(git -C "$REPO_DIR" log -1 --format='%s' "$TARGET_SHA")"; fi
+MIGRATION_NOTE=""
+if (( APPROVED_MIGRATIONS )); then
+    MIGRATION_NOTE="
+migrations applied: $PENDING_LIST (operator-approved)"
+fi
+
 notify "✅" "qr-dining deployed" \
 "$BEFORE_REF  ->  $IMAGE
-commit: ${TARGET_SHA:0:7} $( [[ -n "$TARGET_SHA" ]] && git -C "$REPO_DIR" log -1 --format='%s' "$TARGET_SHA" )
-schema: $(db_schema_version)$( (( APPROVED_MIGRATIONS )) && printf '\n migrations applied: %s (operator-approved)' "$PENDING_LIST" )
+commit: ${TARGET_SHA:0:7} $SUBJECT
+schema: $(db_schema_version)$MIGRATION_NOTE
 instances: $(for e in "${INSTANCES[@]}"; do IFS=: read -r _ c _ <<<"$e"; printf '%s=%s ' "$c" "$(container_image_ref "$c")"; done)"

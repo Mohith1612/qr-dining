@@ -302,10 +302,12 @@ thing can return 200 — a 200 is not the assertion. The gate additionally
 requires that the container is running the image ID that was just pulled, so a
 container that did not actually get replaced can never be reported as deployed.
 
-After the gate passes, the public per-instance hostname is probed through the
-proxy as a separate routing assertion. It is deliberately not part of the
+After the gate passes, the public **per-instance** hostname is probed through
+the proxy as a separate routing assertion. It is deliberately not part of the
 liveness gate: a routing failure and an application failure are different
-incidents and should not produce the same page.
+incidents and should not produce the same page. The per-instance hostnames do
+not fail over, which is what makes that probe meaningful — the service hostname
+does, so a probe there could be answered by the instance that was not deployed.
 
 ### Rollback: the binary, never the schema
 
@@ -324,6 +326,34 @@ migration gate: **because nothing unattended can change the schema, the automati
 rollback path only ever runs when the schema did not move.** When an operator
 *has* approved a migration, that guarantee is gone, and the failure page says so
 explicitly and names the migrations that were applied.
+
+### Reporting, and why it repeats slowly
+
+Every outcome goes to Telegram through the bot Alertmanager already uses, so
+deploy reports land in the same chat as pages. It is sent directly to the Bot
+API rather than injected into Alertmanager as a synthetic alert: a deploy report
+is not an alert, and routing one through `group_wait`/`group_interval` would
+delay the thing you most want immediately. It also means the report still
+arrives when Alertmanager is the thing that broke.
+
+**Conditions that persist are reported once, then go quiet for six hours.** The
+agent polls every two minutes, and a blocked deploy stays blocked until a human
+acts — without suppression, one pending migration would send thirty identical
+messages an hour, which is how a channel gets muted and how the next real page
+gets missed. Suppression is keyed on the target SHA, so a *new* bad commit is
+never silenced by an older one, and every marker is cleared on a successful
+deploy. One-time transitions — deployed, rolled back — are never suppressed.
+
+The failure this does not cover: if the Telegram send itself fails, the deploy
+outcome is only in `/opt/qr-dining/deploy.log`. There is no second channel.
+
+One implementation note, because it cost three messages for one event the first
+time the gate fired for real: **`set +e` does not suppress bash's `ERR` trap.**
+A command whose non-zero exit is the expected answer — `migrate pending`
+returning 10 — must be run in an `if` condition, which bash exempts from both
+`errexit` and the trap. Written with `set +e`, the trap fired twice (once inside
+the command substitution's subshell, once outside) and paged "deploy CRASHED"
+before the real "BLOCKED" report arrived.
 
 ### Operating it
 
@@ -366,10 +396,15 @@ Stated here so nobody has to find out during a pilot service:
 - **WebSocket sessions on the restarting instance are dropped.** HTTP requests
   fail over to the other instance; an open `/ws` connection cannot. Clients
   reconnect, but a deploy during service is visible to guests as a reconnect.
-- **A `latest`-tag drift or a GHCR outage stops deploys silently** except for
-  the log, since "no new commit" and "cannot reach GitHub" look similar from
-  two minutes away. There is no dead-man's switch on the deploy path itself, the
-  way there is on alerting.
+- **`AppTargetDown` will fire during a failed deploy.** The health gate waits up
+  to 120s, and the alert's `for:` is 1m, so an instance that never comes up
+  pages on its own account as well as through the deploy report. A *successful*
+  rolling restart is ~10–20s per instance and stays under the threshold.
+- **Nothing watches the watcher.** If cron stops, the crontab is lost, or the
+  checkout is left on another branch, deploys simply stop happening and the only
+  symptom is silence. Alerting has a dead man's switch for exactly this; the
+  deploy path has none, so "no deploy report since the last merge" is a thing a
+  human has to notice. Suppression makes that quieter, not louder.
 - **`proxy_nginx` itself is out of scope.** Its image is a floating tag, its
   ports and `nginx.conf` are not in this repo, and nothing here would notice if
   it stopped.
