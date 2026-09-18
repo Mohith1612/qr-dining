@@ -347,6 +347,14 @@ deploy. One-time transitions — deployed, rolled back — are never suppressed.
 The failure this does not cover: if the Telegram send itself fails, the deploy
 outcome is only in `/opt/qr-dining/deploy.log`. There is no second channel.
 
+One implementation note, because it cost three messages for one event the first
+time the gate fired for real: **`set +e` does not suppress bash's `ERR` trap.**
+A command whose non-zero exit is the expected answer — `migrate pending`
+returning 10 — must be run in an `if` condition, which bash exempts from both
+`errexit` and the trap. Written with `set +e`, the trap fired twice (once inside
+the command substitution's subshell, once outside) and paged "deploy CRASHED"
+before the real "BLOCKED" report arrived.
+
 ### Operating it
 
 ```bash

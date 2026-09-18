@@ -19,7 +19,7 @@
 set -Eeuo pipefail
 
 PROJECT_DIR="${QRD_PROJECT_DIR:-/opt/qr-dining}"
-[[ -r "$PROJECT_DIR/deploy.env" ]] && . "$PROJECT_DIR/deploy.env"
+if [[ -r "$PROJECT_DIR/deploy.env" ]]; then . "$PROJECT_DIR/deploy.env"; fi
 STATE_DIR="${QRD_STATE_DIR:-$PROJECT_DIR/deploy-state}"
 REPO_DIR="${QRD_REPO_DIR:-$PROJECT_DIR/repo}"
 IMAGE_REPO="${QRD_IMAGE_REPO:-ghcr.io/mohith1612/qr-dining}"

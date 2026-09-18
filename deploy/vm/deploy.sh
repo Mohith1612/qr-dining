@@ -72,14 +72,16 @@ if [[ "${QRD_DEPLOY_REEXEC:-}" != "1" ]]; then
     export QRD_DEPLOY_REEXEC=1 QRD_DEPLOY_SELF_COPY="$_self_copy"
     exec bash "$_self_copy" "$@"
 fi
-[[ -n "${QRD_DEPLOY_SELF_COPY:-}" ]] && trap 'rm -f -- "$QRD_DEPLOY_SELF_COPY"' EXIT
+if [[ -n "${QRD_DEPLOY_SELF_COPY:-}" ]]; then
+    trap 'rm -f -- "$QRD_DEPLOY_SELF_COPY"' EXIT
+fi
 
 # ---------------------------------------------------------------------------
 # Configuration. /opt/qr-dining/deploy.env may override any of it; see
 # deploy/vm/deploy.env.example.
 # ---------------------------------------------------------------------------
 PROJECT_DIR="${QRD_PROJECT_DIR:-/opt/qr-dining}"
-[[ -r "$PROJECT_DIR/deploy.env" ]] && . "$PROJECT_DIR/deploy.env"
+if [[ -r "$PROJECT_DIR/deploy.env" ]]; then . "$PROJECT_DIR/deploy.env"; fi
 
 REPO_DIR="${QRD_REPO_DIR:-$PROJECT_DIR/repo}"
 STATE_DIR="${QRD_STATE_DIR:-$PROJECT_DIR/deploy-state}"
@@ -163,8 +165,9 @@ notify_once() {
 # Clear suppression markers once the condition they describe is gone, so the
 # NEXT occurrence is reported immediately rather than swallowed by a stale one.
 notify_reset() {
-    (( DRY_RUN )) && return 0
-    rm -f -- "$STATE_DIR"/notified-*
+    if (( ! DRY_RUN )); then
+        rm -f -- "$STATE_DIR"/notified-*
+    fi
 }
 
 # notify <emoji> <title> <body>
@@ -387,11 +390,19 @@ migration_preflight() {
     local db_row; db_row="$(db_schema_version)"
     log "schema_migrations says: ${db_row:-<empty>}"
 
-    set +e
-    out="$(docker run --rm --network "$INTERNAL_NET" --env-file "$ENV_FILE" \
-            --entrypoint /app/migrate "$image" pending 2>&1)"
-    rc=$?
-    set -e
+    # `if`, not `set +e`: a non-zero exit is the EXPECTED answer here (10 means
+    # migrations are pending), and `set +e` does NOT suppress the ERR trap —
+    # bash still fires it on a failed assignment-from-command-substitution. When
+    # this was written with set +e, one pending migration produced three Telegram
+    # messages: two spurious "deploy CRASHED" pages from the trap (one inside the
+    # command substitution's subshell, one outside) and then the real one.
+    # Commands in an `if` condition are exempt from both.
+    if out="$(docker run --rm --network "$INTERNAL_NET" --env-file "$ENV_FILE" \
+                --entrypoint /app/migrate "$image" pending 2>&1)"; then
+        rc=0
+    else
+        rc=$?
+    fi
     printf '%s\n' "$out" | sed 's/^/    migrate: /'
 
     if (( rc == 125 )) || grep -q 'no such file or directory' <<<"$out"; then
@@ -685,7 +696,9 @@ if [[ "$MODE" == "status" ]]; then print_status; exit 0; fi
 exec 9>"$STATE_DIR/deploy.lock"
 flock -n 9 || { log "another deploy is running; exiting"; exit 0; }
 
-step "qr-dining deploy ($MODE${ARG:+ $ARG}${DRY_RUN:+, DRY RUN}) on $(hostname)"
+DRY_LABEL=""
+if (( DRY_RUN )); then DRY_LABEL=", DRY RUN"; fi
+step "qr-dining deploy ($MODE${ARG:+ $ARG}$DRY_LABEL) on $(hostname)"
 
 # What is serving right now. Read from the running containers, not from a state
 # file: a state file can drift from reality, and this value is the rollback
@@ -877,8 +890,16 @@ print_status | sed 's/^/    /'
 # Whatever was being suppressed is over.
 notify_reset
 
+SUBJECT=""
+if [[ -n "$TARGET_SHA" ]]; then SUBJECT="$(git -C "$REPO_DIR" log -1 --format='%s' "$TARGET_SHA")"; fi
+MIGRATION_NOTE=""
+if (( APPROVED_MIGRATIONS )); then
+    MIGRATION_NOTE="
+migrations applied: $PENDING_LIST (operator-approved)"
+fi
+
 notify "✅" "qr-dining deployed" \
 "$BEFORE_REF  ->  $IMAGE
-commit: ${TARGET_SHA:0:7} $( [[ -n "$TARGET_SHA" ]] && git -C "$REPO_DIR" log -1 --format='%s' "$TARGET_SHA" )
-schema: $(db_schema_version)$( (( APPROVED_MIGRATIONS )) && printf '\n migrations applied: %s (operator-approved)' "$PENDING_LIST" )
+commit: ${TARGET_SHA:0:7} $SUBJECT
+schema: $(db_schema_version)$MIGRATION_NOTE
 instances: $(for e in "${INSTANCES[@]}"; do IFS=: read -r _ c _ <<<"$e"; printf '%s=%s ' "$c" "$(container_image_ref "$c")"; done)"
