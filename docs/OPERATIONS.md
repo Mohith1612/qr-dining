@@ -147,10 +147,17 @@ pushed to GHCR on every push to `main` even if every other job failed.** A tag
 existing in the registry proves that a build succeeded, not that a release did.
 The gate asks GitHub what the checks actually concluded.
 
-The call is unauthenticated, which is what keeps the "no credential on the box"
-property. It is subject to a 60/hour per-IP limit, and is only made when a new
-commit appears — idle polling costs nothing. **A rate-limited or unreachable API
-is treated as "do not know", which means "do not deploy".**
+The gate reads two surfaces, because this repo's fifteenth check is not on the
+first one. Fourteen workflow jobs report as **check-runs**; GitGuardian reports
+as a **commit status**. A push-to-main commit normally carries no statuses at
+all, because GitGuardian is a `pull_request`-only integration — so an empty
+status list means "nothing to check" here, not "pending". Any status that does
+exist and is not green stops the deploy.
+
+Both calls are unauthenticated, which is what keeps the "no credential on the
+box" property. They are subject to a 60/hour per-IP limit, and are made only
+when a new commit appears — idle polling costs nothing. **A rate-limited or
+unreachable API is treated as "do not know", which means "do not deploy".**
 
 ### Step 4: how pending migrations are detected
 

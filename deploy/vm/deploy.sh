@@ -276,6 +276,33 @@ print("OK|%d checks green" % len(runs))
         FAILED)  die "CI gate: $sha did NOT pass CI (${verdict#*|}). The GHCR image exists anyway — docker-build has no \`needs:\` — which is exactly why this check exists." ;;
         *)       die "CI gate: ${verdict#*|}" ;;
     esac
+
+    # Commit STATUSES are a separate surface from check-runs, and the fifteenth
+    # gate on this repo — GitGuardian — lives on it rather than on a check-run.
+    # It is a pull_request-only integration, so a push-to-main commit normally
+    # carries no statuses at all; an empty list therefore means "nothing to
+    # check", not "pending". A status that does exist and is not green stops the
+    # deploy.
+    local status_body status_verdict
+    status_body="$(curl -sS --max-time 30 -H 'Accept: application/vnd.github+json' \
+        "https://api.github.com/repos/$GH_REPO/commits/$sha/status")" \
+        || die "GitHub commit-status API unreachable for $sha — refusing to deploy on an unknown CI state"
+    status_verdict="$(printf '%s' "$status_body" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+sts = d.get("statuses")
+if sts is None:
+    print("ERROR|%s" % d.get("message", "unexpected commit-status response")); raise SystemExit
+if not sts:
+    print("OK|no commit statuses on this SHA"); raise SystemExit
+bad = ["%s=%s" % (s["context"], s["state"]) for s in sts if s["state"] != "success"]
+print(("FAILED|%s" % ", ".join(sorted(bad))) if bad else ("OK|%d status(es) green" % len(sts)))
+')"
+    case "${status_verdict%%|*}" in
+        OK)     log "CI gate: ${status_verdict#*|}" ;;
+        FAILED) die "CI gate: commit statuses on $sha are not green (${status_verdict#*|})" ;;
+        *)      die "CI gate: ${status_verdict#*|}" ;;
+    esac
 }
 
 # ---------------------------------------------------------------------------
