@@ -1,0 +1,34 @@
+# A deliberately broken image, for rehearsing the deploy health gate.
+#
+# A rollback path nobody has watched work is decoration. This is what makes it
+# watchable: an image that starts cleanly, stays up, listens on :8080, and
+# answers /readyz with HTTP 200 — and a body that says it is NOT ready.
+#
+#     {"checks":{"postgres":"unhealthy","redis":"ok"},"status":"not_ready"}
+#
+# The 200 is the entire point. A gate that checks the status code passes this.
+# The real failure it stands in for is an app that boots, binds, and cannot
+# reach Postgres: exactly what a bad config change or a connection-string typo
+# produces, and exactly what must not be left serving.
+#
+# It is built FROM the real image so the migration pre-flight still runs for
+# real against it (/app/migrate is present and reports the truth) and the only
+# thing under test is the health gate.
+#
+# NEVER TAGGED UNDER THE GHCR NAME. It is built as qr-dining-drill:broken-readyz
+# so it cannot be confused for something a registry vouched for, and so
+# `docker compose pull` can never acquire it. See deploy/vm/drills/README.md.
+ARG BASE
+FROM ${BASE}
+
+USER root
+RUN mkdir -p /drill && \
+    printf '%s' '{"checks":{"postgres":"unhealthy","redis":"ok"},"status":"not_ready"}' > /drill/readyz && \
+    printf '%s' '{"status":"ok"}' > /drill/health
+
+# busybox httpd serves both files with a 200. `-f` keeps it in the foreground so
+# the container stays up rather than exiting — a crash would be caught by the
+# gate for the wrong reason, and would not prove the body assertion.
+RUN apk add --no-cache busybox-extras
+USER appuser
+ENTRYPOINT ["busybox", "httpd", "-f", "-p", "8080", "-h", "/drill"]
