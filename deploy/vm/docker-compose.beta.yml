@@ -8,15 +8,21 @@
 #
 # It does three things:
 #
-#   1. Points both backends at a LOCALLY BUILT image and forbids pulling.
-#      ghcr.io/mohith1612/qr-dining has never been published — CI only pushes on
-#      `main` and `v*` tags, and the beta deploys an unmerged branch — so the
-#      base file's `image:` refers to something that does not exist in any
-#      registry. The image is built on the VM (native arm64, no QEMU) and tagged
-#      qr-dining:beta-<short-sha>. It is deliberately NOT tagged under the ghcr
-#      name: a local image wearing a registry name makes provenance ambiguous
-#      exactly when you're troubleshooting. pull_policy: never turns a stray
-#      `docker compose pull` into a clear error instead of a confusing 401.
+#   1. Gives app2 the same image reference as app.
+#
+#      This used to pin both backends to a LOCALLY BUILT qr-dining:beta-<sha>
+#      with pull_policy: never, because the beta deployed an unmerged branch and
+#      ghcr.io/mohith1612/qr-dining had never been published. Both halves of that
+#      are now false: main is the pilot branch, and CI pushes
+#      ghcr.io/mohith1612/qr-dining:sha-<short> on every merge to main. Pinning
+#      to a local build meant six weeks of merged fixes sat in a registry nobody
+#      pulled from — the box ran beta-b57f746, a pre-audit commit, for 5 weeks.
+#
+#      Both services now resolve ${IMAGE_REPO}:${IMAGE_TAG} from the base file,
+#      which deploy/vm/deploy.sh writes into /opt/qr-dining/.env. The principle
+#      the old comment was defending still holds and is now expressed by
+#      IMAGE_REPO: a local image keeps a local name (IMAGE_REPO=qr-dining) so it
+#      can never be mistaken for something a registry vouched for.
 #
 #   2. Adds a SECOND backend instance (app2) sharing one Postgres and one Redis.
 #      A single instance cannot certify Redis pub/sub fan-out, WebSocket ticket
@@ -35,6 +41,12 @@
 #   # wait for healthy, confirm schema v40, then:
 #   docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d
 # Migrations are idempotent, so later restarts can bring both up together.
+#
+# ROUTINE DEPLOYS DO NOT USE THIS FILE BY HAND. deploy/vm/deploy.sh drives the
+# same two files with --project-directory /opt/qr-dining, one service at a time,
+# with a health gate between them. Running `up -d` yourself restarts both
+# instances simultaneously, which is the downtime the rolling path exists to
+# avoid. docs/OPERATIONS.md, "Automatic deployment".
 
 networks:
   signoz:
@@ -42,8 +54,6 @@ networks:
 
 services:
   app:
-    image: qr-dining:${IMAGE_TAG}
-    pull_policy: never
     environment:
       GIN_MODE: release
       # MUST match app2. WORKER_REGION is not an instance label — it is the
@@ -62,8 +72,11 @@ services:
       - signoz
 
   app2:
-    image: qr-dining:${IMAGE_TAG}
-    pull_policy: never
+    # Must stay identical to app's reference — a rolling deploy that left the
+    # two instances on different images would be a silent split-brain, not a
+    # deploy. deploy/vm/deploy.sh asserts both containers end on the same image
+    # ID before it reports success.
+    image: ${IMAGE_REPO:-ghcr.io/mohith1612/qr-dining}:${IMAGE_TAG:-latest}
     container_name: qr_dining_app_2
     restart: unless-stopped
     logging:

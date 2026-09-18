@@ -1,0 +1,12 @@
+# STUB — installs at /opt/proxy/nginx/conf.d/qr-dining-beta.conf
+#
+# This is the whole of qr-dining's hand-maintained nginx configuration, and it
+# never changes. The real vhost lives in THIS repository at
+# deploy/vm/nginx/qr-dining-beta.conf and is bind-mounted into proxy_nginx at
+# /etc/nginx/qr-dining.d — see ../proxy-nginx/README.md.
+#
+# Why a stub instead of mounting deploy/vm/nginx straight onto conf.d: conf.d is
+# shared. It also holds 000-catchall.conf, grafana.conf, job-queue.conf and
+# sketchiple.conf, none of which belong to this repository. Mounting over it
+# would delete three other projects' routing.
+include /etc/nginx/qr-dining.d/*.conf;

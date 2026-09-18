@@ -42,7 +42,11 @@ volumes:
 
 services:
   app:
-    image: ghcr.io/mohith1612/qr-dining:${IMAGE_TAG:-latest}
+    # IMAGE_REPO exists so a locally built image never has to wear a registry
+    # name it did not come from. Leave it unset in production: the default is
+    # the GHCR repository CI pushes to, and deploy/vm/deploy.sh sets IMAGE_TAG
+    # to the sha-<short> tag of the commit it is deploying.
+    image: ${IMAGE_REPO:-ghcr.io/mohith1612/qr-dining}:${IMAGE_TAG:-latest}
     container_name: qr_dining_app
     restart: unless-stopped
     logging: *default-logging

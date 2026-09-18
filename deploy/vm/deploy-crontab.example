@@ -1,0 +1,20 @@
+# qr-dining automatic deployment — appuser's crontab on the VM.
+#
+# Install with `crontab -e` as appuser, alongside the existing nightly backup
+# line. Not a systemd unit: appuser has no passwordless sudo, so it cannot
+# install one, and `systemctl --user` needs lingering that is not enabled. The
+# backup job already runs this way; this matches it.
+#
+# The script is invoked from the CHECKOUT, so `git pull` updates the deploy path
+# itself. deploy.sh copies itself to a temp file and re-execs before it touches
+# git, so a fast-forward cannot rewrite the script out from under the running
+# shell.
+
+# Every two minutes. Each run takes <1s when there is nothing to do: one
+# `git fetch` and a string compare, no API call and no docker work. The GitHub
+# check-runs call (60/hour unauthenticated) only happens when a NEW commit
+# appears, so idle polling cannot exhaust the rate limit.
+*/2 * * * * flock -n /opt/qr-dining/deploy-state/cron.lock /opt/qr-dining/repo/deploy/vm/deploy.sh --auto >> /opt/qr-dining/deploy.log 2>&1
+
+# Existing, unchanged:
+# 30 2 * * * /opt/qr-dining/run-backup.sh >> /opt/qr-dining/backup.log 2>&1
