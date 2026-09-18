@@ -356,6 +356,16 @@ Stated here so nobody has to find out during a pilot service:
   that turns out to be wrong is an incident, not a rollback.
 - **There is a window where the two instances run different images**, between
   the two health gates. Deploys must stay backward-compatible for that window.
+- **Every merge to `main` restarts both instances, even a docs-only one.** The
+  image tag is per-commit, so a commit that changes no Go code still produces a
+  new tag and therefore a new container. That is a deliberate trade: skipping
+  the restart when the image digest is unchanged would be cheaper, but it would
+  leave `docker inspect` reporting a tag that is not the deployed commit, and
+  provenance is the thing this whole path exists to establish. The cost is ~10s
+  per instance with the other instance serving.
+- **WebSocket sessions on the restarting instance are dropped.** HTTP requests
+  fail over to the other instance; an open `/ws` connection cannot. Clients
+  reconnect, but a deploy during service is visible to guests as a reconnect.
 - **A `latest`-tag drift or a GHCR outage stops deploys silently** except for
   the log, since "no new commit" and "cannot reach GitHub" look similar from
   two minutes away. There is no dead-man's switch on the deploy path itself, the
