@@ -53,12 +53,24 @@ TOKEN="$STATE_DIR/approved-$TAG"
 docker image inspect "$IMAGE" >/dev/null 2>&1 || docker pull -q "$IMAGE" \
     || { echo "cannot obtain $IMAGE" >&2; exit 1; }
 
+# Run the pre-flight ONCE and reuse the output. Two things matter here and both
+# were learned by running it:
+#
+#   * `if`, not `set +e`. A non-zero exit is the expected answer (10 = pending),
+#     and with `set -e` an assignment from a command substitution that exits
+#     non-zero kills the script. The first version of this ran the pre-flight a
+#     second time to read db_version and died on exit 10 before printing a
+#     single line of the SQL it exists to show.
+#   * One invocation, not two. Asking twice invites the two answers to differ.
 echo "== What this image would do to the schema"
-set +e
-docker run --rm --network "$INTERNAL_NET" --env-file "$ENV_FILE" \
-    --entrypoint /app/migrate "$IMAGE" pending 2>&1 | sed 's/^/    /'
-rc=${PIPESTATUS[0]}
-set -e
+if PREFLIGHT="$(docker run --rm --network "$INTERNAL_NET" --env-file "$ENV_FILE" \
+        --entrypoint /app/migrate "$IMAGE" pending 2>&1)"; then
+    rc=0
+else
+    rc=$?
+fi
+printf '%s\n' "$PREFLIGHT" | sed 's/^/    /'
+
 if (( rc != 10 )); then
     echo
     echo "Nothing to approve: the pre-flight exited $rc, not 10 (pending)."
@@ -67,16 +79,17 @@ if (( rc != 10 )); then
     exit 1
 fi
 
+DB_V="$(sed -nE 's/^db_version=([0-9]+)$/\1/p' <<<"$PREFLIGHT" | tail -1)"
+PENDING_LIST="$(sed -nE 's/^pending=(.*)$/\1/p' <<<"$PREFLIGHT" | tail -1)"
+
 # Show the SQL. An approval given without reading the migration is not an
 # approval, it is a rubber stamp with an audit trail.
 if [[ -d "$REPO_DIR" ]]; then
-    DB_V="$(docker run --rm --network "$INTERNAL_NET" --env-file "$ENV_FILE" \
-        --entrypoint /app/migrate "$IMAGE" pending 2>/dev/null | sed -nE 's/^db_version=([0-9]+)$/\1/p')"
     echo
     echo "== The SQL you are approving (backend/migrations, above version ${DB_V:-?})"
     for f in "$REPO_DIR"/backend/migrations/*.up.sql; do
         n="$(basename "$f")"; v="$((10#${n%%_*}))"
-        (( v > ${DB_V:-0} )) || continue
+        if (( v <= ${DB_V:-0} )); then continue; fi
         echo; echo "--- $n"; sed 's/^/    /' "$f"
     done
 fi
@@ -100,6 +113,8 @@ read -r -p "Type the tag ($TAG) to approve, anything else to abort: " answer
 cat > "$TOKEN" <<EOF
 tag=$TAG
 image=$IMAGE
+migrations=$PENDING_LIST
+db_version_at_approval=$DB_V
 approved_by=$(id -un)@$(hostname)
 approved_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 EOF
