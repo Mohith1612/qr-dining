@@ -302,10 +302,12 @@ thing can return 200 — a 200 is not the assertion. The gate additionally
 requires that the container is running the image ID that was just pulled, so a
 container that did not actually get replaced can never be reported as deployed.
 
-After the gate passes, the public per-instance hostname is probed through the
-proxy as a separate routing assertion. It is deliberately not part of the
+After the gate passes, the public **per-instance** hostname is probed through
+the proxy as a separate routing assertion. It is deliberately not part of the
 liveness gate: a routing failure and an application failure are different
-incidents and should not produce the same page.
+incidents and should not produce the same page. The per-instance hostnames do
+not fail over, which is what makes that probe meaningful — the service hostname
+does, so a probe there could be answered by the instance that was not deployed.
 
 ### Rollback: the binary, never the schema
 
@@ -386,6 +388,10 @@ Stated here so nobody has to find out during a pilot service:
 - **WebSocket sessions on the restarting instance are dropped.** HTTP requests
   fail over to the other instance; an open `/ws` connection cannot. Clients
   reconnect, but a deploy during service is visible to guests as a reconnect.
+- **`AppTargetDown` will fire during a failed deploy.** The health gate waits up
+  to 120s, and the alert's `for:` is 1m, so an instance that never comes up
+  pages on its own account as well as through the deploy report. A *successful*
+  rolling restart is ~10–20s per instance and stays under the threshold.
 - **Nothing watches the watcher.** If cron stops, the crontab is lost, or the
   checkout is left on another branch, deploys simply stop happening and the only
   symptom is silence. Alerting has a dead man's switch for exactly this; the
