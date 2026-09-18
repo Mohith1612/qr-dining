@@ -166,7 +166,9 @@ log:  $PROJECT_DIR/deploy.log"
 }
 
 # An unexpected failure must never be quieter than an expected one.
-trap 'rc=$?; if (( rc != 0 )); then log "unexpected exit rc=$rc at line $LINENO"; (( NOTIFY_SENT )) || notify "🚨" "qr-dining deploy CRASHED" "rc=$rc near line $LINENO on $(hostname). Containers may be mid-deploy — check $PROJECT_DIR/deploy.log."; fi' ERR
+trap 'rc=$?; log "unexpected failure, rc=$rc (command: ${BASH_COMMAND})"; (( NOTIFY_SENT )) || notify "🚨" "qr-dining deploy CRASHED" "rc=$rc on $(hostname)
+failed command: ${BASH_COMMAND}
+Containers may be mid-deploy. Check $PROJECT_DIR/deploy.log and deploy.sh --status."' ERR
 
 # ---------------------------------------------------------------------------
 # Small helpers
@@ -329,7 +331,12 @@ db_schema_version() {
         -tAF'|' -c 'select version, dirty from schema_migrations' 2>/dev/null | tr -d ' '
 }
 
-# migration_preflight <image> [commit-sha]; echoes "count|list", exits non-zero on stop conditions
+# migration_preflight <image> [commit-sha]
+#
+# Sets PENDING_COUNT and PENDING_LIST. Deliberately NOT a command substitution:
+# it can call die(), and a die() inside $( ) would only kill the subshell, after
+# which set -e would trip the ERR trap and page a second time for the same
+# failure. Assigning globals keeps it in this shell.
 migration_preflight() {
     local image="$1" sha="${2:-}" out rc
 
@@ -388,7 +395,8 @@ tolerates the newer schema." ;;
         *)  die "migration gate: pre-flight failed (rc=$rc)" ;;
     esac
 
-    printf '%s|%s' "$pending_count" "$pending_list"
+    PENDING_COUNT="$pending_count"
+    PENDING_LIST="$pending_list"
 }
 
 approval_token() { printf '%s/approved-%s' "$STATE_DIR" "$1"; }
@@ -715,8 +723,8 @@ IMAGE_ID="$(docker image inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null || echo
 log "image id: $IMAGE_ID"
 
 step "4/6  Migration pre-flight"
-PREFLIGHT="$(migration_preflight "$IMAGE" "$TARGET_SHA")"
-PENDING_COUNT="${PREFLIGHT%%|*}"; PENDING_LIST="${PREFLIGHT#*|}"
+PENDING_COUNT=0 PENDING_LIST=""
+migration_preflight "$IMAGE" "$TARGET_SHA"
 
 if (( PENDING_COUNT > 0 )); then
     TOKEN="$(approval_token "$TAG")"
