@@ -107,6 +107,14 @@ HEALTH_INTERVAL="${QRD_HEALTH_INTERVAL:-3}"
 TELEGRAM_TOKEN_FILE="${QRD_TELEGRAM_TOKEN_FILE:-$PROJECT_DIR/secrets/alertmanager/telegram_token}"
 TELEGRAM_CHAT_ID="${QRD_TELEGRAM_CHAT_ID:-5488346548}"
 
+# How long a repeating condition stays quiet after it has been reported once.
+# The agent polls every two minutes and a blocked or broken main stays blocked
+# until a human acts, so without this a single pending migration would send 30
+# identical messages an hour. Alertmanager's own repeat_interval for a page is
+# 1h and for a ticket 12h, chosen so the channel does not get muted; a deploy
+# that is waiting on a human is closer to the latter.
+NOTIFY_REPEAT_SECONDS="${QRD_NOTIFY_REPEAT_SECONDS:-21600}"  # 6h
+
 COMPOSE_FILES=(
     -f "$REPO_DIR/deploy/vm/docker-compose.yml"
     -f "$REPO_DIR/deploy/vm/docker-compose.beta.yml"
@@ -119,6 +127,7 @@ OBS_COMPOSE_FILES=(
 
 MODE="" ARG="" DRY_RUN=0
 NOTIFY_SENT=0
+TARGET_SHA=""
 
 # ---------------------------------------------------------------------------
 # Output. Everything the script decides goes to stdout with a timestamp; cron
@@ -128,6 +137,35 @@ log()  { printf '%s  %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
 step() { printf '\n%s  == %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
 
 html_escape() { python3 -c 'import html,sys; sys.stdout.write(html.escape(sys.stdin.read()))'; }
+
+# notify_once <dedup-key> <emoji> <title> <body>
+#
+# For conditions that persist across polls: pending migrations, a red main, an
+# unreachable API. Sends once, then stays quiet for NOTIFY_REPEAT_SECONDS unless
+# the key changes — and the key always carries the target SHA, so a NEW bad
+# commit is never suppressed by an older one. Transitions that happen once
+# (deployed, rolled back) use notify() and are never suppressed.
+notify_once() {
+    local key="$1"; shift
+    local marker; marker="$STATE_DIR/notified-$(printf '%s' "$key" | tr -c 'A-Za-z0-9._-' '_')"
+    if [[ -f "$marker" ]]; then
+        local age=$(( $(date +%s) - $(stat -c %Y "$marker") ))
+        if (( age < NOTIFY_REPEAT_SECONDS )); then
+            NOTIFY_SENT=1
+            log "(report suppressed: '$key' already reported ${age}s ago; repeats after ${NOTIFY_REPEAT_SECONDS}s)"
+            return 0
+        fi
+    fi
+    (( DRY_RUN )) || : > "$marker"
+    notify "$@"
+}
+
+# Clear suppression markers once the condition they describe is gone, so the
+# NEXT occurrence is reported immediately rather than swallowed by a stale one.
+notify_reset() {
+    (( DRY_RUN )) && return 0
+    rm -f -- "$STATE_DIR"/notified-*
+}
 
 # notify <emoji> <title> <body>
 notify() {
@@ -156,12 +194,18 @@ $(printf '%s' "$body" | html_escape)"
     fi
 }
 
+# die reports through notify_once keyed on the target SHA plus the first line of
+# the message. A condition that will still be true in two minutes — a red main,
+# an unreachable API, a dirty schema — must not page on every tick.
 die() {
     log "FATAL: $*"
-    (( NOTIFY_SENT )) || notify "🚨" "qr-dining deploy ERROR" "$*
+    if (( ! NOTIFY_SENT )); then
+        notify_once "fail-${TARGET_SHA:-none}-$(printf '%s' "$*" | head -c 60)" \
+            "🚨" "qr-dining deploy ERROR" "$*
 
 host: $(hostname)
 log:  $PROJECT_DIR/deploy.log"
+    fi
     exit 1
 }
 
@@ -658,7 +702,7 @@ for entry in "${INSTANCES[@]}"; do
     log "  before: $c = $(container_image_ref "$c")"
 done
 
-TARGET_SHA="" IMAGE="" TAG=""
+IMAGE="" TAG=""
 
 case "$MODE" in
     rollback)
@@ -734,7 +778,8 @@ if (( PENDING_COUNT > 0 )); then
         (( DRY_RUN )) || rm -f "$TOKEN"
         APPROVED_MIGRATIONS=1
     else
-        notify "⛔" "qr-dining deploy BLOCKED — migrations pending" \
+        notify_once "blocked-migrations-$TAG" \
+            "⛔" "qr-dining deploy BLOCKED — migrations pending" \
 "$IMAGE would apply $PENDING_COUNT migration(s) at boot: $PENDING_LIST
 database is at: $(db_schema_version)
 
@@ -828,6 +873,9 @@ fi
 
 step "Deployed"
 print_status | sed 's/^/    /'
+
+# Whatever was being suppressed is over.
+notify_reset
 
 notify "✅" "qr-dining deployed" \
 "$BEFORE_REF  ->  $IMAGE

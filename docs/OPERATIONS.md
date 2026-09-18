@@ -325,6 +325,26 @@ rollback path only ever runs when the schema did not move.** When an operator
 *has* approved a migration, that guarantee is gone, and the failure page says so
 explicitly and names the migrations that were applied.
 
+### Reporting, and why it repeats slowly
+
+Every outcome goes to Telegram through the bot Alertmanager already uses, so
+deploy reports land in the same chat as pages. It is sent directly to the Bot
+API rather than injected into Alertmanager as a synthetic alert: a deploy report
+is not an alert, and routing one through `group_wait`/`group_interval` would
+delay the thing you most want immediately. It also means the report still
+arrives when Alertmanager is the thing that broke.
+
+**Conditions that persist are reported once, then go quiet for six hours.** The
+agent polls every two minutes, and a blocked deploy stays blocked until a human
+acts — without suppression, one pending migration would send thirty identical
+messages an hour, which is how a channel gets muted and how the next real page
+gets missed. Suppression is keyed on the target SHA, so a *new* bad commit is
+never silenced by an older one, and every marker is cleared on a successful
+deploy. One-time transitions — deployed, rolled back — are never suppressed.
+
+The failure this does not cover: if the Telegram send itself fails, the deploy
+outcome is only in `/opt/qr-dining/deploy.log`. There is no second channel.
+
 ### Operating it
 
 ```bash
@@ -366,10 +386,11 @@ Stated here so nobody has to find out during a pilot service:
 - **WebSocket sessions on the restarting instance are dropped.** HTTP requests
   fail over to the other instance; an open `/ws` connection cannot. Clients
   reconnect, but a deploy during service is visible to guests as a reconnect.
-- **A `latest`-tag drift or a GHCR outage stops deploys silently** except for
-  the log, since "no new commit" and "cannot reach GitHub" look similar from
-  two minutes away. There is no dead-man's switch on the deploy path itself, the
-  way there is on alerting.
+- **Nothing watches the watcher.** If cron stops, the crontab is lost, or the
+  checkout is left on another branch, deploys simply stop happening and the only
+  symptom is silence. Alerting has a dead man's switch for exactly this; the
+  deploy path has none, so "no deploy report since the last merge" is a thing a
+  human has to notice. Suppression makes that quieter, not louder.
 - **`proxy_nginx` itself is out of scope.** Its image is a floating tag, its
   ports and `nginx.conf` are not in this repo, and nothing here would notice if
   it stopped.
