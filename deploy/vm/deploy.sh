@@ -375,6 +375,18 @@ print(("FAILED|%s" % ", ".join(sorted(bad))) if bad else ("OK|%d status(es) gree
 # source tree about a binary. Disagreement means the artefacts are not the same
 # release and the deploy stops.
 # ---------------------------------------------------------------------------
+# Just the recorded version number, or "none". db_schema_version's "40|f" form is
+# for display: it carries a pipe, and deploy-state/previous is SOURCED as shell,
+# so writing that form into it makes the state file execute `f` as a command.
+# Discovered by feeding the guard a hand-written previous file with the display
+# form in it — which is exactly what the code was about to write.
+db_schema_number() {
+    local v
+    v="$(docker exec "$PG_CONTAINER" psql -U "$(get_env_var POSTGRES_USER)" -d "$(get_env_var POSTGRES_DB)" \
+        -tAc 'select version from schema_migrations' 2>/dev/null | tr -d '[:space:]')"
+    printf '%s' "${v:-none}"
+}
+
 db_schema_version() {
     docker exec "$PG_CONTAINER" psql -U "$(get_env_var POSTGRES_USER)" -d "$(get_env_var POSTGRES_DB)" \
         -tAF'|' -c 'select version, dirty from schema_migrations' 2>/dev/null | tr -d ' '
@@ -712,7 +724,7 @@ BEFORE_REF="$(container_image_ref "$CANARY_CONTAINER")"
 A rolling deploy needs something to roll from. Bring the stack up by hand first."
 BEFORE_REPO="${BEFORE_REF%:*}"; BEFORE_TAG="${BEFORE_REF##*:}"
 BEFORE_ID="$(container_image_id "$CANARY_CONTAINER")"
-BEFORE_SCHEMA="$(db_schema_version)"
+BEFORE_SCHEMA="$(db_schema_number)"
 log "currently serving: $BEFORE_REF  (schema $BEFORE_SCHEMA)"
 for entry in "${INSTANCES[@]}"; do
     IFS=: read -r _ c _ <<<"$entry"
@@ -725,9 +737,12 @@ case "$MODE" in
     rollback)
         PREV="$STATE_DIR/previous"
         [[ -r "$PREV" ]] || die "no recorded previous deploy in $PREV"
-        PREV_SCHEMA=""
-        # shellcheck disable=SC1090
-        . "$PREV"
+        # Read as DATA, not sourced. `.` on a state file executes whatever is in
+        # it; a corrupted or hand-edited previous should produce a bad rollback
+        # target at worst, never arbitrary commands running as the deploy user.
+        PREV_REPO="$(sed -nE 's/^PREV_REPO="?([^"]*)"?$/\1/p' "$PREV" | tail -1)"
+        PREV_TAG="$(sed -nE 's/^PREV_TAG="?([^"]*)"?$/\1/p' "$PREV" | tail -1)"
+        PREV_SCHEMA="$(sed -nE 's/^PREV_SCHEMA="?([^"]*)"?$/\1/p' "$PREV" | tail -1)"
         step "Manual rollback to ${PREV_REPO:?}:${PREV_TAG:?}"
 
         # WOULD THIS ROLLBACK CROSS A MIGRATION?
@@ -930,19 +945,22 @@ if (( ! DRY_RUN )); then
     # schema now answers "would going back put an old binary in front of a newer
     # schema?" without needing the old image to carry /app/migrate — and the
     # images worth rolling back to are often exactly the ones that do not.
+    # Every value is quoted. This file is read back with `.` — an unquoted value
+    # containing a shell metacharacter is executed, not assigned.
     cat > "$STATE_DIR/previous" <<EOF
-PREV_REPO=$BEFORE_REPO
-PREV_TAG=$BEFORE_TAG
-PREV_ID=$BEFORE_ID
-PREV_SCHEMA=$BEFORE_SCHEMA
-RECORDED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+PREV_REPO="$BEFORE_REPO"
+PREV_TAG="$BEFORE_TAG"
+PREV_ID="$BEFORE_ID"
+PREV_SCHEMA="$BEFORE_SCHEMA"
+RECORDED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 EOF
     cat > "$STATE_DIR/current" <<EOF
-REPO=${IMAGE%:*}
-TAG=$TAG
-IMAGE_ID=$IMAGE_ID
-SHA=${TARGET_SHA:-<operator tag>}
-DEPLOYED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+REPO="${IMAGE%:*}"
+TAG="$TAG"
+IMAGE_ID="$IMAGE_ID"
+SHA="${TARGET_SHA:-operator-supplied-tag}"
+SCHEMA="$(db_schema_number)"
+DEPLOYED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 EOF
 fi
 

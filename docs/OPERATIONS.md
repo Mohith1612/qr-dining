@@ -343,6 +343,13 @@ then says the rollback was forced and across which versions.
 worth rolling back to are often exactly the ones built before `cmd/migrate`
 shipped in the runtime image, so they cannot answer for themselves.
 
+`deploy-state/previous` is read as **data**, not sourced. It used to be `.`-ed,
+and the first version of `PREV_SCHEMA` wrote the display form `40|f` into it —
+a pipe, in a file that was about to be executed as shell. The guard would have
+been broken by its own state file. Values are quoted on write and parsed on
+read, so a corrupted or hand-edited state file produces a bad rollback target at
+worst, never arbitrary commands running as the deploy user.
+
 ### Reporting, and why it repeats slowly
 
 Every outcome goes to Telegram through the bot Alertmanager already uses, so
