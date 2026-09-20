@@ -26,9 +26,16 @@ RUN mkdir -p /drill && \
     printf '%s' '{"checks":{"postgres":"unhealthy","redis":"ok"},"status":"not_ready"}' > /drill/readyz && \
     printf '%s' '{"status":"ok"}' > /drill/health
 
-# busybox httpd serves both files with a 200. `-f` keeps it in the foreground so
-# the container stays up rather than exiting — a crash would be caught by the
-# gate for the wrong reason, and would not prove the body assertion.
+# httpd serves both files with a 200. `-f` keeps it in the foreground so the
+# container stays up rather than exiting — a container that crashes would be
+# caught by the gate for the wrong reason and would not prove the body
+# assertion, which is the entire point of this image.
+#
+# It is `httpd`, NOT `busybox httpd`. On Alpine the httpd applet is not in the
+# base busybox multi-call binary; it ships in busybox-extras as a SEPARATE
+# binary, with /usr/sbin/httpd symlinked to it. `busybox httpd` exits 0 with
+# "httpd: applet not found" — which is a silent, immediate, exit-zero failure,
+# i.e. exactly the shape of bug this drill exists to catch, and it caught it.
 RUN apk add --no-cache busybox-extras
 USER appuser
-ENTRYPOINT ["busybox", "httpd", "-f", "-p", "8080", "-h", "/drill"]
+ENTRYPOINT ["httpd", "-f", "-p", "8080", "-h", "/drill"]
