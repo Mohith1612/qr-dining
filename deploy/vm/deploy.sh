@@ -743,6 +743,12 @@ case "$MODE" in
         PREV_REPO="$(sed -nE 's/^PREV_REPO="?([^"]*)"?$/\1/p' "$PREV" | tail -1)"
         PREV_TAG="$(sed -nE 's/^PREV_TAG="?([^"]*)"?$/\1/p' "$PREV" | tail -1)"
         PREV_SCHEMA="$(sed -nE 's/^PREV_SCHEMA="?([^"]*)"?$/\1/p' "$PREV" | tail -1)"
+        # Normalise. A state file written by an older deploy.sh holds the display
+        # form "40|f"; comparing that with the number form refuses a rollback
+        # that is perfectly safe. A guard that cries wolf is worse than no guard,
+        # because it teaches people to pass --i-know-the-schema-moved reflexively
+        # — and then it is not there on the day it matters.
+        PREV_SCHEMA="${PREV_SCHEMA%%|*}"
         step "Manual rollback to ${PREV_REPO:?}:${PREV_TAG:?}"
 
         # WOULD THIS ROLLBACK CROSS A MIGRATION?
