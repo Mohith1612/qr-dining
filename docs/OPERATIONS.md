@@ -327,6 +327,22 @@ rollback path only ever runs when the schema did not move.** When an operator
 *has* approved a migration, that guarantee is gone, and the failure page says so
 explicitly and names the migrations that were applied.
 
+**`--rollback` has no such guarantee and is gated separately.** It is the lever
+someone reaches for hours or days later, possibly after a deploy that did apply
+migrations. Immediately after the 2026-09-20 cutover it would have restored
+`qr-dining:beta-b57f746` — a binary that predates migration 40 — in front of a
+schema-40 database, and nothing would have stopped it.
+
+So `deploy-state/previous` now records `PREV_SCHEMA`: the schema version that
+image was actually serving against. If it differs from the schema now, the
+rollback would cross a migration and the command **refuses**, paging rather than
+proceeding. `--i-know-the-schema-moved` overrides it, and the success report
+then says the rollback was forced and across which versions.
+
+`PREV_SCHEMA` rather than asking the target image is deliberate: the images
+worth rolling back to are often exactly the ones built before `cmd/migrate`
+shipped in the runtime image, so they cannot answer for themselves.
+
 ### Reporting, and why it repeats slowly
 
 Every outcome goes to Telegram through the bot Alertmanager already uses, so
