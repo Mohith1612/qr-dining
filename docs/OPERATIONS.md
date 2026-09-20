@@ -378,6 +378,35 @@ returning 10 — must be run in an `if` condition, which bash exempts from both
 the command substitution's subshell, once outside) and paged "deploy CRASHED"
 before the real "BLOCKED" report arrived.
 
+### A rolled-back tag is held, or the agent undoes the rollback
+
+The agent exists to make "deployed image" equal "origin/main". A rollback makes
+those differ **on purpose** — so without a hold, the next tick reinstates exactly
+what was just removed. Measured on 2026-09-20: a manual rollback was reinstated
+**119 seconds later**.
+
+The automatic path would have been worse. A bad merge would loop: deploy, fail
+the health gate, roll back, redeploy two minutes later — forever, putting the
+bad image in front of real traffic for as long as the gate takes to decide, on
+every iteration.
+
+So **every rollback, automatic or manual, places a hold on the tag it rolled
+away from**, and the agent refuses that tag until it is cleared.
+
+```bash
+deploy.sh --holds                 # what is pinned out, why, and since when
+deploy.sh --clear-hold sha-abc1234
+```
+
+The hold is on the **tag**, not on deploying at all. That makes the normal
+recovery work with no further ceremony: roll back, fix forward, merge — the fix
+is a new commit and therefore a new tag, which was never held. Only the
+known-bad build is pinned out. `--clear-hold` exists for the case where you
+decide the build was fine after all and the gate was wrong.
+
+An `--tag` deploy deliberately ignores holds: an operator typing a tag is an
+explicit act, and that path already skips the CI gate for the same reason.
+
 ### Operating it
 
 ```bash
@@ -391,8 +420,13 @@ before the real "BLOCKED" report arrived.
 /opt/qr-dining/repo/deploy/vm/deploy.sh --sha <sha>
 /opt/qr-dining/repo/deploy/vm/deploy.sh --tag <tag>
 
-# Undo the last deploy on purpose. Binary only. Never the schema.
+# Undo the last deploy on purpose. Binary only. Never the schema. Holds the tag
+# it rolled away from, and refuses if it would cross a migration.
 /opt/qr-dining/repo/deploy/vm/deploy.sh --rollback
+
+# What the agent is refusing to deploy, and letting it deploy again.
+/opt/qr-dining/repo/deploy/vm/deploy.sh --holds
+/opt/qr-dining/repo/deploy/vm/deploy.sh --clear-hold sha-abc1234
 
 tail -f /opt/qr-dining/deploy.log
 ```
