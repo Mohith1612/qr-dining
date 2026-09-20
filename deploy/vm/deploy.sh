@@ -53,6 +53,8 @@
 #   deploy.sh --sha <sha>         deploy a specific commit that is on origin/main
 #   deploy.sh --tag <tag>         deploy an operator-supplied image tag (drills)
 #   deploy.sh --rollback          restore the image the containers ran before the last deploy
+#                                 (refuses if that would cross a migration; add
+#                                 --i-know-the-schema-moved to override)
 #   deploy.sh --status            print what is running and exit
 #   deploy.sh --dry-run           with any of the above: decide, report, change nothing
 #
@@ -127,7 +129,7 @@ OBS_COMPOSE_FILES=(
     -f "$REPO_DIR/deploy/vm/docker-compose.observability-vm.yml"
 )
 
-MODE="" ARG="" DRY_RUN=0
+MODE="" ARG="" DRY_RUN=0 ROLLBACK_FORCED=0
 NOTIFY_SENT=0
 TARGET_SHA=""
 
@@ -678,6 +680,7 @@ while (( $# )); do
         --sha)      MODE=sha;  ARG="${2:?--sha needs a commit}"; shift ;;
         --tag)      MODE=tag;  ARG="${2:?--tag needs an image tag}"; shift ;;
         --rollback) MODE=rollback ;;
+        --i-know-the-schema-moved) ROLLBACK_FORCED=1 ;;
         --status)   MODE=status ;;
         --dry-run)  DRY_RUN=1 ;;
         -h|--help)  sed -n '2,60p' "$0"; exit 0 ;;
@@ -709,7 +712,8 @@ BEFORE_REF="$(container_image_ref "$CANARY_CONTAINER")"
 A rolling deploy needs something to roll from. Bring the stack up by hand first."
 BEFORE_REPO="${BEFORE_REF%:*}"; BEFORE_TAG="${BEFORE_REF##*:}"
 BEFORE_ID="$(container_image_id "$CANARY_CONTAINER")"
-log "currently serving: $BEFORE_REF"
+BEFORE_SCHEMA="$(db_schema_version)"
+log "currently serving: $BEFORE_REF  (schema $BEFORE_SCHEMA)"
 for entry in "${INSTANCES[@]}"; do
     IFS=: read -r _ c _ <<<"$entry"
     log "  before: $c = $(container_image_ref "$c")"
@@ -721,14 +725,66 @@ case "$MODE" in
     rollback)
         PREV="$STATE_DIR/previous"
         [[ -r "$PREV" ]] || die "no recorded previous deploy in $PREV"
+        PREV_SCHEMA=""
         # shellcheck disable=SC1090
         . "$PREV"
         step "Manual rollback to ${PREV_REPO:?}:${PREV_TAG:?}"
-        restore_image "$PREV_REPO" "$PREV_TAG" app app2 \
-            && notify "↩️" "qr-dining rolled back" "now: $PREV_REPO:$PREV_TAG
+
+        # WOULD THIS ROLLBACK CROSS A MIGRATION?
+        #
+        # The AUTOMATIC rollback inside a failed deploy cannot: the migration
+        # gate stops any unattended schema change, so if the deploy got as far
+        # as the health gate the schema did not move. This path has no such
+        # guarantee. It is the lever someone reaches for hours or days later,
+        # after a deploy that DID apply migrations — and restoring a binary that
+        # predates them puts an old application in front of a newer schema,
+        # which is the one thing nothing here can undo.
+        #
+        # PREV_SCHEMA is the schema the target image was actually serving
+        # against. Comparing it with the schema now answers the question without
+        # needing the old image to carry /app/migrate.
+        if [[ -z "$PREV_SCHEMA" ]]; then
+            log "WARNING: $PREV predates schema recording; cannot tell whether this crosses a migration"
+            ROLLBACK_CROSSES="unknown"
+        elif [[ "$PREV_SCHEMA" != "$BEFORE_SCHEMA" ]]; then
+            ROLLBACK_CROSSES="yes"
+        else
+            ROLLBACK_CROSSES="no"
+        fi
+
+        if [[ "$ROLLBACK_CROSSES" != "no" ]]; then
+            log ""
+            log "  STOP. $PREV_REPO:$PREV_TAG last ran against schema '${PREV_SCHEMA:-unknown}'."
+            log "  The database is now at '$BEFORE_SCHEMA'."
+            log ""
+            log "  Restoring it would put an older binary in front of a newer schema. The"
+            log "  schema is NOT coming back with it — nothing here rolls a schema back, and"
+            log "  docs/RECOVERY.md records why that is not a capability worth building."
+            log ""
+            log "  If that older binary genuinely tolerates the current schema, say so"
+            log "  explicitly:  deploy.sh --rollback --i-know-the-schema-moved"
+            log ""
+            if (( ! ROLLBACK_FORCED )); then
+                notify_once "rollback-blocked-$PREV_TAG-$BEFORE_SCHEMA" \
+                    "⛔" "qr-dining rollback BLOCKED — it would cross a migration" \
+"$PREV_REPO:$PREV_TAG last ran against schema ${PREV_SCHEMA:-unknown}.
+The database is now at $BEFORE_SCHEMA.
+
+An older binary in front of a newer schema is the failure this path refuses to
+cause by accident. Re-run with --i-know-the-schema-moved if it is genuinely safe."
+                log "refusing; nothing changed"
+                exit 1
+            fi
+            log "  --i-know-the-schema-moved given; proceeding under the operator's judgement"
+        fi
+
+        if restore_image "$PREV_REPO" "$PREV_TAG" app app2; then
+            notify "↩️" "qr-dining rolled back" "now: $PREV_REPO:$PREV_TAG
 was: $BEFORE_REF
-schema: $(db_schema_version) — NOT rolled back, by design" \
-            || die "rollback to $PREV_REPO:$PREV_TAG did not come up healthy"
+schema: $(db_schema_version) — NOT rolled back, by design$( [[ "$ROLLBACK_CROSSES" == "no" ]] || printf '\n⚠ this rollback CROSSED a migration (%s -> %s) and was forced' "${PREV_SCHEMA:-unknown}" "$BEFORE_SCHEMA" )"
+        else
+            die "rollback to $PREV_REPO:$PREV_TAG did not come up healthy"
+        fi
         exit 0
         ;;
     auto|sha)
@@ -869,10 +925,16 @@ fi
 # Both instances up on the new image. Record the rollback target only now: a
 # "previous" that was never healthy is not a rollback target.
 if (( ! DRY_RUN )); then
+    # PREV_SCHEMA is the schema this image was actually serving against. It is
+    # the whole basis of the rollback safety check below: comparing it with the
+    # schema now answers "would going back put an old binary in front of a newer
+    # schema?" without needing the old image to carry /app/migrate — and the
+    # images worth rolling back to are often exactly the ones that do not.
     cat > "$STATE_DIR/previous" <<EOF
 PREV_REPO=$BEFORE_REPO
 PREV_TAG=$BEFORE_TAG
 PREV_ID=$BEFORE_ID
+PREV_SCHEMA=$BEFORE_SCHEMA
 RECORDED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 EOF
     cat > "$STATE_DIR/current" <<EOF
