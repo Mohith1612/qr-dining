@@ -55,6 +55,8 @@
 #   deploy.sh --rollback          restore the image the containers ran before the last deploy
 #                                 (refuses if that would cross a migration; add
 #                                 --i-know-the-schema-moved to override)
+#   deploy.sh --holds             list tags the agent is refusing to deploy
+#   deploy.sh --clear-hold <tag>  let a rolled-back tag be deployed again
 #   deploy.sh --status            print what is running and exit
 #   deploy.sh --dry-run           with any of the above: decide, report, change nothing
 #
@@ -471,6 +473,55 @@ tolerates the newer schema." ;;
 approval_token() { printf '%s/approved-%s' "$STATE_DIR" "$1"; }
 
 # ---------------------------------------------------------------------------
+# Holds: a rolled-back tag must not be redeployed two minutes later.
+#
+# Without this the agent undoes every rollback it or anyone else performs,
+# because "deployed image != origin/main" is exactly what it exists to fix.
+# Measured on 2026-09-20: a manual rollback was reinstated by the next cron tick,
+# 119 seconds later. The automatic path is worse — a bad merge would loop
+# forever: deploy, fail the health gate, roll back, redeploy, every two minutes,
+# each iteration putting the bad image in front of real traffic for as long as
+# the gate takes to decide.
+#
+# The hold is on the IMAGE TAG, not on deploying at all, which makes the normal
+# recovery — roll back, fix forward, merge — work with no further ceremony: the
+# fix is a new commit and therefore a new tag, which was never held. Only the
+# known-bad build is pinned out.
+# ---------------------------------------------------------------------------
+hold_file() { printf '%s/hold-%s' "$STATE_DIR" "$(printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_')"; }
+
+place_hold() {
+    local tag="$1" why="$2" f
+    f="$(hold_file "$tag")"
+    if (( DRY_RUN )); then log "DRY RUN: would hold $tag"; return 0; fi
+    cat > "$f" <<EOF
+tag="$tag"
+reason="$why"
+held_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+EOF
+    log "HOLD placed on $tag — the agent will not deploy this tag again until it is cleared."
+    log "  clear with: $REPO_DIR/deploy/vm/deploy.sh --clear-hold $tag"
+}
+
+check_hold() {
+    local tag="$1" f
+    f="$(hold_file "$tag")"
+    [[ -r "$f" ]] || return 0
+    log "HELD: $tag was rolled back and has not been cleared."
+    sed 's/^/    /' "$f"
+    notify_once "held-$tag" "⏸" "qr-dining deploy HELD" \
+"$tag was rolled back and is not being redeployed.
+
+$(cat "$f")
+
+Fix forward — a new commit is a new tag and deploys normally. To deploy THIS tag
+again anyway:
+  $REPO_DIR/deploy/vm/deploy.sh --clear-hold $tag"
+    log "nothing to do while the hold stands"
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
 # Health gate.
 #
 # /readyz returns {"checks":{"postgres":"ok","redis":"ok"},"status":"ready"}.
@@ -692,6 +743,8 @@ while (( $# )); do
         --sha)      MODE=sha;  ARG="${2:?--sha needs a commit}"; shift ;;
         --tag)      MODE=tag;  ARG="${2:?--tag needs an image tag}"; shift ;;
         --rollback) MODE=rollback ;;
+        --clear-hold) MODE=clear-hold; ARG="${2:?--clear-hold needs a tag}"; shift ;;
+        --holds)      MODE=holds ;;
         --i-know-the-schema-moved) ROLLBACK_FORCED=1 ;;
         --status)   MODE=status ;;
         --dry-run)  DRY_RUN=1 ;;
@@ -700,11 +753,30 @@ while (( $# )); do
     esac
     shift
 done
-[[ -n "$MODE" ]] || { echo "usage: deploy.sh --auto | --sha <sha> | --tag <tag> | --rollback | --status [--dry-run]" >&2; exit 2; }
+[[ -n "$MODE" ]] || { echo "usage: deploy.sh --auto | --sha <sha> | --tag <tag> | --rollback | --holds | --clear-hold <tag> | --status [--dry-run]" >&2; exit 2; }
 
 mkdir -p "$STATE_DIR"
 
 if [[ "$MODE" == "status" ]]; then print_status; exit 0; fi
+
+if [[ "$MODE" == "holds" ]]; then
+    shopt -s nullglob
+    found=0
+    for f in "$STATE_DIR"/hold-*; do found=1; echo "--- ${f##*/hold-}"; sed 's/^/    /' "$f"; done
+    if (( ! found )); then echo "no holds"; fi
+    exit 0
+fi
+
+if [[ "$MODE" == "clear-hold" ]]; then
+    f="$(hold_file "$ARG")"
+    if [[ -r "$f" ]]; then
+        rm -f -- "$f" "$STATE_DIR/notified-held-$ARG"
+        echo "hold on $ARG cleared; the next tick may deploy it"
+    else
+        echo "no hold on $ARG"
+    fi
+    exit 0
+fi
 
 # One deploy at a time. Two cron ticks overlapping mid-rolling-restart would
 # race on .env and on the containers.
@@ -799,9 +871,13 @@ cause by accident. Re-run with --i-know-the-schema-moved if it is genuinely safe
             log "  --i-know-the-schema-moved given; proceeding under the operator's judgement"
         fi
 
+        # Hold the tag being rolled AWAY from, otherwise the next cron tick
+        # reinstates exactly what the operator just removed.
+        place_hold "$BEFORE_TAG" "manually rolled back to $PREV_TAG"
+
         if restore_image "$PREV_REPO" "$PREV_TAG" app app2; then
             notify "↩️" "qr-dining rolled back" "now: $PREV_REPO:$PREV_TAG
-was: $BEFORE_REF
+was: $BEFORE_REF  (now HELD; the agent will not redeploy it)
 schema: $(db_schema_version) — NOT rolled back, by design$( [[ "$ROLLBACK_CROSSES" == "no" ]] || printf '\n⚠ this rollback CROSSED a migration (%s -> %s) and was forced' "${PREV_SCHEMA:-unknown}" "$BEFORE_SCHEMA" )"
         else
             die "rollback to $PREV_REPO:$PREV_TAG did not come up healthy"
@@ -828,6 +904,8 @@ schema: $(db_schema_version) — NOT rolled back, by design$( [[ "$ROLLBACK_CROS
             log "already deployed; nothing to do"
             exit 0
         fi
+
+        check_hold "$TAG"
 
         step "2/6  CI gate"
         assert_ci_green "$TARGET_SHA"
@@ -927,11 +1005,18 @@ if [[ -n "$FAILED_AT" ]]; then
 FORWARD of the restored binary and stays there — nothing here rolls a schema
 back. Verify $BEFORE_TAG tolerates schema $(db_schema_version) NOW."
     fi
+    # Before anything else: pin this tag out, or the next tick redeploys it and
+    # the whole thing becomes a loop that serves the bad image every two minutes.
+    place_hold "$TAG" "health gate failed on $FAILED_AT"
+
     if restore_image "$BEFORE_REPO" "$BEFORE_TAG" app app2; then
         notify "🔴" "qr-dining deploy FAILED — rolled back" \
 "$FAILED_AT never became ready on $IMAGE.
 restored: $BEFORE_REF (healthy)
 schema:   $(db_schema_version) — NOT rolled back, by design$ROLLBACK_NOTE
+
+$TAG is HELD: the agent will not retry it. Fix forward — a new commit is a new
+tag and deploys normally.
 
 log: $PROJECT_DIR/deploy.log"
         die "health gate failed on $FAILED_AT; previous image restored"

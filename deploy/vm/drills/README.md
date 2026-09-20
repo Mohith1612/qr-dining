@@ -31,7 +31,16 @@ QRD_HEALTH_TIMEOUT=45 QRD_DEPLOY_IMAGE_REPO_OVERRIDE=qr-dining-drill \
   /opt/qr-dining/repo/deploy/vm/deploy.sh --tag broken-readyz
 ```
 
-Clean up afterwards: `docker rmi qr-dining-drill:broken-readyz`.
+Clean up afterwards:
+
+```bash
+docker rmi qr-dining-drill:broken-readyz
+/opt/qr-dining/repo/deploy/vm/deploy.sh --clear-hold broken-readyz
+```
+
+The rollback places a hold on the tag it rolled away from, so that a real bad
+build is not redeployed two minutes later. `--tag` deploys ignore holds, so the
+leftover one is harmless — but `--holds` is cleaner without it.
 
 **What the drill also shows, and you should watch for:** while the broken image
 is up, it is still in the `split_clients` rotation and still serving. It answers
