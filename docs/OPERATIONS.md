@@ -451,6 +451,23 @@ migration 40's data guard was checked against production before approval — zer
 sessions with more than one non-terminal payment, so the `RAISE EXCEPTION` could
 not fire. That check is what the approval step is for.
 
+**Six defects were found by running this path, none by reading it.** They are
+listed because the pattern is the point, not the individual bugs:
+
+| found by | defect |
+| --- | --- |
+| firing the migration gate for real | `set +e` does not suppress bash's `ERR` trap — one pending migration sent three Telegram messages |
+| the same run | the log read `(auto, DRY RUN)` on a run that was not a dry run |
+| approving for real | `deploy-approve.sh` died on the pre-flight's expected exit 10, before printing any of the SQL it exists to show |
+| running the drill | the drill image never started: `busybox httpd` is not an applet in base busybox, and it exits **zero** |
+| reading `deploy-state/previous` after the cutover | `--rollback` would have put the pre-audit binary in front of a schema-40 database, unchecked |
+| hand-testing that new guard | the guard wrote `40|f` into a file it then `source`d — it would have been broken by its own state file |
+| a careless rollback during testing | **cron reinstated the rolled-back image 119 seconds later**, and an automatically rolled-back bad merge would have looped forever |
+
+The last one is the one worth remembering. It was invisible to the drill, because
+`--tag` deploys are not repeated by cron — only a bad merge to `main` would have
+shown it, and the first time that happened it would have been during a service.
+
 ### The canary serves real traffic while it is being judged
 
 The drill exposed this and it is the most important limitation on the list.
@@ -509,6 +526,10 @@ Stated here so nobody has to find out during a pilot service:
   to 120s, and the alert's `for:` is 1m, so an instance that never comes up
   pages on its own account as well as through the deploy report. A *successful*
   rolling restart is ~10–20s per instance and stays under the threshold.
+- **A hold has no expiry and nothing reminds you.** A rolled-back tag stays held
+  until a human runs `--clear-hold`. That is the right default — the alternative
+  is retrying a known-bad build — but it means "rolled back on Friday, forgot"
+  looks exactly like "nothing to deploy".
 - **Nothing watches the watcher.** If cron stops, the crontab is lost, or the
   checkout is left on another branch, deploys simply stop happening and the only
   symptom is silence. Alerting has a dead man's switch for exactly this; the
