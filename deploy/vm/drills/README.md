@@ -33,6 +33,13 @@ QRD_HEALTH_TIMEOUT=45 QRD_DEPLOY_IMAGE_REPO_OVERRIDE=qr-dining-drill \
 
 Clean up afterwards: `docker rmi qr-dining-drill:broken-readyz`.
 
+**What the drill also shows, and you should watch for:** while the broken image
+is up, it is still in the `split_clients` rotation and still serving. It answers
+`404` for unknown paths exactly as the real app does — only the headers differ —
+so neither nginx nor a client-side probe can tell the difference. The health
+gate protects the deploy, not the users, for as long as it is deciding. See
+docs/OPERATIONS.md, "The canary serves real traffic while it is being judged".
+
 ## Rehearsing the migration gate
 
 No artefact needed — deploy any image whose highest migration exceeds

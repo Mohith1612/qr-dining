@@ -374,6 +374,52 @@ before the real "BLOCKED" report arrived.
 tail -f /opt/qr-dining/deploy.log
 ```
 
+### First execution, 2026-09-20
+
+This path was executed against the production VM, and the three things worth
+proving were proved rather than asserted.
+
+| | result |
+| --- | --- |
+| Migration gate | `sha-7f215f1` blocked: `pending_count=1`, `pending=40`. Nothing touched, exit 0, one Telegram report. |
+| Real deploy | `qr-dining:beta-b57f746` → `ghcr.io/mohith1612/qr-dining:sha-059804b` on both instances. Schema 39 → 40. 43/43 client requests answered through both restarts, zero 5xx. |
+| Rollback | Drill image (HTTP 200, `status:"not_ready"`) rejected after 45s; `qr_dining_app_2` never recreated — same container ID before and after — previous image restored, schema left at 40. |
+
+Before: both instances on `qr-dining:beta-b57f746`, a locally built image from
+2026-08-04, `qr_dining_app` up 5 weeks. After: both on
+`ghcr.io/mohith1612/qr-dining:sha-059804b`.
+
+A pre-migration backup was taken first (`backup_20260918_155712.dump`), and
+migration 40's data guard was checked against production before approval — zero
+sessions with more than one non-terminal payment, so the `RAISE EXCEPTION` could
+not fire. That check is what the approval step is for.
+
+### The canary serves real traffic while it is being judged
+
+The drill exposed this and it is the most important limitation on the list.
+
+For the 48 seconds the broken image was up, `qr_dining_app` was in the
+`split_clients` rotation and served whatever share of client IPs hashed to it.
+The failover added in this change **could not help**, because the broken
+instance was not failing — it was answering. Both the real app and the drill
+image return `404` for an unknown path; only the headers differ:
+
+```
+real app:   HTTP/1.1 404   Content-Type: text/plain   + 6 security headers
+drill:      HTTP/1.1 404   Content-type: text/html    <HTML>…
+```
+
+nginx cannot tell those apart, and neither could a client. **The health gate
+protects the deploy; it does not protect users during the window it is
+deciding.** Worst case is `QRD_HEALTH_TIMEOUT` (120s by default) of degraded
+service for the share of traffic pinned to the canary.
+
+The fix is to drain the instance from `split_clients` before recreating it and
+restore it after the gate passes. The variable-based `proxy_pass` makes that
+possible — a drain file included into the map would do it — but it is not
+implemented, so the exposure above is what happens today. Prefer deploying
+outside service hours until it is.
+
 ### What this deploy path cannot do
 
 Stated here so nobody has to find out during a pilot service:
@@ -382,6 +428,12 @@ Stated here so nobody has to find out during a pilot service:
   Postgres and Redis. An image that boots, connects, and then returns 500 on
   every order passes the gate and is reported as a successful deploy. Nothing
   here runs a guest or staff flow.
+- **The canary serves real traffic while it is being judged** — see above. This
+  is the sharpest edge on the whole path.
+- **A fix to the deploy path itself lands one deploy late.** The agent runs from
+  the checkout it is about to fast-forward, so the script that performs a deploy
+  is the one that was on the box *before* it. Three of the defects found on
+  2026-09-20 were fixed in a commit that the next deploy, not that deploy, ran.
 - **It cannot undo a migration.** By design — but it means an approved migration
   that turns out to be wrong is an incident, not a rollback.
 - **There is a window where the two instances run different images**, between
